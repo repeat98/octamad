@@ -2,6 +2,7 @@
 # You supply your own copy of the official OS; nothing derived from it that
 # still contains Elektron's code belongs in git.
 downloads/
+base_firmware/
 *.bin
 *.syx
 *.zip

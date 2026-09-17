@@ -114,7 +114,10 @@ verify-twocore: ## Two-core gate: servers on their REAL cores == the DEV hatch, 
 emu-cf: ## Build and run the headless ColdFire machine (tools/emu/ot_emu) -- boots to the RTOS handoff
 	@# --fresh: a cache configured from another source path makes cmake
 	@# refuse rather than rebuild.
-	cmake --fresh -B out/emu -S tools/emu/ot_emu >/dev/null
+	@# The host's own architecture, explicitly: an Intel-Homebrew cmake
+	@# (/usr/local/bin) configures x86_64 and the port then runs under
+	@# Rosetta -- 4.19 s to the handoff against 3.55 s native (17 Sep 2026).
+	cmake --fresh -B out/emu -S tools/emu/ot_emu -DCMAKE_OSX_ARCHITECTURES=$$(uname -m) >/dev/null
 	cmake --build out/emu -j8 >/dev/null
 	./out/emu/ot_emu --image $(if $(IMAGE),$(IMAGE),out/raw/section_3_MAIN_OS.bin)
 

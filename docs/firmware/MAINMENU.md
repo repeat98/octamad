@@ -233,7 +233,9 @@ live-lane write carries the value) but did not survive a part reload
 
 ## 8. Undecoded
 
-The drawing primitives behind the state table's draw functions, the
+The drawing primitives behind the state table's draw functions
+(`PANEL.md` now has the surface, fonts, text blitter and the dithered
+rectangle; the window/geometry descriptors above them are still unread), the
 `0x80000088` alternate-list semantics, `FUN_40043728` (old-track teardown),
 the two `0x46c7d8d8` readers (`FUN_4005a918`, `FUN_4005cbd8`), the indirect
 widget-setup pointers `verify_menu.py` warns about (`PTR_FUN_400bb7f0`

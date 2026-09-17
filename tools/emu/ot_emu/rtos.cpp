@@ -56,18 +56,27 @@ namespace ot
 		// route A's own defaults amount to (`frame=False`, and the UARTs'
 		// transmit interrupt cleared at seeding with nothing queued to
 		// receive).
-		m_intc1.addLine(43, [this] { return m_pit0.irq(); });
-		m_intc1.addLine(44, [this] { return m_pit1.irq(); });
-		m_intc0.addLine(26, [this] { return m_uart60.irq(); });
-		m_intc0.addLine(27, [this] { return m_uart64.irq(); });
-		m_intc0.addLine(28, [this] { return m_uart68.irq(); });
-		// INTC0 source 1 = the DSP frame clock (vector 0x41), and sources
-		// 8..23 are eDMA channels 0..15 (MCF5445x). 8, 9 and 15 are the ones
-		// the frame exchange raises.
+		// INTC0 source 1 = the DSP frame clock (vector 0x41), sources 8..23
+		// are eDMA channels 0..15 (MCF5445x; 8, 9 and 15 are the ones the
+		// frame exchange raises), 26..28 the three UARTs. INTC1: 43/44 the
+		// PITs.
 		m_frame = _frame;
-		m_intc0.addLine(1, [this] { return m_frame && m_framePending; });
-		for(uint32_t ch = 0; ch < 16; ++ch)
-			m_intc0.addLine(8 + ch, [this, ch] { return m_edma.irq(ch); });
+		m_intc0.setWires([this]
+		{
+			uint64_t a = static_cast<uint64_t>(m_edma.irqMask()) << 8;
+			if(m_frame && m_framePending) a |= 1ull << 1;
+			if(m_uart60.irq()) a |= 1ull << 26;
+			if(m_uart64.irq()) a |= 1ull << 27;
+			if(m_uart68.irq()) a |= 1ull << 28;
+			return a;
+		});
+		m_intc1.setWires([this]
+		{
+			uint64_t a = 0;
+			if(m_pit0.irq()) a |= 1ull << 43;
+			if(m_pit1.irq()) a |= 1ull << 44;
+			return a;
+		});
 	}
 
 	uint32_t Rtos::curTcb()

@@ -136,7 +136,7 @@ tools/patches/     local patches to the vendored toolchains
 scripts/           toolchain setup, OS fetch and recon, the bit-identity gate
 dsp/               shared DSP infrastructure: the null stub and the probes
 docs/remixer/      using and extending the remixer: MODULES, PLACEMENT, REMIXER, TOOLING, FLASHING
-docs/firmware/     the firmware, reverse-engineered: ARCHITECTURE, KERNEL, DSP, CHIP, TABLES, PARAM_PAGES, MAINMENU, MIDI, EXTERNAL
+docs/firmware/     the firmware, reverse-engineered: ARCHITECTURE, KERNEL, DSP, CHIP, TABLES, PARAM_PAGES, MAINMENU, PANEL, MIDI, EXTERNAL
 docs/effects/      the effects: XBUS (the bus), REVERB, MASTER, PORTS
 ```
 

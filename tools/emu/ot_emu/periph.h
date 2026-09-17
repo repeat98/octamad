@@ -186,6 +186,13 @@ namespace ot
 		static constexpr uint32_t g_hostPortLo = 0x20000000, g_hostPortHi = 0x20001000;
 
 		bool irq(uint32_t _ch) const { return m_irq[_ch & 15]; }
+		uint32_t irqMask() const
+		{
+			uint32_t m = 0;
+			for(uint32_t ch = 0; ch < 16; ++ch)
+				m |= static_cast<uint32_t>(m_irq[ch]) << ch;
+			return m;
+		}
 		uint64_t started() const { return m_started; }
 		size_t outstanding() const { return m_due.size(); }
 
@@ -328,6 +335,11 @@ namespace ot
 		// A source whose assertion is a live wire rather than a register bit
 		// (a timer's IRQ, a DMA completion): asked every time.
 		void addLine(uint32_t _source, std::function<bool()> _fn) { m_lines.emplace_back(_source, std::move(_fn)); }
+		// The same wires as one mask per call. `top()` runs after every
+		// instruction and a line is a std::function, so twenty-three lines
+		// were ~35% of the whole run (sampled 17 Sep 2026); one call
+		// returning all of them is the same answer at one indirection.
+		void setWires(std::function<uint64_t()> _fn) { m_wires = std::move(_fn); }
 		void setForceHook(std::function<void(uint64_t)> _fn) { m_onForce = std::move(_fn); }
 
 		uint64_t asserted() const;
@@ -370,6 +382,7 @@ namespace ot
 		uint64_t m_intfrc = 0;
 		std::array<uint8_t, 64> m_icr = {};
 		std::vector<std::pair<uint32_t, std::function<bool()>>> m_lines;
+		std::function<uint64_t()> m_wires;
 		std::function<void(uint64_t)> m_onForce;
 	};
 }

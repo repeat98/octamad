@@ -527,3 +527,29 @@ were built on it.
 **Fix.** The watch follows a `jsr (abs).l` at the site and accepts the
 store from the detour's own code; `--bank N` overrides. A port watch keyed
 on a stock PC is blind to any module that detours that PC.
+
+## A send that ignores its knob, a track loud into the bus at SEND 0, different per track 🟡 two causes, both project data
+
+**Symptom (16 Sep 2026, image 32, OCTABAM89 and its no-effects copy).**
+T5 and T7 loud through BusDelay with SEND 0 and no effects; T3 through it
+quietly; T2 leaking with a dead knob; T4/T6 as designed. CLEAR PATTERN on
+the unit made it behave.
+
+**Cause 1: stale parameter locks.** A pattern's trigs carry one lock byte
+per parameter slot (`tools/hw/ot_bank.py`: 64 steps × 32 slots per track
+record; FX1 = slots 18–23, FX2 = 24–29; `0xff` = none). Every slot move
+since 7 Sep left locks pointing at whatever knob now sits there; a lock
+overrides the knob on its trig. OCTABAM89 carried 962 FX1 and 6 FX2 lock
+bytes, mostly a knob-C sweep on T3/T4 driving Spectrum's ENV, and one on
+T5's FX2 knob A (the send). `ot_bank.py strip` clears a page's locks in
+every pattern; the stamper never touched patterns.
+
+**Cause 2 (🟡 inferred from the symptom set): an FX2 stored as id 0.** A
+fresh or cleared FX2 slot is id 0, which the image aliases to SEND; the
+firmware delivers no page for an effect it does not know, so SEND reads
+whatever the DSP page word holds — a level the knob cannot reach, and
+different on each track. `stamp-defaults` and `clean` now store SEND (id
+9) with a zero page in every empty FX2 slot; a project of ours has no id-0
+FX2 slot left. Not measured under the port (its fixture had no audio on
+those tracks); the falsifier is a stamped project that still leaks.
+

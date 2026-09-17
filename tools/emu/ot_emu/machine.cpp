@@ -51,6 +51,7 @@ namespace ot
 			reg.data.assign(r.size, 0);
 			m_regions.push_back(std::move(reg));
 		}
+		rebuildRegionIndex();
 		if(auto* const r = find(g_imageBase, static_cast<uint32_t>(_image.size())))
 			std::memcpy(r->data.data() + (g_imageBase - r->base), _image.data(), _image.size());
 
@@ -103,10 +104,36 @@ namespace ot
 
 	Region* Machine::find(const uint32_t _addr, const uint32_t _size)
 	{
+		if(const auto i = m_regionByTop[_addr >> 24]; i >= 0)
+		{
+			auto& r = m_regions[static_cast<size_t>(i)];
+			return r.contains(_addr, _size) ? &r : nullptr;
+		}
 		for(auto& r : m_regions)
 			if(r.contains(_addr, _size))
 				return &r;
 		return nullptr;
+	}
+
+	void Machine::rebuildRegionIndex()
+	{
+		// A bucket owned by ONE region maps to it (a miss inside the bucket
+		// is then a miss, exactly as the scan would answer); a bucket two
+		// regions touch, or none, scans.
+		std::array<int, 256> owners = {};
+		m_regionByTop.fill(-1);
+		for(size_t i = 0; i < m_regions.size(); ++i)
+		{
+			const auto& r = m_regions[i];
+			if(r.data.empty())
+				continue;
+			const uint64_t lo = r.base, hi = static_cast<uint64_t>(r.base) + r.data.size() - 1;
+			for(uint64_t b = lo >> 24; b <= (hi >> 24); ++b)
+			{
+				++owners[b];
+				m_regionByTop[b] = owners[b] == 1 ? static_cast<int16_t>(i) : int16_t(-1);
+			}
+		}
 	}
 
 	void Machine::mapRegion(const uint32_t _base, const uint32_t _size)
@@ -129,6 +156,7 @@ namespace ot
 		m_lastAutoPage = ~0u;
 		m_lastAutoData = nullptr;
 		m_regions.push_back(std::move(reg));
+		rebuildRegionIndex();
 	}
 
 	// One byte of auto-mapped memory, allocating its page on first touch.

@@ -317,6 +317,8 @@ namespace ot
 	uint64_t Intc::asserted() const
 	{
 		uint64_t a = m_intfrc;
+		if(m_wires)
+			a |= m_wires();
 		for(const auto& l : m_lines)
 			if(l.second())
 				a |= 1ull << l.first;

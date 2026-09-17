@@ -444,6 +444,11 @@ def stamp_defaults(pdir, remix_name, replaced_only=True, guard=True, keep_mode=F
                         # burn image, 16 Sep 2026: step 1 forever.
                         if fid == 0 and SEND_ID in defaults:
                             fid = SEND_ID
+                            if sub == 6:
+                                # an FX2 stored as 0 gets no page from the
+                                # firmware and SEND reads a stale DSP word (T5
+                                # "loud with send 0", 16 Sep 2026): store SEND
+                                data[off + idoff + t] = SEND_ID
                         if fid not in defaults:
                             continue
                         d = defaults[fid]
@@ -829,8 +834,10 @@ def write_stored(pdir):
 
 
 def make_clean_project(src, dest):
-    """Copy a project and blank every effect: FX1 and FX2 = NONE (id 0) on
-    every track of every part of every bank, every page byte zero. Patterns,
+    """Copy a project and blank every effect: FX1 = NONE (id 0) and FX2 =
+    SEND (id 9, the page all zero -- an FX2 stored as 0 gets no page from
+    the firmware and SEND reads a stale word) on every track of every part
+    of every bank, every page byte zero. Patterns,
     samples, mixer and the rest untouched. The image runs id 0 as SEND at
     level 0, so the bus carries nothing. A clean baseline for the ear
     (Sam, 16 Sep 2026: "so I can test it clean")."""
@@ -847,7 +854,7 @@ def make_clean_project(src, dest):
                 off = PART_BASE + p * PART_STRIDE
                 for i in range(NTRACKS):
                     data[off + FX1_OFF + i] = 0
-                    data[off + FX2_OFF + i] = 0
+                    data[off + FX2_OFF + i] = SEND_ID      # never 0: see stamp_defaults
                     a = off + P1_OFF + i * TRACK_STRIDE
                     b = off + P2_OFF + i * P2_STRIDE
                     data[a:a + 12] = bytes(12)
@@ -862,7 +869,7 @@ def make_clean_project(src, dest):
                 sys.exit(f"{path.name}: checksum did not take -- do NOT use this")
             for p in range(NPARTS_ALL):
                 off = PART_BASE + p * PART_STRIDE
-                if any(data[off + FX1_OFF:off + FX1_OFF + 8]) or any(data[off + FX2_OFF:off + FX2_OFF + 8]):
+                if any(data[off + FX1_OFF:off + FX1_OFF + 8]) or any(x != SEND_ID for x in data[off + FX2_OFF:off + FX2_OFF + 8]):
                     sys.exit(f"{path.name} part {p+1}: an id survived")
                 for i in range(NTRACKS):
                     a = off + P1_OFF + i * TRACK_STRIDE
@@ -870,7 +877,7 @@ def make_clean_project(src, dest):
                     if any(data[a:a + 12]) or any(data[b:b + 12]):
                         sys.exit(f"{path.name} part {p+1} T{i+1}: a page byte survived")
     write_stored(dest)
-    print(f"{dest}: every FX1/FX2 = NONE, every page zero, in every part of every bank; .strd twins in step")
+    print(f"{dest}: every FX1 = NONE, FX2 = SEND at 0, every page zero, in every part of every bank; .strd twins in step")
 
 
 def make_delay_test_project(src, dest, remix_name="bamsep26", sender=3):

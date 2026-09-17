@@ -145,7 +145,7 @@ if [ ! -x "$DIS" ] || [ ! -x "$ASM" ] || [ ! -x "$HOST" ]; then
     EMUPATCH=$(pwd)/tools/patches/dsp56300.patch
     apply_patch vendor/dsp56300 "$EMUPATCH"
     stage_dsp_host
-    cmake -S vendor/dsp56300 -B vendor/dsp56300/build -DCMAKE_BUILD_TYPE=Release \
+    cmake -S vendor/dsp56300 -B vendor/dsp56300/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="$(uname -m)" \
       && cmake --build vendor/dsp56300/build \
            --target dsp56kDisassemble dsp_asm dsp_host -j8 \
       || { echo "   [!] dsp56300 build FAILED -- make check cannot run without dsp_asm and dsp_host."; \

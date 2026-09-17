@@ -258,6 +258,7 @@ namespace ot
 
 		void setProfile(uint32_t _every) { m_profileEvery = _every; }
 		const std::unordered_map<uint32_t, uint64_t>& profile() const { return m_profile; }
+		void clearProfile() { m_profile.clear(); }
 		// Registers a borrowed call needs: main's stack pointer to push the
 		// frame onto, and D0 for the return value.
 		uint32_t getA7() const;
@@ -394,6 +395,12 @@ namespace ot
 		void peripheralWrite(uint32_t _addr, uint8_t _size, uint32_t _val);
 
 		std::vector<Region> m_regions;
+		// Region index by the top address byte, -1 = not one region alone
+		// (scan). A last-hit cache lost on the play phase, whose accesses
+		// alternate between code, data and the fast RAM every few
+		// instructions (17 Sep 2026); a table has no state to miss.
+		std::array<int16_t, 256> m_regionByTop;
+		void rebuildRegionIndex();
 		// BYTE-addressable, not word: Musashi composes a 32-bit peripheral read
 		// from two 16-bit reads, so a value stored whole and returned per
 		// access is truncated to the access width. That cost the first boot --

@@ -73,3 +73,11 @@ add_test(NAME repitch-stock COMMAND ot_repitch_stock_test
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
 add_test(NAME repitch-patch COMMAND ot_repitch_stock_test --patched out/mainos_bus.bin
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
+
+# FORCE FILENAME BPM: the module's own hooks, executed. The build's byte
+# assertions prove they landed; this proves what they compute, and runs the
+# firmware's explicit-tempo setter for real. Skips on an image without it.
+add_executable(ot_fnbpm_test ../../harness/fnbpm_probe.cpp)
+target_link_libraries(ot_fnbpm_test PRIVATE ot_machine)
+add_test(NAME filename-bpm COMMAND ot_fnbpm_test
+	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../..)

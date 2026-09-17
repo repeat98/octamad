@@ -198,6 +198,8 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	python3 tools/verify/verify_twocore.py
 	python3 tools/verify/verify_onebus.py
 	python3 tools/verify/verify_tempo.py $(REMIX)
+	@# FORCE FILENAME BPM: its two hooks executed under the ColdFire port.
+	python3 tools/verify/verify_fnbpm.py
 	@# A real project on the built image under the ColdFire port (ids, page-2
 	@# delivery, chain audio, the main out); SKIPs without OT_PROJECT (above).
 	python3 tools/verify/verify_set.py $(REMIX)

@@ -246,6 +246,26 @@ namespace ot
 		uint8_t internalClock();
 		// MIDI IN: bytes onto UART0's receive queue, as the DIN input delivers them.
 		void midiIn(const std::vector<uint8_t>& _bytes) { m_uart60.receive(_bytes); }
+		// The panel link (UART1, 0xfc064000): bytes as the panel controller
+		// sends them. Framing read out of the firmware's parser 0x4009228c
+		// (17 Sep 2026): a header byte 0xTn then a payload -- T=2 key row n,
+		// one byte = the row's 8 key states (key code = row*8 + bit, the
+		// keymap at [0x46c901dc] is the identity); T=3 encoder n, one signed
+		// delta byte (A..F = 0..5, LEVEL 6); T=4 the pot, one byte 0..255;
+		// T=7 nine bytes, copied to 0x46100b48. The ISR 0x400109bc rings the
+		// bytes and forces INTC0 source 37 for the parser.
+		void panelIn(const std::vector<uint8_t>& _bytes) { m_uart64.receive(_bytes); }
+		size_t panelPending() const { return m_uart64.pending(); }
+		uint32_t panelImr() const { return m_uart64.imr(); }
+		// Called every `_every` stepped or skipped instructions inside run():
+		// where a live input source is read.
+		void setPoll(std::function<void()> _fn, uint64_t _every = 4096) { m_poll = std::move(_fn); m_pollEvery = _every; }
+		// --fast N: timers, interrupt delivery and the caller's stop
+		// condition are evaluated every N instructions instead of every
+		// one. Interrupt latency then jitters by up to N instructions, so a
+		// run under it is NOT bit-identical to the exact mode (measured
+		// 18 Sep 2026: the block dump differs). N = 1 is the exact mode.
+		void setFast(uint64_t _n) { m_fastEvery = _n ? _n : 1; }
 		size_t midiPending() const { return m_uart60.pending(); }
 		uint32_t midiImr() const { return m_uart60.imr(); }
 
@@ -422,7 +442,7 @@ namespace ot
 		void tickTimers();
 		// One instruction plus everything the run loop does around it, so a
 		// borrowed call runs against the same live machine the loop does.
-		bool stepOnce();
+		bool stepOnce(bool _tick = true);
 		bool deliver();
 		bool anyPending() const;
 		bool nextExpiry(double& _out) const;
@@ -478,6 +498,9 @@ namespace ot
 		std::vector<Dispatch> m_dispatches;
 		std::pair<uint32_t, uint32_t> m_firstSwitch{0, 0};
 		uint64_t m_idleSkips = 0, m_forces = 0;
+		std::function<void()> m_poll;
+		uint64_t m_pollEvery = 4096, m_pollCount = 0;
+		uint64_t m_fastEvery = 1, m_fastCount = 0;
 		// ⚠️ A LATCH, NOT A COUNT. While the source is masked -- through the
 		// boot, and through the handler's own self-mask for the whole DSP
 		// exchange -- a real edge source remembers ONE edge, not how many it

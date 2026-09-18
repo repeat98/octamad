@@ -253,6 +253,17 @@ bias.
 
 ## 5. Storage and delivery
 
+### 5a′. The live lane is the lock record ✅ (port, 18 Sep 2026)
+
+A track's live lane (`0x80000810 + 72·t`) begins with the same 32 slots a
+pattern's step lock record holds (`tools/hw/ot_bank.py`): PLAYBACK page 1
+0–5, LFO page 1 6–11 (SPD1–3 DEP1–3, lane defaults 32 32 32 0 0 0), AMP
+12–17 (ATK HOLD REL VOL BAL XVOL, defaults 0 127 126 64 64 127), FX1 page 1
+18–23, FX2 page 1 24–29 (a locked value on slot *k* lands in lane byte
+*k*; a distinct lock in every slot 0–11, 30, 31 of one trig confirmed each).
+The page-2 lanes follow (§5a: AMP p2 +0x2c, FX1 p2 +0x32, FX2 p2 +0x38).
+`tools/hw/ot_spec.py` names locks by these slots.
+
 ### 5a. The Part's page arrays ✅ (port, 12 Sep 2026)
 
 DB = the part pointer (`0x46c82456`; `0x400e21e0` under `ot_emu`), t =

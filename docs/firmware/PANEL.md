@@ -119,6 +119,39 @@ on word-aligned spans is not checked. An overlay that dims one knob cell
 (≈21 px of 128, never word-aligned) cannot use it as-is; a cave-side
 `and ~(mask & 0x55555555)` is the fix if the reading holds.
 
+## 4b. The panel link: what the controller sends (18 Sep 2026) ✅ under the port
+
+UART1 (`0xfc064000`, 312,500 baud, ISR `0x400109bc`, `KERNEL.md`) carries
+the panel controller's events to the OS. The ISR rings each byte
+(`0x46100b28`, 32 deep, count `0x460ffda0`) and forces INTC0 source 37,
+whose handler `0x4009228c` parses:
+
+| header | payload | meaning |
+|---|---|---|
+| `0x2n` | 1 byte | key row `n` (0..7): bit `b` = key `n·8 + b` held. The parser XORs against the row's last state (`0x46100b18[n]`) and queues one event per changed bit from the keymap at `[0x46c901dc]` (12-byte records `{01, code, 01, 00, queue, 0}`, the identity map, so **key code = row·8 + bit**; a second table at `+0x302` is selected while the header's FUNCTION row/mask matches — `0xff`/`0x80` in 1.40C, never) |
+| `0x3n` | 1 byte | encoder `n`: signed delta (A..F = 0..5, LEVEL = 6); coalesced into a pending event's delta if one is queued |
+| `0x40` | 1 byte | the MAIN pot, 0..255, scaled by the calibration at `0x1ffffa..0x1ffffe` (magic `0x1234`) to 0..127 → `0x40092fac` |
+| `0x7n` | 9 bytes | copied to `0x46100b48` (pointer `0x46100b52`); the controller's identity 🟡 |
+
+Key events go through `0x40000c3c(queue 0x460d17ae, event)` — 8-byte
+records `{code, 0, pressed, 0, ticks}` in the ring at `0x46c9026c` — to
+the UI task, which reaches `FUN_4005578c(code, edge)` for a page key and
+the key layers `0x46c7d8de + code·0x18` (`EXTERNAL.md`). Measured under
+the port: `0x24 0x08` (row 4 bit 3 = `0x23`) switched the page kind to 2
+and the plane redrew as AMP.
+
+Key codes (EXTERNAL.md's list, plus the probe of 18 Sep 2026 under the
+port, each code alone in a fresh session): trigs `0x00..0x0f`, tracks
+`0x10..0x17`, MAIN MENU (MKII) `0x1c`, DOWN `0x20`, RIGHT `0x21`, page keys
+`0x22..0x26` (SRC, AMP, LFO, FX1, FX2), PLAY `0x28`, REC `0x29`, STOP
+`0x2a`, FUNCTION `0x2d`, PATTERN `0x2e`, BANK `0x2f`, YES `0x31`, NO
+`0x32`, UP `0x33`, LEFT `0x34`, MIDI `0x35`, encoder pushes `0x38..0x3d`,
+LEVEL push `0x3e`. KEYPROBE
+
+`ot_emu --live FIFO` feeds these bytes from text lines and
+`tools/emu/lcd_view.py --panel FIFO` draws a control surface (`EMU.md`).
+What the OS sends BACK on the same link (LEDs, the plane) is unread.
+
 ## 5. The cursor idiom — and the arranger's giant one
 
 A screen highlights a cell by looking up its geometry in a per-type table
@@ -153,13 +186,13 @@ unread:
   (x1, y1, x2, y2 for slots 0–5, pages 1 and 2). Candidates: the knob
   renderer `0x400479b4` and the list drawer `FUN_40037590` that calls it
   (§3b's bit-2 reading), neither traced past the flags word;
-- a hook site after the page draw and before the buffers go out (§1's
-  `0x40063270` / `0x40063282`), on every refresh; a one-shot overlay is
-  redrawn away;
+- a hook site after the page draw and before the plane goes out over
+  UART1 (the sender is unlocated), on every refresh; a one-shot overlay
+  is redrawn away;
 - a per-slot flag: every nibble bit is in use (§3b: bit 1 = link bracket,
   bit 2 = the PLAYBACK page-2 layout flag, bit 3 = the scene-held XVOL);
-- the cell geometry is now a framebuffer read (`ot_emu --lcd`), once a
-  run can be left on an FX page: the port drives no keys.
+- the cell geometry is a framebuffer read now: `ot_emu --lcd --live`
+  with the page keys (§4b) leaves a run on any page.
 
 ## 7. Not known
 

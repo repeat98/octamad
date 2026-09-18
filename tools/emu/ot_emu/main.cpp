@@ -27,6 +27,10 @@
 #include "rtos.h"
 #include "dsp.h"
 #include "wav.h"
+#include <chrono>
+#include <sstream>
+#include <fcntl.h>
+#include <unistd.h>
 
 namespace
 {
@@ -103,6 +107,8 @@ int main(int _argc, char** _argv)
 	std::string pokeEarly;		// the same, written before --call (the current-track byte 0x80000000 an editor call reads)
 	std::string callSpec;		// "addr[,arg,...]": a firmware routine called AS MAIN after the load (a menu action the port has no panel for -- Part Reload, 14 Sep 2026)
 	int callAt = -1;			// with --sequencer: make that call this many frames AFTER the transport start instead (a panel edit while playing: the transport start re-applies the part over the live lane, so an edit made before it is gone)
+	uint64_t fastEvery = 1;		// --fast N: timers/interrupts/gates every N instructions (rtos.h setFast); not bit-identical to 1
+	std::string livePath;		// a FIFO (or file) of panel events, read while the RTOS runs: "key <code> down|up", "enc <n> <delta>", "pot <0..255>", "midi <hex>...", "quit" -- tools/emu/lcd_view.py --panel writes it
 	std::string midiFile;		// with --sequencer: MIDI IN bytes onto UART0, one event per line: "<frames after the transport start> <hex byte>..." (e.g. "20 B0 28 7F" = CC 40 to 127 on channel 1) or "pre <hex byte>..." before the transport start ("pre C0 10" = program change 16 while stopped)
 	int mainLevel = -1;			// O9b: post sys command 4 (SET MAIN LEVEL) with this level after the load; -1 = don't (the emulated load never does, and every voice then renders at gain zero)
 	std::string lcd;			// the panel's 1-bpp plane (0x46c7e0ea, 1024 B) to FILE whenever it has changed, at most once per 2M instructions; tools/emu/lcd_view.py draws it
@@ -177,6 +183,8 @@ int main(int _argc, char** _argv)
 		else if(a == "--call" && i + 1 < _argc)		callSpec = _argv[++i];
 		else if(a == "--call-at" && i + 1 < _argc)	callAt = std::atoi(_argv[++i]);
 		else if(a == "--midi" && i + 1 < _argc)		midiFile = _argv[++i];
+		else if(a == "--live" && i + 1 < _argc)		livePath = _argv[++i];
+		else if(a == "--fast" && i + 1 < _argc)		fastEvery = std::strtoull(_argv[++i], nullptr, 0);
 		else if(a == "--frame-timer")				frameTimer = true;
 		else
 		{
@@ -186,8 +194,8 @@ int main(int _argc, char** _argv)
 		}
 	}
 
-	if(sequencer)
-		mount = true;			// M6c needs the card mounted and the project loaded
+	if(sequencer || !livePath.empty())
+		mount = true;			// M6c needs the card mounted and the project loaded; so does a panel
 
 	const auto img = readFile(image);
 	if(img.empty())
@@ -288,13 +296,17 @@ int main(int _argc, char** _argv)
 	// PLAYBACK page reads upright that way and no other). A write watch
 	// marks it dirty; the file is rewritten (tmp + rename, so a reader never
 	// sees a torn frame) once 2M instructions have passed since the last
-	// flush, and once more at exit.
+	// flush, from the RTOS poll once 30 ms of wall time have (a redraw at
+	// idle is a few thousand instructions and would otherwise wait for the
+	// next busy stretch), and once more at exit.
 	constexpr uint32_t g_lcdPlane = 0x46c7e0ea, g_lcdBytes = 0x400;
 	bool lcdDirty = false;
 	uint64_t lcdFlushed = 0, lcdFrames = 0;
+	auto lcdLastWall = std::chrono::steady_clock::now();
 	auto lcdFlush = [&]()
 	{
 		++lcdFrames;
+		lcdLastWall = std::chrono::steady_clock::now();
 		std::vector<uint8_t> buf(g_lcdBytes);
 		for(uint32_t k = 0; k < g_lcdBytes; ++k)
 			buf[k] = m.read8(g_lcdPlane + k);
@@ -347,6 +359,12 @@ int main(int _argc, char** _argv)
 	{
 		std::printf("vbr        : %#x (the firmware's own `movec %%a0,%%vbr` at 0x40000db6)\n", m.vbr());
 		ot::Rtos rtos(m, ips, 264e6, frame);
+		if(fastEvery > 1)
+		{
+			rtos.setFast(fastEvery);
+			std::printf("fast       : timers, interrupt delivery and gates every %llu instructions (NOT bit-identical to the exact mode)\n",
+				static_cast<unsigned long long>(fastEvery));
+		}
 		// The card is attached BEFORE install, as route A attaches it before
 		// `Rtos.install()`: its four memory maps have to be in place before
 		// anything runs, and the boot's replayed writes must not start a
@@ -648,6 +666,107 @@ int main(int _argc, char** _argv)
 			if(!callSpec.empty() && callAt < 0)
 				doCall();
 
+			// -- live input: the panel link and MIDI IN from a FIFO ------------
+			// The poll runs every 256 stepped or skipped instructions and reads
+			// the FIFO at most every 10 ms of wall time; a line is applied the
+			// moment it is complete. Key rows are kept here: the parser
+			// diffs each row against its last state, so a key is sent as its
+			// whole row with the bit set or cleared.
+			struct Live
+			{
+				int fd = -1;
+				std::string buf;
+				uint8_t rows[8] = {};
+				bool quit = false;
+				uint64_t events = 0;
+				std::chrono::steady_clock::time_point last = std::chrono::steady_clock::now();
+			} live;
+			auto liveLine = [&](const std::string& _line)
+			{
+				std::istringstream is(_line);
+				std::string what; is >> what;
+				if(what.empty() || what[0] == '#')
+					return;
+				++live.events;
+				if(what == "quit")
+					live.quit = true;
+				else if(what == "key")
+				{
+					std::string code, edge; is >> code >> edge;
+					const auto k = static_cast<uint32_t>(std::strtoul(code.c_str(), nullptr, 0)) & 0x3f;
+					const auto bit = static_cast<uint8_t>(1u << (k & 7));
+					auto& row = live.rows[k >> 3];
+					row = edge == "down" ? static_cast<uint8_t>(row | bit) : static_cast<uint8_t>(row & ~bit);
+					rtos.panelIn({static_cast<uint8_t>(0x20 | (k >> 3)), row});
+				}
+				else if(what == "enc")
+				{
+					int n = 0, d = 0; is >> n >> d;
+					rtos.panelIn({static_cast<uint8_t>(0x30 | (n & 15)), static_cast<uint8_t>(d)});
+				}
+				else if(what == "pot")
+				{
+					int v = 0; is >> v;
+					rtos.panelIn({0x40, static_cast<uint8_t>(v)});
+				}
+				else if(what == "midi")
+				{
+					std::vector<uint8_t> bytes;
+					std::string hex;
+					while(is >> hex)
+						bytes.push_back(static_cast<uint8_t>(std::strtoul(hex.c_str(), nullptr, 16)));
+					rtos.midiIn(bytes);
+				}
+				else
+					std::printf("live       : unknown line '%s'\n", _line.c_str());
+			};
+			if(!livePath.empty())
+			{
+				live.fd = ::open(livePath.c_str(), O_RDONLY | O_NONBLOCK);
+				if(live.fd < 0)
+				{
+					std::printf("live       : cannot open %s\n", livePath.c_str());
+					return 1;
+				}
+				std::printf("live       : reading panel events from %s (panel link %#x, receive interrupt %s)\n",
+					livePath.c_str(), ot::g_uartA, (rtos.panelImr() & 2) ? "ENABLED" : "DISABLED");
+			}
+			if(!livePath.empty() || !lcd.empty())
+				rtos.setPoll([&]
+				{
+					const auto now = std::chrono::steady_clock::now();
+					if(!lcd.empty() && lcdDirty && now - lcdLastWall >= std::chrono::milliseconds(30))
+						lcdFlush();
+					if(live.fd < 0 || now - live.last < std::chrono::milliseconds(10))
+						return;
+					live.last = now;
+					char tmp[512];
+					for(;;)
+					{
+						const auto n = ::read(live.fd, tmp, sizeof tmp);
+						if(n <= 0)
+							break;
+						live.buf.append(tmp, static_cast<size_t>(n));
+					}
+					size_t nl;
+					while((nl = live.buf.find('\n')) != std::string::npos)
+					{
+						liveLine(live.buf.substr(0, nl));
+						live.buf.erase(0, nl + 1);
+					}
+				}, 256);
+			if(!livePath.empty() && !sequencer)
+			{
+				// The transport is the user's: PLAY is a key. The frame engine
+				// runs from here, as on the unit after boot.
+				rtos.setFrame(true);
+				pokeBytes(pokeAfterLoad, "after the load");
+				std::printf("live       : running until 'quit' (transport stopped; PLAY is key 0x%02x on your panel)\n", 0x3f);
+				const auto rs = rtos.runUntil(1e15, [&] { return live.quit; });
+				std::printf("live       : %llu event(s), %zu panel byte(s) still queued, ended %s -- %s\n", static_cast<unsigned long long>(live.events),
+					rtos.panelPending(), rs == ot::Rtos::Stop::Gate ? "on quit" : "early", rtos.why().c_str());
+			}
+
 			// -- M6c: the sequencer, for real (milestone O6) -----------------
 			// Route A's `--sequencer` branch, step for step. The order is
 			// load-bearing and every step of it is compensation or detour that
@@ -779,11 +898,15 @@ int main(int _argc, char** _argv)
 				const auto instr0 = m.instructions();
 				if(profile)
 					m.clearProfile();		// the whole-run table below then covers the frames alone
-				const auto rs2 = rtos.runUntil(budgetMs, [&] { return rtos.frameCount() >= target; });
-				std::printf("cpu        : %llu ColdFire instructions over the frames (%.0f per frame of %g samples)\n",
+				const auto wall0 = std::chrono::steady_clock::now();
+				const auto rs2 = rtos.runUntil(livePath.empty() ? budgetMs : 1e15, [&] { return rtos.frameCount() >= target || live.quit; });
+				const auto wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - wall0).count();
+				const auto ran = rtos.frameCount() > frame0 ? static_cast<double>(rtos.frameCount() - frame0) : 0.0;
+				std::printf("cpu        : %llu ColdFire instructions over the frames (%.0f per frame of %g samples); %.2f s wall = %.1f M instr/s, %.1fx real time\n",
 					static_cast<unsigned long long>(m.instructions() - instr0),
-					rtos.frameCount() > frame0 ? static_cast<double>(m.instructions() - instr0) / static_cast<double>(rtos.frameCount() - frame0) : 0.0,
-					ot::g_framePeriod);
+					ran > 0 ? static_cast<double>(m.instructions() - instr0) / ran : 0.0, ot::g_framePeriod,
+					wall, static_cast<double>(m.instructions() - instr0) / wall / 1e6,
+					ran > 0 ? wall / (ran * ot::g_framePeriod / ot::g_sampleHz) : 0.0);
 				if(!midiFile.empty())
 					std::printf("midi in    : %zu byte(s) still queued at the end (0 = the firmware took them all)\n", rtos.midiPending());
 				static const char* const g_seqStop[] = {"REACHED", "TIME", "FAULT", "ILLEGAL"};
@@ -1179,6 +1302,8 @@ int main(int _argc, char** _argv)
 		std::vector<std::pair<uint32_t, uint64_t>> hot(m.profile().begin(), m.profile().end());
 		std::sort(hot.begin(), hot.end(), [](const auto& _a, const auto& _b){ return _a.second > _b.second; });
 		std::printf("hottest addresses over the frames (PC sampled every 64 instructions; the boot table above is the boot alone):\n");
+		uint64_t total = 0;
+		for(const auto& h : hot) total += h.second;
 		for(size_t i = 0; i < hot.size() && i < 24; ++i)
 		{
 			char buf[256] = {};
@@ -1186,6 +1311,16 @@ int main(int _argc, char** _argv)
 			std::printf("   %#08x  %8llu  %s\n", hot[i].first,
 				static_cast<unsigned long long>(hot[i].second), buf);
 		}
+		// The same samples by 1 KB of code, which names the loop, not the
+		// instruction: a busy-wait shows as one bucket holding most of them.
+		std::map<uint32_t, uint64_t> byKb;
+		for(const auto& h : hot) byKb[h.first & ~0x3ffu] += h.second;
+		std::vector<std::pair<uint32_t, uint64_t>> kb(byKb.begin(), byKb.end());
+		std::sort(kb.begin(), kb.end(), [](const auto& _a, const auto& _b){ return _a.second > _b.second; });
+		std::printf("by 1 KB of code (%llu samples in all):\n", static_cast<unsigned long long>(total));
+		for(size_t i = 0; i < kb.size() && i < 16; ++i)
+			std::printf("   %#08x..  %8llu  %5.1f%%\n", kb[i].first, static_cast<unsigned long long>(kb[i].second),
+				100.0 * static_cast<double>(kb[i].second) / static_cast<double>(total ? total : 1));
 	}
 	if(!lcd.empty())
 	{

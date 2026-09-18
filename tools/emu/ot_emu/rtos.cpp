@@ -561,10 +561,18 @@ namespace ot
 					return Stop::Gate;
 				}
 			}
-			if(_stop && (*_stop)())
+			const bool tick = m_fastEvery == 1 || ++m_fastCount >= m_fastEvery;
+			if(tick)
+				m_fastCount = 0;
+			if(tick && _stop && (*_stop)())
 			{
 				m_why = "the caller's condition came true";
 				return Stop::Gate;
+			}
+			if(m_poll && ++m_pollCount >= m_pollEvery)
+			{
+				m_pollCount = 0;
+				m_poll();
 			}
 
 			const auto pc = m_machine.pc();
@@ -599,7 +607,7 @@ namespace ot
 			}
 			idleRuns = 0;
 
-			if(!stepOnce())
+			if(!stepOnce(tick))
 				return Stop::Illegal;
 		}
 		m_why = "time";
@@ -610,7 +618,7 @@ namespace ot
 	// `callAsMain` runs against the SAME live machine -- the whole point of
 	// borrowing main rather than detouring is that interrupts and the other
 	// tasks keep running underneath the call.
-	bool Rtos::stepOnce()
+	bool Rtos::stepOnce(const bool _tick)
 	{
 		const auto pc = m_machine.pc();
 		// A TRUE RING: it keeps the LAST N instructions, not the first N.
@@ -652,8 +660,11 @@ namespace ot
 		if(!m_firstSwitch.first && pc == g_handoff)
 			m_firstSwitch.first = curTcb();
 
-		tickTimers();
-		deliver();
+		if(_tick)
+		{
+			tickTimers();
+			deliver();
+		}
 		return true;
 	}
 

@@ -18,6 +18,13 @@ also as letters, "A" or "A-C"):
                                            "locks": {"fx2": {"1": {"SEND": 77}},
                                                      "amp": {"1": {"VOL": 77}}}}}}}}
 
+"machine": STATIC / FLEX / THRU / NEIGHBOR / PICKUP. A pattern track's
+"length" (steps) and "scale" ("1X", "1/2X", ... ot_project.SCALE_NAMES) are
+its own pair (CLEAR PATTERN sets 16 / 1X). Lock pages: playback
+(PTCH STRT LEN RATE RTRG RTIM on STATIC/FLEX, INAB INCD .. on THRU), lfo
+(SPD1-3 DEP1-3), amp (ATK HOLD REL VOL BAL XVOL), fx1, fx2 (the module's
+knob A-F), or "S<n>" for a raw slot 0-31. A locked step without a trig gets
+its lock trig (step mask 2), and loses it when the locks go.
 fx1 / fx2: a module key ("SPECTRUM"), a module name ("spectrum"), "NONE",
 "SEND", or an id ("0x14" for a stock effect). Setting an id writes that
 module's manifest defaults into its twelve knob bytes first; *_knobs then
@@ -42,9 +49,18 @@ import ot_project as op  # noqa: E402
 import ot_bank as ob  # noqa: E402
 from remix import registry  # noqa: E402
 
-AMP = ("ATK", "HOLD", "REL", "VOL", "BAL", "XVOL")       # lock slots 12-17
-LOCK_PAGES = {"amp": 12, "fx1": 18, "fx2": 24}
-LOCK_SPAN = {"amp": 6, "fx1": 6, "fx2": 6, "all": 32}   # "all": every slot 0-31, "clear" only
+# The lock record = the live lane's first 32 bytes (port, 18 Sep 2026: a
+# distinct lock in every slot landed in the lane byte of the same index):
+# PLAYBACK page 1 0-5, LFO page 1 6-11, AMP 12-17, FX1 18-23, FX2 24-29.
+AMP = ("ATK", "HOLD", "REL", "VOL", "BAL", "XVOL")
+LFO = ("SPD1", "SPD2", "SPD3", "DEP1", "DEP2", "DEP3")      # defaults 32 32 32 0 0 0 in the lane
+PLAYBACK = {0: ("PTCH", "STRT", "LEN", "RATE", "RTRG", "RTIM"),   # STATIC / FLEX (the manual's order;
+            1: ("PTCH", "STRT", "LEN", "RATE", "RTRG", "RTIM"),   #  lane defaults 64 0 0 127 0 79)
+            2: ("INAB", "INCD", "PB3", "PB4", "PB5", "PB6")}      # THRU (lane 1 127 0 0 0 0)
+MACHINES = {0: "STATIC", 1: "FLEX", 2: "THRU", 3: "NEIGHBOR", 4: "PICKUP"}
+LOCK_PAGES = {"playback": 0, "lfo": 6, "amp": 12, "fx1": 18, "fx2": 24}
+LOCK_SPAN = {"playback": 6, "lfo": 6, "amp": 6, "fx1": 6, "fx2": 6, "all": 32}   # "all": "clear" only
+LOCK_TRIGS = 2                                             # step mask 2 = the trigless locks
 SEND_ID, NONE_ID = 0x09, 0x00
 
 
@@ -108,22 +124,27 @@ def knob_slot(fid, name):
     sys.exit(f"{id_name(fid)} has no knob {name!r}; it has {' '.join(v for v in names.values() if v)}")
 
 
-def lock_slot(page, name, fid=None):
+def lock_slot(page, name, fid=None, mtype=0):
     base = LOCK_PAGES[page]
     up = str(name).upper()
     if up.startswith("S") and up[1:].isdigit():
         return int(up[1:])
-    if page == "amp":
-        if up not in AMP:
-            sys.exit(f"AMP has no knob {name!r}; it has {' '.join(AMP)}")
-        return base + AMP.index(up)
+    fixed = {"amp": AMP, "lfo": LFO, "playback": PLAYBACK.get(mtype, PLAYBACK[0])}.get(page)
+    if fixed is not None:
+        if up not in fixed:
+            sys.exit(f"{page.upper()} has no knob {name!r}; it has {' '.join(fixed)}")
+        return base + fixed.index(up)
     s = knob_slot(fid if fid is not None else NONE_ID, name)
     if s > 5:
         sys.exit(f"lock {name!r} is a page-2 knob; only page 1 (knob A-F) is lockable")
     return base + s
 
 
-def lock_name(slot, fid1, fid2):
+def lock_name(slot, fid1, fid2, mtype=0):
+    if slot < 6:
+        return "playback", PLAYBACK.get(mtype, PLAYBACK[0])[slot]
+    if 6 <= slot < 12:
+        return "lfo", LFO[slot - 6]
     if 12 <= slot < 18:
         return "amp", AMP[slot - 12]
     if 18 <= slot < 24:
@@ -201,6 +222,10 @@ def part_write(data, p, t, fid1, fid2, k1, k2):
     data[a + 6:a + 12], data[b + 6:b + 12] = k2[:6], k2[6:]
 
 
+def machine(data, p, t):
+    return data[op.PART_BASE + p * op.PART_STRIDE + op.MTYPE_OFF + t]
+
+
 def part_name(data, p):
     off = len(data) - 2 - 4 * 7 + p * 7
     return bytes(data[off:off + 7]).split(b"\0")[0].decode("latin1")
@@ -231,6 +256,7 @@ def report(pdir, bank=None):
                 fid1, fid2, k1, k2 = part_read(data, p, t)
                 n1, n2 = knob_names(fid1), knob_names(fid2)
                 tracks[str(t + 1)] = {
+                    "machine": MACHINES.get(machine(data, p, t), str(machine(data, p, t))),
                     "fx1": id_name(fid1), "fx2": id_name(fid2),
                     "fx1_knobs": {n1[i]: k1[i] for i in range(12) if n1[i] and not n1[i].startswith("P")} if fid1 else {},
                     "fx2_knobs": {n2[i]: k2[i] for i in range(12) if n2[i] and not n2[i].startswith("P")} if fid2 else {},
@@ -241,17 +267,22 @@ def report(pdir, bank=None):
             for t in range(8):
                 tr = ob.trigs(data, pt, t)
                 lk = ob.locks(data, pt, t)
-                if not tr and not lk:
-                    continue
                 fid1, fid2, _, _ = part_read(data, 0, t)      # names from part 1's effects
+                mt = machine(data, 0, t)
                 locks = {}
                 for step, slots in lk.items():
                     for s, v in slots.items():
-                        page, nm = lock_name(s, fid1, fid2)
+                        page, nm = lock_name(s, fid1, fid2, mt)
                         locks.setdefault(page, {}).setdefault(str(step + 1), {})[nm] = v
-                tracks[str(t + 1)] = {"trigs": [s + 1 for s in tr], "locks": locks}
-            if tracks:
-                bank_out["patterns"][str(pt + 1)] = {"tracks": tracks}
+                lt = ob.mask(data, pt, t, LOCK_TRIGS)
+                a = ob.trac(pt, t) + ob.DATA
+                sc = data[a + ob.TRK_SCALE]
+                tracks[str(t + 1)] = {"length": data[a + ob.TRK_LENGTH],
+                                      "scale": op.SCALE_NAMES[sc] if sc < len(op.SCALE_NAMES) else sc,
+                                      "trigs": [s + 1 for s in tr],
+                                      "lock_trigs": [s + 1 for s in range(64) if lt >> s & 1],
+                                      "locks": locks}
+            bank_out["patterns"][str(pt + 1)] = {"tracks": tracks}
         out["banks"][str(num)] = bank_out
     return out
 
@@ -271,6 +302,11 @@ def apply(pdir, spec):
                     data[off:off + 7] = ps["name"].upper()[:6].encode("latin1").ljust(7, b"\0")
                 for t, ts in keyed(ps.get("tracks"), 8):
                     for pp in (p - 1, p - 1 + op.NPARTS):        # the part and its saved copy
+                        if "machine" in ts:
+                            mt = {v: k for k, v in MACHINES.items()}.get(str(ts["machine"]).upper())
+                            if mt is None:
+                                sys.exit(f"machine {ts['machine']!r}: one of {' '.join(MACHINES.values())}")
+                            data[op.PART_BASE + pp * op.PART_STRIDE + op.MTYPE_OFF + t - 1] = mt
                         fid1, fid2, k1, k2 = part_read(data, pp, t - 1)
                         k1, k2 = bytearray(k1), bytearray(k2)
                         if "fx1" in ts:
@@ -291,6 +327,13 @@ def apply(pdir, spec):
             for pt, pts in keyed(spec.get("patterns"), ob.NPATTERNS):
                 for t, ts in keyed(pts.get("tracks"), 8):
                     fid1, fid2, _, _ = part_read(data, 0, t - 1)
+                    mt = machine(data, 0, t - 1)
+                    a = ob.trac(pt - 1, t - 1) + ob.DATA
+                    if "length" in ts:
+                        data[a + ob.TRK_LENGTH] = int(ts["length"])
+                    if "scale" in ts:
+                        sc = ts["scale"]
+                        data[a + ob.TRK_SCALE] = op.SCALE_NAMES.index(str(sc).upper()) if isinstance(sc, str) else int(sc)
                     if "trigs" in ts:
                         m = 0 if ts["trigs"] == "clear" else sum(1 << (s - 1) for s in ts["trigs"])
                         ob.set_mask(data, pt - 1, t - 1, m, 0)
@@ -309,8 +352,15 @@ def apply(pdir, spec):
                             if step == "_clear":
                                 continue
                             for nm, v in knobs.items():
-                                i = lock_slot(page, nm, fid1 if page == "fx1" else fid2)
+                                i = lock_slot(page, nm, fid1 if page == "fx1" else fid2, mt)
                                 data[base + (int(step) - 1) * ob.LOCK_LEN + i] = ob.NOLOCK if v is None else int(v) & 0x7f
+                    if "trigs" in ts or ts.get("locks"):
+                        # the trigless-lock mask follows the data: a locked step
+                        # without a trig carries a lock trig, nothing else does
+                        locked = {s for s in range(ob.NSTEPS)
+                                  if any(data[base + s * ob.LOCK_LEN + i] != ob.NOLOCK for i in range(ob.LOCK_LEN))}
+                        trig = ob.mask(data, pt - 1, t - 1, 0)
+                        ob.set_mask(data, pt - 1, t - 1, sum(1 << s for s in locked if not trig >> s & 1), LOCK_TRIGS)
                     want_pat.append((num, pt - 1, t - 1, ts))
         op._bank_write(pdir, num, mut, guard=False)
     # read back: every file, every write
@@ -331,20 +381,33 @@ def apply(pdir, spec):
                     want = [] if ts["trigs"] == "clear" else sorted(s - 1 for s in ts["trigs"])
                     if ob.trigs(data, pt, t) != want:
                         sys.exit(f"{path.name} pattern {pt + 1} T{t + 1}: trigs read back {ob.trigs(data, pt, t)}")
+                a = ob.trac(pt, t) + ob.DATA
+                if "length" in ts and data[a + ob.TRK_LENGTH] != int(ts["length"]):
+                    sys.exit(f"{path.name} pattern {pt + 1} T{t + 1}: length read back {data[a + ob.TRK_LENGTH]}")
                 lk = ob.locks(data, pt, t)
+                fid1, fid2, _, _ = part_read(data, 0, t)
+                mt = machine(data, 0, t)
+                # every (step, slot) this spec sets on this track, so a broad
+                # clear is judged against what was asked to remain
+                asked_all = set()
+                for page, spec_l in (ts.get("locks") or {}).items():
+                    if isinstance(spec_l, dict):
+                        for step, knobs in spec_l.items():
+                            if step != "_clear":
+                                for nm in knobs:
+                                    asked_all.add((int(step) - 1, lock_slot(page, nm, fid1 if page == "fx1" else fid2, mt)))
                 for page, spec_l in (ts.get("locks") or {}).items():
                     lo, span = LOCK_PAGES.get(page, 0), LOCK_SPAN[page]
                     if spec_l == "clear":
-                        if any(i in range(lo, lo + span) for st in lk.values() for i in st):
+                        if any(lo <= i < lo + span and (st, i) not in asked_all for st, slots in lk.items() for i in slots):
                             sys.exit(f"{path.name} pattern {pt + 1} T{t + 1}: a {page} lock survived")
                     elif isinstance(spec_l, dict):
-                        fid1, fid2, _, _ = part_read(data, 0, t)
                         asked = set()
                         for step, knobs in spec_l.items():
                             if step == "_clear":
                                 continue
                             for nm, v in knobs.items():
-                                i = lock_slot(page, nm, fid1 if page == "fx1" else fid2)
+                                i = lock_slot(page, nm, fid1 if page == "fx1" else fid2, mt)
                                 asked.add((int(step) - 1, i))
                                 got = lk.get(int(step) - 1, {}).get(i)
                                 want = None if v is None else int(v) & 0x7f

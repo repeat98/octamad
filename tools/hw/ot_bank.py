@@ -7,11 +7,20 @@ and 8 MTRA MIDI-track records (stride 0x8b9), then the 8 PART records
 ot_project.py writes. A TRAC record's data starts 9 bytes after its tag
 (ot_project.trac_off, settled against RAM): eight 8-byte step masks
 first, BIG-endian -- step s (1-based) is byte 7 - (s-1)//8, bit (s-1)%8;
-mask 0 is the trigs -- then, at data+0x59 (tag+0x62), 64 step records of
-32 bytes, one byte per lockable parameter, 0xff = no lock. Lock slots: 12-17 AMP (VOL =
-15), 18-23 FX1 page 1, 24-29 FX2 page 1 (knob A..F); 0-11 are PLAYBACK and
-LFO in an order not yet pinned, 30-31 unseen. A bipolar knob stores its
-panel value + 64.
+mask 0 is the trigs, mask 2 the trigless lock trigs (exactly the locked
+steps without a trig, four patterns checked); data+0x40..0x47 read 0xaa
+on every track of every pattern (a 2-bit-per-step field at its default,
+not decoded); data+0x50 / +0x51 are the track's own LENGTH (16/32/48/64
+seen) and SCALE index (ot_project.SCALE_NAMES; CLEAR PATTERN resets them
+to 16 / 1X) -- the PTRN chunk's tail carries the pattern-level pair
+(ot_project.set_pattern_scale); then, at data+0x59 (tag+0x62), 64 step
+records of 32 bytes, one byte per lockable parameter, 0xff = no lock, and
+0xc0 bytes after them (64 x 3, sparse in real patterns) not decoded.
+Lock slots = the live lane's first 32 bytes (port, 18 Sep 2026: a lock in
+every slot landed in the lane byte of the same index): 0-5 PLAYBACK page
+1, 6-11 LFO page 1 (SPD1-3 DEP1-3), 12-17 AMP (ATK HOLD REL VOL BAL XVOL),
+18-23 FX1 page 1, 24-29 FX2 page 1 (knob A..F), 30-31 unseen. A bipolar
+knob stores its panel value + 64.
 
     python3 tools/hw/ot_bank.py report PROJECT_DIR [--bank N]       # FX lock counts per pattern/track
     python3 tools/hw/ot_bank.py strip PROJECT_DIR [--bank N] [--pages fx1,fx2,amp]
@@ -24,7 +33,9 @@ PTRN_BASE, PTRN_STRIDE, NPATTERNS = 0x16, 0x8eec, 16
 TRAC_OFF, TRAC_STRIDE, NTRACKS = 0x08, 0x922, 8        # TRAC records inside a PTRN
 DATA, MASK_LEN, NMASKS = 9, 8, 8                        # tag + length + pad, then the masks
 LOCKS, NSTEPS, LOCK_LEN = 0x62, 64, 32                  # from the tag
-PAGES = {"amp": range(12, 18), "fx1": range(18, 24), "fx2": range(24, 30)}
+PAGES = {"playback": range(0, 6), "lfo": range(6, 12), "amp": range(12, 18), "fx1": range(18, 24), "fx2": range(24, 30)}
+LOCK_TRIGS = 2                                          # step mask 2
+TRK_LENGTH, TRK_SCALE = 0x50, 0x51                      # from DATA
 NOLOCK = 0xff
 
 

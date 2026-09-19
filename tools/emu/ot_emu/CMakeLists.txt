@@ -63,3 +63,7 @@ add_test(NAME rtos COMMAND ot_rtos_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE
 add_executable(ot_dsp_test test_dsp.cpp)
 target_link_libraries(ot_dsp_test PRIVATE ot_machine)
 add_test(NAME dsp COMMAND ot_dsp_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
+
+# Euclid's sequencer-to-filter adapter, including its compiled control engine.
+add_executable(ot_euclid_test ../../harness/euclid_probe.cpp)
+target_link_libraries(ot_euclid_test PRIVATE ot_machine)

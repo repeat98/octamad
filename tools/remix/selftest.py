@@ -514,6 +514,9 @@ def main():
                  "DJ EQ", "COMB FILTER")
     _want = {"restock": (), "recfix": (), "mods": (), "ok-ms": (),
              "repitch": (),
+             "octapitch-euclid": ("PLATE REV", "SPRING REV", "DJ EQ"),
+             "octapitch-euclid-debug": ("PLATE REV", "SPRING REV", "DJ EQ"),
+             "euclid": ("SPATIALIZER", "FLANGER", "CHORUS", "COMB FILTER"),
              "bamsep26": _rig, "rig-scenes": _rig, "rig-kits": _rig,
              "rig-mods": _rig}
     for _n in registry.remix_names():

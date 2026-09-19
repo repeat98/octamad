@@ -118,6 +118,9 @@
 //     -params a,b,...       parameter values 0..127 (default 64); 6 fills page 1,
 //                           8 also covers the page-2 slots. Repeat the option to
 //                           give successive instances different values.
+//     -paramfile FILE       automate instance 0 per block. Each non-comment line
+//                           is block,p0,p1,... (8 or 12 values); omitted blocks
+//                           retain the last values. Events must be ordered.
 //     -split N[,M..]        a=0 sub-block call of N frames, then a=1 for the rest.
 //                           A LIST gives each instance its OWN split, which is what
 //                           hardware does -- tracks trig independently.
@@ -158,6 +161,11 @@ using namespace dsp56k;
 
 namespace {
 
+struct ParamEvent {
+    int block = 0;
+    std::vector<int> values;
+};
+
 class AllowAll : public IMemoryValidator {
 public:
     bool memValidateAccess(EMemArea, TWord, bool) const override { return true; }
@@ -178,6 +186,7 @@ struct Args {
     unsigned inmask = ~0u;                     // which instances get the input
     bool stereo = false;                       // -in is interleaved L,R
     std::vector<std::vector<int>> pv;          // one parameter set per instance
+    std::vector<ParamEvent> paramEvents;       // block automation for instance 0
     std::string allocProc = "perinst";
     bool guard = false; TWord guardWords = 0x3800;
     std::vector<TWord> peekY, peekX;
@@ -522,6 +531,32 @@ int main(int argc, char** argv) {
             }
             a.pv.push_back(pv);
         }
+        else if (k == "-paramfile") {
+            const std::string path = v();
+            std::ifstream f(path);
+            if (!f.is_open()) { std::cerr << "cannot open parameter automation " << path << "\n"; return 1; }
+            std::string line;
+            int last = -1;
+            while (std::getline(f, line)) {
+                const size_t hash = line.find('#');
+                if (hash != std::string::npos) line.resize(hash);
+                if (line.find_first_not_of(" \t\r\n") == std::string::npos) continue;
+                auto row = parseList(&line[0]);
+                if (row.size() < 2 || row[0] < last) {
+                    std::cerr << "bad parameter automation row: " << line << "\n";
+                    return 1;
+                }
+                ParamEvent e;
+                e.block = row[0];
+                e.values.assign(row.begin() + 1, row.end());
+                if (e.values.size() < 8 || e.values.size() > 12) {
+                    std::cerr << "parameter automation needs 8 or 12 values: " << line << "\n";
+                    return 1;
+                }
+                a.paramEvents.push_back(e);
+                last = e.block;
+            }
+        }
         else if (k == "-guard") {
             a.guard = true;
             if (i + 1 < argc && argv[i + 1][0] != '-')
@@ -563,7 +598,7 @@ int main(int argc, char** argv) {
         std::cerr << "usage: dsp_host -mem <file> -init <hex> -proc <hex> [-params a,b,..]\n"
                      "                [-memB <file>] [-core a,b] [-skew N] [-meter FILE]\n"
                      "                [-inst N] [-alloc a,b] [-r7 a,b] [-allocproc MODE] [-guard]\n"
-                     "                [-frames N] [-blocks N] [-in raw[,raw..]] [-out raw] [-trace N]\n";
+                     "                [-frames N] [-blocks N] [-in raw[,raw..]] [-out raw] [-paramfile FILE] [-trace N]\n";
         return 2;
     }
     if (a.inst < 1) a.inst = 1;
@@ -1157,7 +1192,13 @@ int main(int argc, char** argv) {
         return true;
     };
 
+    size_t nextParamEvent = 0;
     for (int b = 0; b < a.blocks; ++b) {
+        while (nextParamEvent < a.paramEvents.size() &&
+               a.paramEvents[nextParamEvent].block == b) {
+            inst[0].pv = a.paramEvents[nextParamEvent].values;
+            ++nextParamEvent;
+        }
         // fill every instance's block: impulse on the first frame unless an
         // input file is given. Without per-instance files all instances see
         // the same audio.

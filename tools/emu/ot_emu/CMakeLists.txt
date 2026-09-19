@@ -81,3 +81,7 @@ add_executable(ot_fnbpm_test ../../harness/fnbpm_probe.cpp)
 target_link_libraries(ot_fnbpm_test PRIVATE ot_machine)
 add_test(NAME filename-bpm COMMAND ot_fnbpm_test
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
+
+# Euclid's sequencer-to-filter adapter, including its compiled control engine.
+add_executable(ot_euclid_test ../../harness/euclid_probe.cpp)
+target_link_libraries(ot_euclid_test PRIVATE ot_machine)

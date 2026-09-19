@@ -73,3 +73,6 @@ add_test(NAME repitch-stock COMMAND ot_repitch_stock_test
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
 add_test(NAME repitch-patch COMMAND ot_repitch_stock_test --patched out/mainos_bus.bin
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
+# Euclid's sequencer-to-filter adapter, including its compiled control engine.
+add_executable(ot_euclid_test ../../harness/euclid_probe.cpp)
+target_link_libraries(ot_euclid_test PRIVATE ot_machine)

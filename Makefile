@@ -165,6 +165,7 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	@# (the boot-verifier trap, CLAUDE.md): a module started from a garbage
 	@# instance block must be silent on silence -- the unit's RAM is not zeroed.
 	python3 tools/verify/verify_dirtystate.py $(REMIX)
+	python3 tools/verify/verify_tapeecho_cpu.py $(REMIX)
 	python3 tools/remix/selftest.py
 	python3 tools/verify/verify_slots.py
 	python3 tools/verify/verify_initregs.py $(REMIX)
@@ -193,6 +194,9 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	python3 tools/verify/verify_modulation.py
 	python3 tools/verify/verify_nimbus.py
 	python3 tools/verify/verify_hello.py
+	@# The isolated DSP gates build their own remixes over mainos_bus.bin.
+	@# Restore the selected image before inspecting its chooser tables.
+	$(MAKE) bus REMIX=$(REMIX)
 	REMIX=$(REMIX) python3 tools/verify/verify_menu.py
 	python3 tools/verify/verify_burn.py $(REMIX)
 	python3 tools/verify/verify_twocore.py

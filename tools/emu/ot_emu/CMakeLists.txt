@@ -73,3 +73,8 @@ add_test(NAME repitch-stock COMMAND ot_repitch_stock_test
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
 add_test(NAME repitch-patch COMMAND ot_repitch_stock_test --patched out/mainos_bus.bin
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
+
+add_executable(ot_tapeecho_cpu_test ../../harness/tapeecho_cpu_probe.cpp
+    ../../../modules/tapeecho/cpu.c)
+target_compile_definitions(ot_tapeecho_cpu_test PRIVATE TE_HOST=1)
+target_link_libraries(ot_tapeecho_cpu_test PRIVATE ot_machine)

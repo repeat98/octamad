@@ -14,6 +14,7 @@ A remix is a named selection of modules; `make image REMIX=<name>` builds it int
 | [`octakit`](octakit.md) | Octakit alone | in `ok-ms` |
 | [`lofi-amf-fix`](lofi-amf-fix.md) | the LO-FI AMF fix alone | no |
 | [`recfix`](recfix.md) | the recorder loop click fix, stock effects | ✅ 12 Sep 2026 with the bus (OCTABAM83) |
+| [`repitch`](repitch.md) | REPITCH in the TSTR selector, stock effects | ✅ 16 Sep 2026 (OCTABAM81, repeat98's MKII) |
 
 ## octabam's effects
 

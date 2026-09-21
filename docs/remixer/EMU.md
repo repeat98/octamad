@@ -266,7 +266,7 @@ out/emu/ot_emu --image out/mainos_bus.bin --card out/card.img --set OCTABAM --pr
   dirty at 1800 frames: the aux return on T8 −31.4 vs −30.1 dBFS.
 - Watches: `--watch-mem ADDR,LEN[;ADDR,LEN...]` (every write, with the
   PC), `--watch-read`, `--watch-pc`, `--dsp-watch core:X|Y|P:addr`,
-  `--dsp-pcwatch core:pc`, `--dsp-peek core:X|Y|P:addr,len` (upper-case
+  `--dsp-pcwatch core:pc` (the last 24 arrivals with a, b, x, y, r0, r4, r6, n4, sp, r2, m2, r1, n1, r7, m7, m0 and, since 21 Sep 2026, n7 -- the frame count of a call), `--dsp-peek core:X|Y|P:addr,len` (upper-case
   space letter), `--mem-dump addr,len=file`.
 - The record a track's DSP instances read is `0x80000110 + 64·t` (32
   halfwords, `docs/firmware/MIDI.md`); the page-2 lane `0x80000810 + 72·t`.

@@ -5,7 +5,109 @@ main carries beyond the last flashed image. The version the panel shows is
 `BUILD` (`make image BUILD=N`); a git tag `OCTABAM<N>` marks the commit each
 flashed image was built from.
 
-## Unreleased (main after image 38)
+## Unreleased (main after image 43; image 48 built)
+
+- SEND returns at proc entry on an FX1 slot (r7 0x6100/0x6400/0x6700/
+  0x6a00, measured under the port): id 0 is SEND and FX1 NONE is id 0, so
+  the client had been running on every FX1 slot with no effect — sending
+  from an unseen page byte (audio in the bus with every SEND at 0, image
+  46) and, on core 1, comparing the tracker before position 0's advance,
+  which leaves the core one step ahead whenever core 0's flip lands before
+  the 0x6100 call (`XBUS.md` "An FX1 slot is not a client";
+  `FAILURE_MODES.md`, the THRU-host wash). 21 words per payload. T1's FX2
+  must be a bus client for the advance; `stamp-defaults` warns.
+- The tracker's self-check of images 44–46 (stamps, hold flag) removed;
+  the tracker body, ROTINIT and the housekeepers are image 43's.
+
+Images 44–47 reached the unit and none is a release: 44 and 45 wedged on
+the first play (a one-word displaced Y store the chip had never run, then
+the self-check's unmasked read of an unseeded slot into a wild Y
+address; `CLAUDE.md` for both traps); 46 played with static and the wash
+on a T2 THRU host and bled into the bus with every SEND at 0; 47 (branch
+`probe47`, a marker tone on a wiped stamp) sounded on every block of plain
+play, the measurement behind image 48.
+
+## Image 43 — 21 Sep 2026 (`OCTABAM43`, bamsep26 at b3f6471)
+
+On the unit: the sample-host wash gone (T3 STATIC, a trig every step,
+eight loops and a reload clean; the FX2 change on T1 clean). Still
+washing: a THRU host past position 0 with a trig on every step
+(`FAILURE_MODES.md`, open; not a rig configuration). Not yet heard: the
+TIME ramp, the once-per-block glides, the names and `---` per mode,
+Character's TONE on page 1, Modulation's five modes.
+
+- The bus participants take a split block's frame offset from `r0` (0 on
+  a first call, 2 x split on the a=1 call, as the dispatcher passes it)
+  instead of a flag and a split the first call stashed in `$65/$66` for
+  the second. Image 42 washed again after a reload and a loop, so PR
+  #347's init-store bisect was one lucky run per image; the stash not
+  surviving between the two calls on the unit is the reading that fits
+  every fact (`FAILURE_MODES.md`). SEND, BusDelay, BusVerb alike; the
+  `$65/$66` slots are free. Bit-identical in every gate (dsp_host passes
+  the same `r0`); image 43 is the test.
+
+## Image 42 — 21 Sep 2026 (`OCTABAM42`, bamsep26 at d3fceaf)
+
+On the unit: the delay on a trig host clean (T2 THRU and T3 STATIC with a
+trig on every step, two loops, OCTABAM91), the fixture that washed on
+39, 40 and 41 (all three flashed 21 Sep 2026 without a section here; the
+bisect is the first bullet). Not yet heard on the unit: everything else
+below (the TIME ramp within the block, the once-per-block glides, the
+names and `---` per mode, Character's TONE on page 1, Modulation's five
+modes). The image's delay is d3fceaf's; the docs of that commit landed
+after the build. Before play: `stamp-defaults <project> bamsep26 --all
+--keep-mode` (done on the card for OCTABAM89 and OCTABAM91).
+
+- BusDelay: nothing at `r7+$84` or above. On the unit (21 Sep 2026, images
+  40 and 39 alike) the delay on T3 with a sample playing on every step
+  printed a white-noise wash from the second pass of the pattern on -- T3's
+  LEVEL kills it, FDBK does not touch it, WET scales it, STOP does not end
+  it, PLAY does. The delay kept its WET glide state and four per-call words
+  at `r7+$84..$88`, the range DSP.md has recorded since 10 Aug 2026 as not
+  persisting across calls on hardware; every previous image had the delay
+  on T1, a THRU, which plays no voice. The five words moved to raw `$0c $20
+  $2a $6d $83` (`r7_latch_slot` 0x86 -> 0x20); bit-identical to image 40's
+  engine (`verify_delay`, 28 cases, the reference's latch read at the
+  manifest's slot: the manifest is shared, so a reference reading the old
+  slot renders garbage and fails, which is what every latch move looked
+  like until the marker-fill probe showed the engine writing exactly the
+  slots it should). `tools/harness/slot_census.py` is that probe: fill the
+  instance block, render, read back which words were written; it found
+  GRAIN's pitch words at `$3e/$3f` (spelled `-$b`/`-$a`) under a first
+  relocation that a displacement scan had called free. The port cannot see
+  the mode (`FAILURE_MODES.md`). Cause inferred from the symptom and the
+  record; image 41 is the test.
+
+- BusDelay: the glides run once per block. A trig splits a block into two
+  dispatcher calls (a=0 before the trig, a=1 after), and the TIME glide, its
+  ramp base and the FDBK/TONE/PING/WET glides ran on both: the ramp
+  restarted from last block's state at the trig, a jump of a quarter or
+  three-quarters of the glide step (up to ~30 samples on a big TIME move)
+  -- a click at every trig while the knob moved, which `dsp_host` cannot
+  show (it never splits) and the port does. Gated on the frame offset
+  (first call only); the a=1 call keeps the ramp's running value and its
+  increment. With it: the 4-sample snap becomes a minimum step of 1/16
+  sample per block toward the target, never past it (the last 4 samples
+  take 23 ms at a slope of 1/256 instead of one block at 1/4), and the
+  glide state is guarded against boot garbage (negative, or past the line:
+  start at the target; only an exact 0 was). Bit-identical at rest
+  (`verify_delay` against image 39's source, every case); `glide_census`
+  0 / 73 / 896 as before; +33 words. Under the port, T1's chain output
+  with the sequencer's trigs (`verify_set --midi-file`, spikes per 1,000
+  samples > 0.02 FS, `port_click_census.py`): CLEAN
+  (`tools/harness/midi/delay_time_clean.midi`, TIME 20 -> 90 -> 20) 22.8 /
+  24.3 per window over each glide, max 145 / 164, on image 39's code ->
+  1.1 / 3.0, max 7 / 13, the windows at the moves themselves 98 / 127 ->
+  0 / 6; REVERSE (Sam's recipe) TIME windows 7.2 / 5.1 (max 51 / 31) ->
+  4.1 / 3.0 (max 12 / 10), level with REVERSE's own splice floor. Found
+  by the 21 Sep static audit; the census takes its marks from a recipe.
+
+- BusDelay: the four init stores of PR #344 (zeroing the TONE/FDBK/PING/WET
+  glide states) are gone: they were the white-noise wash on a host past
+  dispatch position 0 with trigs on it, bisected on the unit (38 clean,
+  39/40/41 wash, 42 = 41 minus the stores clean; `FAILURE_MODES.md`).
+  Mechanism open. The rest of #344 (the audit, the `$85` port measurement,
+  the doc corrections) stands.
 
 - Names per mode (Sam, 20 Sep 2026: "size is confusing"): BusDelay's SIZE
   draws GLEN in GRAIN and SLEN in REVERSE; Spectrum's FREQ draws VOWL in

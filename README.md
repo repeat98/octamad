@@ -1,5 +1,17 @@
 # octabam
 
+> **A personal research project, shared in case it is useful to you.** I
+> work on this for my own unit and publish it so others can build on it.
+> Pull requests are very welcome — a module, a port of someone's mod, a
+> fix, a doc correction. Issues and feature requests are not something I
+> can take on — this is a spare-time project and the queue is already my
+> own. If there is something you want the remixer to do, the way to get
+> it is to build it (`CONTRIBUTING.md`, `docs/remixer/MODULES.md`) and
+> send the PR; I will gladly review it. And if you would like to run a
+> supported version of this — one that takes requests, tracks issues and
+> answers questions — please fork it and do exactly that. The licence
+> allows it and I would be glad to see it.
+
 A remixer for the Elektron Octatrack's operating system: pick the
 modifications you want — the community's and this project's own — and build
 them into one firmware image from your own copy of OS 1.40C.
@@ -25,9 +37,15 @@ its contents and hardware status.
 | **MIDI SCENES** | [bkkbrls-del/midisc](https://github.com/bkkbrls-del/midisc) | per-scene parameter locks driven over MIDI | his sources (submodule, GNU-as form), thirteen units in DRAM, 38 detours, 4 pokes; every region equals his encoder's bytes |
 | **OCTAKIT** | [emuyia/ems-octakit](https://github.com/emuyia/ems-octakit) | 256 Kits per Project in place of 64 bank-tied Parts, with names, copy/paste, undo, migration of old projects | her recipe (submodule) compiled, packed and appended by the build; stock + her writes + her append reproduces her own OS image |
 | **LOFI AMF FIX** | [bryantysinger/octa-bt-pt](https://github.com/bryantysinger/octa-bt-pt) | stock LO-FI's AMF knob jumps the pitch backwards at some settings; two DSP words fix it | both words disassembled against stock |
+| **REPITCH** | [repeat98](https://github.com/repeat98) | a fifth TSTR value: the track follows the project tempo by playback speed, no grains; PTCH off on that track | ColdFire unit + a 5-position TSTR widget; on an MKII (OCTABAM81, 16 Sep 2026); `tools/verify/verify_repitch.py` |
 
 `ok-ms` (Octakit + MIDI SCENES) ran on hardware on 14 Sep 2026, confirmed by
-midisc's author on his own unit.
+midisc's author on his own unit. Two bridge modules let mods that are
+byte-disjoint but behaviourally colliding share an image: **KITS RELOAD**
+(MIDI SCENES' Part Reload beside Octakit's kit reload; the first `ok-ms`
+image trapped on the first reload without it) and **SCENES KITS** (CC→page 2
+and Octakit sharing the MIDI CC dispatch entry). `make modules` marks a pair
+that needs one with `✓*`.
 
 **From this project:**
 
@@ -36,8 +54,8 @@ midisc's author on his own unit.
 | **BusVerb / BusDelay / Send** | one aux bus: every track's SEND knob → a multi-mode delay → an eight-line FDN reverb, each engine's wet on the track that hosts it. A route the stock firmware has no path for. On Sam's unit. |
 | **Spectrum / Character / Modulation** | three FX1 stations replacing FILTER, LO-FI and CHORUS: a filter pedal, a saturation/compressor/width chain, a modulation pedal. On Sam's unit. |
 | **Six inserts** | WarpFold, Ripple, Rungs, Streamz, BodeShift, Nimbus: Mutable-Instruments-flavoured per-track effects that stack. Verified by local render; never flashed. |
-| **Tempo sync, CC→page 2** | ColdFire patches: BusDelay's TIME reads as a division; MIDI CC 62–73 reach page-2 knobs. On the unit. |
-| **The recorder click fix** | three ColdFire caves that remove the click at a recorder loop's seam. On hardware. |
+| **Tempo sync, CC→page 2, Mode defaults** | ColdFire patches: BusDelay's TIME reads as a division; MIDI CC 62–73 reach page-2 knobs; a MODE turned on the panel (or over CC) re-defaults the knobs around it from the module's views. On the unit. |
+| **The recorder click fix** | three ColdFire caves (FLEX SEEK BIND, FLEX SEEK BIND CTR, RECORDER SPACING) that remove the click at a recorder loop's seam; remix `recfix` carries them beside the stock chooser. On hardware (OCTABAM83, 12 Sep 2026). |
 | **Hello World / Hello DRAM** | the two reference modules, one DSP knob and one DRAM unit, kept building as canaries. |
 
 `make modules` prints the index, the compatibility matrix (which ColdFire
@@ -146,17 +164,6 @@ docs/effects/      the effects: XBUS (the bus), REVERB, MASTER, PORTS
 loader-appended DRAM runtime octabam adopted as its large-payload placement;
 `tools/remix/loader.S` is derived from hers with attribution. Her repository
 invites use as a submodule to combine with other efforts.
-
-**bkkbrls-del** wrote midisc and rebuilt it in GNU-as form for this
-remixer.
-
-**Bryan T** located the stock Echo Freeze delay (ColdFire SDRAM, eight
-1.4 MB rings), documented the timestretch architecture, the DSP data-table
-atlas and the recorders' control path (`docs/firmware/EXTERNAL.md`),
-contributed `modules/hello`, and wrote the AMF fix.
-
-**nordseele**'s octalab is a DRAM module of this remixer and its first
-hardware run.
 
 This began as a fork of [mxldyn/octamax](https://github.com/mxldyn/octamax)
 by Maxolydian, whose reverse engineering of the OS format, memory map and

@@ -70,9 +70,9 @@ proven by the gates). A change of MODE clears every state slot.
 
 ## Measured
 
-- **1,119 words** (LOFI added 16 Sep 2026; 1,044 before, 1,199 with ENS), core A FREE 772 in the rig; **525 cycles/sample** worst
-  (PHSR 525; LINE 446, COMB 359 -- LOFI is ~45 of each) — under Character's 639, so the
-  worst core is unchanged at 3,831.
+- **1,128 words** (`make check`, 20 Sep 2026; LOFI added 16 Sep 2026: 1,044 before, 1,199 with ENS), payload A FREE 918 in the rig; **525 cycles/sample** worst
+  (PHSR 525; LINE 446, COMB 359 -- LOFI is ~45 of each) — under Character's 623, so the
+  worst core is Character's: 3,657.
 - `tools/verify/verify_modulation.py`, **29 gates, all PASS**: MIX 0
   bit-exact in every mode; an FX2 instance a bit-exact dry pass with the
   guard clean; every mode against `modulation_ref.py` on a stereo signal

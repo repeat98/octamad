@@ -6,15 +6,17 @@ a selection of modules, and the build turns a remix and the user's own
 record for where code goes; `docs/remixes/` describes each remix;
 `CHANGELOG.md` records each flashed image.
 
-## Where it stands (20 Sep 2026)
+## Where it stands (21 Sep 2026)
 
-- **On hardware.** The rig (`bamsep26`) on Sam's MKII, image 38
-  (`OCTABAM38`, 20 Sep 2026: the bus engines return on their hosts, the T8
-  return gone). `ok-ms` (Octakit + MIDI SCENES on the stock effects) on
+- **On hardware.** The rig (`bamsep26`) on Sam's MKII, image 43
+  (`OCTABAM43`, 21 Sep 2026: the split block's frame offset from r0; a
+  sample host with a trig every step clean; the rest of the changes since
+  38 not yet heard). Images 44–47 were probes. Image 48 built: SEND
+  returns on an FX1 slot, the measured cause behind the THRU-host wash
+  and the bleed with every SEND at 0 (`docs/effects/XBUS.md`). `ok-ms` (Octakit + MIDI SCENES on the stock effects) on
   midisc's author's unit as OKMS2. octalab (nordseele) is a DRAM module of
   this remixer and has run on an MKI since 11 Sep 2026.
-- **Built and gated, unflashed:** main beyond image 38 (`CHANGELOG.md`
-  Unreleased) and every other remix.
+- **Built and gated, unflashed:** every other remix; main is image 43.
 - **The platform** (`tools/remix/`): linked GNU-as units, detours, pokes
   and table growth wired by symbol and asserted against stock; recipe-built
   DRAM runtimes; the loader (derived from Octakit's, N payloads,

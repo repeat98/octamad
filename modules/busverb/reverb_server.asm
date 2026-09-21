@@ -101,70 +101,24 @@ init:
 
 proc:
 ; ---- BOTH calls are audio; the A accumulator says which sub-block --------
-        move    a,x:(r7+$14)            ; call flag: $010000 = the a=1 call
-                                        ; (the dispatcher's #$1 is left-
-                                        ; aligned), 0 = the split sub-call
-; build_bus.py substitutes a host-slot gate at the marker below, for a
-; remix that HIDES this engine (schema.Remix.hidden). A hidden engine is hosted by
-; the project's stamp rather than by the chooser, so it should run on its
-; host track and nowhere else: dispatch is per id and shared by every track,
-; so an old part naming this id on another track would otherwise get a
-; SECOND instance sharing this one's hardcoded Y base. The gate is r7 ==
-; 0x6200, the bank's first FX2 state block (measured, docs/firmware/DSP.md "The
-; allocator's instance model"), which is the same condition the position-0
-; housekeeping election below already uses -- so a guarded instance is never
-; a housekeeper that has gone dry, nor a wet engine that skips the
-; election. (Worded around the phrase build_bus.py censuses for: it
-; greps the SOURCE for the payload-gate marker, comments included, so
-; writing that phrase here reported the plain `bus` image's payload A
-; as gated out -- caught by refhash, and the same family as the
-; base-literal census CLAUDE.md warns about, which refused the build
-; when this very comment first tried to name it.)
-; Inert in a normal build: it is a comment, and local renders (which run at
-; -r7 4, the bank's SECOND slot) are unaffected unless a remix asks for it.
-; HOSTGUARD
-; MARKER_ENTRY
-
-; ---- BUS.md: split-aware frame offset within the shared bus buffers, and
-; the gate for whether THIS track (if it happens to be position 0) may run
-; the rotation flip on THIS call. Identical mechanism to modules/send/send_client.asm
-; -- see its header for the full reasoning -- keyed off the SAME r7+$14
-; call flag this engine already keeps for its own LFO-advance gating, so no
-; new stash of the raw incoming accumulator is needed here.
-        clr     a
-        move    a,x:(r7+$67)            ; default: offset 0 (first call)
-        move    x:(r7+$14),a
-        tst     a
-        bne     bus_a1
-        move    #>$1,a
-        move    a,x:(r7+$65)            ; "a=0 ran this block"
-        move    n7,a
-        and     #>$f,a                  ; same mask on the way in
+        move    a,x:(r7+$14)            ; the dispatcher's call flag, stashed
+                                        ; (0 = the a=0 sub-block, $010000 = a=1)
+; ---- this call's frame offset, from r0 (21 Sep 2026) --------------------
+; The dispatcher passes r0 = 0 on a block's first call and r0 = 2 x split on
+; the a=1 call of a split block (measured under the port: r0 = $e for a trig
+; at frame 7). Until 21 Sep 2026 the offset was reconstructed from a flag
+; and a split the a=0 call stashed in $65/$66 for the matching a=1 call; on
+; the unit a host with a trig on every step (T2 THRU, T3 STATIC) washed with
+; white noise while the port stayed clean, the shape of a stash that does
+; not survive between the two calls: a second call taken for a first one
+; advances position 0's rotation tracker twice in a frame, and the tracker
+; keeps a lead of one for ever (the R25 "metallic" mode). r0 needs no state.
+        move    r0,a
+        asr     #$1,a,a                 ; words -> frames
+        and     #>$f,a                  ; 0..15 by construction; garbage masked
         move    a1,x0
-        move    x0,a
-        move    a,x:(r7+$66)            ; stash split for the matching a=1
-        bra     bus_off_done
-bus_a1:
-; COLD-BOOT SAFETY. These slots hold boot garbage the first time an instance
-; runs, and x:(r7+$67) feeds straight into r1/r2 as a Y pointer below -- an
-; unmasked garbage value there makes the per-sample loop write through a wild
-; address, which hangs the DSP. Reproduced on hardware: selecting SEND on any
-; track from a clean boot froze the unit. Same class as DSP.md's masked-garbage
-; AGU saturation, so the same discipline -- mask AND A2-clean before use.
-        move    x:(r7+$65),a
-        and     #>$ff,a                 ; flag field only
-        move    a1,x0
-        move    x0,a                    ; A2-clean before the compare
-        move    #>$1,x0
-        cmp     x0,a                    ; EXACTLY 1, not merely nonzero --
-        bne     bus_off_done            ; "nonzero" accepts almost any garbage
-        clr     a
-        move    a,x:(r7+$65)            ; consume the flag
-        move    x:(r7+$66),a
-        and     #>$f,a                  ; a split point is 0..15 by
-        move    a1,x0                   ; construction, so this cannot narrow a
-        move    x0,a                    ; legitimate value -- it only makes
-        move    a,x:(r7+$67)            ; garbage harmless
+        move    x0,a                    ; A2-clean
+        move    a,x:(r7+$67)            ; this call's frame offset
 bus_off_done:
 
 ; ---- position-0 housekeeping: flip the shared bus rotation, clear the new

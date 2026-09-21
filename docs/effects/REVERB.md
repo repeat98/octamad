@@ -172,8 +172,9 @@ verify-bus` and `make check` are the gates (`docs/remixer/HARNESS.md`).
 
 ## Open
 
-- MOD depth's range (flattening after ~64 measured; the top half may do
-  nothing).
+- The tank modulation depth's range (flattening after ~64 measured; the
+  top half may do nothing) — the knob went 15 Sep 2026 and the depth is
+  pinned at 30, so this is only reachable by changing the engine.
 - An emulator-only divergence between one and two instances under a
   nonzero split.
 - The R44 SIZE-turn kill, unreproduced (`docs/history/VOICING.md`).

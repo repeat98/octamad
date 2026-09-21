@@ -47,11 +47,17 @@ mode; measured and fixed 20 Sep 2026, `tools/harness/glide_census.py`),
 and the loop tap reads between samples at the ramp's fraction (the integer
 read since the wow went skipped a sample at every integer crossing -- a
 click per crossing, recirculating). REVERSE's lag floor and GRAIN's read
-base follow the ramp per sample. Once the remaining distance is under one step the state
-snaps onto the target, so the fraction is 0 at rest (a standing fraction is
-a two-sample average on every pass, which dulled the repeats after a TIME
-increase in image 33). FDBK, TONE, PING and WET move an eighth of the way to
-their knob per block.
+base follow the ramp per sample. The step is never smaller than 1/16
+sample per block toward the target and never past it, so the state lands
+exactly and the fraction is 0 at rest (a standing fraction is a two-sample
+average on every pass, which dulled the repeats after a TIME increase in
+image 33; images 34-39 snapped from 4 samples out instead). FDBK, TONE,
+PING and WET move an eighth of the way to their knob per block. All of it
+runs on the first call of a block only (21 Sep 2026): a trig splits the
+block into two dispatcher calls, and a glide that ran on both restarted
+the ramp at the trig -- a click at every trig while TIME moved. The glide
+state is guarded against boot garbage (negative or past the line: start
+at the target).
 
 ## Knobs
 
@@ -63,7 +69,7 @@ their knob per block.
 | DENS ⌐(p8) | `---` | density, level-flat | `---` |
 | SIZE (p9) | `---` | GLEN: grain length 46 / 93 / 23 ms, XTRM 186 ms | SLEN: segment; XTRM = 371 ms |
 | PTCH ⌐(p10) | `---` | ±2 oct, 64 = unison; a held MIDI note overrides | `---` |
-| WOW (p11) | tape wobble on the loop tap: 0 none, 127 = ±254 samples (wow 0.8 Hz + flutter 7.3 Hz at an eighth) | the same | the same |
+| WOW (p11) | tape wobble on the loop tap: 0 none, 127 = ±254 samples (wow 0.8 Hz + flutter 7.3 Hz at an eighth; ≈ 47 + 54 cents peak by the LFO slopes, not measured) | the same | the same |
 
 Each mode's `ModeView` re-defaults the knobs and names every knob the mode
 never reads `---` (20 Sep 2026, every effect). PING 0 by default: an aux
@@ -104,7 +110,9 @@ DEV hatch (`make render-delay`) places the delay out of region in payload A.
   gets repeats 1, 3, 5: L/R = 1/feedback).
 - REVERSE at 371 ms: a 50 ms burst comes back reversed ~300 ms later; the
   sine is continuous at every size.
-- Cost: 2,151 words; worst path 1,757 cycles (GRAIN, rolled).
+- Cost: 1,354 words per payload; 1,126 cycles/sample static worst path
+  (`make check`, 20 Sep 2026: 1,326 after the return left, +28 for the
+  TIME ramp).
 
 On Sam's unit in every rig flash. Heard: REVERSE 371 ms over 93 ("the long
 one is better"); GRAIN DENS 32 → 127 on the loop "sounds pretty good".

@@ -22,7 +22,8 @@
 ; release, Lv = K * level_s, gr = (Lv^2/2 - 1)^2 + a*Lv clamped at 1 -- a
 ; dip around Lv = 1 whose depth is a = 0.75 - 0.675*COMP/128 -- and a
 ; makeup 1/(1 - 0.3375*COMP/128). GLUE: 0.5 / 500 ms, K = 3. COMP: 0.5 /
-; 50 ms, K = 4. COMP 0 skips the stage, bit-exact.
+; 63 ms, K = 4 (release coefficient $bd0 = 3024/2^23 per sample, tau = 62.9
+; ms; written as 50 ms until 21 Sep 2026). COMP 0 skips the stage, bit-exact.
 ; The detector reads x:(r7+$32), the KEY; the station writes its own input
 ; there.
 ;
@@ -160,7 +161,7 @@ proc:
         move    x:(r7+$45),a
         tst     a
         bne     ch_cglue
-        move    #>$7fffff,x0            ; COMP: K/4 = 1.0 (4x), release 50 ms
+        move    #>$7fffff,x0            ; COMP: K/4 = 1.0 (4x), release 63 ms
         move    x0,x:(r7+$22)
         move    #>$000bd0,x0
         move    x0,x:(r7+$2e)

@@ -167,7 +167,21 @@ Writing *about* either in a comment trips the guard: both happened while
 documenting stage 5/6 (a comment explaining why mode 3's immediate must be
 decimal spelled the hex out; another explaining the override marker spelled
 the marker out). The build refuses, loudly, which is the guard working —
-describe them in prose instead of spelling them.
+describe them in prose instead of spelling them. The same goes for
+`; ROTLATCH` and `; ROTINIT`: the build substitutes a body at the FIRST
+occurrence, and on 21 Sep 2026 a housekeeping comment that said "the
+ROTLATCH check" took the tracker body while the real marker stayed a
+comment -- no client on either payload resolved its write offset, and
+`verify-bus` read it as every server's client count changing.
+`_marker_once` refuses a second occurrence now.
+
+**AN INSTRUCTION FORM THE CHIP HAS NEVER RUN IS NOT PROVEN BY THE PORT.**
+The assembler encodes it, the vendored emulator decodes it the same way, and
+the chip may not: image 44 (21 Sep 2026) wedged on its first block on four
+one-word displaced Y stores (`move a,y:(r3+$1)`), a form with no site in
+either stock payload; the X form has 533. Before using a form, grep it in
+`out/dsp/payload_*.asm` (`tools/build/dsp_disasm_all.py`); no precedent means
+a hardware probe first, or the form everything else uses.
 
 **`SPEC=1` requires `XBUS=1`.** Without it the accumulators stay in core-private
 memory and each half of the tracks can reach only its own core's server — worse
@@ -325,7 +339,14 @@ omits the module then aliases the id to SEND and takes the stock effect
 away from FX1 too. Rungs sat on EQUALIZER's `0x0c` and Nimbus on DJ EQ's
 `0x0d` from 29 Aug to 2 Sep 2026, in every local image, unflashed. The
 schema now refuses `STOCK_FX2_IDS`; the stock effects themselves are kept
-in a chooser by listing them in the remix (`tools/remix/stock.py`).
+in a chooser by listing them in the remix (`tools/remix/stock.py`). The
+same table makes FX1's NONE (id 0) run the FALLBACK's code: SEND ran on
+every empty FX1 slot at r7 0x6100/0x6400/0x6700/0x6a00, sent from an
+unseen page byte and, on core 1, compared the rotation tracker before
+position 0's advance — one step ahead for good on the unit (images 40–47,
+21 Sep 2026; `docs/effects/XBUS.md`). A client keys its slot on r7, never
+on X:$213 (stale at proc time), and `dsp_host` places FX2 slots at
+0x6200 + 0x300·pos (`verify_twocore` had 0x200·pos until image 48).
 
 **`dsp_host`'S DEFAULT AUDIO BLOCK (X:0x80) SITS INSIDE THE SCRATCH THE
 STOCK EFFECTS USE.** On hardware the dispatcher passes `r0 = 0`: the audio

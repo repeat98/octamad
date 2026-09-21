@@ -330,8 +330,12 @@ Tempo: `0x80001814` = BPM × 24, clamped `0x2d0..0x1c20` at both writers
 returns the pattern's own word (`blob + pattern×0x8ed8 + 0x8e58`) when
 `[0x80000024]` is set; `0x4004bc54` scales by `[0x46c7d328]/1000` (🟡 nudge,
 clamp ≤ 1100). No code path copies tempo24 into a frame record: the
-ColdFire ships rates. Consumers: LFO speed `0x400074a0`/`0x40007502`
-(`tempo24 << 18`, MULT table `0x400ab83a`, ÷3 for triplets); `0x40006d48`
+ColdFire ships rates. Consumers: the recorder's FIN/FOUT fade generator
+`0x400074a0`/`0x40007502` (`tempo24 << 18` × `table[FIN]`/`table[FOUT]`
+from `a4@(6)`/`a4@(7)`, `0x400ab83a` = `ceil(1134693784 / n)`, entry 0
+`0xFFFFFFFF`; ❌ until 21 Sep 2026 this read "LFO speed" and "MULT table"
+— the LFOs are `LFO.md`, their rate is `SPD × tempo24 × 4` and MULT is a
+shift); `0x40006d48`
 reads the phase increment into per-voice records; `0x40004bd2` advances a
 playback position by `tempo24 << 4` per frame when byte `+0x2b` of the
 per-voice record is set, else `0xb40`; UI `0x40031d70` (bars) and
@@ -412,7 +416,17 @@ luck, two share an entry and one writes 14K words through memory it does
 not own). `base = x:(0x255 + ((r7 − 0x6000) >> 8))` is wrong (r7 `0x6200`
 pairs with entry 1, not 2). `r7+$84..$8a` do not persist across calls
 (hangs; DARK's init steps around `$85..$8a`); `r7+$83` and `r7+$71..$78`
-do. A per-instance stash at `Y:(0x735 + (r7 >> 8))` works on payload A and
+do. 🟡 Under the port (21 Sep 2026, OCTABAM89_setgate on bamsep26, `--dsp-watch
+1:X:0x6285 --dsp-dirty`) BusDelay's WET glide state at `r7+$85` has one
+writer, its own per-block store, and reads back what it wrote across
+sixteen consecutive calls (the value converges and holds); image 38 runs it
+on the unit. The hardware hang stands as recorded, and on 21 Sep 2026 the delay hosted
+on a track with a playing sample printed a white-noise wash on images 39
+and 40 while its WET state and four per-call words sat at `$84..$88`
+(`docs/remixer/FAILURE_MODES.md`); the port never showed it. Since image
+41 no module of ours writes `r7+$84` or above. The words belong to the
+unit between calls when the track plays a voice; which structure is not
+isolated. A per-instance stash at `Y:(0x735 + (r7 >> 8))` works on payload A and
 lands inside a live coefficient table on payload B. `dsp_host -inst N
 -guard` names a write over a loaded module. Bring-up hangs (three
 attempts, cause not isolated): executing at `P:0x2000` with low X as delay

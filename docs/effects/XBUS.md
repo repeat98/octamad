@@ -69,9 +69,10 @@ CORE 1 (payload B)  tracks 1–4   BusDelay  Y:0x4000–0xBFFF (private) + Y:0x3
   master loop that silenced the unit on 6 Sep 2026, `FAILURE_MODES.md`).
   Payload B's position 3 (T4) sends normally; the payload is told apart by
   SEND's `$30000` base literal, rewritten to `$38000` on B (`YBase.XBUS`).
-- Return balance on material (7 Sep, `out/rig/oneaux/`): drum loop −25.1 dB
-  rms with the reverb at MIX 0 and −26.8 at MIX 127; pad −31.4 / −32.8; no
-  makeup. (The "wet ~25 dB under the repeats" reading from the 438 Hz gate
+- Return balance on material (7 Sep, `out/rig/oneaux/`, the MIX-crossfade
+  stage of the time; WET adds since 15 Sep 2026 and the wet is ×2 since 16
+  Sep): drum loop −25.1 dB rms with the reverb at MIX 0 and −26.8 at MIX
+  127; pad −31.4 / −32.8; no makeup. (The "wet ~25 dB under the repeats" reading from the 438 Hz gate
   tone was retracted the same day.)
 
 Slots (stamp every project before play, `tools/hw/ot_project.py
@@ -81,11 +82,19 @@ touches only the ids a station replaced):
 | | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | SEND | SEND | | | | | | | | | | | |
-| BusVerb | SEND | TIME | MOD | SIZE | TONE | WET | MODE | SHMR | DIFF | SHFT | GATE | RATE |
+| BusVerb | SEND | TIME | SIZE | SHMR | SHFT | WET | MODE | TONE | DIFF | GATE | — | — |
 | BusDelay | SEND | TIME | FDBK | TONE | PING | WET | MODE | SCAT | DENS | SIZE | PTCH | WOW |
 | Character | DRV | FOLD | TXTR | COMP | TONE | MIX | SAT | WDTH | — | — | — | — |
 
 ## What a send is
+
+A block with a trig on the track is dispatched as two calls: a=0 for the
+frames before the trig (`r0 = 0`, `n7 = split`) and a=1 for the rest
+(`r0 = 2 x split`, `n7 = 16 - split`); an unsplit block is one a=1 call
+at `r0 = 0`. Every bus participant takes its frame offset from `r0`
+(21 Sep 2026); until then the first call stashed a flag and the split in
+its block for the second, which is the suspected cause of the trig-host
+wash (`docs/remixer/FAILURE_MODES.md`).
 
 A track on SEND runs a client that, each block, adds its level-scaled
 audio into the current write accumulator and registers in the client
@@ -132,6 +141,49 @@ first-dispatched core-0 instance (position 0 = track 5) run it.
   cleared (metallic on every core-1 sender after every power cycle).
 - The housekeeper clears the buffer that will be written next block.
 
+## An FX1 slot is not a client (21 Sep 2026)
+
+Id 0 is aliased to SEND and the FX1 chooser's NONE is id 0, so SEND's proc
+runs on every FX1 slot with no effect, at that slot's r7. ✅ Measured under
+the port on Sam's project (bank 1, T1/T5/T6/T8 FX1 = NONE; `--dsp-pcwatch`
+on the tracker's store): core 1 ran the SEND client eight times a frame,
+at 0x6100 0x6200 0x6400 0x6500 0x6700 0x6800 0x6a00 0x6b00 in that order
+— the FX1 slots are 0x6100/0x6400/0x6700/0x6a00, the FX2 slots
+0x6200/0x6500/0x6800/0x6b00 (three r7 bumps per track). Two consequences,
+both on images up to 47:
+
+- The FX1 call registered and sent from whatever byte its page held: the
+  bleed into the bus with every SEND at 0 (image 46, on the unit). The
+  stamper had been zeroing id-0 slots to hide it since 16 Sep 2026.
+- On core 1 the 0x6100 call ran the tracker's compare BEFORE position 0's
+  advance. With the flip landing before that call, it snapped T to R, the
+  0x6200 call then advanced to R + 1, and every later check read
+  `T == R + 1` as the legitimate pre-flip phase: one step ahead for good,
+  which is the buffer core 0 clears. The port never shows it: its flip
+  lands late in core 1's frame (between 0x6800 and 0x6a00 in every frame
+  watched), so 0x6100 always compared equal. On the unit the stamp probe
+  (image 47, a marker tone whenever a client's last stamp was gone) sounded
+  on every block of plain play: 🟡 the lead of one is measured; that the
+  0x6100 call is its cause is inferred from the order above and the flip
+  phase, which nothing local can see. What would falsify it: image 48 (the
+  gate below) still washing on a THRU host past position 0 with a trig on
+  every step, or still bleeding with every SEND at 0.
+
+Since image 48 SEND returns at once on an FX1 r7 (four compares at proc
+entry, before any state is touched): no registration, no write, no
+tracker call. The core-1 tracker's advance is therefore position 0's FX2
+call, so T1's FX2 must be a bus client (SEND, BusDelay, or a server id
+aliased to SEND) — with the stock DELAY there, nobody advances and every
+client snaps to whatever it reads, the straddle of the first XBUS defect.
+`ot_project.py stamp-defaults` warns when T1's FX2 is not a client.
+
+Images 44–46 carried a self-check instead (a stamp per client per buffer,
+a hold flag, position 0 skipping one advance): 44 and 45 wedged on the
+first play (a never-run displaced Y store, then an unmasked slot read into
+a wild Y address), 46 played with static and the wash. With the lead
+permanent, the hold fired every frame and fought the snap. Removed in 48;
+the tracker body is image 43's.
+
 ## Auto-gain
 
 Every writer contributes with 3 bits of headroom (`asr #3`; eight
@@ -144,8 +196,9 @@ capture E: three senders, two 10–15 dB quieter, dropped the wet 4.8 dB
 against 1/N's predicted −9.5). The "1 through 7 senders render identically"
 measurement fed the same tone to every sender, the one case where 1/N and
 1/√N agree. Registration is gated on the send knob: a client that
-registers and contributes nothing dilutes every real sender by N/(N+1)
-(−6 dB with one sender). Every writer registers, the cross-core one
+registers and contributes nothing dilutes every real sender by
+√(N/(N+1)): −3.0 dB with one sender (the −6.02 dB measured on 17 Aug 2026
+was under 1/N). Every writer registers, the cross-core one
 included.
 
 ## The three cross-core defects

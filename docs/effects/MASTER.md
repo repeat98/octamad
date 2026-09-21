@@ -76,12 +76,14 @@ by 127, by ear).
   at the bottom of the travel, 2 bits and 3.5 kHz at the top. 🟡 proven
   against the transcription, unheard.
 - **TONE** — a tilt after the saturator in every mode, drawn −64..+63: 0
-  flat and bit-exact, + bright, − dark, about ±4 dB at the ends.
+  flat and bit-exact, + bright, − dark: +3.5 dB above / −6 dB below the
+  1.2 kHz pivot at 127, the mirror at 0 (the tilt's own law).
 - **COMP** — JClones AC1's console channel law: `Lv = K × level`; `gr =
   (Lv²/2 − 1)² + a·Lv` clamped at 1 — a dip around Lv = 1 whose depth is
   `a = 0.75 − 0.675·COMP/128`; makeup `1 / (1 − 0.3375·COMP/128)`. GLUE
-  (0.5 / 500 ms, K = 3) on the master BY POSITION, COMP (0.5 / 50 ms,
-  K = 4) on every other track; no knob for it. COMP 0 skips the stage
+  (0.5 / 500 ms, K = 3) on the master BY POSITION, COMP (0.5 / 63 ms,
+  K = 4; the release coefficient is 3024/2^23, written as 50 ms until 21
+  Sep 2026) on every other track; no knob for it. MIX 127 is 127/128. COMP 0 skips the stage
   bit-exactly. The stamp is 40. ✅ On the unit (image 8): COMP 40 / 80 /
   127 keep both channels within 0.6 dB of each other.
 - **WDTH** — mid/side, drawn −64..+63: 0 untouched, −64 mono, +63 double

@@ -3,9 +3,11 @@ difference spikes per 1,000-sample window against the MIDI script's frame
 marks (tools/harness/midi/delay_knob_moves.midi, Sam's 20 Sep 2026 recipe):
 
     OT_PROJECT=<dir> python3 tools/verify/verify_set.py bamsep26 --frames 32000 --midi-file tools/harness/midi/delay_knob_moves.midi
-    python3 tools/harness/port_click_census.py [out/setverify/port.dump] [track] [thresh]
+    python3 tools/harness/port_click_census.py [out/setverify/port.dump] [track] [thresh] [recipe.midi]
+
+With a recipe the marks are its lines (frame and comment); without one, Sam's.
 """
-import pathlib, sys, math
+import pathlib, re, sys, math
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa
 import blockdump as bd, recloop as rl  # noqa
 dump = sys.argv[1] if len(sys.argv) > 1 else "out/setverify/port.dump"
@@ -29,6 +31,11 @@ for i in range(0, len(rows), 8):
     print(f"{f:6d}  {sp:6d}  {r:7.1f}")
 marks = [(400, "MODE->REVERSE"), (3400, "PTCH 0"), (5400, "PTCH 127"), (7400, "PTCH 64"), (9400, "TIME 90"),
          (12400, "TIME 20"), (15400, "FDBK 120"), (18400, "FDBK 60"), (24400, "TONE 90"), (26400, "TONE 100")]
+if len(sys.argv) > 4:
+    marks = []
+    for line in pathlib.Path(sys.argv[4]).read_text().splitlines():
+        m = re.match(r"\s*(\d+)\s+BT\d+\s+\S+\s+\S+\s*(?:#\s*(.*))?", line)
+        if m: marks.append((int(m.group(1)), (m.group(2) or "").split(" # ")[0][:14]))
 print("\nspikes per window, averaged between marks:")
 for (f0, name), (f1, _) in zip(marks, marks[1:] + [(n // 16, "end")]):
     sel = [sp for f, sp, _ in rows if f0 <= f < f1]

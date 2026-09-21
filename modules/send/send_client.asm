@@ -73,7 +73,8 @@
 ; read target is two buffers behind the write target (the idle block on each
 ; side of the reader): one extra block of bus latency, 16 samples.
 ;
-; r7 slots used here: $14 (call flag), $65/$66/$67 (split bookkeeping), $68
+; r7 slots used here: $14 (call flag), $67 (this call's frame offset; $65/$66
+; free since 21 Sep 2026), $68
 ; (the housekeeping election's last-seen rotation, payload A only: the XBUS
 ; gate excises the block on payload B), $69 (this block's resolved write
 ; offset).
@@ -102,63 +103,57 @@ init:
         rts
 
 proc:
-; ---- split-aware frame offset (BUS.md fix, found while wiring the REVERB
-; SERVER): a track's proc() runs TWICE in a block that has a nonzero split
-; (dsp/reverb89.asm's dispatcher note, reproduced here since this file has
-; no other comment on it) -- a=0 first for frames [0,split), then always
-; a=1 for [split,16). Naively gating position-0's flip on "r7==0x6200"
-; alone flips the shared rotation ONCE PER CALL, i.e. TWICE in a split block,
-; which cancels itself out and silently desyncs the bus. And without an
-; offset, every call's per-sample ACC/WET writes start back at index 0,
-; so a split a=1 call stomps the START of the block instead of continuing
-; from where a=0 left off.
-;
-; x:(r7+$67) ends this section holding the correct write offset for THIS
-; call (0 if it is the first dispatch of the block -- either the a=0 call,
-; or the a=1 call when there was no a=0 this block -- else the stashed
-; split point). x:(r7+$65)/(r7+$66) are private bookkeeping, consumed by
-; the a=1 call that matches an a=0.
-        move    a,x:(r7+$14)             ; stash the dispatcher's incoming call
-                                          ; flag before it's clobbered: 0 for
-                                          ; a=0 (first sub-block), left-aligned
-                                          ; $010000 for a=1 (reverb89.asm's
-                                          ; same idiom, r7+$14)
-        clr     a
-        move    a,x:(r7+$67)             ; default: offset 0 (first call)
-        move    x:(r7+$14),a
-        tst     a
-        bne     bus_a1
-        move    #>$1,a
-        move    a,x:(r7+$65)             ; "a=0 ran this block"
-        move    n7,a
-        and     #>$f,a                   ; same mask on the way in
+; ---- split-aware frame offset: a track's proc() runs TWICE in a block
+; that has a nonzero split -- a=0 first for frames [0,split), then a=1 for
+; [split,16). Gating position-0's flip on "r7==0x6200" alone would flip
+; the shared rotation once per call, twice in a split block; and without
+; an offset every call's per-sample ACC writes would start at index 0.
+; x:(r7+$67) ends this section holding this call's frame offset.
+        move    a,x:(r7+$14)            ; the dispatcher's call flag, stashed
+                                        ; (0 = the a=0 sub-block, $010000 = a=1)
+; ---- an FX1 slot has no bus role (21 Sep 2026) ---------------------------
+; Id 0 is aliased to SEND, and the FX1 chooser's NONE is id 0, so this proc
+; runs on every FX1 slot with no effect, at the slot's own r7: 0x6100,
+; 0x6400, 0x6700, 0x6a00 on each core (three r7 bumps per track, measured
+; under the port on Sam's project, `--dsp-pcwatch`; the FX2 slots are
+; 0x6200, 0x6500, 0x6800, 0x6b00). Until image 48 such a call registered
+; and sent from whatever byte its page held (the bleed into the bus with
+; every SEND at 0, image 46) and, on core 1, ran the rotation tracker
+; BEFORE position 0's advance: a flip that landed before the 0x6100 call
+; snapped T to R there, position 0 then advanced past it, and the core sat
+; one step ahead for good -- the stamp probe (image 47) found its stamps
+; wiped on every block of plain play. X:$213 cannot gate this: it is the
+; last init's pointer at proc time (dsp_host `-allocproc`). Four compares
+; on r7; the refusal returns before any state is touched.
+        move    r7,a
+        move    #>$6100,x0
+        cmp     x0,a
+        beq     send_refused
+        move    #>$6400,x0
+        cmp     x0,a
+        beq     send_refused
+        move    #>$6700,x0
+        cmp     x0,a
+        beq     send_refused
+        move    #>$6a00,x0
+        cmp     x0,a
+        beq     send_refused
+; ---- this call's frame offset, from r0 (21 Sep 2026) --------------------
+; The dispatcher passes r0 = 0 on a block's first call and r0 = 2 x split on
+; the a=1 call of a split block (measured under the port: r0 = $e for a trig
+; at frame 7). Until 21 Sep 2026 the offset was reconstructed from a flag
+; and a split the a=0 call stashed in $65/$66 for the matching a=1 call; on
+; the unit a host with a trig on every step (T2 THRU, T3 STATIC) washed with
+; white noise while the port stayed clean, the shape of a stash that does
+; not survive between the two calls: a second call taken for a first one
+; advances position 0's rotation tracker twice in a frame, and the tracker
+; keeps a lead of one for ever (the R25 "metallic" mode). r0 needs no state.
+        move    r0,a
+        asr     #$1,a,a                 ; words -> frames
+        and     #>$f,a                  ; 0..15 by construction; garbage masked
         move    a1,x0
-        move    x0,a
-        move    a,x:(r7+$66)             ; stash split for the matching a=1
-        bra     bus_off_done
-bus_a1:
-; COLD-BOOT SAFETY. These three slots hold boot garbage the first time an
-; instance runs, and x:(r7+$67) feeds straight into r1/r2 as a Y pointer
-; below -- an unmasked garbage value there makes the per-sample loop write
-; through a wild address, which hangs the DSP. Reproduced on hardware:
-; selecting SEND on any track from a clean boot froze the unit. Same class
-; as DSP.md's masked-garbage AGU saturation, so the same discipline applies
-; -- mask AND A2-clean every one of them before use.
-        move    x:(r7+$65),a
-        and     #>$ff,a                  ; flag field only
-        move    a1,x0
-        move    x0,a                     ; A2-clean before the compare
-        move    #>$1,x0
-        cmp     x0,a                     ; EXACTLY 1, not merely nonzero:
-        bne     bus_off_done             ; garbage is unlikely to be 1, where
-                                         ; "nonzero" accepts almost any garbage
-        clr     a
-        move    a,x:(r7+$65)             ; consume the flag
-        move    x:(r7+$66),a
-        and     #>$f,a                   ; a split point is 0..15 by
-        move    a1,x0                    ; construction, so this cannot narrow
-        move    x0,a                     ; a legitimate value -- it only makes
-        move    a,x:(r7+$67)             ; garbage harmless
+        move    x0,a                    ; A2-clean
+        move    a,x:(r7+$67)            ; this call's frame offset
 bus_off_done:
 
 ; ---- position-0 housekeeping: flip rotation, clear the new write targets ---

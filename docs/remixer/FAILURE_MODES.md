@@ -240,6 +240,116 @@ then fades back over 256 samples. Edits during the envelope are queued rather
 than reversed. The complete rapid-sweep sequence measures 0.00140 FS under the
 emulator, but hardware confirmation remains pending and is the deciding gate.
 
+## A white-noise wash from a sample host with trigs on it ✅ measured on the unit, fixed (image 43)
+
+**Symptom.** BusDelay on a track with its own trigs: T3 STATIC with a trig
+on every step washes from the second pass of the pattern on, T2 THRU with a
+trig on every step at once (the THRU's re-open clicks ride on top). A
+steady white-noise wash out of the host track: its LEVEL 0 silences it,
+FDBK moves the repeats underneath and leaves it, WET scales it without
+removing it, STOP does not end it, a double STOP thins it, PLAY or a
+project reload clears it -- and it comes back after the next full loop.
+T1 as host (position 0) with the same trigs: clicks, no wash, in the one
+test made. Trigs on a sender only: nothing. The bus input is irrelevant
+(every SEND at 0: the same). Sam's MKII, 21 Sep 2026.
+
+**Images.** 38: one test clean. 39, 40, 41: wash. 42 (= 41 minus PR
+#344's four init stores): one test clean, then the wash after a reload and
+a loop. So the mode is state-dependent and single runs do not bisect it;
+the init stores were not the cause (their removal stays, harmless). The
+`$84..$88` relocation (PR #346) and the once-per-block glides (PR #345)
+were not it either and stay.
+
+**What the port sees.** Nothing, in every form: the host's sample staged
+and playing, a THRU host, a trig every step, two loops, garbage RAM, on
+38, 39, 40, 41. A PC watch on the delay's proc entry shows both calls of a
+split block with the same `r7`; on its init entry, one call at load across
+two loops. The port's cores are lock-step: a race between core 0's flip and
+a core-1 client is structurally invisible to it.
+
+**Cause and fix (image 43, 21 Sep 2026: T3 STATIC with a trig every step clean through eight loops and a project reload, where 42 washed after one; the FX2 change on T1 clean too).** Each bus participant's
+proc reconstructed the second call's frame offset from a flag and a split
+the FIRST call stashed in its block (`$65/$66`), consumed by the matching
+a=1 call. If that stash does not survive between the two calls when a trig
+lands there (nothing measured; the stash was written in July on the
+harness), the second call runs as a first call: at position 0 the rotation
+tracker advances twice in a frame and keeps a lead of one for ever (the
+R25 "metallic on every power cycle" mode: only a re-select or a transport
+start, which makes the instance miss blocks, fall behind and snap, cures
+it -- exactly what PLAY and a reload do here); elsewhere the call writes
+its block from frame 0. Since 21 Sep 2026 the offset comes from `r0`,
+which the dispatcher passes as 0 on a first call and 2 x split on the
+second (the port: `r0 = $e` for a trig at frame 7): no state between the
+calls. Same code in SEND, BusDelay and BusVerb. The stash itself was never measured on the unit; the fix's
+effect was.
+
+## Sequencer stuck on step 1 at the first play: images 44 and 45 🟡 two causes inferred, fix built (image 46)
+
+**Symptom.** Image 44 (21 Sep 2026): flash, load, play -- stuck on step 1,
+the standard wedge; power-cycle and reload recover. **Cause, inferred.**
+The one change on core 0's first block was the housekeeper's new stamp
+clear, written as four one-word displaced Y stores (`move a,y:(r3+$1)`,
+`+$2`, `+$3`): no module and no stock code in either payload uses that
+form, the assembler's one-word displaced move was patched in on 14 Sep
+2026 and proven on the X form (`move x:(r7+$15),a` = `0257de`, 533 stock
+sites), and the port runs whatever the assembler encodes, so a chip that
+decodes that word differently is invisible locally. **Image 45** clears the stamps with `move a,y:(r3)+` after `m3 = $ffffff`
+and wedged the same way, so the form was not (or not only) it; the rule
+stands regardless: a DSP instruction form with no stock precedent in the
+payload disassembly (`tools/build/dsp_disasm_all.py`) does not ship without
+a hardware probe. **The second cause, inferred.** The tracker's new check
+reads the client's last write offset from its own slot and turns it into
+the stamp address. An FX1 slot with no effect runs SEND (id 0 aliases to
+SEND) at an r7 below `$6200`, which ROTINIT deliberately never seeds, so
+on the unit that slot is boot garbage until the first `rotuse` store, and
+the read went to a wild Y address -- the peripheral registers live in Y,
+and a stray read of a host-port or ESAI register stalls the handshake at
+the first block. The port zeroes RAM: the slot reads 0 there. **Image
+46** masks the value (`and #>$30`) before it becomes an address, as every
+other tracker address is built; the gate chain now runs the port with
+`--dsp-dirty` on the trig-host fixtures as well. Rule: no address from a
+word that init did not seed, unmasked.
+
+## A white-noise wash from a THRU host past position 0 with a trig on every step; bleed into the bus with every SEND at 0 🟡 the core-1 lead of one measured (image 47), its cause inferred, fix built (image 48)
+
+**Symptom.** BusDelay on T2 (a THRU machine) with a trig on every step of
+T2: a white-noise wash at once, on images 40 through 43 alike (43 fixed the
+sample-host wash above; this one is untouched by the r0 offsets). T1 as
+host, a THRU with the same trigs: the THRU's re-open clicks, no wash. A
+THRU host with its ordinary one trig per bar: nothing, on every image
+since the one-aux rig. On image 46 a silent run on T1 was clean, the same
+on T2 gave static and the wash, and with every SEND at 0 audio still
+reached the bus.
+
+**What the port sees.** Nothing: a THRU host with a trig every step under
+`verify_set` (`out/OCTABAM89_t2thru`, tones at the inputs) prints flat;
+a THRU host and a sample host are dispatched identically (a=0 at `r0 =
+0`, `n7 = split`; a=1 at `r0 = 2 x split`, `n7 = 16 - split`).
+
+**Images 44–47.** 44 and 45 (the tracker's self-check: stamps, a hold
+flag) wedged on the first play, the entry above; 46 played with static
+and the wash. 47, a probe: the delay printed a marker tone on every block
+whose flag said a client's stamp was gone — a permanent tone on plain
+play, so the core-1 tracker sits one step ahead all the time on the unit
+(✅ measured; the port never shows it).
+
+**Cause (inferred from two port measurements, `XBUS.md` "An FX1 slot is
+not a client").** Id 0 is SEND and FX1 NONE is id 0, so SEND ran on every
+FX1 slot with no effect, at r7 0x6100/0x6400/0x6700/0x6a00 (measured, PC
+watch on Sam's project). The 0x6100 call registered and sent from an
+unseen page byte (the bleed), and on core 1 it ran the tracker's compare
+before position 0's advance: a flip landing before it snaps T to R, the
+advance then leads by one, and `T == R + 1` is kept for ever. Under the
+port the flip lands late in core 1's frame in every frame watched, which
+is why every local run was clean.
+
+**Fix (image 48).** SEND returns at proc entry on an FX1 r7: no
+registration, no write, no tracker call. The self-check is removed; the
+tracker body is image 43's. T1's FX2 must be a bus client for the
+tracker's advance (the stock DELAY there leaves nobody to advance;
+`stamp-defaults` warns). Falsified by: 48 still washing on T2 THRU with a
+trig every step, or still bleeding with every SEND at 0.
+
 ## Audio engine wedged, sequencer alive: the master loop ✅ measured
 
 **Symptom.** The sequencer runs but no audio plays, sample preview is
@@ -684,7 +794,7 @@ pre-delay are 2048-word modulo buffers (`m5 = $7ff`); Modulation's
 `buffer_words=2048`; the firmware's PCM-pool block (`0x800` in the
 recorder's block table at `0x80003c20`). The live state that produced it
 is lost. When bisecting by hand, take slots to a stock effect, not NONE
-(id 0 is SEND). `tools/hw/rec` must be the HAL recorder.
+(id 0 is SEND). `tools/rec` (built from `tools/hw/rec.swift`) must be the HAL recorder.
 
 ## Sequencer stuck on step 1 with every effect turned off: id 0 is SEND
 
@@ -700,9 +810,13 @@ instantiates an FX1-NONE slot.
 **Fix.** Anything in SEND that reads a knob and can cost cycles or write
 the bus gates on the slot being FX2 (`X:$213` base ≥ 0x4000, tested per
 call); the burn does (`dsp/burn_send.inc`, `verify_burn.py` check 5).
-SEND's SEND-knob read has no such gate: whether an FX1-NONE slot with a stale
-SEND byte registers as a phantom sender on the unit is an open hardware
-claim.
+SEND's SEND-knob read had no such gate until image 48: an FX1-NONE slot
+with a stale SEND byte did register and send on the unit (image 46: audio
+in the bus with every SEND at 0). X:$213 is the last init's pointer at
+proc time (`dsp_host -allocproc`), so since image 48 SEND keys the refusal
+on r7 instead (0x6100/0x6400/0x6700/0x6a00 are the FX1 slots, measured
+under the port) and returns before touching any state; the entry on the
+THRU-host wash has the rest.
 
 **Second instance (image 32B, 16 Sep 2026): step 1 forever on two projects
 with every stored page byte zero.** Under the port (`--dsp-pcwatch` on the

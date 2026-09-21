@@ -46,8 +46,10 @@ bytes are stock LO-FI's until `ot_project.py stamp-defaults` writes ours.
   and bounded at DRV=127; FOLD folds a monotonic ramp; COMP reduces the loud
   signal 6.1 dB more than the quiet one and is exactly unity at 0; WDTH 0 is
   mono and 64 exact; an FX2 instance is a bit-exact dry pass.
-- COMP at 127 (thr 0.03, invR 0.1, 8 ms / 100 ms): quiet +3.4 dB, loud
-  −6.2 dB, release 86 ms. GLUE (0.03, 0.35, 10 ms / 400 ms): +2.6 / −2.4 dB.
+- COMP is AC1's console law (`docs/effects/MASTER.md`): attack 0.5 ms,
+  release 63 ms (K = 4); GLUE on the master 0.5 / 500 ms (K = 3). The
+  threshold/ratio numbers that stood here (thr 0.03, invR 0.1, 8/100 ms)
+  were the retired law's.
 - Cost: 975 words on each payload (1,138 / 1,195 with the return, 20 Sep
   2026); 623 cycles/sample static worst case. The pricer's worst core is
   four of these beside the reverb: 3,657 against 3,120 usable, inside the

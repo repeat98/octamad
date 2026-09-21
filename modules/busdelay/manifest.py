@@ -150,7 +150,7 @@ MODULE = Module(
         # sweep the reverb's buffers, the bus scratch and both role locks
         # every 16,384 samples, so it keeps its shipping base.
         dev_pin_ybase=0x38000,
-        r7_latch_slot=0x86,               # payload B tracks its own rotation
+        r7_latch_slot=0x20,               # payload B tracks its own rotation (raw $20: $84..$8a are the unit's between calls, 21 Sep 2026)
         gate_label="bus_notfirst",
         override_markers=("; DMODE_OVERRIDE", "; DINT_OVERRIDE",
                           "; DNOTE_OVERRIDE"),

@@ -501,9 +501,13 @@ def wrong_core(pdir):
     carries -- one line each, for the stamp tools and the set gate."""
     sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
     from remix import registry
-    single = {}
+    single, stock = {}, {}
     for m in registry.modules().values():
-        if m.menu is None or m.dsp is None or len(m.dsp.payloads) != 1:
+        if m.menu is None:
+            continue
+        if m.is_stock:
+            stock[m.menu.fx2_id] = m.key
+        if m.dsp is None or len(m.dsp.payloads) != 1:
             continue
         (pl,) = m.dsp.payloads
         single[m.menu.fx2_id] = (m.key, pl)
@@ -518,6 +522,16 @@ def wrong_core(pdir):
                     lo, hi = PAYLOAD_TRACKS[hit[1]][0] + 1, PAYLOAD_TRACKS[hit[1]][-1] + 1
                     out.append(f"{bank.name} part {p + 1} T{t + 1}: {hit[0]} runs as SEND "
                                f"there (payload {hit[1]} = T{lo}-T{hi})")
+            # T1's FX2 is core 1's position 0: its call advances the core's
+            # rotation tracker (every other id of ours, and id 0, aliases to
+            # SEND and advances too). A stock effect there runs no client, so
+            # nothing advances and every core-1 sender straddles the flip
+            # (docs/effects/XBUS.md "An FX1 slot is not a client").
+            t1 = data[off + FX2_OFF]
+            if t1 in stock:
+                out.append(f"{bank.name} part {p + 1} T1: FX2 = {stock[t1]} is not a bus "
+                           f"client, so core 1's rotation tracker never advances "
+                           f"(host BusDelay or SEND on T1)")
     return out
 
 

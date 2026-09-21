@@ -63,7 +63,10 @@
 ;   r7+$21..$23         per-sample scratch (PRNG candidate, parked age)
 ;   r7+$24/$25          shifted OUTPUT tap L / R (per sample; kept apart from
 ;                       the loop's taps so the shift never re-enters feedback)
-;   r7+$26              TIME, Q8: the glide's state this block
+;   r7+$26              TIME, Q8: the per-sample ramp value (last block's
+;                       glide state at the block start, + the increment per
+;                       sample); the glide state itself is the core-private
+;                       TIME word below the RATE state block
 ;   r7+$27/$28          wow / flutter LFO phase (persistent, masked)
 ;   r7+$29              wow's offset park (per sample)
 ;   r7+$2b/$2c          this sample's loop lag: integer / Q23 fraction
@@ -91,8 +94,17 @@
 ;   r7+$5f              SIZE select index, raw 0..3 (per block)
 ;   r7+$60/$61          REVERSE segment length S / phase step 2^23/S
 ;   r7+$62              REVERSE lag floor (per block)
+;   r7+$0c              last-seen rotation (the gated housekeeping block's)
+;   r7+$20              this block's resolved write offset (0/16/32/48);
+;                       every bus address derives from it (the ROTLATCH slot)
+;   r7+$2a              REVERSE lag cap 32704 - 2S (per block; the loop's RLAG0 source)
+;   r7+$6d              WET coefficient, glided (per block)
+;   r7+$83              this call's CHAIN write address ($901 + rotation +
+;                       frame offset; advances per sample; DRIVE's slot until
+;                       21 Sep 2026, dead since the cubic went)
 ;   r7+$63/$64          this call's DELAY ACC read address / the TIME ramp's per-sample increment (Q8)
-;   r7+$65..$67         split-aware bus bookkeeping (shared mechanism)
+;   r7+$67              this call's frame offset, from r0 (shared mechanism;
+;                       $65/$66 free since 21 Sep 2026)
 ;   r7+$68              LineR base: Y:0x4000 (the hatch: LineL + 0x4000) (per block)
 ;   r7+$69              MODE, MSB-aligned select (per block; 0 = CLEAN,
 ;                       1 = GRAIN, 2 = REVERSE; anything else = CLEAN)
@@ -115,15 +127,14 @@
 ;   r7+$7f              bus auto-gain 1/sqrt(N) (per block; read per sample)
 ;   r7+$80              1 - PING (per block)
 ;   r7+$82              warm-up tagged counter
-;   r7+$83              DRIVE amount d (pinned to 0)
-;   r7+$84              this call's CHAIN write address ($901 + rotation +
-;                       frame offset; advances per sample)
-;   r7+$85              WET coefficient, glided (per block)
-;   r7+$87              REVERSE lag cap 32704 - 2S (per block; the loop's RLAG0 source)
-;   r7+$86              this block's resolved write offset (0/16/32/48);
-;                       every bus address derives from it
-;   r7+$88              last-seen rotation (the gated housekeeping block's)
-;   $84+ hangs the unit on a raw r7; nothing here is stored above $88.
+;   $84..$8a            NEVER WRITTEN (21 Sep 2026). Until then the chain write
+;                       address, the WET glide state, the write offset, the
+;                       REVERSE cap and the last-seen rotation sat at $84..$88:
+;                       on a host track with a sample playing, the unit's own
+;                       per-track state lives there between our calls, and the
+;                       delay printed a white-noise wash that survived STOP
+;                       (docs/remixer/FAILURE_MODES.md). DSP.md had recorded
+;                       $84..$8a as not persisting since 10 Aug 2026.
 ;
 ; Parameters (a knob arrives as value<<16, value 0..127):
 ;   p0 AUX   -> this host's own dry send into the aux (headroomed, summed
@@ -147,7 +158,8 @@
 ;               a held MIDI note (r6+$1 bits 8-15, latched) overrides
 ;   p11 WOW  -> slot 11 companion (r6+$e bits 8-15): tape wobble depth,
 ;               0 .. +-254 samples (wow 0.8 Hz + flutter 7.3 Hz at an
-;               eighth), on the loop tap in every mode
+;               eighth; ~47 + ~54 cents peak at 127, computed), on the
+;               loop tap in every mode
 ; ---------------------------------------------------------------------------
 
 init:
@@ -169,6 +181,14 @@ init:
 ; that direction DOES snap, so it is safe.
 ; build_bus.py emits a body here for PAYLOAD B ONLY -- payload A recomputes the
 ; offset from the shared word every block and has nothing to seed.
+; INIT WRITES NOTHING BUT THE ROTATION SEED (21 Sep 2026). Four stores here
+; zeroing the glided coefficients (raw $72/$73/$74/$6d, images 39-41) put a
+; white-noise wash on any host past dispatch position 0 that had trigs on
+; it (T2 THRU or T3 STATIC with a trig every step; T1 never), bisected on
+; the unit: image 38 without them clean, 39/40/41 wash, 42 = 41 minus the
+; four stores clean. The port never showed it. Mechanism open
+; (docs/remixer/FAILURE_MODES.md); the coefficients glide in from whatever
+; the slot held for ~20 ms after a select, as before.
 ; ROTINIT
         rts
 
@@ -178,64 +198,24 @@ proc:
 ; dsp/reverb89.asm's proc: comment for the full mechanism. Everything below
 ; re-derives from r7 state per call, so the two sub-calls of a split block
 ; are sample-continuous by construction.
-        move    a,x:(r7+$14)            ; call flag: $010000 = the a=1 call
-; build_bus.py substitutes a host-slot gate at the marker below, for a
-; remix that HIDES this engine (schema.Remix.hidden). A hidden engine is hosted by
-; the project's stamp rather than by the chooser, so it should run on its
-; host track and nowhere else: dispatch is per id and shared by every track,
-; so an old part naming this id on another track would otherwise get a
-; SECOND instance sharing this one's hardcoded Y base. The gate is r7 ==
-; 0x6200, the bank's first FX2 state block (measured, docs/firmware/DSP.md "The
-; allocator's instance model"), which is the same condition the position-0
-; housekeeping election below already uses -- so a guarded instance is never
-; a housekeeper that has gone dry, nor a wet engine that skips the
-; election. (Worded around the phrase build_bus.py censuses for: it
-; greps the SOURCE for the payload-gate marker, comments included, so
-; writing that phrase here reported the plain `bus` image's payload A
-; as gated out -- caught by refhash, and the same family as the
-; base-literal census CLAUDE.md warns about, which refused the build
-; when this very comment first tried to name it.)
-; Inert in a normal build: it is a comment, and local renders (which run at
-; -r7 4, the bank's SECOND slot) are unaffected unless a remix asks for it.
-; HOSTGUARD
-
-; ---- BUS.md: split-aware frame offset + position-0 election --------------
-; Verbatim from modules/send/send_client.asm / modules/busverb/reverb_server.asm (BUS.md Known
-; limitations: this copy must stay byte-identical across all three files).
-        clr     a
-        move    a,x:(r7+$67)            ; default: offset 0 (first call)
-        move    x:(r7+$14),a
-        tst     a
-        bne     bus_a1
-        move    #>$1,a
-        move    a,x:(r7+$65)            ; "a=0 ran this block"
-        move    n7,a
-        and     #>$f,a                  ; same mask on the way in
+        move    a,x:(r7+$14)            ; the dispatcher's call flag, stashed
+                                        ; (0 = the a=0 sub-block, $010000 = a=1)
+; ---- this call's frame offset, from r0 (21 Sep 2026) --------------------
+; The dispatcher passes r0 = 0 on a block's first call and r0 = 2 x split on
+; the a=1 call of a split block (measured under the port: r0 = $e for a trig
+; at frame 7). Until 21 Sep 2026 the offset was reconstructed from a flag
+; and a split the a=0 call stashed in $65/$66 for the matching a=1 call; on
+; the unit a host with a trig on every step (T2 THRU, T3 STATIC) washed with
+; white noise while the port stayed clean, the shape of a stash that does
+; not survive between the two calls: a second call taken for a first one
+; advances position 0's rotation tracker twice in a frame, and the tracker
+; keeps a lead of one for ever (the R25 "metallic" mode). r0 needs no state.
+        move    r0,a
+        asr     #$1,a,a                 ; words -> frames
+        and     #>$f,a                  ; 0..15 by construction; garbage masked
         move    a1,x0
-        move    x0,a
-        move    a,x:(r7+$66)            ; stash split for the matching a=1
-        bra     bus_off_done
-bus_a1:
-; COLD-BOOT SAFETY. These slots hold boot garbage the first time an instance
-; runs, and x:(r7+$67) feeds straight into r1/r2 as a Y pointer below -- an
-; unmasked garbage value there makes the per-sample loop write through a wild
-; address, which hangs the DSP. Reproduced on hardware: selecting SEND on any
-; track from a clean boot froze the unit. Same class as DSP.md's masked-garbage
-; AGU saturation, so the same discipline -- mask AND A2-clean before use.
-        move    x:(r7+$65),a
-        and     #>$ff,a                 ; flag field only
-        move    a1,x0
-        move    x0,a                    ; A2-clean before the compare
-        move    #>$1,x0
-        cmp     x0,a                    ; EXACTLY 1, not merely nonzero --
-        bne     bus_off_done            ; "nonzero" accepts almost any garbage
-        clr     a
-        move    a,x:(r7+$65)            ; consume the flag
-        move    x:(r7+$66),a
-        and     #>$f,a                  ; a split point is 0..15 by
-        move    a1,x0                   ; construction, so this cannot narrow a
-        move    x0,a                    ; legitimate value -- it only makes
-        move    a,x:(r7+$67)            ; garbage harmless
+        move    x0,a                    ; A2-clean
+        move    a,x:(r7+$67)            ; this call's frame offset
 bus_off_done:
 
 ; ---- position-0 housekeeping: flip the shared bus rotation, clear the new
@@ -275,7 +255,7 @@ bus_off_done:
         and     #>$30,a
         move    a1,x0
         move    x0,a                    ; offset now, A2-clean
-        move    x:(r7+$88),x0
+        move    x:(r7+$0c),x0
         cmp     x0,a
         bne     bus_seen                ; it moved: someone else housekept
 bus_dohk:                               ; nobody did -- take over this block
@@ -335,7 +315,7 @@ bus_seen:
                                         ; else housekept in between
         move    a1,x0
         move    x0,a
-        move    a,x:(r7+$88)
+        move    a,x:(r7+$0c)
 bus_notfirst:
 ; ---- resolve THIS BLOCK'S WRITE OFFSET, ONCE, into r7+$86 ---------------
 ; See the long note in modules/send/send_client.asm: every client used to read y:>$900
@@ -412,7 +392,7 @@ bus_mine:
 ; any clear time, which is why the delay stuttered on track 1 and not track 4
 ; (hardware, 17 Aug 2026 -- dispatch position moved the read relative to the
 ; other core's flip).
-        move    x:(r7+$3d),a
+        move    x:(r7-$29),a
         move    a,x1                    ; x1 = write offset (0/16/32/48)
         add     #>$20,a                 ; two buffers on == two buffers back
         and     #>$30,a                 ; mod 4
@@ -426,7 +406,7 @@ bus_mine:
         move    #>$901,a                ; the CHAIN buffer (one-aux rig, 7 Sep
         add     x0,a                    ; 2026): 4 x 16 mono words, the old
         add     b,a                     ; REVERB accumulator's home
-        move    a,x:(r7+$3b)            ; this call's CHAIN write address
+        move    a,x:(r7+$3a)            ; this call's CHAIN write address
 
 ; ---- bus auto-gain: resolve 1/sqrt(N) for this block's READ buffer --------
 ; The DELAY-bus mirror of the reverb's v121 fix (XBUS.md "Gain staging"):
@@ -708,28 +688,61 @@ snapz:
         move    a,x:(r7+$2c)
 
 ; ---- TIME SLEW: glide, don't jump ---------------------------
+; ONCE PER BLOCK (21 Sep 2026): the dispatcher calls twice on a trig split
+; (a=0 for the frames before the trig, a=1 for the rest) and the glide,
+; the ramp base and the coefficient glides below ran on both calls -- the
+; ramp restarted from last block's state at the trig, a jump of up to a
+; quarter or three-quarters of the glide step (up to ~30 samples on a big
+; TIME move): a click at every trig while the knob moved. They run on the
+; first call of a block only (frame offset 0); the second sub-call keeps
+; the ramp's running value and its increment, and every coefficient slot
+; already holds this block's value.
+        move    x:(r7+$1e),a            ; this call's frame offset
+        tst     a
+        bne     slew2                   ; second sub-call: everything stands
         move    x:(r7+$2c),a            ; target, integer samples
         asl     #$8,a,a                 ; Q8
         move    a,x0
         move    y:>$0907,b              ; slewed TIME, Q8 (0 at boot)
         tst     b
         teq     x0,b                    ; boot: start AT the target
-        move    b,y0
-        move    b,x1                    ; last block's state, for the ramp below
-        sub     y0,a                    ; target - state
+        tmi     x0,b                    ; boot garbage, negative: the target
+        move    #>$7fc000,y0            ; 32752 samples in Q8, past any line
+        cmp     y0,b
+        tgt     x0,b                    ; boot garbage past the line: the target
+        move    b,y0                    ; the state
+        move    x0,a
+        sub     y0,a                    ; d = target - state
+        move    a,y1
         asr     #$a,a,a                 ; /1024 per block
-        add     y0,a                    ; state += step
-; SNAP (20 Sep 2026): once the step rounds to zero (within 4 samples) the
-; state lands ON the target, so the tap's fraction returns to 0 at rest --
-; a fraction left standing is a 2-sample average on every pass round the
-; loop, which dulls the repeats.
-        move    a,y1                    ; the glided state
-        sub     x0,a                    ; state - target
-        abs     a
-        move    #>$400,y0               ; 1024 = one step's worth
-        cmp     y0,a                    ; |state - target| - 1024
-        move    y1,a                    ; a move keeps the flags
-        tlt     x0,a                    ; within it: state = target
+        move    a,b                     ; the exponential step
+; MINIMUM STEP (21 Sep 2026): /1024 rounds to zero inside 4 samples of the
+; target, and a standing fraction is a 2-sample average on every pass round
+; the loop, which dulls the repeats; image 33's snap landed ON the target
+; from 4 samples out, a quarter-sample-per-sample ramp for one block. The
+; step is now never smaller than 1/16 sample per block toward the target
+; and never past it: the last 4 samples take 64 blocks (23 ms) at a slope
+; of 1/256, and the state lands exactly, so the fraction is 0 at rest.
+        move    y1,a
+        abs     a                       ; |d|
+        cmp     #>$10,a
+        bgt     stpbig
+        move    y1,b                    ; within 1/16 sample: land on it
+        bra     stpdn
+stpbig:
+        move    b,a
+        abs     a                       ; |step|
+        cmp     #>$10,a
+        bge     stpdn                   ; the exponential step is big enough
+        move    #>$10,x1
+        move    y1,a
+        tst     a                       ; the sign of d
+        tpl     x1,b                    ; +1/16 sample
+        move    #>$fffff0,x1
+        tmi     x1,b                    ; -1/16 sample
+stpdn:
+        move    y0,a
+        add     b,a                     ; state += step
         move    a,y:>$0907
         move    a,b                     ; the Q8 state
         asr     #$8,a,a                 ; back to integer samples
@@ -743,11 +756,12 @@ snapz:
 ; whole glide, 0 at rest). Each sample adds the wobble to the ramped Q8
 ; value and splits the sum into the lag and a fraction; modtap reads
 ; BETWEEN samples at that fraction. Raw $26 holds the running value (r7
-; is rebased by $49 here and in the loop), raw $64 the per-sample increment
-; (the return's WET write address until 20 Sep 2026). A call shorter than
-; 16 frames lands the ramp short by that fraction of one step and the next
-; call re-bases it: under two samples at the fastest glide.
-        move    x1,x:(r7-$23)           ; the ramp starts at last block's state
+; is rebased by $49 here and in the loop), raw $64 the per-sample increment.
+; A split block's two calls walk the same ramp end to end (the a=1 call
+; skips to slew2 above); the harness's 15-frame blocks land a sixteenth of
+; a step short and re-base, under two samples at the fastest glide.
+        move    y0,x1                   ; last block's state
+        move    x1,x:(r7-$23)           ; the ramp starts there
         sub     x1,b                    ; this block's step, Q8
         asr     #$4,b,b                 ; per sample, over 16
         move    b,x:(r7+$1b)            ; the increment
@@ -789,13 +803,19 @@ snapz:
 
         move    x:(r6+$5),x0            ; WET, slot 5
         move    x0,a                    ; target
-        move    x:(r7+$3c),b
+        move    x:(r7+$24),b
         sub     b,a
         asr     #$3,a,a
         add     b,a
-        move    a,x:(r7+$3c)            ; WET, glided (r7+$3e held 1-MIX until
-                                        ; 15 Sep 2026: the stage adds, it no
-                                        ; longer crossfades)
+        move    a,x:(r7+$24)            ; WET, glided (raw $6d since 21 Sep
+                                        ; 2026: raw $85 was in the $84..$8a
+                                        ; range that hardware does not keep)
+        bra     slewdn
+slew2:
+        move    x:(r7-$23),a            ; the ramp's running value, Q8
+        asr     #$8,a,a
+        move    a,x:(r7+$2c)            ; TIME for the per-block consumers below
+slewdn:
 
 ; ---- IN: this track's OWN send level into the delay (v3 stage 1) ---------
         move    x:(r6),a                ; AUX, slot 0 (one-aux rig, 7 Sep 2026:
@@ -915,8 +935,11 @@ snapz:
 ; are GRAIN's SCAT and DENS now, inert in CLEAN and REVERSE.)
 
 ; ---- WOW: tape wobble depth, page-2 slot 11 (r6+$e bits 8-15) -----------
-; knob<<13 is the depth in Q11.12: two samples per knob step, +-254 at 127
-; (~+-17 cents at 0.8 Hz). Flutter rides at an eighth of it. The per-sample
+; knob<<13 is the depth in Q11.12: two samples per knob step, +-254 at 127.
+; Flutter rides at an eighth of it. Peak pitch deviation at 127, from the
+; smoothstepped triangle's slope (3*depth*inc/2^22 per sample): ~47 cents
+; wow + ~54 cents flutter (computed, not measured; the old '~17 cents'
+; figure was the slope without the x3 smoothstep factor). The per-sample
 ; lag clamp below keeps TIME + wobble inside the line, so no depth is unsafe.
 ; (Back 20 Sep 2026 in freeze's slot -- Sam: "wow back freeze gone". The
 ; 15 Sep removal was for the crackle, whose cause was the TIME jump, since
@@ -963,7 +986,7 @@ snapz:
         move    a,x:(r7+$18)            ; REVERSE phase step
         move    p:(r5)+,a               ; 32704 - 2S
         move    a,x:(r7+$d)             ; the cap for this size
-        move    a,x:(r7+$3e)            ; ... kept for the loop ($d is its
+        move    a,x:(r7-$1f)            ; ... kept for the loop ($d is its
                                         ; lag0 scratch): REVERSE re-derives
                                         ; RLAG0 per sample from the TIME ramp
         move    p:(r5)+,a               ; G - 1
@@ -1722,7 +1745,7 @@ rmode:
 ; per-block recipe, on this sample's ramped TIME.
         move    x:(r7-$23),a            ; the ramped TIME, Q8 (this sample's)
         asr     #$8,a,a
-        move    x:(r7+$3e),x0           ; the cap, 32704 - 2S
+        move    x:(r7-$1f),x0           ; the cap, 32704 - 2S
         cmp     x0,a
         tgt     x0,a                    ; min(TIME, cap)
         move    a,x:(r7+$19)            ; RLAG0 for this sample
@@ -1847,22 +1870,14 @@ pdone:
         mpy     x0,y1,a
         move    x:(r7+$34),x0           ; x_in
         add     x0,a
-; ---- TAPE loop saturation (v2 stage 4b) ----------------------------------
-; The record head compresses. y = w - w^3/3, applied to what each line is
-; ABOUT TO BE WRITTEN (input + feedback for LineL, crossfed feedback for
-; LineR) -- so it is in the loop, and every repeat is saturated again:
-; -0.03 dB at 0.1 FS, -0.76 at 0.5, -3.52 at full scale, and a hot repeat
-; train rounds off progressively the way tape does.
-;
-; WHY THIS CURVE AND NOT A DRIVE STAGE: small-signal gain is EXACTLY 1 and
-; the curve is monotonic with |y| <= |w| over the whole fixed-point range,
-; so it can only ever REDUCE magnitude. It therefore adds no loop gain and
-; cannot introduce self-oscillation at any FDBK -- unlike a pre-gain soft
-; clipper, which would also fold back above unity (y = u - u^3/3 turns over
-; at u = 1) and need a clamp. There is no drive knob for the same reason
-; the depth ceiling exists in the LFO block: the safe version is the one
-; that cannot be knocked into a bad regime from the panel. Slot 10 is still
-; free if the ear later asks for DRIVE.
+; ---- the line write: a limiting store ------------------------------------
+; What each line is ABOUT TO BE WRITTEN (input + feedback for LineL,
+; crossfed feedback for LineR) goes through satdrv, which since 15 Sep 2026
+; is a plain limiting store: the sum can exceed full scale and a raw a1
+; would wrap where this saturates. The cubic y = w - w^3/3 that lived here
+; (v2 stage 4b; -0.03 dB at 0.1 FS, -0.76 at 0.5, -3.52 at full scale) went
+; with the wow's depth gate. The store adds no loop gain (|y| <= |w|), so
+; no FDBK setting can self-oscillate.
 ;
 ; TAPE ONLY, via the same Tcc substitution as the PITCH wet: cmp sets Z,
 ; moves do not disturb it, teq moves a CLEAN register in. CLEAN and PITCH
@@ -1949,7 +1964,7 @@ rskipw:
         asr     #$1,b,b                 ; wet/2 -> x1.5 both channels (R58)
         add     b,a
         move    a,x0                    ; wet L, final
-        move    x:(r7+$3c),y1           ; WET
+        move    x:(r7+$24),y1           ; WET
         mpy     x0,y1,a                 ; wet * WET
         move    a,x0                    ; x0 = wet*WET: what the host prints
         move    x:(r7+$25),b
@@ -1970,7 +1985,7 @@ rskipw:
         asr     #$1,b,b
         add     b,a                     ; + wet*PING/4 -> R shelf 0.75*PING
         move    a,x0                    ; wet R, final
-        move    x:(r7+$3c),y1           ; WET
+        move    x:(r7+$24),y1           ; WET
         mpy     x0,y1,a                 ; wet * WET
         move    a,x0                    ; x0 = wet*WET
         move    x:(r7+$25),b
@@ -1982,15 +1997,15 @@ rskipw:
         move    x:(r7+$26),a            ; out L
         add     b,a                     ; + out R (b still holds it)
         asr     #$1,a,a                 ; mono
-        move    x:(r7+$3b),b            ; this call's CHAIN write address
+        move    x:(r7+$3a),b            ; this call's CHAIN write address
         move    b,r5
         move    a,y:(r5)                ; CHAIN[write][i] = the stage output --
                                         ; a STORE, not an accumulate: one
                                         ; writer, and nobody clears this buffer
-        move    x:(r7+$3b),a
+        move    x:(r7+$3a),a
         move    #>$1,x0
         add     x0,a
-        move    a,x:(r7+$3b)            ; advance the CHAIN write pointer
+        move    a,x:(r7+$3a)            ; advance the CHAIN write pointer
 
         move    (r0)+n0                 ; advance one stereo frame: two
         move    (r0)+n0                 ; steps, n0 stays 1 (14 Sep 2026)

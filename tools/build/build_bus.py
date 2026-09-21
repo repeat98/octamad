@@ -1678,8 +1678,8 @@ def main():
     elif reverb_src is not None:
         print("  shimmer IN (default) -- NOSHIM=1 to excise")
     if RIG_BURN and send_src is not None:
-        _anchor = ("        clr     a\n"
-                   "        move    a,x:(r7+$67)             ; default: offset 0 (first call)\n")
+        _anchor = ("        move    r0,a\n"
+                   "        asr     #$1,a,a                 ; words -> frames\n")
         if send_src.count(_anchor) != 1:
             sys.exit(f"RIG BURN: the SEND anchor appears {send_src.count(_anchor)} "
                      f"times in {ASM_SRC['SEND']}, expected exactly 1 -- re-cut it")
@@ -1775,9 +1775,8 @@ mkgo:""",
             # already saved and nothing else is live, which is what makes the
             # register state trivially known there.
             ("dsp/burn_block1.inc",
-             "        move    a,x:(r7+$14)            ; call flag: $010000 = the a=1 call\n"
-             "                                        ; (the dispatcher's #$1 is left-\n"
-             "                                        ; aligned), 0 = the split sub-call\n"),
+             "        move    a,x:(r7+$14)            ; the dispatcher's call flag, stashed\n"
+             "                                        ; (0 = the a=0 sub-block, $010000 = a=1)\n"),
             # block 2 goes after the LO filter's own comment, forcing p3's
             # coefficient to its documented exact bypass so sweeping the burn
             # knob cannot change the timbre.
@@ -1785,7 +1784,7 @@ mkgo:""",
             # before it: injected before, the real coefficient overwrites the
             # forced bypass on the next line and the burn knob keeps filtering.
             ("dsp/burn_block2.inc",
-             "        move    a,x:(r7+$40)            ; LO coefficient\n"),
+             "        move    a,x:(r7+$40)\n"),          # the glided store (20 Sep 2026)
         ]
         for inc, anchor in _anchors:
             if reverb_src.count(anchor) != 1:

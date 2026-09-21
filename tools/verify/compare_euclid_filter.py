@@ -12,6 +12,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tools'))
 import toolpath  # noqa: E402,F401
 import send_probe  # noqa: E402
+from dsp_host_cli import command as dsp_host_command  # noqa: E402
 
 HOST = ROOT / 'vendor/dsp56300/build/source/dsp_host/dsp_host'
 RATE = 44100
@@ -33,10 +34,8 @@ class Renderer:
         src, dst = self.work / 'input.raw', self.work / f'{label}.raw'
         np.asarray(signal, dtype='<i4').tofile(src)
         init, proc = send_probe.entry_points(str(self.mem), 4 if kind == 'stock' else 29)
-        args = [str(HOST), '-mem', str(self.mem), '-init', f'{init:x}', '-proc', f'{proc:x}',
-                '-audio', '0', '-frames', '16', '-blocks', str(len(signal)//16),
-                '-alloc', '0', '-r7', '1', '-in', str(src), '-out', str(dst),
-                '-params', ','.join(map(str, values))]
+        args = dsp_host_command(HOST, self.mem, init, proc, src, dst, values,
+                                len(signal) // 16, audio=0)
         result = subprocess.run(args, capture_output=True, text=True)
         if result.returncode:
             raise RuntimeError(result.stdout[-1500:] + result.stderr[-1500:])

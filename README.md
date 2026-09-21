@@ -33,7 +33,7 @@ midisc's author on his own unit.
 
 | | |
 |---|---|
-| **BusVerb / BusDelay / Send** | one aux bus: every track's SEND knob → a multi-mode delay → an eight-line FDN reverb → a return on track 8. A route the stock firmware has no path for. On Sam's unit. |
+| **BusVerb / BusDelay / Send** | one aux bus: every track's SEND knob → a multi-mode delay → an eight-line FDN reverb, each engine's wet on the track that hosts it. A route the stock firmware has no path for. On Sam's unit. |
 | **Spectrum / Character / Modulation** | three FX1 stations replacing FILTER, LO-FI and CHORUS: a filter pedal, a saturation/compressor/width chain, a modulation pedal. On Sam's unit. |
 | **Six inserts** | WarpFold, Ripple, Rungs, Streamz, BodeShift, Nimbus: Mutable-Instruments-flavoured per-track effects that stack. Verified by local render; never flashed. |
 | **Tempo sync, CC→page 2** | ColdFire patches: BusDelay's TIME reads as a division; MIDI CC 62–73 reach page-2 knobs. On the unit. |

@@ -1,13 +1,14 @@
 ; ---------------------------------------------------------------------------
-; SEND: the bus client. One knob, page 1: x:(r6+0) = AUX, this track's send
-; into the one aux bus (delay, then reverb, wet back on track 8). A dry,
+; SEND: the bus client. One knob, page 1: x:(r6+0) = SEND, this track's send
+; into the one aux bus (delay, then reverb; each engine prints its wet on the
+; track that hosts it). A dry,
 ; parallel tap: SEND never writes its own audio buffer, which is why a
 ; hardcoded-base server may encroach on the per-instance slot SEND owns.
 ;
 ; ---- the shared absolute-Y bus scratch. This layout is shared with REVERB
 ; SERVER and DELAY SERVER and must stay identical across the three sources.
-; It lives at Y:0x900..0xad9 (474 words) and under XBUS relocates whole to
-; 0x36000..0x361d9 (base + (old - 0x900)): build_bus.py rewrites `$9xx`
+; It lives at Y:0x900..0x9d2 and under XBUS relocates whole to
+; 0x36000.. (base + (old - 0x900)): build_bus.py rewrites `$9xx`
 ; literals only, so a buffer past the 0x900 page is spelled as `$9xx + n`,
 ; never fused into an `$axx` literal that would stay core-private.
 ;
@@ -44,9 +45,8 @@
 ;                       delay writes 1 every block it processes; the reverb
 ;                       reads it, clears it, keeps 3 blocks of grace and takes
 ;                       its input from the CHAIN buffer while live
-;   Y:0x9c4             REVERB LIVE stamp for the return station (same shape)
-;   Y:0x9c5             DELAY LIVE stamp for the return station (same shape)
-;   Y:0x9c6             free
+;   Y:0x9c4..0x9c6      free (0x9c4/0x9c5 were the T8 return's liveness
+;                       stamps until 20 Sep 2026)
 ;   Y:0x9c7..0x9ca      AUX send COUNT, one per accumulator buffer: how many
 ;                        clients wrote that buffer this block, indexed by the
 ;                        same rotation (a server reads last block's sum and
@@ -60,16 +60,9 @@
 ;   Y:0x9d3..0x9d7      unused, deliberately: under XBUS these are
 ;                       0x360d3-5, where per-block state was dead on hardware
 ;                       (writes and in-loop reads never met; mechanism unknown)
-;   Y:0x9d8             RETV, "someone is returning": the return station
-;                       writes it nonzero every block its RET level is up;
-;                       the reverb reads it, clears it, and prints its wet
-;                       on its own host only while no stamp has arrived for
-;                       3 blocks
-;   Y:0x9d9             RETD, the same for the DELAY (stamped together)
-;   Y:0x9da..0xa59      REVERB STAGE OUTPUT, stereo (L,R interleaved), four
-;                       buffers of 32 words at +0/+32/+64/+96: in*(1-MIX) +
-;                       wet*MIX, read two buffers back by the return station
-;   Y:0xa5a..0xad9      DELAY STAGE OUTPUT, same shape; spelled `$9da + $80`
+;   Y:0x9d8..0xad9      free since 20 Sep 2026 (the T8 return's RETV/RETD
+;                       stamps and the two stereo four-deep stage-output
+;                       buffers)
 ;
 ; Latency: every block, whichever track is position 0 (r7 == 0x6200, the
 ; first FX2 dispatched in this bank, whatever module it runs) advances the
@@ -319,16 +312,18 @@ notfirst:
 
 ; ---- register as a bus client, once per block, PER BUS, ONLY IF SENDING ---
 ; ---- THE SEND IS REFUSED ON TRACK 8 (the one-aux rig, 7 Sep 2026) --------
-; Track 8 is where the aux returns (a Character station in BUS mode), so a
-; send from it would feed the return back into the bus it returns -- the
-; master loop that silenced the unit on 6 Sep 2026 (FAILURE_MODES). Refused
-; by construction, not by discipline: on PAYLOAD A, core 0's position 3
-; (r7 == $6b00, the FX2 slot of track 8) contributes nothing and registers
-; nothing, whatever its knob says. Payload B's position 3 is track 4 and
-; sends normally. The payload is told apart by its Y base literal, which
-; build_bus.py rewrites to $38000 for payload B and leaves at $30000 for A
-; (the same discriminator the HKB diagnostic used); the literal is never
-; used as an address here.
+; Track 8 is the master: with MASTER TRACK on, its chain input is the mix
+; of the other tracks, the hosts' wet included, so a send from it would put
+; the bus's wet back into the bus -- the master loop that silenced the unit
+; on 6 Sep 2026 (FAILURE_MODES). Refused by construction, not by
+; discipline: on PAYLOAD A, core 0's position 3 (r7 == $6b00, the FX2 slot
+; of track 8) contributes nothing and registers nothing, whatever its knob
+; says. Payload B's position 3 is track 4 and sends normally. The payload
+; is told apart by its Y base literal, which build_bus.py rewrites to
+; $38000 for payload B and leaves at $30000 for A (the same discriminator
+; the HKB diagnostic used); the literal is never used as an address here.
+; (Sam, 20 Sep 2026, after the return left T8: "we still dont want send on
+; t8".)
         move    #>$30000,a              ; this payload's base ($38000 on B)
         move    #>$38000,x0
         cmp     x0,a

@@ -285,11 +285,15 @@ out/emu/ot_emu --image out/mainos_bus.bin --card out/card.img --set OCTABAM --pr
 verify` when `OT_PROJECT` is set or `~/.octabam_project` names a project) does all of this for one part of a real
 project and asserts: the load completed; the live FX1/FX2 id arrays equal
 the part's; every track's record halfwords 18-26 equal its page-2 lane;
-every track with record audio has a chain output; the main out is not
-silent; CC 40 over MIDI IN moved T2's SEND and (CC PAGE 2) CC 68 reached
-T1's FX1 page 2; on a one-aux remix RET at 127 over CC 38 brings T2's
-send back on T8's chain output through the delay and the reverb (−45
-dBFS at frame 900; the two engines warm up 256 blocks each, in series);
+every track with record audio has a chain output; the main out's TX0
+counts are printed (informational: on OCTABAM89_setgate only T8's chain
+output ever reached TX0 under the port, measured 20 Sep 2026 with and
+without the return; which tracks reach TX0 under the port is open); CC 40
+over MIDI IN moved T2's SEND and (CC PAGE 2) CC 68 reached
+T1's FX1 page 2; on a bus remix each engine's host carries T2's send on
+its chain output (the wet prints on the host since 20 Sep 2026; the
+engines warm up 256 blocks each) and an engine on the wrong core is
+refused;
 the load rewrote no project file; the firmware's LOG carries no error
 beyond the unstaged samples. The tested bank is staged as bank A too and
 `MASTER_TRACK=0` (the emulated load ends on bank A, and the transport

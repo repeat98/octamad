@@ -379,7 +379,7 @@ Slot 6 is on `$c`; `$b` is not a page-2 parameter word.
 | 8 | `$d` | knob, bits 16–23 | DIFF / MRAT |
 | 9 | `$d` | bits 8–15 | SHFT / SIZE |
 | 10 | `$e` | knob, bits 16–23 | GATE / PTCH |
-| 11 | `$e` | bits 8–15 | RATE / FRZE |
+| 11 | `$e` | bits 8–15 | (blank) / WOW |
 
 Evidence: MODE on slot 7 read bits 8–15 across five positions on hardware;
 SHMR needed `$c`'s knob field, not `$b`'s; slot 11 was dead for both
@@ -397,7 +397,7 @@ parts (`CLAUDE.md`, stamp-defaults).
 renders bit-identical to the `MODE=`/`DMODE=` build-time overrides, which
 exist because the harness previously mapped slots 6–11 onto `$b..$e`
 cyclically (slot 6 on `$b`: the delay's WOW worked locally and never on
-hardware). `send_probe` has `--dmode/--dptch/--dfrz/--width/--gate/--rdel`.
+hardware). `send_probe` has `--dmode/--dptch/--dwow/--width/--gate/--rdel`.
 `dsp_host` writes params once before the first block; a mid-run change
 (FREEZE on a filled line) is hardware-only.
 
@@ -409,7 +409,7 @@ Array A (`P+0x0ca`), one signature: `void fmt(char *buf, int value)`
 
 | formatter | prints | used by |
 |---|---|---|
-| `0x4003c718` | `"%d", value + 1` | stepped selects (TAPS, TYPE, MODE/PTCH/FRZE), DELAY TIME |
+| `0x4003c718` | `"%d", value + 1` | stepped selects (TAPS, TYPE, MODE/SIZE), DELAY TIME |
 | `0x4003c14c` | `value ? "ON" : "OFF"` (the label is the format string) | DELAY X/TAPE/SYNC/LOCK/PASS |
 | `0x4003c770` | `value ? "%d" : "OFF"` | NOTE CHAN |
 | `0x4003c7a0` | `value − 64`, `"+%d"` / `"%d"` | SPRING BAL, bipolar donors |
@@ -424,7 +424,7 @@ hard-coded (`cmp #N` after a common prologue):
 
 | B | widget |
 |---|---|
-| `0x40047254` | 5-position ticks (CHORUS TAPS; borrowed for MODE/PTCH/FRZE, so PTCH's 4 values sit on a 5-tick widget) |
+| `0x40047254` | 5-position ticks (CHORUS TAPS; borrowed for MODE/SIZE, so SIZE's 4 values sit on a 5-tick widget) |
 | `0x40047424` | 3-position (SPRING TYPE) |
 | `0x400477d4` | boolean (DELAY's switches) |
 | `0x400467a4` / `0x4004661c` | numeric bar (NOTE) |

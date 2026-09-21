@@ -107,7 +107,7 @@ the selected effects, places them into each payload's donor region in
 priority order, wires the dispatch tables, patches the ColdFire-side menu
 descriptors, installs caves, detours and the DRAM platform, and
 census-checks itself. It is driven by env flags (`DEV`, `NOSHIM`, `MODE`,
-`DFRZAT`, `TPROBE`, …; grep `environ` in the file); the render cache
+`DNOTE`, `TPROBE`, …; grep `environ` in the file); the render cache
 fingerprints every one (`docs/remixer/HARNESS.md`). `make image` repacks
 the result into a card-flashable `.bin` with the build number stamped into
 the OS version string. `docs/remixer/FLASHING.md` before writing to
@@ -123,7 +123,7 @@ Render on the desktop at ~6× real time instead of flashing.
 | `tools/harness/dsp_host` | the emulator harness: boots a payload dump (both payloads, `-memB`, shared window shared), calls effects through the recovered ABI, captures audio, polices memory, meters instructions per block |
 | `tools/harness/rig_render.py` (`make render-rig`) | the whole rig locally: eight tracks on both cores, FX1→FX2 chained per track, ids and knobs from a project part or by name, stems in, per-track + mix wavs and `meter.txt` out |
 | `tools/verify/verify_twocore.py` (`make verify-twocore`, in `make check`) | the two-core gate: the servers on their real cores render bit-identical to the DEV hatch, and under four interleave skews |
-| `tools/verify/verify_onebus.py` (`make verify-onebus`, in `make check`) | the one aux bus on both cores: the chain, the last-live-stage return, MIX passthrough (sample-exact), hosts quiet under a return, the track-8 send refusal, stations without sends, four skews |
+| `tools/verify/verify_onebus.py` (`make verify-onebus`, in `make check`) | the one aux bus on both cores: the chain, each host's print, WET passthrough (sample-exact), the track-8 send refusal, a stored RET byte inert, stations without sends, four skews |
 | `tools/harness/render_reverb.py` (`make reverb IN=..`) | wav → BusVerb → wav, knobs by name, sweeps, wet-only |
 | `tools/harness/send_probe.py` (`make render`, `make render-delay`) | renders a SEND→bus→server path and measures it numerically; `--direct` puts audio through one module on its own track, the way an insert is rendered |
 | `tools/harness/abkit.py`, `station_laws.py`, `pressure.py`, `port_compare.py` | A/B kits for voicing by ear; a station's control laws read off noise; every selectable layout priced and the dearest rendered; the harness against the ColdFire port on one part |

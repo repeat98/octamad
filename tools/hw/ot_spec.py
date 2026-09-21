@@ -284,6 +284,9 @@ def report(pdir, bank=None):
                                       "locks": locks}
             bank_out["patterns"][str(pt + 1)] = {"tracks": tracks}
         out["banks"][str(num)] = bank_out
+    wrong = op.wrong_core(pdir)
+    if wrong:
+        out["warnings"] = wrong
     return out
 
 

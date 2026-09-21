@@ -11,15 +11,19 @@ import json
 import math
 import os
 import pathlib
+import platform
 import re
+import shlex
 import struct
 import subprocess
 import sys
+import sysconfig
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tools'))
 import toolpath  # noqa: E402,F401
 import send_probe  # noqa: E402
+from dsp_host_cli import command as dsp_host_command  # noqa: E402
 from remix import registry  # noqa: E402
 
 OUT = ROOT / 'out/euclid'
@@ -37,7 +41,7 @@ class State(C.Structure):
     _fields_ = ([(x, C.c_uint32) for x in ('epoch', 'next', 'period', 'age', 'rng', 'triggers')]
                 + [('values', C.c_uint16 * 64)]
                 + [(x, C.c_uint16) for x in ('level', 'origin', 'target')]
-                + [(x, C.c_uint8) for x in ('initialized', 'mode', 'attacking', 'active')]
+                + [(x, C.c_uint8) for x in ('initialized', 'mode', 'active')]
                 + [('reserved', C.c_uint16)])
 
 
@@ -58,6 +62,14 @@ def run(cmd, **kw):
     if r.returncode:
         raise RuntimeError(f"{' '.join(map(str, cmd))}\n{r.stdout[-1800:]}\n{r.stderr[-1800:]}")
     return r.stdout
+
+
+def native_compiler():
+    """Use the compiler (and, on macOS, architecture) of this Python."""
+    cmd = shlex.split(sysconfig.get_config_var('CC') or 'cc')
+    if sys.platform == 'darwin' and '-arch' not in cmd:
+        cmd += ['-arch', platform.machine()]
+    return cmd
 
 
 def params(**kw):
@@ -296,13 +308,9 @@ def dsp_tests(image):
     def render(mem, ep, signal, values, label, automation=None):
         src, dst = OUT / 'input.raw', OUT / f'{label}.raw'
         src.write_bytes(struct.pack(f'<{len(signal)}i', *signal))
-        args = [host, '-mem', mem, '-init', f'{ep[0]:x}', '-proc', f'{ep[1]:x}',
-             '-frames', 16, '-blocks', len(signal) // 16, '-alloc', 0, '-r7', 1,
-             '-in', src, '-out', dst, '-params', ','.join(map(str, values)), '-guard']
-        if automation:
-            path = OUT / 'automation.csv'
-            path.write_text('\n'.join(','.join(map(str, row)) for row in automation))
-            args += ['-paramfile', path]
+        args = dsp_host_command(host, mem, ep[0], ep[1], src, dst, values,
+                                len(signal) // 16, guard=True,
+                                schedules=automation or ())
         run(args)
         data = dst.read_bytes()
         return struct.unpack(f'<{len(data)//4}i', data)[::2]
@@ -330,11 +338,10 @@ def dsp_tests(image):
             p = defaults.copy(); p[0] = 48; p[1] = 0
             levels.append(rms(render(mem, ep, tone, p, f'lp_{payload}_{f}')[-8000:]))
         slope = 20 * math.log10(levels[0] / max(levels[1], 1))
-        check(f'DSP {payload}: three-pole low-pass slope', 16 < slope < 21, f'{slope:.2f} dB/oct')
+        check(f'DSP {payload}: two-pole low-pass slope', 10 < slope < 14, f'{slope:.2f} dB/oct')
 
-        # A third-order Butterworth magnitude is the design target at RES=0.
-        # Check the knee as well as the slope: three identical poles would
-        # share the slope but lose 9 dB at cutoff rather than about 3 dB.
+        # The two-integrator SVF uses Q=1 at RES=0. Check its knee as well as
+        # the asymptotic slope, including the bilinear frequency warping.
         errors = []
         for cutoff in (32, 64, 96):
             fc = 30 * 500 ** (cutoff / 128)
@@ -345,10 +352,21 @@ def dsp_tests(image):
                 out = render(mem, ep, tone, p, f'knee_{payload}_{cutoff}_{ratio}')
                 gain = rms(out[-8000:]) / rms(tone[-8000:])
                 w = math.tan(math.pi*f/44100) / math.tan(math.pi*fc/44100)
-                target = 1 / math.sqrt(1 + w**6)
+                target = 1 / math.sqrt((1 - w*w)**2 + w*w)
                 errors.append(abs(20 * math.log10(gain / target)))
-        check(f'DSP {payload}: non-resonant LP matches third-order target at three cutoffs',
+        check(f'DSP {payload}: non-resonant LP matches the two-pole target at three cutoffs',
               max(errors) < 0.2, f'{max(errors):.3f} dB max error')
+
+        p = defaults.copy(); p[0] = 127; p[8] = 3; p[11] = 127
+        amp = render(mem, ep, ramp, p, f'amp_unity_{payload}')
+        error = max(abs(a - b) for a, b in zip(ramp, amp))
+        check(f'DSP {payload}: AMP at full level and full MIX is unity',
+              error <= 2, f'{error} LSB max error')
+        p[0] = 0
+        amp = render(mem, ep, ramp, p, f'amp_zero_{payload}')
+        residual = max(map(abs, amp))
+        check(f'DSP {payload}: AMP at zero level and full MIX is silent',
+              residual <= 2, f'{residual} LSB residual')
 
         # The denominator must follow the cutoff ramp. Freezing it at the
         # destination caused >20x overshoots on low-level input when closing.
@@ -465,7 +483,8 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     run([sys.executable, 'modules/euclid/generate_control.py', '--check'])
     library = OUT / 'control.so'
-    run(['cc', '-O2', '-shared', '-fPIC', '-DEUCLID_NATIVE', 'modules/euclid/control.c', '-o', library])
+    run([*native_compiler(), '-O2', '-shared', '-fPIC', '-DEUCLID_NATIVE',
+         'modules/euclid/control.c', '-o', library])
     lib = C.CDLL(str(library))
     lib.eu_clock_start.argtypes = lib.eu_clock_update.argtypes = [C.POINTER(Clock), C.c_uint32]
     lib.eu_process.argtypes = [C.POINTER(State), C.POINTER(Clock), C.POINTER(Params), C.c_uint32, C.c_uint, C.c_uint]

@@ -55,7 +55,7 @@ MODULE = Module(
     name="busdelay",
     key="DELAY SERVER",
     kind=Kind.DSP_EFFECT,
-    doc="Multi-mode delay: CLEAN / pitched GRAIN cloud / REVERSE, freeze.",
+    doc="Multi-mode delay: CLEAN / pitched GRAIN cloud / REVERSE, tape wow.",
     menu=MenuEntry(
         fx2_id=0x06,
         donor_desc=0x400d5726,        # SPRING REV
@@ -68,7 +68,7 @@ MODULE = Module(
         # SEND at slot 0 on every track, hosts included: this host's own dry
         # send into the aux (headroomed, summed, counted only while nonzero).
         Param(b"SEND", 0, active=True, formatter=_PLAIN,
-              doc="this track's send into the one aux bus (delay, then reverb, back on T8)"),
+              doc="this track's send into the one aux bus (delay, then reverb; the wet on each host)"),
         Param(b"TIME", 20, active=True, formatter=_PLAIN,
               doc="delay time, 1.5 .. 739 ms -- a free dial that sticky-snaps to tempo divisions"),
         Param(b"FDBK", 60, active=True, formatter=_PLAIN, link=True,
@@ -81,12 +81,12 @@ MODULE = Module(
         # 5: L/R = 1/feedback).
         Param(b"PING", 0, active=True, formatter=_PLAIN,
               doc="stereo ping-pong spread; 0 = centred, the alternation is in the top quarter"),
-        # WET: the repeats' level on top of the send. out = in + wet*WET goes
-        # on to the reverb and to the return: the send passes through the
-        # pedal at unity, WET adds the repeats (a crossfade until 15 Sep
-        # 2026). The chain itself is hardwired.
+        # WET: the repeats' level. out = in + wet*WET goes on to the reverb
+        # (the send passes through the pedal at unity, WET adds the repeats;
+        # a crossfade until 15 Sep 2026); the host prints wet*WET under its
+        # dry. The chain itself is hardwired.
         Param(b"WET", 127, active=True, formatter=_PLAIN,
-              doc="the repeats' level; the send passes through at unity"),
+              doc="the repeats' level, on this host and into the reverb"),
         # ---- page 2 -------------------------------------------------------
         # MODE on slot 6: an even slot is the one the panel's page-2 knob
         # editor writes (docs/firmware/MAINMENU.md 9c-ii). The DSP reads $c's
@@ -103,7 +103,8 @@ MODULE = Module(
               doc="GRAIN: scatter, how far apart the grains read; inert in CLEAN and REVERSE"),
         Param(b"DENS", 127, 128, active=True, formatter=_PLAIN, link=True,
               doc="GRAIN: density, full dial, level-flat (R61); inert in CLEAN and REVERSE"),
-        # SIZE: GRAIN's grain length and REVERSE's segment, one select.
+        # SIZE: GRAIN's grain length and REVERSE's segment, one select; drawn
+        # GLEN in GRAIN, SLEN in REVERSE, `---` in CLEAN (the mode names it).
         Param(b"SIZE", 1, 4, active=True, formatter=_STEP,
               labels=("46MS", "93MS", "23MS", "XTRM"),
               doc="segment/grain size 46/93/23 ms; XTRM = 186 ms grains, 371 ms REVERSE segments"),
@@ -111,13 +112,14 @@ MODULE = Module(
         # pitch; idle in other modes.
         Param(b"PTCH", 64, 128, active=True, formatter=_PLAIN, link=True,
               doc="GRAIN pitch, +-2 oct, 64 = unison (a held MIDI note overrides); idle in other modes"),
-        Param(b"FRZE", 0, 2, active=True, formatter=_STEP,
-              labels=("RUN", "HOLD"),
-              doc="freeze the line as a loop -- loop length = TIME"),
+        # WOW in freeze's slot (20 Sep 2026, Sam: "wow back freeze gone").
+        Param(b"WOW", 0, active=True, formatter=_PLAIN,
+              doc="tape wobble on the loop tap, every mode; 127 = +-254 samples, 0.8 Hz + flutter"),
     ),
-    # ---- what each MODE re-defaults ---------------------------------------
-    # SCAT and DENS (slots 7/8) are GRAIN's alone since the wow went, so no
-    # mode renames them.
+    # ---- what each MODE re-defaults, and which knobs it names `---` ------
+    # A knob a mode never reads is named `---` there, the unused-knob
+    # convention (Sam, 20 Sep 2026: every effect, every mode). SCAT, DENS and
+    # PTCH are GRAIN's; SIZE is GRAIN's and REVERSE's; REVERSE pins PING to 0.
     mode_slot=6,
     mode_views=(
         # slots: 1 TIME, 2 FDBK, 3 TONE, 4 PING, 5 MIX, 10 PTCH; SEND at 0 is
@@ -125,14 +127,15 @@ MODULE = Module(
         # the 32K lines (15 Sep 2026): 20 = 5,184 samples, 18 = 4,672 -- the
         # same times the views held at 40 / 36 under the old *128 law.
         ModeView(mode=0,                        # CLEAN: centred
-                 names={7: b"---", 8: b"---"},   # SCAT / DENS are GRAIN's alone
+                 names={7: b"---", 8: b"---", 9: b"---", 10: b"---"},   # SCAT DENS SIZE PTCH: not read
                  defaults={1: 20, 2: 60, 3: 100, 4: 0, 5: 127, 10: 64}),
         ModeView(mode=1,                        # GRAIN: Sam's recipe on the unit
                  # (15 Sep 2026): octave up, ping-pong
+                 names={9: b"GLEN"},            # the grain length (Sam, 20 Sep 2026: "size is confusing")
                  defaults={1: 18, 2: 40, 3: 100, 4: 127, 5: 127,
                            7: 40, 8: 127, 9: 1, 10: 96}),
         ModeView(mode=2,                        # REVERSE: centred, 371 ms
-                 names={7: b"---", 8: b"---"},
+                 names={4: b"---", 7: b"---", 8: b"---", 9: b"SLEN", 10: b"---"},   # PING pinned 0; the segment length; SCAT DENS PTCH: not read
                  defaults={1: 20, 2: 60, 3: 100, 4: 0, 5: 127,   # segments (SIZE 3 = XTRM)
                            9: 3, 10: 64}),
     ),
@@ -150,7 +153,7 @@ MODULE = Module(
         r7_latch_slot=0x86,               # payload B tracks its own rotation
         gate_label="bus_notfirst",
         override_markers=("; DMODE_OVERRIDE", "; DINT_OVERRIDE",
-                          "; DFRZ_OVERRIDE", "; DNOTE_OVERRIDE"),
+                          "; DNOTE_OVERRIDE"),
         ptable=PTABLE,
     ),
     # The source names 0901h-0903h as this module's RATE/DRV state block; the

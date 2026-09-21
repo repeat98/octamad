@@ -1,4 +1,4 @@
-# The cross-core bus: one aux, delay into reverb, return on T8
+# The cross-core bus: one aux, delay into reverb, each wet on its host
 
 The architecture record for the bus. The development logs, `XBUS_LOG.md`
 (the cross-core race) and `BUS.md` (the per-bank two-bus design this
@@ -9,8 +9,9 @@ replaced, and the one-aux build of 7 Sep 2026), are in git history under
 ## The shape
 
 ```
-every track ──SEND──▶ [aux accumulator] ──▶ BusDelay (T1 FX2) ──chain──▶ BusVerb (T5 FX2) ──▶ RET on T8 (Character)
-  (SEND's one knob; the hosts' too)         stage 1, WET                 stage 2, WET          one level
+every track ──SEND──▶ [aux accumulator] ──▶ BusDelay (T1 FX2) ──chain──▶ BusVerb (T5 FX2)
+  (SEND's one knob; the hosts' too)         stage 1: T1 prints           stage 2: T5 prints
+                                            dry + wet × WET              dry + wet × WET
 
 CORE 0 (payload A)  tracks 5–8   BusVerb   Y:0x4000–0xBFFF (private) + Y:0x30000–0x37FFF (shared lo) = 65,536 words = 1.49 s
 CORE 1 (payload B)  tracks 1–4   BusDelay  Y:0x4000–0xBFFF (private) + Y:0x38000–0x3FFFF (shared hi) = 65,536 words = 1.49 s
@@ -36,42 +37,38 @@ CORE 1 (payload B)  tracks 1–4   BusDelay  Y:0x4000–0xBFFF (private) + Y:0x3
   at slot 0 as well (the host's own dry into the same accumulator, same
   headroom, count and auto-gain). Stations carry no sends; a part that
   stored 127 in a former send slot sends nothing.
-- The chain: each stage stamps a shared word every block it runs (after
-  its warm-up): the delay `Y:0x9c3` (read by the reverb) and `Y:0x9c5` (read
-  by the return), the reverb `Y:0x9c4`; clear-on-read, one writer one
-  reader, three blocks of grace. The delay's stage output goes mono at
+- The chain: the delay stamps `Y:0x9c3` every block it runs (after its
+  warm-up); the reverb reads it, clear-on-read, one writer one reader,
+  three blocks of grace. The delay's stage output goes mono at
   unity into the chain buffer `Y:0x901..0x940` (four rotations × 16 words,
   stored, never cleared). While the delay is live the reverb reads the
   chain buffer with bus gain 1/8 (the loop's `asl #3` lands the sample
   untouched); otherwise the aux accumulator with the 1/√N auto-gain.
   Delay only, reverb only, both, or neither all work.
-- WET on each engine (slot 5): `out = in + wet × WET`, `in` the stage's
-  chain input passing at unity — a pedal on the send: the send reaches the
-  master through both stages and each WET adds its effect. Delay WET 0 = a
-  clean reverb send with the delay in the chain (sample-exact against a
-  reverb-only run two blocks later); reverb WET 0 = the delay's output at
-  the return, the reverb taking nothing out. Until 15 Sep 2026 each stage
+- WET on each engine (slot 5). The delay's stage output into the chain is
+  `in + wet × WET`, `in` the aux passing at unity, so the reverb hears the
+  sends and the repeats; delay WET 0 = a clean reverb send with the delay in
+  the chain (sample-exact against a reverb-only run two blocks later). Each
+  host prints `wet × WET` under its own dry: T1 (the delay host) the
+  repeats, T5 (the reverb host) the tail. Until 15 Sep 2026 each stage
   crossfaded (`in × (1 − MIX) + wet × MIX`), so the reverb's MIX faded the
-  delay out and both at 0 returned the dry send alone. Each stage publishes
-  its output stereo, four deep (`0x9da` reverb, `0xa5a` delay); the host
-  prints `wet × WET` under its dry, or nothing while a return is live.
-- One return, on track 8: Character's `RET` (page-1 slot 4) returns the
-  last live stage's output (the reverb's if it runs, else the delay's, else
-  silence), added before the chain, and stamps both hosts quiet while it is
-  up. Pinned to dispatch position 3 on payload A (`r7 $6700/$6800`); a
-  Character anywhere else, T4 included, returns nothing. The core is read
-  off the dispatch table (BusVerb's entry is real on A and the SEND alias on
-  B, `X:$21c` vs `X:$21e`); a remix without BusVerb has no return.
-- The send is refused on track 8: `SEND` at core 0's position 3 contributes
-  and registers nothing (the master loop that silenced the unit on 6 Sep
-  2026, `FAILURE_MODES.md`). Payload B's position 3 (T4) sends normally; the
-  payload is told apart by SEND's `$30000` base literal, rewritten to
-  `$38000` on B (`YBase.XBUS`).
-- ✅ Flash 7 (tag OCTABAM21): the return reaches T8; the hosts go quiet
-  while RET is up and print their own wet again within 3 blocks of RET → 0;
-  the send is refused on T8; a T4 station returns nothing; delay-only falls
-  through to the delay's output. ✅ Port O12: the send → delay → return path
-  bit-identical to `dsp_host` at a 36-sample offset.
+  delay out.
+- Where the wet comes out, 20 Sep 2026: on the hosts, and nowhere else.
+  From 7 to 20 Sep 2026 each stage also published its output stereo, four
+  deep (`0x9da` reverb, `0xa5a` delay), Character's `RET` on track 8 (by
+  dispatch position, payload A position 3, `r7 $6a00`) returned the last
+  live stage's output and stamped both hosts quiet (`0x9d8/0x9d9`). ✅
+  Flash 7 (OCTABAM21) measured all of that on the unit; on image 35 the
+  return was "less rich / bit-crushed" on the unit and clean under the port
+  (`FAILURE_MODES.md`), and the mechanism went. The hosts add the wet in
+  place after their own send tap, so a host never sends its own wet.
+- The send is refused on track 8: `SEND` at core 0's position 3 (`r7
+  $6b00` on payload A) contributes and registers nothing. T8 is the
+  master: with MASTER TRACK on its input is the mix, the hosts' wet
+  included, and a send from it would put that wet back into the bus (the
+  master loop that silenced the unit on 6 Sep 2026, `FAILURE_MODES.md`).
+  Payload B's position 3 (T4) sends normally; the payload is told apart by
+  SEND's `$30000` base literal, rewritten to `$38000` on B (`YBase.XBUS`).
 - Return balance on material (7 Sep, `out/rig/oneaux/`): drum loop −25.1 dB
   rms with the reverb at MIX 0 and −26.8 at MIX 127; pad −31.4 / −32.8; no
   makeup. (The "wet ~25 dB under the repeats" reading from the 438 Hz gate
@@ -85,8 +82,8 @@ touches only the ids a station replaced):
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | SEND | SEND | | | | | | | | | | | |
 | BusVerb | SEND | TIME | MOD | SIZE | TONE | WET | MODE | SHMR | DIFF | SHFT | GATE | RATE |
-| BusDelay | SEND | TIME | FDBK | TONE | PING | WET | MODE | MDEP | MRAT | SIZE | PTCH | FRZE |
-| Character | DRV | FOLD | TXTR | COMP | RET | TONE | MIX | SAT | — | — | WDTH | — |
+| BusDelay | SEND | TIME | FDBK | TONE | PING | WET | MODE | SCAT | DENS | SIZE | PTCH | WOW |
+| Character | DRV | FOLD | TXTR | COMP | TONE | MIX | SAT | WDTH | — | — | — | — |
 
 ## What a send is
 
@@ -115,7 +112,7 @@ buffers back from the write:
 Bus scratch, `Y:0x900..` in core 0's half of the shared window
 (`modules/send/send_client.asm` is the map): `0x900` rotation, `0x901..0x940`
 chain buffer, `0x941` BusVerb host's SEND field, `0x961..0x9a0` aux
-accumulator, `0x9c1/0x9c2` role locks, `0x9c3..0x9c5` liveness stamps,
+accumulator, `0x9c1/0x9c2` role locks, `0x9c3` the delay's liveness stamp,
 `0x9c7..0x9ca` aux send count per buffer. Role locks make the first
 instance of a server the only one: a second instance returns as a
 passthrough, so a server's cycle cost is charged once per bank.
@@ -189,13 +186,13 @@ were added after the delay's IN decode was deleted by a splice with 17/17
 still passing), the three carriers of the housekeeping block, the election,
 1–7 senders per bus, both cross-sends, split blocks, compared bit-for-bit
 against a stamp (`SAVE=1` first). `tools/verify/verify_onebus.py` (in `make
-check`) runs the chain on both cores: the return is the reverb's output and
-both hosts are silent under it; delay-only falls through; neither engine
-returns silence; delay WET 0 == no delay two blocks later, sample-exact;
-reverb WET 0 returns the aux itself; both at WET 0 return the aux through
-both stages; delay WET 127 + reverb WET 0 returns the delay-only return; a
-SEND on core-0 position 3 at SEND 127
-changes nothing and the mirror position on core 1 does; a station with
+check`) runs the chain on both cores: T5 prints the reverb (stereo) and T1
+the delay; the reverb hears the delay; delay WET 0 == no delay two blocks
+later, sample-exact; a host at WET 0 prints only its dry; T1's print is
+bit-identical with the reverb at WET 0, WET 127 or absent; a SEND at
+core-0 position 3 (T8) at SEND 127 changes neither host and the mirror
+position on core 1 does; a Character with slot 4 stored 127 (RET in a
+pre-20-Sep part) prints nothing and changes neither host; a station with
 stored send bytes contributes nothing; the chain is identical under four
 instruction-level skews. `make verify-twocore`: SEND, delay and series hops
 on their real cores == the DEV hatch.

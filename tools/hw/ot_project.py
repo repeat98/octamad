@@ -403,8 +403,8 @@ def stamp_defaults(pdir, remix_name, replaced_only=True, guard=True, keep_mode=F
     one of their ids. Returns the number of (part, track, slot) writes.
 
     keep_mode=True keeps a stored MODE byte that is within its select's count
-    and applies that mode's ModeView defaults (BusDelay in GRAIN keeps GRAIN
-    with RET 127; a BusDelay in GRAIN keeps GRAIN and gets GRAIN's knobs). Off
+    and applies that mode's ModeView defaults (a BusDelay in GRAIN keeps
+    GRAIN and gets GRAIN's knobs). Off
     by default because a replaced id's stored bytes are the STOCK effect's
     layout, where the byte at the mode slot means something else entirely --
     use it on a part that has already been stamped or edited under ours."""
@@ -484,7 +484,41 @@ def stamp_defaults(pdir, remix_name, replaced_only=True, guard=True, keep_mode=F
             print(f"bank{num:02d}: {len(done)} slots stamped with our defaults")
     print(f"{total} slot(s) stamped for remix {remix_name!r} "
           f"({'replaced ids only' if replaced_only else 'every id of ours'})")
+    for line in wrong_core(pdir):
+        print(f"WARNING: {line}")
     return total
+
+
+# Payload A serves tracks 5-8 and B tracks 1-4 (measured 10 Aug 2026); the
+# manifests say which payload a module is placed in. An FX2 pick of a
+# single-payload module on the other core runs as SEND under SPEC (the
+# absent server's id aliases to SEND): nothing hangs, no engine runs.
+PAYLOAD_TRACKS = {"A": range(4, 8), "B": range(0, 4)}
+
+
+def wrong_core(pdir):
+    """Every (bank, part, track) whose FX2 names a module the other core
+    carries -- one line each, for the stamp tools and the set gate."""
+    sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
+    from remix import registry
+    single = {}
+    for m in registry.modules().values():
+        if m.menu is None or m.dsp is None or len(m.dsp.payloads) != 1:
+            continue
+        (pl,) = m.dsp.payloads
+        single[m.menu.fx2_id] = (m.key, pl)
+    out = []
+    for bank in sorted(pathlib.Path(pdir).glob("bank*.work")):
+        data = bank.read_bytes()
+        for p in range(NPARTS_ALL):
+            off = PART_BASE + p * PART_STRIDE
+            for t in range(NTRACKS):
+                hit = single.get(data[off + FX2_OFF + t])
+                if hit is not None and t not in PAYLOAD_TRACKS[hit[1]]:
+                    lo, hi = PAYLOAD_TRACKS[hit[1]][0] + 1, PAYLOAD_TRACKS[hit[1]][-1] + 1
+                    out.append(f"{bank.name} part {p + 1} T{t + 1}: {hit[0]} runs as SEND "
+                               f"there (payload {hit[1]} = T{lo}-T{hi})")
+    return out
 
 
 def _resolve_module(which):
@@ -609,8 +643,7 @@ def stamp_slot(pdir, which, slot, value=None, guard=True, tracks=None):
     keeps the engines' bytes deliberately ("Sam's knobs"), and re-stamping all
     twelve would throw those away. Page 1 is slot < 6. `tracks` (1-based,
     e.g. {8}) limits the stamp to those tracks -- the same module on another
-    track keeps its byte (6 Sep 2026: the MASTER's Character -VRB must be 0,
-    T1's Character -VRB is a real send)."""
+    track keeps its byte."""
     pdir = pathlib.Path(pdir)
     fx_id, mod = _resolve_module(which)
     slot = _resolve_slot(mod, slot)
@@ -737,12 +770,11 @@ def make_test_project(src, dest, remix_name):
     print(f"map also at {dest / 'OCTABAM_TEST_MAP.txt'}")
 
 
-# ---- the RIG project: the set's layout, with the returns wired ------------
-# One part = the whole rig on its eight tracks, as designed (the BamSep26
-# page and docs/history/BUS.md "The returns"): stations on FX1 everywhere, the two
-# engines in T1's and T5's FX2, the stock delay where a track wants one, and
-# T8's Character station in SAT=BUS with both returns up. Every part of every
-# bank gets the same layout, so any pattern is the rig. Knob bytes are the
+# ---- the RIG project: the set's layout --------------------------------------
+# One part = the whole rig on its eight tracks: stations on FX1 everywhere,
+# the two engines in T1's and T5's FX2 (each prints its wet on its own track
+# since 20 Sep 2026), a SEND on T2-T7, none on T8. Every part of every bank
+# gets the same layout, so any pattern is the rig. Knob bytes are the
 # manifest defaults with the few deliberate exceptions listed per track.
 RIG = (
     (1, ("CHARACTER", {}),                  ("DELAY SERVER", {"SEND": 30})),
@@ -752,7 +784,7 @@ RIG = (
     (5, ("MODULATION", {}),                 ("REVERB SERVER", {"SEND": 40})),
     (6, ("SPECTRUM", {}),                   ("SEND", {"SEND": 50})),
     (7, ("SPECTRUM", {}),                   ("SEND", {"SEND": 40})),    # SPECTRUM, not
-    (8, ("CHARACTER", {"RET": 127, "COMP": 40}), (None, {})),   # the return by position (RET = slot 4, 13 Sep 2026); GLUE by position (14 Sep); no FX2 (no send from T8)
+    (8, ("CHARACTER", {"COMP": 40}),        (None, {})),   # GLUE by position (14 Sep 2026); no FX2: the SEND is refused on T8 (the master's input is the mix)
 )
 
 
@@ -928,8 +960,7 @@ def make_rig_project(src, dest, remix_name):
         m = mods[key]
         if key not in remix.modules:
             sys.exit(f"rig names {key!r}, which remix {remix_name!r} does not place")
-        # manifest defaults, the chosen MODE's view (T8's SAT=BUS brings RET
-        # to 127 on its own), then the explicit knobs
+        # manifest defaults, the chosen MODE's view, then the explicit knobs
         return m.menu.fx2_id, module_defaults(m, knobs)
 
     plan = [(t, slot(f1), slot(f2)) for t, f1, f2 in RIG]
@@ -967,10 +998,10 @@ def make_rig_project(src, dest, remix_name):
              f"# copied from {src}", ""]
     for t, f1, f2 in RIG:
         lines.append(f"T{t}  FX1 {f1[0] or '-':20s} {f1[1]}   FX2 {f2[0] or '-':20s} {f2[1]}")
-    lines += ["", "ONE AUX (7 Sep 2026): every track's AUX feeds the delay (T1), then the",
-              "reverb (T5); T8 returns the last live stage (RET, slot 4, at 127).",
-              "Turn T8's RET to 0 and the hosts print again within 3 blocks. T8 has no",
-              "FX2: the SEND is refused there anyway, and the stations have no sends."]
+    lines += ["", "ONE AUX: every track's SEND feeds the delay (T1), then the reverb (T5);",
+              "T1 prints the repeats and T5 the tail under their own dry (20 Sep 2026).",
+              "T8 has no FX2: the SEND is refused there (the master's input is the mix,",
+              "the hosts' wet included). The stations have no sends."]
     (dest / "OCTABAM_RIG_MAP.txt").write_text("\n".join(lines) + "\n")
     print(f"{len(list(dest.glob('bank*.work')))} banks written and verified -> {dest}")
     print(f"map at {dest / 'OCTABAM_RIG_MAP.txt'}")
@@ -1040,8 +1071,8 @@ if __name__ == "__main__":
         # whose meaning changed. Module by key/name/id, slot by name/index,
         # value optional (manifest default). e.g.
         #   stamp-slot PROJ "REVERB SERVER" TONE      -> 64, from the manifest
-        #   stamp-slot PROJ busdelay -DEL 0
-        #   stamp-slot PROJ character -VRB 0 --track 8   (the master only)
+        #   stamp-slot PROJ busdelay TIME 20
+        #   stamp-slot PROJ character COMP 40 --track 8   (the master only)
         args = sys.argv[3:]
         tracks = None
         if "--track" in args:

@@ -38,6 +38,7 @@ from remix.state import fx1_hazard  # noqa: E402
 from remix import stock as stock_mod  # noqa: E402
 import label_fmt  # noqa: E402
 import mode_names  # noqa: E402
+import wide_dial  # noqa: E402
 from remix import ledger  # noqa: E402
 
 OUT = pathlib.Path("out/mainos_bus.bin")
@@ -461,11 +462,11 @@ STOCK_DELAY_P = 0x400d4ace          # DELAY's E (0x400d4a96) + 0x38
 
 # ---- DEV repro hooks for outsider modules ----------------------------------
 # The three core sources have their override arms written out at the top of
-# main() (MODE, DMODE, DFRZAT and the rest). A module that arrives later needs
+# main() (MODE, DMODE, DNOTE and the rest). A module that arrives later needs
 # the same kind of lever without another special case in the placement loop,
 # so it declares a marker in its source and a rule here.
 #
-# ⚠️ EVERY HOOK HERE IS DEV-ONLY, for the reason DFRZAT is: the counter word
+# ⚠️ EVERY HOOK HERE IS DEV-ONLY: the counter word
 # lives at Y:0x37FFE in payload A's owned half of the shared window (init-
 # zeroed, above the bus scratch at 0x360d2), which is free ground in a DEV
 # layout and is NOT a promise about any shipping one.
@@ -808,6 +809,9 @@ def main():
     _exports = {}                   # GLOBAL symbols of every unit linked so
                                     # far -> the --defsym set later units
                                     # resolve their cross-unit references from
+    # Every clone's descriptor address, for a cave that writes into its own
+    # module's descriptor (Character's ret_fmt.s did, 20 Sep 2026; no user now).
+    _exports.update({"CLONE_" + re.sub(r"\W", "_", _k): _a for _k, _a in clone_addr.items()})
 
     def _link(src, at, cpu, work, sections=(), defsyms=(), incdir=None):
         """Assemble `src` and link it at `at`; return (bytes, symbols,
@@ -1312,7 +1316,7 @@ def main():
             _ren = (mode_names.complete(_mod)
                     if _i == _mod.mode_slot and _mod.mode_views else {})
             # Only the MODE select names itself (15 Sep 2026, image 26): a
-            # select whose word is not self-explaining (SIZE, FRZE, SHFT,
+            # select whose word is not self-explaining (SIZE, SHFT,
             # RATE) keeps its name, the tick widget flashing the word.
             if _i == _mod.mode_slot:
                 _ren = mode_names.with_selfname(_ren, _i, _p.labels)
@@ -1357,7 +1361,51 @@ def main():
               f"({_lbl_top - max(_cave_top, cave_end)} B)"
               + (f"; {sum(1 for x in _lbl if x[3] >= OVERFLOW_RUN and x[3] < OVERFLOW_RUN_END)} "
                  f"overflowed into 0x{OVERFLOW_RUN:08x}.. (next free 0x{_ovf_top:08x})"
-                 if _ovf_top > OVERFLOW_RUN else ""))
+                  if _ovf_top > OVERFLOW_RUN else ""))
+    # A labelled select wider than CHORUS.TAPS' five-position widget falls
+    # back to the plain dial, whose raw 0..127 indexing otherwise uses only
+    # part of the arc. Install ONE schema-driven hook for every such slot in
+    # the remix. The generated table keys on formatter addresses, so another
+    # module opts in with Formatter.WIDE_STEPPED rather than claiming this
+    # shared stock detour or coupling itself to an existing module.
+    _wide = []
+    for _n, _i, _nm, _a, _sz, _labels, _rn in _lbl:
+        _p = _MODS[_n].params[_i]
+        if _i in _MODS[_n].wide_stepped_slots:
+            _wide.append((_a, _p.count - 1, _n, _i, _nm))
+    if _wide:
+        _owners = [(m.key, d.symbol) for m in _SEL for d in m.detours
+                   if d.site == wide_dial.SITE]
+        if _owners:
+            sys.exit(f"wide stepped formatter needs shared dial site "
+                     f"0x{wide_dial.SITE:08x}, already claimed by {_owners}")
+        _src = pathlib.Path("out/generated/wide_dial.s")
+        _src.parent.mkdir(parents=True, exist_ok=True)
+        _src.write_text(wide_dial.source([(a, maximum) for a, maximum, *_ in _wide]))
+        _at = (_lbl_top + 3) & ~3
+        _wb, _wsyms, _ = _link(_src, _at, "5475", "out/linked/wide_dial")
+        _in = _at + len(_wb) <= cave_limit
+        if not _in:
+            _at = (_ovf_top + 3) & ~3
+            _wb, _wsyms, _ = _link(_src, _at, "5475", "out/linked/wide_dial")
+        if _at + len(_wb) > (cave_limit if _in else OVERFLOW_RUN_END):
+            sys.exit(f"wide dial hook ({len(_wb)} B) does not fit")
+        if any(img[_at - BASE:_at - BASE + len(_wb)]):
+            sys.exit(f"wide dial hook at 0x{_at:08x} is not free")
+        _got = bytes(img[wide_dial.SITE - BASE:
+                         wide_dial.SITE - BASE + len(wide_dial.STOCK)])
+        if _got != wide_dial.STOCK:
+            sys.exit(f"wide dial site 0x{wide_dial.SITE:08x} is not stock "
+                     f"({_got.hex()})")
+        img[_at - BASE:_at - BASE + len(_wb)] = _wb
+        img[wide_dial.SITE - BASE:wide_dial.SITE - BASE + 6] = \
+            b"\x4e\xf9" + _wsyms["wide_dial_hook"].to_bytes(4, "big")
+        if _in:
+            _lbl_top = _at + len(_wb)
+        else:
+            _ovf_top = (_at + len(_wb) + 3) & ~3
+        print(f"  shared wide dial: {len(_wb)} B at 0x{_at:08x}, "
+              + ", ".join(f"{n} p{i} {nm}" for _, _, n, i, nm in _wide))
     # ==== 1d. FX1 ROWS, for modules that asked for one =====================
     # THE OTHER HALF OF "BOTH SLOTS". The DSP dispatch is ONE table indexed by
     # the raw id and shared by the menus, so a module's CODE already runs from
@@ -1600,7 +1648,7 @@ def main():
         # The overrides below splice into the delay's source. Asking for one
         # in a remix that has no delay is a mistake worth naming, not a
         # traceback.
-        _dset = [v for v in ("DMODE", "DINT", "DFRZ", "DNOTE", "DFRZAT")
+        _dset = [v for v in ("DMODE", "DINT", "DNOTE")
                  if os.environ.get(v) is not None]
         if _dset:
             sys.exit(f"{'/'.join(_dset)} set, but remix {REMIX.name!r} "
@@ -1797,25 +1845,11 @@ mkgo:""",
             "        move    #>%d,a" % int(dint_env))
         print(f"  *** DINT OVERRIDE: BusDelay PITCH interval forced to {int(dint_env)} ***")
 
-    # DFRZ=n forces BusDelay's FREEZE select (0 = running, nonzero = hold),
-    # same mechanism and reason as DMODE/DINT: slot 11 is a companion LOW-byte
-    # field (r6+$e) and dsp_host's -params cannot drive it.
-    dfrz_env = os.environ.get("DFRZ")
-    if dfrz_env is not None:
-        if delay_src.count("; DFRZ_OVERRIDE") != 1:
-            sys.exit("DFRZ=n set but the DELAY source has no single "
-                     "; DFRZ_OVERRIDE marker -- a pre-stage-3 delay_server.asm "
-                     "cannot take a freeze override")
-        delay_src = delay_src.replace(
-            "; DFRZ_OVERRIDE",
-            "        move    #>%d,a" % int(dfrz_env))
-        print(f"  *** DFRZ OVERRIDE: BusDelay FREEZE forced to {int(dfrz_env)} ***")
-
     # DNOTE=n forces the MIDI-note word the ColdFire cave publishes at r6+$9
     # (0 = no note ever; 72..96 = the OT's chromatic range, 84 = unison).
     # dsp_host has no cave, so this is the only local way to hear note ->
     # interval (branch midi). Same immediate-substitution
-    # mechanism as DMODE/DINT/DFRZ; the marker follows the asr, so the
+    # mechanism as DMODE/DINT; the marker follows the asr, so the
     # plain value (DINT's precedent).
     dnote_env = os.environ.get("DNOTE")
     if dnote_env is not None:
@@ -1825,32 +1859,6 @@ mkgo:""",
         delay_src = delay_src.replace(
             "; DNOTE_OVERRIDE", "        move    #>%d,a" % int(dnote_env))
         print(f"  *** DNOTE OVERRIDE: BusDelay MIDI note word forced to {int(dnote_env)} ***")
-
-    dfrzat_env = os.environ.get("DFRZAT")
-    if dfrzat_env is not None:
-        if dfrz_env is not None:
-            sys.exit("DFRZ and DFRZAT are mutually exclusive -- one freeze "
-                     "override at a time")
-        if os.environ.get("DEV") is None:
-            sys.exit("DFRZAT=n is a DEV-only repro hook (its counter word "
-                     "lives in payload A's shared-window half and its words "
-                     "do not fit the shipping payload B region) -- set DEV=1")
-        if delay_src.count("; DFRZ_OVERRIDE") != 1:
-            sys.exit("DFRZAT=n set but the DELAY source has no single "
-                     "; DFRZ_OVERRIDE marker")
-        delay_src = delay_src.replace(
-            "; DFRZ_OVERRIDE",
-            "        move    y:>$37ffe,a\n"
-            "        add     #>1,a\n"
-            "        move    a,y:>$37ffe\n"
-            "        move    #>%d,x0\n"
-            "        sub     x0,a\n"
-            "        move    #>0,x0\n"
-            "        tmi     x0,a\n"
-            "        move    #>1,x0\n"
-            "        tpl     x0,a" % int(dfrzat_env))
-        print(f"  *** DFRZAT OVERRIDE: BusDelay freezes after "
-              f"{int(dfrzat_env)} post-warm blocks ***")
 
     # ---- XBUS=1: move the bus scratch into the SHARED window ---------------
     if os.environ.get("XBUS") == "1":

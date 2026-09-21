@@ -7,7 +7,7 @@ from remix.schema import Remix
 
 REMIX = Remix(
     name="euclid",
-    doc="Euclidean filter: track speed/swing, ENV/GATE/RAND/LOOP, both FX slots.",
+    doc="Euclid rhythmic modulation: 12 dB LP/BP/HP or AMP, both FX slots.",
     modules=("EUCLID", "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "COMPRESSOR", "LO-FI",
              "PLATE REV", "SPRING REV", "DARK REV"),
     fx1=("EUCLID", "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "COMPRESSOR", "LO-FI"),

@@ -6,13 +6,14 @@ a selection of modules, and the build turns a remix and the user's own
 record for where code goes; `docs/remixes/` describes each remix;
 `CHANGELOG.md` records each flashed image.
 
-## Where it stands (16 Sep 2026)
+## Where it stands (20 Sep 2026)
 
-- **On hardware.** The rig (`bamsep26`) on Sam's MKII, image 28
-  (`OCTABAM28`). `ok-ms` (Octakit + MIDI SCENES on the stock effects) on
+- **On hardware.** The rig (`bamsep26`) on Sam's MKII, image 38
+  (`OCTABAM38`, 20 Sep 2026: the bus engines return on their hosts, the T8
+  return gone). `ok-ms` (Octakit + MIDI SCENES on the stock effects) on
   midisc's author's unit as OKMS2. octalab (nordseele) is a DRAM module of
   this remixer and has run on an MKI since 11 Sep 2026.
-- **Built and gated, unflashed:** main beyond image 28 (`CHANGELOG.md`
+- **Built and gated, unflashed:** main beyond image 38 (`CHANGELOG.md`
   Unreleased) and every other remix.
 - **The platform** (`tools/remix/`): linked GNU-as units, detours, pokes
   and table growth wired by symbol and asserted against stock; recipe-built
@@ -38,12 +39,13 @@ Measured under the port unless marked (`docs/remixer/PLACEMENT.md`).
 
 ## Release (stage D, then E's tail)
 
-1. **The hardware pass** — flash main as image 29 (`make image
-   REMIX=bamsep26 BUILD=29`), `stamp-defaults <project> bamsep26
-   --keep-mode` and `stamp-slot <project> busverb 2 0` on every project
-   before play; Modulation's five modes + LOFI on the panel; the flash-7
-   bus claims; the MIDI voice pass; the set.
-2. Tag the flashed build (`OCTABAM29`), `CHANGELOG.md`, `v0.1.0`.
+1. **The hardware pass** on image 38 (on the unit; the reverb on T5
+   clean): the station banks under the new placement; Modulation's five
+   modes + LOFI on the panel; the MIDI voice pass; the set. Two voicing
+   items from Sam, 20 Sep 2026: Character's DRV is faint (TAPE THD at DRV
+   64 is −36 dB on a tone, measured) and BusVerb's WET is hot (WET 127 =
+   wet ×2 since 16 Sep) — a live round each.
+2. Tag the next flashed build, `CHANGELOG.md`, `v0.1.0`.
 3. The remixer TUI shows ColdFire modules as rows with the matrix's verdicts
    (`tools/remix/rig.py` `category()`, `app.py` prints only the first clash).
 

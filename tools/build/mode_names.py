@@ -199,7 +199,7 @@ def with_selfname(renames: dict[int, dict[int, bytes]], slot: int,
     select's cave writes its own name field with the value's word before
     printing it: the knob reads TAPE / TUBE / INFL, CLEAN / GRAIN / REVRS.
     Merged over a MODE's neighbour renames. Applied to the module's
-    `mode_slot` only (15 Sep 2026, image 26: on SIZE / FRZE / SHFT / RATE
+    `mode_slot` only (15 Sep 2026, image 26: on SIZE / SHFT / RATE
     the word alone did not say what the knob was; those keep their names
     and the tick widget flashes the word)."""
     out = {m: dict(v) for m, v in renames.items()}

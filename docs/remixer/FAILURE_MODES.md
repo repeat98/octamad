@@ -253,11 +253,13 @@ the loop reads as silence rather than a squeal is not established. On the
 tag-93 rig (5 Sep) one instance cleared with a power-cycle; the 6 Sep
 instances did not.
 
-**Fix.** By construction since the one-aux rig: the stations have no
-sends and the SEND is refused at track 8's dispatch position on payload A
-whatever its knob says (`tools/verify/verify_onebus.py`).
+**Fix.** By construction: the stations have no sends, and the SEND is
+refused at track 8's dispatch position on payload A whatever its knob says
+(`tools/verify/verify_onebus.py`). The refusal outlived the T8 return (20
+Sep 2026): with MASTER TRACK on, T8's input is the mix, the hosts' wet
+included, so a send from T8 would put the bus's wet back into the bus.
 
-## The audio engine wedges with only BusVerb + the return 🔴 cause open
+## The audio engine wedges with only BusVerb + the return 🔴 cause open (the return itself removed 20 Sep 2026)
 
 **Symptom.** Playing, the output drops to the noise floor and never comes
 back while the transport keeps running.
@@ -373,7 +375,8 @@ load-bearing: a non-zero default registers every idle host as a client)
 and Character's RET.
 
 **Fix.** Assert the connections over MIDI immediately before every
-measurement: RET `CC 38` on the master's channel, SEND `CC 40` per track.
+measurement: SEND `CC 40` per track (and, until 20 Sep 2026, RET `CC 38`
+on the master's channel).
 
 ## A station "at its defaults" was running its default mode's view ✅ measured
 
@@ -492,15 +495,67 @@ on frame one (an old part's crossed-slot byte after a layout change).
 **Fix.** Fit the layout (≤ two heavy stations per core) and stamp the
 project for the current remix before playing.
 
+## The bus return is "less rich / bit-crushed" on the unit, clean under the port — ✅ gone with the return (20 Sep 2026, images 35 → 38)
+
+**Symptom.** With one track sending, WET 0 on both engines and RET 127 on
+T8, the return is duller and grainier than the dry from a fresh start;
+knob presses make it worse and it stays; STOP then PLAY resets it; RET 0
+silences it. The same with every sender on either core, at any send
+level. Reverb-only on one core (BusDelay off, T6/T7 sending): still
+degraded. The return alone (the sender muted post-FX): still degraded, so
+it is not the dry + 60-sample-late return combing at the main out. T8's
+Character reads DRV/FOLD/TXTR 0. Both engines' wets sound grainy too.
+
+**Measured elsewhere.** Under the port the same path (one sender, WET 0,
+RET 127) is the aux itself at −109 dB residual, lag 60 samples
+(`verify_set`). A four-minute `rig_render` with seven hot senders shows no
+growth over time.
+
+**Lead (unverified).** Every word on that path is in the shared window
+and read per sample; R36's per-block writes / in-loop reads there were
+dead on silicon with the emulator passing (BusDelay's RATE/DRV words).
+The engines' outputs cross the same reads.
+
+**Outcome (20 Sep 2026).** The return went: Character has no RET, the
+engines publish no stage output, the hosts' print is ungated, the SEND is
+allowed on T8. Each engine's wet now leaves through its host only (T1 the
+repeats, T5 the tail). ✅ Image 38 on the unit: the reverb on T5 is clean
+(Sam, 20 Sep 2026). The degradation was in the return path, not the
+engine; which part of it (the shared-window per-sample reads, the
+rotation, the station's add) was not bisected and the code is gone.
+
+## A TIME turn on BusDelay crackles for about a second, in both directions ✅ measured, fixed (unflashed)
+
+**Symptom (Sam, 20 Sep 2026, image 38).** TIME or FDBK moves crackle;
+putting the knobs back does not clear it; re-selecting the effect does.
+
+**Cause (measured under `dsp_host` and the port).** The glide (image 33)
+stepped its Q8 state once per block, up to ~17 samples a step, and the
+loop's tap, REVERSE's lag floor and GRAIN's read base were computed from
+that per-block value: the read jumped by the step at every block edge, a
+click every 16 samples while the step exceeded a sample (~1 s after a big
+move), then a sub-sample tail for ~3 s. A revert is another glide, hence
+"doesn't fix"; init starts the state at the target, hence "re-select
+fixes". The FDBK crackle was the TIME glide's tail; FDBK's own glide and
+PTCH moves measured clean. `tools/harness/glide_census.py` /
+`port_click_census.py`.
+
+**Fix.** The Q8 TIME ramps within the block, a sixteenth of the step per
+sample; REVERSE and GRAIN re-derive their per-sample lag from it. Spikes
+per mode 5,228 / 2,676 / 4,483 -> 0 / 73 / 896 (the remainder REVERSE's
+uninterpolated heads repeating a sample as the ramp passes an integer, at
+the level of its own segment splices).
+
 ## The RET/CRSH trap ✅ removed by design
 
 **Symptom.** With T8's Character in the old BUS mode and knob 3 at 127,
 turning SAT to TAPE made the whole mix a 4-bit crush at full scale: the
 same knob was RET in BUS and CRSH elsewhere.
 
-**Fix.** No BUS mode. Slot 4 is RET on every track, live by dispatch
-position on the master and inert elsewhere; the wet enters at the front of
-the chain; DRV 0 skips the saturator (bit-exact).
+**Fix.** No BUS mode. From 13 to 20 Sep 2026 slot 4 was RET on every
+track, live by dispatch position on the master and inert elsewhere; since
+20 Sep 2026 slot 4 is empty (`---`) and the return is gone. DRV 0 skips
+the saturator (bit-exact).
 
 ## An FX1 station's page 2 does not reach the DSP on a bus host ✅ fixed (image 24)
 

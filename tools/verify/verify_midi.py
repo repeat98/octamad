@@ -20,7 +20,7 @@ OUT = ROOT / "out" / "midiverify"; OUT.mkdir(parents=True, exist_ok=True)
 
 def render(name, env, *probe):
     e = dict(os.environ, DEV="1", XBUS="1")
-    for k in ("DMODE", "DINT", "DFRZ", "DNOTE", "NOSHIM"):
+    for k in ("DMODE", "DINT", "DNOTE", "NOSHIM"):
         e.pop(k, None)
     e.update(env)
     subprocess.run([sys.executable, "tools/build/build_bus.py"], cwd=ROOT, env=e,

@@ -1,6 +1,7 @@
-# The master (14 Sep 2026)
+# The master (14 Sep 2026; the return left it 20 Sep 2026)
 
-What track 8 does, in what order, with which knobs. The bus and the returns:
+What track 8 does, in what order, with which knobs. The bus and where its
+wet comes out:
 `docs/effects/XBUS.md`; the chain line by line:
 `modules/character/character.asm`; the listening log:
 `docs/history/VOICING.md` (git history, `git show 3ceba41:docs/history/VOICING.md`). ✅ measured on the unit, 🟡 measured under the
@@ -11,28 +12,31 @@ port or the harness only, ❓ inferred.
 ```
 T1..T7  ──(AMP VOL, BAL)──▶ FX1 station ──▶ FX2 = SEND, one SEND knob ──(LEVEL)──┐
                                                                                  │  the mix
-T1 FX2 = DELAY SERVER ─ wet ─▶ T5 FX2 = REVERB SERVER ─ wet ─▶ (the last live stage's wet)
+T1 FX2 = DELAY SERVER: T1 prints dry + repeats ─ chain ─▶ T5 FX2 = REVERB SERVER: T5 prints dry + tail
                                                                                  │
 T8 (MASTER TRACK on)  ◀──────────────────────────────────────────────────────────┘
-   FX1 = CHARACTER:  x += RET × wet  ▶  FOLD ▶ TXTR ▶ SAT ▶ TONE ▶ COMP ▶ WDTH ▶ MIX
-   FX2 = nothing
+   FX1 = CHARACTER:  FOLD ▶ TXTR ▶ SAT ▶ TONE ▶ COMP (GLUE by position) ▶ WDTH ▶ MIX
+   FX2 = nothing (the SEND is refused on T8: its input is the mix)
 ```
 
 - **T8 is the master.** With MASTER TRACK on, T8's effect chain sees the
   sum of the other tracks' outputs after their LEVEL (✅ O9d/O14 under the
   port: T8's chain input equals T1 + T2 summed; AMP VOL and BAL are pre-FX
-  on each track, LEVEL is post-FX at the mix). T8 has no FX2.
+  on each track, LEVEL is post-FX at the mix).
 - **One aux send per track**, the SEND knob at slot 0 of every track's FX2
-  (the six ordinary tracks run SEND there; T1's FX2 is the delay engine
-  and T5's the reverb engine, and both still have their SEND knob). The delay's
-  wet feeds the reverb (✅ flash 7). No send on T8: a loop is impossible.
-- **The return is RET on T8's Character**, slot 4, by position (dispatch
-  position 3 on payload A = track 8; anywhere else RET is inert). Each
-  sample the last live engine's wet — the reverb's if it runs, else the
-  delay's — is added at RET BEFORE the chain, so the master's saturation,
-  compression and width act on dry + wet together (✅ flash 7: the return
-  reaches T8, the hosts go dry while RET is up; the engines print their
-  own wet on their host again within 3 blocks of RET going to 0).
+  (the ordinary tracks run SEND there; T1's FX2 is the delay engine and
+  T5's the reverb engine, and both still have their SEND knob). The delay's
+  output feeds the reverb (✅ flash 7).
+- **Each engine's wet comes out on its host** (20 Sep 2026): T1 prints its
+  dry + the repeats × WET, T5 its dry + the tail × WET, each under that
+  track's LEVEL, mute and scenes, and the master hears both as ordinary
+  tracks. A host adds the wet in place after its own send tap, so a host
+  never sends its own wet; T8's send stays refused (its input is the mix,
+  the hosts' wet included). From 7 to 20 Sep 2026 the wet returned instead
+  through Character's RET on T8, in front of the chain, with the hosts
+  stamped quiet and the send refused on T8 (✅ flash 7); on image 35 that
+  return was degraded on the unit and clean under the port
+  (`FAILURE_MODES.md`), and it went.
 - **The stations on T1–T7** (Character on T1, Spectrum on 2/3/4/6/7,
   Modulation on 5) are ordinary inserts; Spectrum is the filter pedal since
   14 Sep 2026 (SEM LP/BP/HP, Capacitor2, formants, the Moog ladder; ENV and
@@ -48,20 +52,21 @@ T8 (MASTER TRACK on)  ◀──────────────────�
 | 1 | CHARACTER, defaults | DELAY SERVER, SEND 30 |
 | 2, 3, 4, 6, 7 | SPECTRUM, defaults | SEND, SEND 40 / 30 / 40 / 50 / 40 |
 | 5 | MODULATION, defaults | REVERB SERVER, SEND 40 |
-| 8 | CHARACTER, RET 127, COMP 40 (GLUE by position) | — |
+| 8 | CHARACTER, COMP 40 (GLUE by position) | — (the send is refused on T8) |
 
 Stamp every project for the current remix before play
 (`tools/hw/ot_project.py stamp-defaults`); a part saved under an older slot
 layout feeds the new layout its old bytes.
 
-## Character on the master, knob by knob (the 14 Sep 2026 surface, image 12)
+## Character on the master, knob by knob
 
-Page 1: DRV, FOLD, TXTR, COMP, RET, TONE. Page 2: MIX, SAT, —, —, WDTH, —.
+Page 1: DRV, FOLD, TXTR, COMP, TONE, MIX. Page 2: SAT, WDTH, —, —, —, —
+(16 Sep 2026: MIX bottom right, SAT top left; page-1 slot 4 was RET from
+13 to 20 Sep 2026 and is TONE again).
 The chain runs in the fixed order drawn above, distortion before dynamics.
 Every stage holds its level as its knob rises (the tape lifts about +2 dB
 by 127, by ear).
 
-- **RET** — the return level. 127 in the stamp. Only meaningful on T8.
 - **DRV / SAT** — DRV 0 is bit-exact, no saturation stage at all. SAT picks
   TAPE (JClones TapeHead), TUBE (DaTube) or INFL (OInflator). ✅ TAPE's
   drive law voiced live: unity plus a gentle lift ("drv sounds great").
@@ -108,5 +113,6 @@ unit's RAM is never zeroed; the port and the harness always are.
 - ❓ The stations run live at the passthrough stamp on the unit (the port
   bypasses them). Costs cycles, not sound; the pricer already charges the
   live price.
-- 🟡 The audio engine can wedge with only BusVerb + the return (one freeze
-  in ~15 minutes on 13 Sep); cause open (`FAILURE_MODES.md`).
+- 🟡 The audio engine wedged once with only BusVerb + the T8 return (one
+  freeze in ~15 minutes on 13 Sep); cause open, the return gone since 20
+  Sep 2026 (`FAILURE_MODES.md`).

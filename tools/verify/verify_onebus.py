@@ -3,28 +3,32 @@
 
 Every case below renders through tools/harness/dsp_host with BOTH payloads booted
 (docs/remixer/HARNESS.md "Two cores"): the senders and the delay on payload B where
-the unit runs them, the reverb and the return on payload A, so the chain
-buffer, the liveness stamps and the return all cross the real core boundary.
-The image is the rig remix (bamsep26) as SPEC -- the stations must be in it.
+the unit runs them, the reverb on payload A, so the chain buffer and its
+liveness stamp cross the real core boundary. The image is the rig remix
+(bamsep26) as SPEC -- the stations must be in it. Since 20 Sep 2026 each
+engine's wet comes out on the track that hosts it (the hosts are not fed, so
+a host's stream IS its engine's wet*WET); there is no return station.
 
-  chain        both engines + T8 return: the return IS the reverb's stage
-               output; T5 and T1 print nothing (a return is live)
-  delay only   no reverb in the layout: the return falls through to the
-               delay's output
-  reverb only  no delay: the reverb reads the aux accumulator directly
-  neither      no engine: the return is digital silence (not garbage)
-  passthrough  delay WET 0 with both engines == reverb only, two blocks
-               later (the chain buffer's own latency), within -60 dB
-  reverb WET 0 reverb only, WET 0: the return is the aux itself, at unity
-  pedal chain  both engines at WET 0: the return is the aux itself (the
-               send passes both pedals); delay WET 127 / reverb WET 0: the
-               return is the delay's output (the reverb adds only, it takes
-               nothing out -- a crossfade until 15 Sep 2026)
-  hosts print  no return station: T5 prints wet*WET under its dry
-  T8 refused   a SEND at core-0 position 3 with AUX 127 changes nothing
-  T4 sends     the mirror position on core 1 DOES send (payload gate)
-  no station   a station with the old send bytes (slots 4/5 = 127) stored
-               contributes nothing to the bus
+  chain        both engines: T5 (reverb host) prints the reverb, stereo;
+               T1 (delay host) prints the delay
+  the delay reaches the reverb
+               T5's print with the delay in the layout != without it
+  passthrough  delay WET 0 with both engines == reverb only fed the tone two
+               blocks later (the chain buffer's own latency), within -80 dB
+  delay only   no reverb in the layout: T1 prints the delay
+  reverb only  no delay: T5 prints the reverb (it reads the aux directly)
+  WET 0        a host at WET 0 prints nothing but its (silent) dry
+  the reverb takes nothing out
+               T1's print is bit-identical with the reverb at WET 0, at WET
+               127 and with no reverb at all
+  T8 refused   a SEND at core-0 position 3 (track 8) with SEND 127 changes
+               nothing (the master's input is the mix, the hosts' wet
+               included: a send from it would loop the bus)
+  T4 sends     the mirror position on core 1 does
+  old bytes    a Character with slot 4 stored 127 (RET in a pre-20-Sep
+               part), on T8 or T4, prints nothing of its own and changes
+               neither host; a station with the old send bytes (slots 4/5 =
+               127) contributes nothing to the bus
   skew         the chain case under four interleaves: identical
 
 What this cannot show: the chip's timing (lock-step, or a guessed -skew),
@@ -182,10 +186,9 @@ def main():
     tone_file(SCRATCH / "tone.raw", BLOCKS)
     tone_file(SCRATCH / "tone30.raw", BLOCKS, start=2 * FRAMES)
 
-    # the rig's shape: T5 reverb (core 0 pos 0), T6 send, T8 Character BUS on
-    # FX1 (core 0 pos 3), T1 delay (core 1 pos 0), T2 send
-    # MOD 0 makes the reverb time-invariant, so a 30-sample-shifted copy of
-    # its input gives a 30-sample-shifted output (the passthrough compare);
+    # the rig's shape: T5 reverb (core 0 pos 0), T6 send, T1 delay (core 1
+    # pos 0), T2 send. Neither host is fed, so a host's stream is its
+    # engine's wet*WET and nothing else.
     # PING 0 keeps the delay's repeats on one channel, so the chain's MONO
     # average of a 438 Hz tone does not cancel between alternate repeats
     # (measured -9 dB at PING 127 with TIME 40: test artefact, not engine).
@@ -193,30 +196,24 @@ def main():
     D = lambda **k: Inst("DELAY SERVER", 1, 0, PING=0, TIME=20, **k)   # noqa: E731  (5,184 samples: the first repeat lands inside BLOCKS; TIME is 64 + knob*256 since the 32K lines)
     S6 = lambda **k: Inst("SEND", 0, 1, fed=True, SEND=100, **k)   # noqa: E731
     S2 = lambda **k: Inst("SEND", 1, 1, fed=True, SEND=100, **k)   # noqa: E731
-    RET = lambda **k: Inst("CHARACTER", 0, 3, fx=1, RET=127, **k)  # noqa: E731  (RET by position since 13 Sep 2026: no SAT=BUS)
 
-    print("== the chain: T2/T6 send, T1 delay -> T5 reverb -> T8 return ==")
-    both = [R(), S6(), RET(), D(), S2()]
+    print("== the chain: T2/T6 send, T1 delay -> T5 reverb; each host prints its wet ==")
+    both = [R(), S6(), D(), S2()]
     st = run(mems, both, tag="both")
-    ret, t5, t1 = st[2], st[0], st[3]
-    check("the return carries audio", rms_db(ret[0]) > -45, f"rms {rms_db(ret[0]):.1f} dB")
-    check("the return is stereo (L != R)", ret[0] != ret[1])
-    check("T5 (reverb host) prints nothing while the return is live",
-          peak(t5[0] + t5[1]) == 0, f"peak {peak(t5[0] + t5[1])}")
-    check("T1 (delay host) prints nothing while the return is live",
-          peak(t1[0] + t1[1]) == 0, f"peak {peak(t1[0] + t1[1])}")
+    t5, t1 = st[0], st[2]
+    check("T5 (reverb host) prints the reverb", rms_db(t5[0]) > -45, f"rms {rms_db(t5[0]):.1f} dB")
+    check("T5's print is stereo (L != R)", t5[0] != t5[1])
+    check("T1 (delay host) prints the delay", rms_db(t1[0]) > -40, f"rms {rms_db(t1[0]):.1f} dB")
     for sk in SKEWS:
         s2 = run(mems, both, skew=sk, tag="bothsk")
-        check(f"chain under skew {sk:5d}: return identical", s2[2] == ret)
+        check(f"chain under skew {sk:5d}: both hosts identical", s2[0] == t5 and s2[2] == t1)
 
     print("\n== the chain is real: the delay's repeats reach the reverb ==")
-    # delay MIX 127 (repeats only), delay TIME long, reverb MIX 127: the return
-    # (reverb output) must differ from the reverb-only return -- the reverb
-    # is fed the repeats, not the aux.
-    ronly = [R(), S6(), RET(), S2()]
+    ronly = [R(), S6(), S2()]
     st_r = run(mems, ronly, tag="ronly")
-    check("reverb-only return carries audio", rms_db(st_r[2][0]) > -40)
-    check("both != reverb only (the reverb hears the delay)", st[2] != st_r[2])
+    check("reverb only: T5 prints the reverb (it reads the aux directly)", rms_db(st_r[0][0]) > -40,
+          f"rms {rms_db(st_r[0][0]):.1f} dB")
+    check("both != reverb only (the reverb hears the delay)", t5 != st_r[0])
 
     print("\n== the passthrough: delay WET 0 == no delay, two blocks later ==")
     # The chain buffer costs two blocks, and the reverb is time-variant even
@@ -225,92 +222,60 @@ def main():
     # tone two blocks later, which the chain then reproduces sample for
     # sample. What is left is one auto-gain table against the other:
     # rounding, -100 dB or so.
-    pt = [R(), S6(), RET(), D(WET=0), S2()]
+    pt = [R(), S6(), D(WET=0), S2()]
     st_p = run(mems, pt, tag="pass")
     st_r30 = run(mems, ronly, tag="ronly30", tone="tone30.raw")
-    lag, db = best_lag(st_r30[2][0], st_p[2][0], lo=0, hi=2)
-    check(f"delay WET 0 return == reverb-only fed the tone 2 blocks later (lag {lag})",
+    lag, db = best_lag(st_r30[0][0], st_p[0][0], lo=0, hi=2)
+    check(f"delay WET 0: T5 == reverb-only fed the tone 2 blocks later (lag {lag})",
           lag == 0 and db < -80, f"residual {db:.1f} dB")
 
-    print("\n== last live stage ==")
-    donly = [S6(), RET(), D(), S2()]
+    print("\n== delay only, and WET 0 ==")
+    donly = [S6(), D(), S2()]
     st_d = run(mems, donly, tag="donly")
-    check("delay only: the return carries the delay's output", rms_db(st_d[1][0]) > -40,
+    check("delay only: T1 prints the delay", rms_db(st_d[1][0]) > -40,
           f"rms {rms_db(st_d[1][0]):.1f} dB")
-    check("delay only: the delay host prints nothing (RETD stamped too)",
-          peak(st_d[2][0] + st_d[2][1]) == 0)
-    none = [S6(), RET(), S2()]
-    st_n = run(mems, none, tag="none")
-    check("no engine: the return is digital silence", peak(st_n[1][0] + st_n[1][1]) == 0,
-          f"peak {peak(st_n[1][0] + st_n[1][1])}")
-
-    print("\n== reverb WET 0: the stage passes the aux through ==")
-    rm0 = [R(WET=0), S6(), RET(), S2()]
-    st_m = run(mems, rm0, tag="rwet0")
-    # the aux is the two senders' mono sum at 100/128, /sqrt(2) auto-gain
-    src = struct.unpack(f"<{BLOCKS * FRAMES}i", (SCRATCH / "tone.raw").read_bytes())[PAD:]
-    expect = 2 * (100 / 128) / math.sqrt(2)          # two senders, 1/sqrt(N)
-    scale = expect * (127 / 128)                     # RET 127/128 (fitted 1.0962, residual -109 dB)
-    lag, db = best_lag(list(src), st_m[2][0], scale=scale)
-    check(f"reverb WET 0 return == the aux itself (x{expect:.3f}, RET 127/128), lag {lag}",
-          lag == 60 and db < -80, f"residual {db:.1f} dB")
-
-    print("\n== the pedal chain: the send passes both pedals, each WET adds ==")
-    both0 = [R(WET=0), S6(), RET(), D(WET=0), S2()]
-    st_b0 = run(mems, both0, tag="both0")
-    lag, db = best_lag(list(src), st_b0[2][0], scale=scale, lo=0, hi=96)
-    check(f"delay WET 0 + reverb WET 0: the return is the aux itself through both stages (lag {lag}: two blocks more)",
-          lag == 90 and db < -80, f"residual {db:.1f} dB")
-    donly_ret = [S6(), RET(), D(), S2()]
-    st_dr = run(mems, donly_ret, tag="donlyret")
-    d_r0 = [R(WET=0), S6(), RET(), D(), S2()]
-    st_dr0 = run(mems, d_r0, tag="d_rwet0")
-    lag, db = best_lag(st_dr[1][0], st_dr0[2][0], lo=0, hi=64)
-    check(f"delay WET 127 + reverb WET 0: the return is the delay-only return (the reverb takes nothing out; lag {lag})",
-          db < -40, f"residual {db:.1f} dB")
-    check("delay WET 127 + reverb WET 127 != delay only (the reverb adds)", st[2] != st_dr[1])
-
-    print("\n== the hosts print when nobody returns ==")
-    nr = [R(), S6(), D(), S2()]
-    st_h = run(mems, nr, tag="noret")
-    check("T5 prints the reverb (no station)", rms_db(st_h[0][0]) > -45, f"rms {rms_db(st_h[0][0]):.1f} dB")
-    check("T1 prints the delay (no station)", rms_db(st_h[2][0]) > -40, f"rms {rms_db(st_h[2][0]):.1f} dB")
     nr0 = [R(WET=0), S6(), D(WET=0), S2()]
-    st_h0 = run(mems, nr0, tag="noret0")
-    check("T5 with WET 0 prints nothing but its (silent) dry", peak(st_h0[0][0]) == 0)
-    check("T1 with WET 0 prints nothing but its (silent) dry", peak(st_h0[2][0]) == 0)
+    st_h0 = run(mems, nr0, tag="wet0")
+    check("T5 with WET 0 prints nothing but its (silent) dry", peak(st_h0[0][0] + st_h0[0][1]) == 0)
+    check("T1 with WET 0 prints nothing but its (silent) dry", peak(st_h0[2][0] + st_h0[2][1]) == 0)
+
+    print("\n== the reverb takes nothing out of the delay ==")
+    d_r0 = [R(WET=0), S6(), D(), S2()]
+    st_dr0 = run(mems, d_r0, tag="d_rwet0")
+    check("T1's print with the reverb at WET 0 == delay only, bit for bit", st_dr0[2] == st_d[1])
+    check("T1's print with the reverb at WET 127 == delay only, bit for bit", t1 == st_d[1])
 
     print("\n== the send is refused on track 8, and only there ==")
-    t8 = [R(), S6(), RET(), Inst("SEND", 0, 3, fed=True, SEND=127), D(), S2()]
-    # (a SEND on T8's FX2 beside the return on its FX1: the hardware shape)
+    t8 = [R(), S6(), Inst("SEND", 0, 3, fed=True, SEND=127), D(), S2()]
     st_8 = run(mems, t8, tag="t8")
-    check("a SEND on T8 (core 0 pos 3) at AUX 127 changes the return NOT AT ALL",
-          st_8[2] == ret)
-    t4 = [R(), S6(), RET(), D(), S2(), Inst("SEND", 1, 3, fed=True, SEND=127)]
+    check("a SEND on T8 (core 0 pos 3) at SEND 127 changes both hosts NOT AT ALL",
+          st_8[0] == t5 and st_8[3] == t1)
+    t4 = [R(), S6(), D(), S2(), Inst("SEND", 1, 3, fed=True, SEND=127)]
     st_4 = run(mems, t4, tag="t4")
-    check("a SEND on T4 (core 1 pos 3, the mirror) DOES change it", st_4[2] != ret)
+    check("a SEND on T4 (core 1 pos 3, the mirror) DOES change T5's print", st_4[0] != t5)
 
-    print("\n== the return is pinned to track 8, and only there ==")
-    r4 = [R(), S6(), D(), S2(), Inst("CHARACTER", 1, 3, fx=1, RET=127)]
-    st_r4 = run(mems, r4, tag="ret4")
-    check("a station with RET 127 on T4 (core 1 pos 3) returns nothing",
-          peak(st_r4[4][0] + st_r4[4][1]) == 0, f"peak {peak(st_r4[4][0] + st_r4[4][1])}")
-    check("... and the hosts keep printing (it stamped nothing)",
-          rms_db(st_r4[0][0]) > -45 and rms_db(st_r4[2][0]) > -45)
-    r7 = [R(), S6(), Inst("CHARACTER", 0, 2, fx=1, RET=127), D(), S2()]
-    st_r7 = run(mems, r7, tag="ret7")
-    check("a station with RET 127 on T7 (core 0 pos 2) returns nothing",
-          peak(st_r7[2][0] + st_r7[2][1]) == 0)
+    print("\n== a stored return byte is inert ==")
+    # Character page-1 slot 4 was RET until 20 Sep 2026; a pre-20-Sep part
+    # stores 127 there (the stamped default). On T8 (the old master) and on
+    # T4 (the mirror) it must print nothing and touch neither host.
+    for core, name in ((0, "T8"), (1, "T4")):
+        c = Inst("CHARACTER", core, 3, fx=1)
+        c.params[4] = 127
+        lay = [R(), S6(), D(), S2(), c]
+        st_c = run(mems, lay, tag=f"oldret{name}")
+        check(f"a Character with slot 4 = 127 on {name} prints nothing of its own",
+              peak(st_c[4][0] + st_c[4][1]) == 0, f"peak {peak(st_c[4][0] + st_c[4][1])}")
+        check(f"... and both hosts print exactly as without it", st_c[0] == t5 and st_c[2] == t1)
 
     print("\n== the stations have no sends ==")
     # a Spectrum station on T6's FX1 with the OLD send bytes stored (slots 4
-    # and 5 at 127, what a pre-rig part holds) beside T6's SEND at AUX 100
-    stn = [R(), Inst("SPECTRUM", 0, 1, fx=1, fed=True), S6(), RET(), D(), S2()]
+    # and 5 at 127, what a pre-rig part holds) beside T6's SEND at SEND 100
+    stn = [R(), Inst("SPECTRUM", 0, 1, fx=1, fed=True), S6(), D(), S2()]
     stn[1].params[4] = 127
     stn[1].params[5] = 127
     st_s = run(mems, stn, tag="station")
-    check("a station with stored send bytes 127/127 contributes nothing (return identical)",
-          st_s[3] == ret)
+    check("a station with stored send bytes 127/127 contributes nothing (both hosts identical)",
+          st_s[0] == t5 and st_s[3] == t1)
 
     if fails:
         sys.exit(f"\none-aux gate: {fails} FAILURE(S)")

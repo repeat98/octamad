@@ -58,7 +58,7 @@ SR = 44100
 BASE = [0, 40, 60, 100, 64, 127, 0, 0, 0, 0, 64, 0]
 
 SLOT = {"SEND": 0, "TIME": 1, "FDBK": 2, "TONE": 3, "PING": 4, "WET": 5,
-        "SCAT": 7, "DENS": 8, "PTCH": 10}
+        "SCAT": 7, "DENS": 8, "PTCH": 10, "WOW": 11}
 
 
 def dp(**kw):
@@ -82,21 +82,19 @@ def make_source():
     return src
 
 
-def build(src, tag, dmode=None, dint=None, dfrz=None):
+def build(src, tag, dmode=None, dint=None):
     """Build the delay hatch with DLSRC=src, keep its payload-A dump, return
-    (mem, delay_words, hatch_free). DFRZ/DINT are popped as well as DMODE:
+    (mem, delay_words, hatch_free). DINT is popped as well as DMODE:
     an override leaking in from the caller's environment would silently move
     BOTH sides of the comparison off the case this run means to prove."""
     env = dict(os.environ, DEV="1", XBUS="1", DLSRC=str(src))
     for k in ("SPEC", "BURN", "PROBE", "XPROBE", "DELAYPROBE", "MODE",
-              "WIDTH", "DMODE", "DINT", "DFRZ", "NOSHIM"):
+              "WIDTH", "DMODE", "DINT", "NOSHIM"):
         env.pop(k, None)
     if dmode is not None:
         env["DMODE"] = str(dmode)
     if dint is not None:
         env["DINT"] = str(dint)
-    if dfrz is not None:
-        env["DFRZ"] = str(dfrz)
     r = subprocess.run([sys.executable, "tools/build/build_bus.py"], cwd=ROOT,
                        env=env, capture_output=True, text=True)
     if r.returncode:
@@ -202,11 +200,15 @@ def main():
           f"  ({ref_words} -> {nop_words} words)")
     n_hi = render(nop_mem, dp(TONE=100), source=source)
     check("nop control: relocated code still renders identically", n_hi == c_hi)
-    # (the wobble-is-live control went with the wow, 15 Sep 2026: slots 7/8
-    # are GRAIN's SCAT/DENS now and do nothing in CLEAN)
+    cand_mem, cand_words, cand_free = build(args.candidate, "cand")
+    # WOW (slot 11 since 20 Sep 2026) must move the CANDIDATE: a candidate
+    # whose wobble never reaches the tap would pass every WOW case below
+    # against a reference that has no wow at all.
+    c_wow = render(cand_mem, dp(WOW=64), source=source)
+    check("candidate WOW=64 differs from WOW=0", c_wow != c_hi
+          and c_wow != render(cand_mem, dp(), source=source))
 
     # ---- then the equality cases ------------------------------------------
-    cand_mem, cand_words, cand_free = build(args.candidate, "cand")
     CASES = [
         ("defaults", dp(), 0),
         ("PING=0 (LineR silent)", dp(PING=0), 0),
@@ -279,31 +281,6 @@ def main():
                               if x != y), -1)
                 detail = f"  (first differing sample {first}, {n} of {len(fa)} differ)"
             check(f"bit-identical: {label}", a == b, detail)
-
-        # ---- FREEZE: DFRZ=1 on both engines -----------------
-        # The hold and its engage crossfade live in satdrv's tail and were
-        # never rendered by this gate (slot 11 is a companion field; the
-        # override is the local way in). Frozen defaults must DIFFER from
-        # running defaults, or the case is vacuous.
-        rf, _, _ = build(args.ref, "ref_frz", dfrz=1)
-        cf, _, _ = build(args.candidate, "cand_frz", dfrz=1)
-        a = render(rf, dp(), source=source)
-        check("FREEZE is LIVE: DFRZ=1 differs from running", a != clean_ref,
-              "" if a != clean_ref else
-              "  <-- the override never reached the engine; the case below "
-              "is VACUOUS")
-        b = render(cf, dp(), source=source)
-        detail = ""
-        if a != b:
-            fa, fb = a[0] + a[1], b[0] + b[1]
-            n = sum(1 for x, y in zip(fa, fb) if x != y)
-            first = next((i for i, (x, y) in enumerate(zip(fa, fb))
-                          if x != y), -1)
-            detail = f"  (first differing sample {first}, {n} of {len(fa)} differ)"
-        check("bit-identical: FREEZE (DFRZ=1) with SCAT=100 (inert in CLEAN)",
-              render(rf, dp(SCAT=100, DENS=64), source=source)
-              == render(cf, dp(SCAT=100, DENS=64), source=source))
-        check("bit-identical: FREEZE (DFRZ=1), defaults", a == b, detail)
 
         # ---- unknown MODE must fall back to CLEAN --------------------------
         # DMODE=5, not 3: 3 is GRAIN now, and a fallback case aimed at a mode

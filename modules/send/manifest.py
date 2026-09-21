@@ -30,8 +30,7 @@ MODULE = Module(
     ),
     params=(
         Param(b"SEND", 0, active=True,
-              doc="this track's level onto the one aux bus: delay, "
-                  "then reverb, wet back on track 8"),
+              doc="this track's level onto the one aux bus (delay, then reverb)"),
         _BLANK, _BLANK, _BLANK, _BLANK, _BLANK,
         _BLANK, _BLANK, _BLANK, _BLANK, _BLANK, _BLANK,
     ),

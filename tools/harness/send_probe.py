@@ -81,7 +81,7 @@ REV_FLAGS = {"time": "TIME", "mix": "WET", "raux": "SEND",
 DELAY_FLAGS = {"dtime": "TIME", "dfdbk": "FDBK", "dtone": "TONE",
                "dping": "PING", "dmix": "WET", "din": "SEND",
                "dmode": "MODE", "drate": "DENS", "dptch": "SIZE",
-               "dspray": "SCAT", "dpitch": "PTCH", "dfrz": "FRZE"}
+               "dspray": "SCAT", "dpitch": "PTCH", "dwow": "WOW"}
 
 
 def _slots(key, flags):
@@ -497,10 +497,9 @@ def main():
                     help="delay PTCH select 0..3 (slot-9 companion; DINT=\n"
                          "equivalent). Interval in PITCH, interval SET in\n"
                          "GRAIN, segment SIZE in REVERSE.")
-    ap.add_argument("--dfrz", type=int, default=None,
-                    help="delay FREEZE 0/1 (slot-11 companion; DFRZ=\n"
-                         "equivalent). Frozen from block 0 in a fixed-param\n"
-                         "render, so the line holds silence -- see PLAN.")
+    ap.add_argument("--dwow", type=int, default=None,
+                    help="delay WOW 0..127 (slot-11 companion): tape wobble\n"
+                         "depth on the loop tap, every mode")
     ap.add_argument("--rmode", type=int, default=None,
                     help="reverb MODE 0..2 via the slot-7 COMPANION field\n"
                          "(0=ROOM 1=PLATE 2=BIG) -- the --dmode twin. Default\n"
@@ -552,25 +551,8 @@ def main():
                          "effect -- servers and inserts alike -- without a "
                          "per-effect flag; an unknown name dies instead of "
                          "driving the wrong slot.")
-    ap.add_argument("--return", dest="ret", action="store_true",
-                    help="append a CHARACTER in SAT=BUS with both "
-                         "return levels at 127 to the layout and measure "
-                         "ITS output: the engines' wet as the master hears "
-                         "it, two blocks late (docs/history/BUS.md 'The returns'). "
-                         "The servers' own streams then carry dry only.")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
-    if a.ret:
-        _rl = next((m.harness.layout_char for m in registry.modules().values()
-                    if m.name == "character" and m.harness is not None), None)
-        if _rl is None:
-            die("--return needs the Character station in the registry")
-        if _rl in a.layout.upper():
-            die(f"--return: the layout already has a {_rl!r}; set its knobs "
-                f"with --set {_rl}:SAT=3 etc. instead")
-        a.layout = a.layout + _rl
-        a.pick = _rl
-        a.set = [f"{_rl}:SAT=3", f"{_rl}:RET=127"] + a.set
     if a.pick is not None and a.pick not in SERVER_ID:
         # A module key or name, resolved to its letter -- the letters are
         # derived and nobody should have to know them.
@@ -630,7 +612,7 @@ def main():
     dpar = None
     if any(v is not None for v in (a.dtime, a.dfdbk, a.dmix, a.din, a.dpitch,
                                    a.dtone, a.dping, a.dspray, a.dmode,
-                                   a.drate, a.dptch, a.dfrz)):
+                                   a.drate, a.dptch, a.dwow)):
         dpar = list(DELAY_PARAMS)
         _ds = _slots("DELAY SERVER", DELAY_FLAGS)
         for _f, val in (("dtime", a.dtime), ("dfdbk", a.dfdbk),
@@ -638,7 +620,7 @@ def main():
                         ("dmix", a.dmix), ("din", a.din), ("dpitch", a.dpitch),
                         ("dmode", a.dmode),
                         ("drate", a.drate), ("dptch", a.dptch),
-                        ("dspray", a.dspray), ("dfrz", a.dfrz)):
+                        ("dspray", a.dspray), ("dwow", a.dwow)):
             if val is not None:
                 dpar[_ds[_f]] = val
     ins = None

@@ -2,9 +2,9 @@
 
 A multi-mode delay: CLEAN, GRAIN (a pitched granular cloud over the delay
 lines: Nimbus's grain readers, four per line, one continuous pitch) and
-REVERSE, with a freeze hold in every mode. Hosted
+REVERSE, with a tape wow on the loop tap in every mode. Hosted
 on payload B (core 1), which serves tracks 1–4. Stage 1 of the one aux bus:
-its output goes on to BusVerb and to the return.
+its output goes on to BusVerb; the repeats come out on the host track.
 
 ## Memory: two 32K lines, 741 ms
 
@@ -40,24 +40,40 @@ record); the MIDI-clock period is derived per block on the DSP (24-step
 [`tempo-sync`](../tempo-sync/) note cave at `r6+$1` bits 8-15; the panel
 label comes from its formatter cave.
 
+TIME glides toward the knob (1/1024 per block), the glided value ramps
+across each block a sixteenth of the step per sample (the whole step at the
+block edge was a click per block for the ~1 s a big move glides, in every
+mode; measured and fixed 20 Sep 2026, `tools/harness/glide_census.py`),
+and the loop tap reads between samples at the ramp's fraction (the integer
+read since the wow went skipped a sample at every integer crossing -- a
+click per crossing, recirculating). REVERSE's lag floor and GRAIN's read
+base follow the ramp per sample. Once the remaining distance is under one step the state
+snaps onto the target, so the fraction is 0 at rest (a standing fraction is
+a two-sample average on every pass, which dulled the repeats after a TIME
+increase in image 33). FDBK, TONE, PING and WET move an eighth of the way to
+their knob per block.
+
 ## Knobs
 
 | | CLEAN | GRAIN | REVERSE |
 |---|---|---|---|
-| page 1: SEND · TIME ⌐FDBK · TONE · PING · WET | the same everywhere | | |
+| page 1: SEND · TIME ⌐FDBK · TONE · PING · WET | the same everywhere | | PING reads `---` (the mode pins it to 0) |
 | MODE (p6) | CLEAN | GRAIN | REVRS |
 | SCAT (p7) | `---` | how far apart the grains read | `---` |
 | DENS ⌐(p8) | `---` | density, level-flat | `---` |
-| SIZE (p9) | unused | grain length 46 / 93 / 23 ms, XTRM 186 ms | segment; XTRM = 371 ms |
-| PTCH ⌐(p10) | no effect | ±2 oct, 64 = unison; a held MIDI note overrides | no effect |
-| FRZE (p11) | hold | hold (the grains keep grazing) | hold |
+| SIZE (p9) | `---` | GLEN: grain length 46 / 93 / 23 ms, XTRM 186 ms | SLEN: segment; XTRM = 371 ms |
+| PTCH ⌐(p10) | `---` | ±2 oct, 64 = unison; a held MIDI note overrides | `---` |
+| WOW (p11) | tape wobble on the loop tap: 0 none, 127 = ±254 samples (wow 0.8 Hz + flutter 7.3 Hz at an eighth) | the same | the same |
 
-Each mode's `ModeView` re-defaults the knobs. PING 0 by default: an aux
+Each mode's `ModeView` re-defaults the knobs and names every knob the mode
+never reads `---` (20 Sep 2026, every effect). PING 0 by default: an aux
 delay sits still; the bounce is the knob's. The tape wow (MDEP / MRAT, a
 lerped read at TIME + wow, flutter, and a loop saturation gated on the
-depth) went 15 Sep 2026 -- Sam: the modulation is the LFOs' and the
-Modulation station's, and the crackle gathered around those knobs; the
-removal is bit-identical to depth 0 and the delay prices 1,243 -> 1,057.
+depth) went 15 Sep 2026 for the crackle, whose cause was the TIME jump
+(glided 20 Sep); the wow came back the same day in the freeze's slot as one
+depth knob at a fixed rate, riding the glide's between-samples read (Sam:
+"wow back freeze gone"). WOW 0 is bit-identical to the glide alone
+(`verify_delay`, every case). The freeze hold is gone.
 In REVERSE the two 16K lines are one 32K mono ring
 (XTRM = 16,384 samples = 371 ms, the mode's default), PING is forced off and
 the output is mono to both channels.
@@ -66,7 +82,6 @@ the output is mono to both channels.
 
 `dsp_host` renders payload B only under `rig_render.py` (both cores); the
 DEV hatch (`make render-delay`) places the delay out of region in payload A.
-`DFRZAT=n` engages FREEZE after n blocks.
 
 ## Measured
 
@@ -100,4 +115,4 @@ one is better"); GRAIN DENS 32 → 127 on the loop "sounds pretty good".
   segment would need both lines as one ring, which they are not (LineR is
   in the private region).
 - Pitch accuracy below −1.5 octaves: finder or engine.
-- The delay return is ~4 dB quieter than the reverb at equal send.
+- The delay's wet is ~4 dB quieter than the reverb's at equal send.

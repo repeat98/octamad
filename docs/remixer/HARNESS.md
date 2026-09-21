@@ -207,9 +207,8 @@ real payload B feeding BusVerb on payload A (the send hop, the delay hop,
 the delay→reverb series hop) render bit-identical to the same layouts on
 one core through the DEV hatch, and under four skews.
 `tools/verify/verify_onebus.py` (in `make check`): the one-aux rig's chain,
-liveness stamps, MIX passthrough, last-live-stage return, track-8 send
-refusal and station silence, senders and delay on payload B, reverb and
-return on payload A.
+its liveness stamp, WET passthrough, each host's print, the track-8 send
+refusal and station silence, senders and delay on payload B, reverb on payload A.
 
 ## port_compare.py
 
@@ -228,7 +227,7 @@ modulator, the delay's LFO) matches in scale and not in residual.
 | stock image, T1 THRU: SEND + EQ flat, tone | T1 chain | −0.001 dB | −121 dB |
 | same | mix (TX0 slot 2 vs `mix.wav` L) | −0.001 dB | −113 dB |
 | the one-aux rig, kick on T2's inputs | T2 chain (SPECTRUM + SEND) | −0.001 dB | −137 dB |
-| same | T8 return (delay → reverb, history) | −0.083 dB | −8 dB |
+| same | T8 return (delay → reverb, history; the return gone 20 Sep 2026) | −0.083 dB | −8 dB |
 | same | mix | −0.001 dB | −90 dB |
 
 A track whose record carries audio but whose chain output is digital zero

@@ -36,7 +36,7 @@ MOD = registry.by_name("character")
 SEND = registry.by_name("send")
 K = MOD.knob_map()
 MEM = f"out/dsp/_audition_{MOD.name}_A.mem"
-# The MASTER path (RET, GLUE by position) needs the reverb server PLACED: the
+# The MASTER path (GLUE by position) needs the reverb server PLACED: the
 # station aliases the position test to "never the master" when INIT_TABLE
 # [REVERB] == INIT_TABLE[SEND], which is what the audition's scratch image
 # has. Those renders come from the shipping build's own payload A instead.
@@ -264,7 +264,7 @@ check("COMP=0 is unity gain (the stage is skipped, bit-exact)",
 glue, _ = render(tone(438, amp=0.13), COMP=40, slot="master")
 g0, _ = render(tone(438, amp=0.13), COMP=0, slot="master")
 if glue is None:
-    print("  [SKIP] the master path (GLUE, RET by position): the shipping build out/mainos_bus.bin carries no Character")
+    print("  [SKIP] the master path (GLUE by position): the shipping build out/mainos_bus.bin carries no Character")
     MASTER = False
 else:
     MASTER = True

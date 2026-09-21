@@ -63,8 +63,8 @@ CASES = [
      dict(layout=".RS")),
     # ⚠️ NO SENDER AT POSITION 3 in any single-core case: that is track 8
     # on payload A (the DEV hatch IS payload A), where the SEND is refused
-    # by design (the one-aux rig) -- a `..DS` layout rendered
-    # digital silence and the gate rightly refused to stamp it.
+    # by design -- a `..DS` layout rendered digital silence and the gate
+    # rightly refused to stamp it.
     (".DS     election takeover with the delay as the server",
      dict(layout=".DS", pick="D")),
 

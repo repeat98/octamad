@@ -76,9 +76,12 @@ def main():
         for slot, prm in enumerate(mod.params):
             if not (prm.active and prm.labels):
                 continue
+            views = mod.name_views_for(slot)
             if slot == mod.mode_slot:
-                want = mode_names.complete(mod) if mod.mode_views else {}
+                want = mode_names.complete(mod, slot, views) if views else {}
                 want = mode_names.with_selfname(want, slot, prm.labels)
+            elif views:
+                want = mode_names.complete(mod, slot, views)
             else:
                 # only the MODE select names itself (image 27); every other
                 # labelled select renames NOTHING at any value (the tick

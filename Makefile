@@ -193,6 +193,9 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	python3 tools/verify/verify_modulation.py
 	python3 tools/verify/verify_nimbus.py
 	python3 tools/verify/verify_hello.py
+	@# The isolated DSP gates build their own remixes over mainos_bus.bin.
+	@# Restore the selected image before inspecting its chooser tables.
+	$(MAKE) bus REMIX=$(REMIX)
 	REMIX=$(REMIX) python3 tools/verify/verify_menu.py
 	python3 tools/verify/verify_burn.py $(REMIX)
 	python3 tools/verify/verify_twocore.py
@@ -202,6 +205,9 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	@# and with OT_PROJECT a live tempo change under the port (SKIPs parts it
 	@# cannot run; a remix without REPITCH is a one-line pass).
 	python3 tools/verify/verify_repitch.py $(REMIX)
+	@# EUCLID: native control laws, executed ColdFire hooks, both DSP payloads,
+	@# panel dial rendering and (with OT_PROJECT) full playback under the port.
+	$(PY) tools/verify/verify_euclid.py $(REMIX)
 	@# A real project on the built image under the ColdFire port (ids, page-2
 	@# delivery, chain audio, the main out); SKIPs without OT_PROJECT (above).
 	python3 tools/verify/verify_set.py $(REMIX)

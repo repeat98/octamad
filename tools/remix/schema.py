@@ -83,6 +83,7 @@ class Formatter(Enum):
     INHERIT = "inherit"   # leave the donor's formatter untouched
     PLAIN = "plain"       # stock numeric knob: both formatter words zero
     STEPPED = "stepped"   # enumerated selector (the CHORUS.TAPS renderer)
+    WIDE_STEPPED = "wide-stepped"  # labelled select whose >5 values fill the plain dial arc
     BIPOLAR = "bipolar"   # a 0..127 knob DRAWN -64..+63 (SPRING BAL's dial: A = 0x4003c7a0, 0x12a = the signed number; 14 Sep 2026)
 
 
@@ -133,6 +134,11 @@ class Param:
                     f"param {self.name!r}: {len(self.labels)} labels for a "
                     f"count of {self.count} -- one label per value, and only "
                     f"where a count is declared")
+        if self.formatter is Formatter.WIDE_STEPPED:
+            if self.count is None or self.count <= 5 or self.labels is None:
+                raise ValueError(
+                    f"param {self.name!r}: WIDE_STEPPED needs labels and at "
+                    f"least six values")
         # A default outside its own count is used as an INDEX. That shipped
         # once -- slot 7 defaulted to 64 with a count of 5 -- and stalled the
         # sequencer on hardware after two steps.
@@ -436,8 +442,8 @@ class ModeView:
     MDEP in both is telling the operator the wrong thing half the time (Sam,
    : "it's only got four settings ... just feels a lil confusing").
 
-    `names` renames slots for this mode -- 4 characters, the field's width,
-    exactly as MenuEntry.abbr is. `defaults` is what the OTHER knobs should
+    `names` renames slots for this mode -- up to 5 characters plus the field's
+    terminator. `defaults` is what the OTHER knobs should
     be when the operator lands on this mode; the remixer applies them the
     moment MODE changes, and on the unit the same table drives the cave.
 
@@ -454,17 +460,29 @@ class ModeView:
         for slot, nm in self.names.items():
             if not 0 <= slot <= 11:
                 raise ValueError(f"mode {self.mode}: slot {slot} is not 0..11")
-            if len(nm) > 4:
+            if len(nm) > 5:
                 raise ValueError(
                     f"mode {self.mode}: name {nm!r} is {len(nm)} characters; "
-                    f"the field holds FOUR plus a terminator (the 'HELL' "
-                    f"crash, CLAUDE.md)")
+                    f"the field holds FIVE plus a terminator")
         for slot, val in self.defaults.items():
             if not 0 <= slot <= 11:
                 raise ValueError(f"mode {self.mode}: slot {slot} is not 0..11")
             if not 0 <= val <= 127:
                 raise ValueError(f"mode {self.mode}: default {val} for slot "
                                  f"{slot} is outside 0..127")
+
+
+@dataclass(frozen=True)
+class NameSelect:
+    """An additional stepped select that only renames parameter fields.
+
+    `Module.mode_slot` remains the selector that can also apply defaults.
+    NameSelect covers independent display relationships, such as Euclid TYPE
+    changing FREQ to LEVEL while OUTPUT continues to rename DECAY/ATTACK.
+    """
+
+    slot: int
+    views: tuple[ModeView, ...]
 
 
 @dataclass(frozen=True)
@@ -716,6 +734,7 @@ class Module:
     # renames and re-defaults. Empty for a single-engine module.
     mode_slot: int | None = None
     mode_views: tuple[ModeView, ...] = ()
+    name_selects: tuple[NameSelect, ...] = ()
 
     def __post_init__(self):
         if self.params and len(self.params) != 12:
@@ -743,7 +762,33 @@ class Module:
                     if _c is not None and val >= _c:
                         raise ValueError(
                             f"{self.name}: mode {v.mode} defaults slot {slot} "
-                            f"to {val}, past its {_c} positions")
+                        f"to {val}, past its {_c} positions")
+        _name_slots = set()
+        for select in self.name_selects:
+            if select.slot in _name_slots or select.slot == self.mode_slot:
+                raise ValueError(f"{self.name}: duplicate name selector on slot "
+                                 f"{select.slot}")
+            _name_slots.add(select.slot)
+            if select.slot not in STEPPED_ONLY:
+                raise ValueError(
+                    f"{self.name}: name selector {select.slot} -- a select can "
+                    f"only sit on slot {', '.join(map(str, STEPPED_ONLY))}")
+            _cnt = self.params[select.slot].count if self.params else None
+            _seen = set()
+            for v in select.views:
+                if v.defaults:
+                    raise ValueError(
+                        f"{self.name}: name selector {select.slot} view {v.mode} "
+                        f"has defaults; only mode_slot may apply defaults")
+                if v.mode in _seen:
+                    raise ValueError(
+                        f"{self.name}: name selector {select.slot} has two views "
+                        f"for value {v.mode}")
+                _seen.add(v.mode)
+                if _cnt is not None and v.mode >= _cnt:
+                    raise ValueError(
+                        f"{self.name}: name selector {select.slot} has a view "
+                        f"for value {v.mode}, but the select has {_cnt} positions")
         if (self.menu is not None and self.kind is not Kind.STOCK
                 and self.menu.fx2_id in STOCK_FX2_IDS
                 and not self.menu.replaces):
@@ -782,6 +827,15 @@ class Module:
             if v.mode == mode:
                 return v
         return None
+
+    def name_views_for(self, slot: int) -> tuple[ModeView, ...]:
+        """Rename views driven by `slot`, including the primary MODE slot."""
+        if slot == self.mode_slot:
+            return self.mode_views
+        for select in self.name_selects:
+            if select.slot == slot:
+                return select.views
+        return ()
 
     def knob_map_in(self, mode: int | None = None) -> dict[str, int]:
         """knob_map(), but with this MODE's renames applied. The remixer draws
@@ -835,7 +889,17 @@ class Module:
     @property
     def stepped_slots(self) -> tuple[int, ...]:
         return tuple(i for i, p in enumerate(self.params)
-                     if p.formatter is Formatter.STEPPED)
+                     if p.formatter in (Formatter.STEPPED, Formatter.WIDE_STEPPED))
+
+    @property
+    def wide_stepped_slots(self) -> tuple[int, ...]:
+        """Labelled selects whose values use the full 128-position dial arc.
+
+        The build installs one shared renderer hook for every such slot in a
+        remix; modules do not own or duplicate the stock dial detour.
+        """
+        return tuple(i for i, p in enumerate(self.params)
+                     if p.formatter is Formatter.WIDE_STEPPED)
 
     @property
     def bipolar_slots(self) -> tuple[int, ...]:

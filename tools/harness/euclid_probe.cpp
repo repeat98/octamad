@@ -43,10 +43,15 @@ int main(int argc, char** argv) {
         return true;
     };
     m68k_set_reg(cpu, M68K_REG_SP, stack);
-    m68k_set_reg(cpu, M68K_REG_SR, 0x2700);
+    m68k_set_reg(cpu, M68K_REG_SR, 0x271f);
     m68k_set_reg(cpu, M68K_REG_D0, 1);
     m.write32(0x4610757c, anchor);
     if (!run(0x4009c3d4, 0x4009c3da)) return 1;
+    if ((m68k_get_reg(cpu, M68K_REG_SR) & 0x1f) != 0x10) {
+        std::fprintf(stderr, "start hook changed displaced PLAYING-store CCR: %04x\n",
+                     m68k_get_reg(cpu, M68K_REG_SR));
+        return 1;
+    }
     m.write8(0x800065bd, 0); m.write8(0x800065be, 0);
     m.write8(0x400e21e0 + 0x8e55, 1);   // per-track scale
     for (unsigned track = 0; track < 8; ++track) {
@@ -125,9 +130,15 @@ int main(int argc, char** argv) {
     std::vector<uint16_t> captured;
     for (unsigned i = 0; i < 64; ++i) captured.push_back(m.read16(state + 2*164 + 24 + 2*i));
     const auto epoch = m.read32(state);
+    m68k_set_reg(cpu, M68K_REG_SR, 0x271f);
     m68k_set_reg(cpu, M68K_REG_D0, 1);
     m.write32(0x4610757c, anchor);
     if (!run(0x4009c4d4, 0x4009c4da)) return 1;
+    if ((m68k_get_reg(cpu, M68K_REG_SR) & 0x1f) != 0x10) {
+        std::fprintf(stderr, "resume hook changed displaced PLAYING-store CCR: %04x\n",
+                     m68k_get_reg(cpu, M68K_REG_SR));
+        return 1;
+    }
     m.write32(0x46104cf0, anchor);
     m.write16(rec + 54, 0x1d); m.write8(rec + 40, 3);
     m.write8(rec + 64 + 40, 3);
@@ -186,6 +197,6 @@ int main(int argc, char** argv) {
                 if (!dial(slot, value, flags, maximum)) return 1;
     }
     std::printf("PASS: actual dial renderer uses the full arc at 64 steps/pulses; labels, storage and other dials unchanged\n");
-    std::printf("PASS: %u frames, 16 instances, both buffers, both PLAY paths; peak %u CF instructions per frame\n", frames, peakInstructions);
+    std::printf("PASS: %u frames, 16 instances, both buffers, both PLAY paths and PLAY CCR; peak %u CF instructions per frame\n", frames, peakInstructions);
     return 0;
 }

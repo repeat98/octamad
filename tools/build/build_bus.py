@@ -38,6 +38,7 @@ from remix.state import fx1_hazard  # noqa: E402
 from remix import stock as stock_mod  # noqa: E402
 import label_fmt  # noqa: E402
 import mode_names  # noqa: E402
+import wide_dial  # noqa: E402
 from remix import ledger  # noqa: E402
 
 OUT = pathlib.Path("out/mainos_bus.bin")
@@ -1357,7 +1358,51 @@ def main():
               f"({_lbl_top - max(_cave_top, cave_end)} B)"
               + (f"; {sum(1 for x in _lbl if x[3] >= OVERFLOW_RUN and x[3] < OVERFLOW_RUN_END)} "
                  f"overflowed into 0x{OVERFLOW_RUN:08x}.. (next free 0x{_ovf_top:08x})"
-                 if _ovf_top > OVERFLOW_RUN else ""))
+                  if _ovf_top > OVERFLOW_RUN else ""))
+    # A labelled select wider than CHORUS.TAPS' five-position widget falls
+    # back to the plain dial, whose raw 0..127 indexing otherwise uses only
+    # part of the arc. Install ONE schema-driven hook for every such slot in
+    # the remix. The generated table keys on formatter addresses, so another
+    # module opts in with Formatter.WIDE_STEPPED rather than claiming this
+    # shared stock detour or coupling itself to an existing module.
+    _wide = []
+    for _n, _i, _nm, _a, _sz, _labels, _rn in _lbl:
+        _p = _MODS[_n].params[_i]
+        if _i in _MODS[_n].wide_stepped_slots:
+            _wide.append((_a, _p.count - 1, _n, _i, _nm))
+    if _wide:
+        _owners = [(m.key, d.symbol) for m in _SEL for d in m.detours
+                   if d.site == wide_dial.SITE]
+        if _owners:
+            sys.exit(f"wide stepped formatter needs shared dial site "
+                     f"0x{wide_dial.SITE:08x}, already claimed by {_owners}")
+        _src = pathlib.Path("out/generated/wide_dial.s")
+        _src.parent.mkdir(parents=True, exist_ok=True)
+        _src.write_text(wide_dial.source([(a, maximum) for a, maximum, *_ in _wide]))
+        _at = (_lbl_top + 3) & ~3
+        _wb, _wsyms, _ = _link(_src, _at, "5475", "out/linked/wide_dial")
+        _in = _at + len(_wb) <= cave_limit
+        if not _in:
+            _at = (_ovf_top + 3) & ~3
+            _wb, _wsyms, _ = _link(_src, _at, "5475", "out/linked/wide_dial")
+        if _at + len(_wb) > (cave_limit if _in else OVERFLOW_RUN_END):
+            sys.exit(f"wide dial hook ({len(_wb)} B) does not fit")
+        if any(img[_at - BASE:_at - BASE + len(_wb)]):
+            sys.exit(f"wide dial hook at 0x{_at:08x} is not free")
+        _got = bytes(img[wide_dial.SITE - BASE:
+                         wide_dial.SITE - BASE + len(wide_dial.STOCK)])
+        if _got != wide_dial.STOCK:
+            sys.exit(f"wide dial site 0x{wide_dial.SITE:08x} is not stock "
+                     f"({_got.hex()})")
+        img[_at - BASE:_at - BASE + len(_wb)] = _wb
+        img[wide_dial.SITE - BASE:wide_dial.SITE - BASE + 6] = \
+            b"\x4e\xf9" + _wsyms["wide_dial_hook"].to_bytes(4, "big")
+        if _in:
+            _lbl_top = _at + len(_wb)
+        else:
+            _ovf_top = (_at + len(_wb) + 3) & ~3
+        print(f"  shared wide dial: {len(_wb)} B at 0x{_at:08x}, "
+              + ", ".join(f"{n} p{i} {nm}" for _, _, n, i, nm in _wide))
     # ==== 1d. FX1 ROWS, for modules that asked for one =====================
     # THE OTHER HALF OF "BOTH SLOTS". The DSP dispatch is ONE table indexed by
     # the raw id and shared by the menus, so a module's CODE already runs from

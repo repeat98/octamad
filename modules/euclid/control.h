@@ -16,7 +16,7 @@ typedef struct {
     uint32_t epoch, next, period, age, rng, triggers;
     uint16_t values[64];
     uint16_t level, origin, target;
-    uint8_t initialized, mode, attacking, active;
+    uint8_t initialized, mode, active;
     uint16_t reserved;
 } EuState;
 

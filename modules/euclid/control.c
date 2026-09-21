@@ -129,7 +129,6 @@ uint16_t eu_process(EuState *s, const EuClock *c, const EuParams *p,
             s->origin = s->level;
             s->age = (uint32_t)-distance >> 2;
             s->active = 1;
-            s->attacking = 1;
             if (mode >= 2) {
                 if (mode == 2) s->values[index] = eu_random(&s->rng);
                 s->target = s->values[index];
@@ -170,21 +169,60 @@ extern EuState eu_states[16];
 #define U8(a) (*(volatile uint8_t *)(a))
 #define U32(a) (*(volatile uint32_t *)(a))
 
+/* Sequencer records and settings, named after tools/emu/emu_rtos.py and
+ * docs/firmware/EXTERNAL.md section 9.3. Keep the two bases explicit: the
+ * scale-mode and global values belong to the pattern record; the remaining
+ * values belong to TRAC. */
+enum {
+    EU_BANK_BLOB = 0x400e21e0u,
+    EU_BANK_STRIDE = 635712u,
+    EU_PATTERN_STRIDE = 36568u,
+    EU_TRACK_STRIDE = 2330u,
+    EU_TEMPO24 = 0x8000181cu,
+    EU_TRANSPORT = 0x800065b8u,
+    EU_SEQ_BANK = 0x800065bdu,
+    EU_SEQ_PATTERN = 0x800065beu,
+    EU_FRAME_CLOCK = 0x46104cf0u,
+    EU_PATTERN_LENGTH = 0x8e53u,
+    EU_PATTERN_SCALE = 0x8e54u,
+    EU_PATTERN_SCALE_MODE = 0x8e55u,
+    EU_TRACK_SWING_MASK_HI = 0x40u,
+    EU_TRACK_SWING_MASK_LO = 0x44u,
+    EU_TRACK_LENGTH = 0x50u,
+    EU_TRACK_SCALE = 0x51u,
+    EU_TRACK_SWING = 0x52u,
+};
+
 /* Called AFTER the stock parameter builder, scene interpolation and LFOs.
  * Only FREQ in a Euclid slot is replaced. Every other slot/id is untouched.
  * Record halfwords 6..11 = FX1, 12..17 = FX2; p2 = 18..20 / 24..26. */
 void eu_publish(uint16_t *record, unsigned track) {
-    unsigned running = U32(0x800065b8) == 1;
-    eu_clock_update(&eu_clock, U32(0x46104cf0));
+    unsigned running = U32(EU_TRANSPORT) == 1;
+    eu_clock_update(&eu_clock, U32(EU_FRAME_CLOCK));
+    if (record[27] != EU_ID && record[28] != EU_ID) {
+        eu_states[2 * track].initialized = 0;
+        eu_states[2 * track + 1].initialized = 0;
+        return;
+    }
+    volatile uint8_t *pattern = (volatile uint8_t *)(EU_BANK_BLOB
+        + U8(EU_SEQ_BANK) * EU_BANK_STRIDE
+        + U8(EU_SEQ_PATTERN) * EU_PATTERN_STRIDE);
+    volatile uint8_t *tr = pattern + track * EU_TRACK_STRIDE;
+    const unsigned scales[7] = {3, 4, 6, 8, 12, 24, 48};
+    unsigned per_track = pattern[EU_PATTERN_SCALE_MODE];
+    unsigned scale_idx = per_track ? tr[EU_TRACK_SCALE]
+                                   : pattern[EU_PATTERN_SCALE];
+    unsigned length = per_track ? tr[EU_TRACK_LENGTH]
+                                : pattern[EU_PATTERN_LENGTH];
+    unsigned scale = scales[scale_idx < 7 ? scale_idx : 2];
+    length = length && length <= 64 ? length : 16;
+    unsigned swing = min_u(tr[EU_TRACK_SWING], 30);
+    uint32_t mask_hi = *(volatile uint32_t *)(tr + EU_TRACK_SWING_MASK_HI);
+    uint32_t mask_lo = *(volatile uint32_t *)(tr + EU_TRACK_SWING_MASK_LO);
+    uint32_t elapsed = U32(EU_TEMPO24) * 16u;
     for (unsigned fx = 0; fx < 2; ++fx) {
         EuState *s = &eu_states[2 * track + fx];
         if (record[27 + fx] != EU_ID) { s->initialized = 0; continue; }
-        volatile uint8_t *tr = (volatile uint8_t *)(0x400e21e0u
-            + U8(0x800065bd) * 635712u + U8(0x800065be) * 36568u);
-        const unsigned scales[7] = {3, 4, 6, 8, 12, 24, 48};
-        unsigned scale_idx = tr[0x8e55] ? tr[track * 2330 + 0x51] : tr[0x8e54];
-        unsigned length = tr[0x8e55] ? tr[track * 2330 + 0x50] : tr[0x8e53];
-        tr += track * 2330;
         unsigned h = 6 + 6 * fx, b = 36 + 12 * fx;
         uint8_t *bytes = (uint8_t *)record;
         EuParams p;
@@ -193,14 +231,12 @@ void eu_publish(uint16_t *record, unsigned track) {
         p.steps = (record[h + 4] >> 8) + 1;
         p.pulses = record[h + 5] >> 8;
         p.rotate = bytes[b]; p.rate = bytes[b + 1];
-        p.attack = bytes[b + 3]; p.mode = bytes[b + 4];
-        p.scale = scales[scale_idx < 7 ? scale_idx : 2];
-        p.length = length && length <= 64 ? length : 16;
-        p.swing = min_u(tr[0x52], 30);
-        p.mask_hi = *(volatile uint32_t *)(tr + 0x40);
-        p.mask_lo = *(volatile uint32_t *)(tr + 0x44);
-        record[h] = eu_process(s, &eu_clock, &p,
-            U32(0x8000181c) * 16u, running, 2 * track + fx);
+        p.attack = bytes[b + 3];
+        p.mode = bytes[b + 4];
+        p.scale = scale; p.length = length; p.swing = swing;
+        p.mask_hi = mask_hi; p.mask_lo = mask_lo;
+        record[h] = eu_process(s, &eu_clock, &p, elapsed, running,
+                               2 * track + fx);
     }
 }
 

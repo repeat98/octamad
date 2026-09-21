@@ -83,6 +83,7 @@ class Formatter(Enum):
     INHERIT = "inherit"   # leave the donor's formatter untouched
     PLAIN = "plain"       # stock numeric knob: both formatter words zero
     STEPPED = "stepped"   # enumerated selector (the CHORUS.TAPS renderer)
+    WIDE_STEPPED = "wide-stepped"  # labelled select whose >5 values fill the plain dial arc
     BIPOLAR = "bipolar"   # a 0..127 knob DRAWN -64..+63 (SPRING BAL's dial: A = 0x4003c7a0, 0x12a = the signed number; 14 Sep 2026)
 
 
@@ -133,6 +134,11 @@ class Param:
                     f"param {self.name!r}: {len(self.labels)} labels for a "
                     f"count of {self.count} -- one label per value, and only "
                     f"where a count is declared")
+        if self.formatter is Formatter.WIDE_STEPPED:
+            if self.count is None or self.count <= 5 or self.labels is None:
+                raise ValueError(
+                    f"param {self.name!r}: WIDE_STEPPED needs labels and at "
+                    f"least six values")
         # A default outside its own count is used as an INDEX. That shipped
         # once -- slot 7 defaulted to 64 with a count of 5 -- and stalled the
         # sequencer on hardware after two steps.
@@ -835,7 +841,17 @@ class Module:
     @property
     def stepped_slots(self) -> tuple[int, ...]:
         return tuple(i for i, p in enumerate(self.params)
-                     if p.formatter is Formatter.STEPPED)
+                     if p.formatter in (Formatter.STEPPED, Formatter.WIDE_STEPPED))
+
+    @property
+    def wide_stepped_slots(self) -> tuple[int, ...]:
+        """Labelled selects whose values use the full 128-position dial arc.
+
+        The build installs one shared renderer hook for every such slot in a
+        remix; modules do not own or duplicate the stock dial detour.
+        """
+        return tuple(i for i, p in enumerate(self.params)
+                     if p.formatter is Formatter.WIDE_STEPPED)
 
     @property
     def bipolar_slots(self) -> tuple[int, ...]:

@@ -127,6 +127,11 @@ state things you might assume:
   renderer against the count.
 - **A `name` of `None` inherits the donor's; `b""` blanks it.** Write the
   name explicitly even when the donor has it: the harness reads these.
+- A labelled select wider than five values normally falls back to a plain
+  dial and uses only part of its 128-position arc. Declare
+  `formatter=Formatter.WIDE_STEPPED` to keep its labels while scaling the
+  drawing across the full arc. The build installs one shared hook for all
+  such slots; modules do not claim the stock dial site themselves.
 - **`link=True` draws the panel's link element** between this knob and the
   one on its left (stock's STRT/LEN, BASE/WDTH): bit 1 of the slot's enable
   nibble (`PARAM_PAGES.md` §3b). Display only; the pair must sit in one row

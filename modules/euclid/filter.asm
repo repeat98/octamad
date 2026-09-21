@@ -1,12 +1,11 @@
-; Euclid stereo TPT state-variable filter (Spectrum's reviewed SEM core).
-; The ColdFire control engine publishes the modulated cutoff as FREQ.
+; Euclid stereo two-pole TPT state-variable filter / amplitude modulator.
+; The ColdFire control engine publishes the modulated cutoff or gain as FREQ.
 ; No shared buffers. All state is private to r7, in $00..$3f.
 ; $20 g2 target, $21 R, $1f c4, $33 inverse denominator
 ; $2e running g2, $2f ramp, $34/$35 L states, $36/$37 R states
-; $23/$24/$25 LP/BP/HP weights, $28 MIX, $1d dry, $1b wet
-; $38 one-pole coefficient, $39 ramp, $3a/$3b L/R one-pole states
-; LP adds a third pole: S1000-inspired 18 dB/oct, not a hardware emulation.
+; $23/$24/$25/$26 LP/BP/HP/AMP weights, $28 MIX, $1d dry, $1b wet
 ; Every product uses the audited signed x0,y1 encoding.
+; CYCLES_FORWARD_BRANCHES
 init:
         clr     a
         move    r7,r5
@@ -53,20 +52,6 @@ proc:
         mpy     x0,y1,a
         add     y0,a
         move    a,x:(r7+$20)
-; r5 is at G2[i+1]; 32 further words reaches LP1[i]. x0 retains fraction.
-        move    #>$20,n5
-        move    (r5)+n5
-        move    p:(r5)+,y0
-        move    p:(r5),b
-        move    y0,a
-        sub     a,b
-        move    b,y1
-        mpy     x0,y1,a
-        add     y0,a
-        move    x:(r7+$38),x0
-        sub     x0,a
-        asr     #$4,a,a
-        move    a,x:(r7+$39)
         move    x:(r7+$20),a
 ; ---- the cutoff RAMP: dg = (g2 - g2run)/16 per block, added
 ; once per sample in the loop, so a fast FREQ sweep or LFO has no block-rate
@@ -76,17 +61,23 @@ proc:
         sub     x0,a
         asr     #$4,a,a
         move    a,x:(r7+$2f)            ; dg
-; TYPE, slot 8: knob field of r6+$d. Only one wet tap is active.
+; Seed the reciprocal once per block. This covers the first block and RES
+; edits even when cutoff is stationary; the sample loop updates it only
+; while g is actually ramping.
+        bsr     eu_denominator
+; TYPE, slot 8: knob field of r6+$d. Only one wet tap is active. AMP uses
+; the modulated FREQ value as gain, pinning the top panel value to unity.
         clr     a
         move    a,x:(r7+$23)
         move    a,x:(r7+$24)
         move    a,x:(r7+$25)
+        move    a,x:(r7+$26)
         move    x:(r6+$d),a
         and     #>$7f0000,a
         asr     #$10,a,a
         move    a1,x0
         move    x0,a
-        move    #>$2,x0
+        move    #>$3,x0
         cmp     x0,a
         ble     eu_typeok
         clr     a
@@ -98,6 +89,18 @@ eu_typeok:
         move    (r5)+n5
         move    #>$7fffff,x0
         move    x0,x:(r5)
+        move    n5,a
+        move    #>$3,x0
+        cmp     x0,a
+        bne     eu_type_done
+        move    x:(r6+$0),a
+        and     #>$7fffff,a
+        move    #>$7f0000,x0
+        cmp     x0,a
+        move    #>$7fffff,x0
+        teq     x0,a
+        move    a,x:(r7+$26)
+eu_type_done:
 ; MIX, slot 11: companion field of r6+$e; pin full wet to unity.
         move    x:(r6+$e),a
         and     #>$7f00,a
@@ -113,56 +116,14 @@ eu_typeok:
         move    x:(r7+$2f),x0
         add     x0,a
         move    a,x:(r7+$2e)
-        move    x:(r7+$38),a
-        move    x:(r7+$39),x0
-        add     x0,a
-        move    a,x:(r7+$38)
-; Recompute the TPT coefficients at the current ramp position. A denominator
-; frozen at the block's destination produces large overshoots when a gate
-; closes from maximum cutoff, so the reciprocal follows g on every sample.
-        move    x:(r7+$2e),a
-        move    x:(r7+$21),x0           ; R
-        add     x0,a
-        asr     #$1,a,a
-        move    a,x:(r7+$1f)            ; c4
-        move    x:(r7+$2e),x0           ; g2
-        move    x:(r7+$2e),y1
-        mpy     x0,y1,a                 ; g2^2
-        move    x:(r7+$21),y1           ; R
-        mac     x0,y1,a                 ; + R*g2
-        add     #>$200000,a             ; + 1/4
-        asr     #$1,a,a                 ; den/8
-        move    a,x0
-        move    #$10,y1                 ; 1/8
-        move    y1,a                    ; a clean load: a0 = 0 for the divide
-        andi    #$fe,ccr                ; carry clear
-; 24 divide steps, unrolled so static cycle pricing sees every cycle.
-        div     x0,a
-        div     x0,a
-        div     x0,a
-        div     x0,a
-        div     x0,a
-        div     x0,a
-        div     x0,a
-        div     x0,a
-        div     x0,a
-        div     x0,a
-        div     x0,a
-        div     x0,a
-        div     x0,a
-        div     x0,a
-        div     x0,a
-        div     x0,a
-        div     x0,a
-        div     x0,a
-        div     x0,a
-        div     x0,a
-        div     x0,a
-        div     x0,a
-        div     x0,a
-        div     x0,a                    ; 24 quotient bits land in a0
-        move    a0,x0
-        move    x0,x:(r7+$33)           ; d
+; A denominator frozen while g moves produces large overshoots when a gate
+; closes from maximum cutoff. Follow the ramp, but retain the exact block
+; value in x:$33 when dg is zero (the normal held-knob case).
+        move    x:(r7+$2f),a
+        tst     a
+        beq     eu_den_held
+        bsr     eu_denominator
+eu_den_held:
 
         move    x:(r0),x0
         move    x0,x:(r7+$1d)           ; park x
@@ -205,21 +166,7 @@ eu_typeok:
         move    a,x:(r7+$1b)            ; lp parked (limited)
         add     b,a
         move    a,x:(r7+$35)            ; s1'
-; Third LP pole: v = h*(lp-z), output = z+v, z' = output+v.
-; Half-scale the difference before the multiply; preserve BP/HP in x1/y0.
-        move    x:(r7+$1b),a
-        move    x:(r7+$3a),b
-        sub     b,a
-        asr     #$1,a,a
-        move    a,x0
-        move    x:(r7+$38),y1
-        mpy     x0,y1,a
-        asl     #$1,a,a
-        add     a,b
-        move    b,x:(r7+$1b)
-        add     a,b
-        move    b,x:(r7+$3a)
-; Select the active LP, BP or HP tap.
+; Select the active LP, BP, HP or amplitude-modulated dry tap.
         move    x1,x0
         move    x:(r7+$24),y1
         mpy     x0,y1,a
@@ -229,6 +176,10 @@ eu_typeok:
         add     b,a
         move    x:(r7+$1b),x0
         move    x:(r7+$23),y1
+        mpy     x0,y1,b
+        add     b,a
+        move    x:(r7+$1d),x0
+        move    x:(r7+$26),y1
         mpy     x0,y1,b
         add     b,a
         move    a,x:(r7+$1b)            ; wet
@@ -283,21 +234,7 @@ eu_typeok:
         move    a,x:(r7+$1b)            ; lp parked (limited)
         add     b,a
         move    a,x:(r7+$37)            ; s1'
-; Third LP pole: v = h*(lp-z), output = z+v, z' = output+v.
-; Half-scale the difference before the multiply; preserve BP/HP in x1/y0.
-        move    x:(r7+$1b),a
-        move    x:(r7+$3b),b
-        sub     b,a
-        asr     #$1,a,a
-        move    a,x0
-        move    x:(r7+$38),y1
-        mpy     x0,y1,a
-        asl     #$1,a,a
-        add     a,b
-        move    b,x:(r7+$1b)
-        add     a,b
-        move    b,x:(r7+$3b)
-; Select the active LP, BP or HP tap.
+; Select the active LP, BP, HP or amplitude-modulated dry tap.
         move    x1,x0
         move    x:(r7+$24),y1
         mpy     x0,y1,a
@@ -307,6 +244,10 @@ eu_typeok:
         add     b,a
         move    x:(r7+$1b),x0
         move    x:(r7+$23),y1
+        mpy     x0,y1,b
+        add     b,a
+        move    x:(r7+$1d),x0
+        move    x:(r7+$26),y1
         mpy     x0,y1,b
         add     b,a
         move    a,x:(r7+$1b)            ; wet
@@ -325,4 +266,52 @@ eu_typeok:
         move    #>$1,n0
 eu_loopend:
         nop
+        rts
+
+; d = 1 / (1 + 2*R*g + g^2), plus the coefficient used by both channels.
+; Straight-line so cycle_count can price the conditional call above exactly.
+eu_denominator:
+        move    x:(r7+$2e),a
+        move    x:(r7+$21),x0           ; R
+        add     x0,a
+        asr     #$1,a,a
+        move    a,x:(r7+$1f)            ; c4
+        move    x:(r7+$2e),x0           ; g2
+        move    x:(r7+$2e),y1
+        mpy     x0,y1,a                 ; g2^2
+        move    x:(r7+$21),y1           ; R
+        mac     x0,y1,a                 ; + R*g2
+        add     #>$200000,a             ; + 1/4
+        asr     #$1,a,a                 ; den/8
+        move    a,x0
+        move    #$10,y1                 ; 1/8
+        move    y1,a                    ; a clean load: a0 = 0 for the divide
+        andi    #$fe,ccr                ; carry clear
+; 24 divide steps, unrolled so static cycle pricing sees every cycle.
+        div     x0,a
+        div     x0,a
+        div     x0,a
+        div     x0,a
+        div     x0,a
+        div     x0,a
+        div     x0,a
+        div     x0,a
+        div     x0,a
+        div     x0,a
+        div     x0,a
+        div     x0,a
+        div     x0,a
+        div     x0,a
+        div     x0,a
+        div     x0,a
+        div     x0,a
+        div     x0,a
+        div     x0,a
+        div     x0,a
+        div     x0,a
+        div     x0,a
+        div     x0,a
+        div     x0,a                    ; 24 quotient bits land in a0
+        move    a0,x0
+        move    x0,x:(r7+$33)           ; d
         rts

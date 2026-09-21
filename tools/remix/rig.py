@@ -55,7 +55,7 @@ def category(mod) -> str:
         return SERVER
     if mod.kind is Kind.STOCK:
         return STOCK
-    if mod.kind is Kind.DSP_EFFECT and mod.menu is not None:
+    if mod.kind in (Kind.DSP_EFFECT, Kind.HYBRID) and mod.menu is not None:
         return INSERT
     if mod.menu is None and touches_coldfire(mod):
         return MOD

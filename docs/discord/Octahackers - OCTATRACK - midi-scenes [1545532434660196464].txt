@@ -1,0 +1,1602 @@
+==============================================================
+Guild: Octahackers
+Channel: OCTATRACK / midi-scenes
+==============================================================
+
+[04.09.2026 22:34] bukkakeborealis
+https://discord.com/channels/1542713713360904252/1542722403220721786/1542796001008418890
+
+
+[05.09.2026 13:27] bukkakeborealis
+I realised I shared a modified firmware which is copyrighted . I’ll prepare a link with different the features I am working on that can be rebuilt with your own OS
+
+{Reactions}
+🚔 (2)
+
+[05.09.2026 13:51] bukkakeborealis
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1545532434660196464/1545763301227765780/IMG_0923.jpg?ex=6aaf2001&is=6aadce81&hm=6ab4869b0a15b8b466714b4401dda14e0e946a83ff13accee4e9e62d14c16c6d&
+
+{Reactions}
+😆 (2)
+
+[05.09.2026 14:22] bukkakeborealis
+Changed the channel name because I am now focusing on finishing midi scenes(pretty close now) and then custom new machines. First idea is a CONTROL ALL machine, essentially parameters of other tracks to stay on 1 track for performance. Other projects are synthesis based machines and an overdub FLEX
+
+{Reactions}
+❤️ (6) 👌
+
+[05.09.2026 14:27] mayrakissa
+better name than Octabukkake would be, for sure
+
+{Reactions}
+🤣
+
+[05.09.2026 15:13] ambient.signals_76175
+Legendary stuff all you guys are doing truly
+
+
+[05.09.2026 23:04] bukkakeborealis
+Midi scenes
+Done!
+Full midi scenes working. 
+Every parameters of every pages of midi tracks are lockable to the 16 scenes to A and B and morph between them with Xfader. Same as audio per parts per bank.
+Reloadable. Copy/paste/clear. Everything.
+Some things to fix but it’s pretty much the real thing.
+I’ll add midi filters for CC48/55/56 as well in personal settings.
+Tested with external synths.
+It’s pure madness obviously 😵‍💫
+I’ll release soon when it’s properly tested.
+Couldn’t wait to share the news
+
+{Reactions}
+👻 (3) dogspin (4) ❤️ (11) 😩 👌
+
+[05.09.2026 23:34] antonio110582._72773
+You’re a legend
+
+
+[05.09.2026 23:59] zackyoti_98392
+Boom! Badass
+
+
+[06.09.2026 00:03] bamshanks
+Tempted to point it at my prophet and see how long it takes to have a meltdown
+
+{Reactions}
+🤣
+
+[06.09.2026 00:03] bamshanks
+estimated about 30 seconds
+
+
+[06.09.2026 00:05] tenacious_lemur_99636
+I guess Elektron never gave us the MIDI scenes not to actually preserve the OT but every other device 😉 Let's brick them all, OT shall be the survivor.
+
+{Reactions}
+✊ (2) ❤️
+
+[06.09.2026 00:05] bamshanks
+Haha yeah I have to filter the octa traffic to it even without midi scenes
+
+
+[06.09.2026 00:06] bamshanks
+it's the weakest midi link in my rig
+
+
+[06.09.2026 00:06] bamshanks
+coz it's basically a windows computer disguised as a synth
+
+{Reactions}
+🤣 (2)
+
+[06.09.2026 00:06] bukkakeborealis
+That’s just insane. Sending notes to DFAM+mafd and 0-coast with midi to cc converters. It’s unbelievable. So fast to come up with organic madness. For composition live it’s just heaven
+
+
+[06.09.2026 00:07] bamshanks
+so cool
+
+
+[06.09.2026 00:07] bukkakeborealis
+Morphing arpeggios is the coolest thing ever
+
+{Reactions}
+❤️
+
+[06.09.2026 00:08] bamshanks
+1 beeeelion midi messages
+
+{Reactions}
+❤️
+
+[06.09.2026 00:08] bamshanks
+love it
+
+
+[06.09.2026 00:08] zackyoti_98392
+Can you do some stress testing to get an idea of how many ccs can be scene locked before fast fader movements start to bog the midi stream? Also, does the bus these midi scene movements live on combine in any way with the bus the internal parameter scene locks are on? Basically just wondering if you can bog your midi scenes if you already have a lot of internal parameters scene locked.
+
+
+[06.09.2026 00:09] bamshanks
+I think someone mentioned a bit of lag while testing
+
+
+[06.09.2026 00:10] bukkakeborealis
+I am still testing on 2 tracks. I’ll open a bunch of instruments on my ksoloti and mal them all on different channels. Lock them all and see how far it goes
+
+
+[06.09.2026 00:11] bukkakeborealis
+Map*
+
+
+[06.09.2026 00:11] bukkakeborealis
+it will have limits for sure
+
+
+[06.09.2026 00:12] bukkakeborealis
+So far it’s incredibly smooth tho
+
+
+[06.09.2026 00:12] tenacious_lemur_99636
+Already if the road to MIDI channels being muted per scene is possible, I'd be more than happy
+
+
+[06.09.2026 00:12] zackyoti_98392
+Oh hells yes. This^
+
+
+[06.09.2026 00:13] bukkakeborealis
+The midi out isn’t an issue for octatrack (maybe for external gears?)but handling all the internal stuff probably at some point
+
+
+[06.09.2026 00:13] bamshanks
+yeah that would be a massive qol
+
+
+[06.09.2026 00:13] bukkakeborealis
+Vel=0?
+
+
+[06.09.2026 00:17] tenacious_lemur_99636
+Any possible way per scene
+
+
+[06.09.2026 00:19] bukkakeborealis
+To mute notes?
+
+
+[06.09.2026 00:19] w_winter
+Do the scenes store both audio and midi param locks in this implementation?  I've had fun doing cc scene morphing with an oxi e16 but doing this on OT with its audio tracks coming for th ride sounds next level
+
+
+[06.09.2026 00:20] bukkakeborealis
+For proper mute with midi loopback it’s possible. Could find a way internally as well I think yeah
+
+
+[06.09.2026 00:20] bukkakeborealis
+Yes both
+
+{Reactions}
+❤️
+
+[06.09.2026 00:21] tenacious_lemur_99636
+To mute MIDI tracks at least but indeed with Velocity parameter it could open up more possibilities
+
+{Reactions}
+👍
+
+[06.09.2026 00:22] tenacious_lemur_99636
+Alas many of us are using OT as a center hub where MIDI OUT is already used
+
+
+[06.09.2026 00:23] tenacious_lemur_99636
+I'm thinking about the OT as a live performance machine here (as it was advertised)
+
+
+[06.09.2026 09:45] bukkakeborealis
+I’ll try testing heavily today. But it’s Sunday and we go out with my 4yo kid. Tomorrow I’ll have more time so I’ll give a proper report tomorrow and give GitHub link if it’s ready
+
+{Reactions}
+🔥 (2)
+
+[06.09.2026 10:10] drrumble
+Can't wait to try it !!
+
+{Reactions}
+❤️
+
+[06.09.2026 10:43] dwz0679_70302
+This is so cool. ❤️
+
+
+[06.09.2026 15:49] bukkakeborealis
+After more testing today I need to fix some major things like scenes not surviving the boot inside the parts. It’ll take longer than I thought. Also I already start feeling the lag with many tracks locked. This can be improved a bit I think but there will be limitations
+
+{Reactions}
+👍
+
+[06.09.2026 16:01] bryant12345
+Is there a tool in Octabam’s repo that tracks MIDI traffic on the Octatrack? I don’t know much about the MIDI standard, but you’ll want to make sure you’re not exceeding what’s physically possible.
+
+
+[06.09.2026 16:22] devilfish707
+Imho it's easy to go past physical Midi limits due its serial nature. i can make a Midi connection/synth go berserk or laggy with a few tracks of fast midi arp + lfo + P-locked CC. But i think that's also the charm of it. ie. being allowed to deliberately flood a midi connection
+
+{Reactions}
+👍 🤟
+
+[06.09.2026 16:23] devilfish707
+So i'm all the way pro opening up midi scenes in that regard
+
+
+[07.09.2026 07:30] sezare56_40656
+Should be called Octatraffic !
+
+{Reactions}
+😄
+
+[07.09.2026 11:25] avlantis
+Just popping my head in here as I'm a huge midi sequencing madness kinda guy.. and the octatrack is such a solid midi sequencer, just lacks a few of the interesting features that modern sequencers offer (eg hapax, oxi, etc).
+Sounds epic so far!! Thanks. Where do we put suggestions? 😂  I don't have enough time to get stuck into the octa dev stuff right now, but hoping to assist eventually. For now just perusing octabam github mostly.
+
+{Reactions}
+❤️
+
+[07.09.2026 11:35] michaelknubben
+#dream-features is the place!
+
+
+[07.09.2026 11:36] michaelknubben
+The OT would already be a way more useful midi sequencer if a trigger didn't cut off any previously playing voices 😄
+
+
+[07.09.2026 11:38] bukkakeborealis
+I am getting closer to perfect structure. Still some things to improve. It’s going well though. I’ll try to make a short video today to demonstrate the behaviour. You can let me know what you think
+
+{Reactions}
+👍
+
+[07.09.2026 11:38] avlantis
+It's a few little things like that
+
+
+[07.09.2026 11:39] bukkakeborealis
+Going to work on it now. Updates soon
+
+{Reactions}
+❤️ 👍
+
+[07.09.2026 12:18] yldopactyly
+What would u call ur project? And can I list it in a separate channel for all the mods/creators
+
+
+[07.09.2026 12:33] bukkakeborealis
+No name yet . And yes sure go ahead. My firmware is called midisc right now 😅
+
+{Reactions}
+😂
+
+[07.09.2026 14:39] bukkakeborealis
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1545532434660196464/1546500240306348052/IMG_0942.mov?ex=6aaf2b55&is=6aadd9d5&hm=bd0e8dfd9875d5da5e65a0881d03efb6eb44ffdae9311ec03f0bbbe859f08526&
+
+{Reactions}
+🔥 (8) ❤️ (4) 👍 🤘
+
+[07.09.2026 14:39] bukkakeborealis
+Quick and ugly demo
+
+
+[07.09.2026 14:40] bukkakeborealis
+All sounds come from 0-coast/dfam. 2 tracks, 1 pattern and a few midi scenes
+
+
+[07.09.2026 14:42] mayrakissa
+whoaaaaw this is so good for live use
+
+
+[07.09.2026 14:43] bukkakeborealis
+Oh yeah 😉
+
+
+[07.09.2026 14:44] bukkakeborealis
+The synths go to the octatrack thru so I open a bit the effects with scenes too
+
+
+[07.09.2026 14:45] bukkakeborealis
+I’ll make a better demo later still a lot of work to do. That was a quick break from it haha
+
+
+[07.09.2026 14:46] bukkakeborealis
+Scene locks here are mostly on arp parameters/notes and 2 CC out to filter and pitch
+
+
+[07.09.2026 14:47] mayrakissa
+i have a mk1 and mk2 and i havent had a usage for my mk1 fader since it only does samples but now i can connect it to my eurorack for filter opening and fx washes wow
+
+{Reactions}
+👍
+
+[07.09.2026 14:47] w_winter
+so fkin cool
+
+{Reactions}
+❤️
+
+[07.09.2026 14:48] mayrakissa
+we need "POWERED BY: *CUSTOMFIRMWAREHERE*" stickers
+
+{Reactions}
+❤️
+
+[07.09.2026 15:40] bukkakeborealis
+I have to get your opinion. 
+I tried the full path : parameter-trig locks-scene locks
+It definitely slows down everything to mix many step trigs and and many scene trigs
+Only fix I found so far to have near zero latency issue is to run steps locks and scene locks in parallel
+It still brings many cool things but doesn’t behave entirely like audio scenes
+
+
+[07.09.2026 15:42] bukkakeborealis
+So 2 options: 
+-I focus on a version that way and many available scene locks
+-I keep digging in full path but there will be limited amount of locks so that the machine doesn’t starve with Trigs/Scene mix
+
+
+[07.09.2026 15:55] w_winter
+what are the behavioral differences?
+
+
+[07.09.2026 16:01] bukkakeborealis
+For exemple if there are note trig locks, and  no scene locks on A, locking note to scene B and crossfading would act like transpose instead of mixing them and ending with a single note on B (trigs are still offsetting the pitch)
+
+
+[07.09.2026 16:04] bukkakeborealis
+I did manage to get the full path which is cool but very quickly (5-6 locks on scene) slows down and even crash
+
+
+[07.09.2026 16:04] bukkakeborealis
+I know what Elektron meant now 😅
+
+{Reactions}
+❤️
+
+[07.09.2026 16:12] w_winter
+yeah this sounds reasonable to me, any midi scene functionality at all is a huge upgrade over no midi scenes, but however it works shouldn't slow down or crash the octa
+
+
+[07.09.2026 16:12] w_winter
+we can all learn to work creatively within these expanded limitations
+
+
+[07.09.2026 16:15] bukkakeborealis
+I ll keep going with full path since I just improved it a bit just now. If by tomorrow I still get stuck with latency issue I ll  go with option 2 for now
+
+
+[07.09.2026 16:16] bukkakeborealis
+If some of you are interested in testing it and hunt for bugs tomorrow PM me
+
+
+[07.09.2026 17:27] bukkakeborealis
+I got the full thing with little latency working. I managed to put many scene locks over trig locks with now issue at all. It will need some more testing but I think this option will happen. Full audio scenes path in midi. I think tomorrow!
+
+{Reactions}
+🔥 (7) 😩 (2)
+
+[07.09.2026 20:58] yldopactyly
+Can u give me the links to ur project and whatever ud call your project
+
+
+[07.09.2026 21:26] bukkakeborealis
+Links are not up yet. I ll send them to you as soon as they are
+
+
+[07.09.2026 21:27] bukkakeborealis
+GitHub Wednesday if everything goes well
+
+{Reactions}
+❤️ (3) 👍
+
+[08.09.2026 00:56] semi4136
+im very interested in this mod i would love to give it a try
+
+
+[08.09.2026 13:25] anglingar
+That's why I think that implementing new functionalities in old machine will pass by sacrificing some existing features. 
+
+I don't think we will be able to optimise the devices further so they can take more features, bit I do see the possibility of customising your own instrument discarding other functions.
+
+In my case I would completely discard song mode on the DN1 and DT1 in order to bring other features in. The DN1 with chord library would be rad for instance.
+
+
+[08.09.2026 13:42] bamshanks
+yeah this is my thinking also
+
+
+[08.09.2026 13:42] bamshanks
+Is where I'm going with Remixes. Gotta sacrifice something to get something 🙂
+
+
+[08.09.2026 14:56] bukkakeborealis
+Yeah I’ll check if there will be space for more features on top of midi scenes.
+Working on a last annoying behaviour issue now
+
+{Reactions}
+👍🏻
+
+[08.09.2026 17:08] bukkakeborealis
+Ok it finally happened! Full path working. Midi scenes are being tested so I can provide a fully working version with limites bugs to you all very soon. Very excited ! Expect to be able to flash it to your machines by Thursday
+
+
+[08.09.2026 17:11] bukkakeborealis
+No lag issue at all btw 🤗 still need to be tested with more params but so far 3 tracks with notes and arp locks with 7 CCs out is working like a dream
+
+{Reactions}
+❤️ (13)
+
+[09.09.2026 01:13] dwz0679_70302
+I am looking forward to control my heat+fx from my xfader
+
+{Reactions}
+👍
+
+[09.09.2026 01:25] bukkakeborealis
+Thursday!
+
+
+[09.09.2026 01:27] bukkakeborealis
+Can’t wait for everyone to go crazy with it to be honest. Super excited to release this
+
+{Reactions}
+❤️ (3) 👍
+
+[09.09.2026 14:09] bukkakeborealis
+Can’t release without keeping old projects from 1.40C intact. (Samples properly loading) GitHub link as soon as it works
+
+
+[09.09.2026 14:12] bamshanks
+Haha a noble goal
+
+
+[09.09.2026 14:12] bamshanks
+I have not been so kind
+
+
+[09.09.2026 14:12] bamshanks
+My new effects bus layout will nuke your shit
+
+{Reactions}
+😂 (2)
+
+[09.09.2026 14:13] bukkakeborealis
+Everything else is super tight so I might as well go all the way 😅
+
+
+[09.09.2026 14:13] bamshanks
+100%
+
+
+[09.09.2026 14:14] bukkakeborealis
+Plus it can be fun for everyone to retain 1.40C intact with midi scenes on top. To go nuts with older projects
+
+
+[09.09.2026 14:15] ambient.signals_76175
+Agreed would be illmatic
+
+
+[09.09.2026 14:15] bamshanks
+yeah for sure, I have done fallbacks but it's such a major change to the way effects work that I wouldn't guarantee them in it's current state
+
+
+[09.09.2026 14:16] bamshanks
+been testing mostly on freshies
+
+
+[09.09.2026 14:36] kjnilsson
+did you have to extend parts at all with the new storage or how does that work?
+
+
+[09.09.2026 20:55] bukkakeborealis
+Ok final version being tested now then it’ll be there with all the other good stuff tomorrow
+
+
+[09.09.2026 20:55] bukkakeborealis
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1545532434660196464/1547319583369601025/CBDE6CF6-8C01-4C0F-87DA-205A27CCD377.jpg?ex=6aaf8368&is=6aae31e8&hm=a12fa4669de0663d8d6ee6d24de524c91b82b114d890d26e08785a9b1e71ba60&
+
+{Reactions}
+😂 (5)
+
+[09.09.2026 21:27] bukkakeborealis
+Midi scenes were not built in stock firmware so had to create their data storage , include that in bank/parts for saving and recall and implement XF over trig locks while retaining lfo. Pretty much the (long but rewarding) journey
+
+{Reactions}
+👍
+
+[09.09.2026 21:29] bukkakeborealis
+for storage had to find room for it where there was some haha
+
+
+[09.09.2026 22:02] machinista__21901
+given you had to create a new storage for them I'd assume that it'd be difficult to "merge" it with octakit as it multiplies significantly the number of available kits / parts? thx
+
+
+[09.09.2026 22:18] bukkakeborealis
+Check @bamshanks latest messages on “general” channel. Em found room and a way for all/most firmware patches to merge. Coming up tomorrow unified I believe. Github for standalone midi scenes will be there tomorrow anyway
+
+{Reactions}
+👍 (2) 😲
+
+[09.09.2026 22:20] yldopactyly
+Brave new world
+
+
+[09.09.2026 22:29] yldopactyly
+Do u have a GitHub now for this?
+
+
+[09.09.2026 22:31] bukkakeborealis
+Yes. Just made it
+
+
+[09.09.2026 22:32] bukkakeborealis
+First GiHub ever so I hope it will provide everything needed for building the midi scenes
+
+
+[09.09.2026 22:32] bukkakeborealis
+Here it is
+
+
+[09.09.2026 22:33] bukkakeborealis
+https://github.com/bkkbrls-del/midisc
+
+{Embed}
+https://github.com/bkkbrls-del/midisc
+GitHub - bkkbrls-del/midisc: Octatrack 1.40C MIDI scene locks (1.40...
+Octatrack 1.40C MIDI scene locks (1.40MIDISC) — rebuild from your own stock OS - bkkbrls-del/midisc
+https://images-ext-1.discordapp.net/external/epzNPEYXe7fo-f2zR7iIXEWoqGNyuH8aV4H0EnOQyP0/https/opengraph.githubassets.com/58a1f40c3438d9308f865b9d0f39be156d372a45c9e42c35ddb373d5fd7be73f/bkkbrls-del/midisc
+
+{Reactions}
+❤️ (6)
+
+[09.09.2026 22:33] yldopactyly
+So sick man ty for ur work.
+
+{Reactions}
+❤️
+
+[09.09.2026 22:35] bukkakeborealis
+Let me know if you manage to get it working
+
+
+[09.09.2026 22:36] bukkakeborealis
+I used Cusror to provide the GitHub so I hope it checks out. Feedback more than welcome
+
+
+[10.09.2026 00:38] semi4136
+amazing
+
+
+[10.09.2026 09:18] devilfish707
+Just flashed it to my 2nd OT, seems to work great! I had some errors while building but reviewed couple of times with Claude. One thing i noticed: the autoloaded project created with 1.40A wouldn't send Midi. Created a new project all good
+
+{Reactions}
+❤️
+
+[10.09.2026 09:19] devilfish707
+Thanks for your work @BUKKAKEBOREALIS  !
+
+
+[10.09.2026 09:23] drrumble
+I tried it last night, it work seamlessly. Great job @BUKKAKEBOREALIS 🙏 🙏
+
+{Reactions}
+❤️
+
+[10.09.2026 09:43] bukkakeborealis
+Awesome. Happy you could get it to work. After flashing it you need to reload projects and it should work. But I only tested with projects from 1.40C not earlier OS
+
+{Reactions}
+❤️
+
+[10.09.2026 09:56] bamshanks
+@BUKKAKEBOREALIS I've been doing a little work on a remix with midi-scenes and octakit and need a couple mods, but also think my new emulator might have found a decent bug. It finds heaps of stuff the old the old harness doesn't.
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1545532434660196464/1547516181013860392/octabam-notes-for-bkkbrls-del.md?ex=6aaf91c1&is=6aae4041&hm=4fb70f870e07e5770766d2124ad02d2144fc48e9fa106036396a3e39f44e34f3&
+
+
+[10.09.2026 09:59] bukkakeborealis
+ok thanks ! I am currently adding an optional midi filter for CC 48/55/56 to clean up messages going out and I'll look into this. Really looking forward to the remix
+
+{Reactions}
+👍🏻
+
+[10.09.2026 10:00] bamshanks
+And some questions for you when you have a mo @em
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1545532434660196464/1547517199260979271/octabam-notes-for-em.md?ex=6aaf92b3&is=6aae4133&hm=8e6e798126473741be6b0e8563137acd4f97c472d408f39fa795ca535a4877c6&
+
+{Reactions}
+👍
+
+[10.09.2026 10:02] bamshanks
+They compile fine together just some minor crossover that needs resolved
+
+{Reactions}
+❤️
+
+[10.09.2026 10:02] bamshanks
+Take them with grains of salt etc
+
+
+[10.09.2026 10:43] bukkakeborealis
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1545532434660196464/1547527974570557520/IMG_0969.jpg?ex=6aaf9cbc&is=6aae4b3c&hm=30a9b15e4396a381ccd0baccc0d9852e9dadeb44a9758a7fce0bcb0cf7709d30&
+
+
+[10.09.2026 10:44] bamshanks
+What are they? Cross fader?
+
+
+[10.09.2026 10:45] bukkakeborealis
+crossfader, scene A and scene B selection messages
+
+
+[10.09.2026 10:48] bukkakeborealis
+they can now also be mapped to MIDI CONTROL page . if some synth use those CC values it avoids sending junk messages to them
+
+
+[10.09.2026 10:55] bamshanks
+Ah yeah the crossfader is noisy as
+
+
+[10.09.2026 10:55] bamshanks
+Nukes my prophet
+
+
+[10.09.2026 10:55] bamshanks
+I have to filter it heaps on the midihub
+
+
+[10.09.2026 10:56] bamshanks
+A midi filter on board is nice
+
+
+[10.09.2026 10:56] yvez_me
+Can't you just throttle the crossfader somehow? A limit on messages per ms?
+
+
+[10.09.2026 10:58] bamshanks
+In theory but it would step
+
+
+[10.09.2026 10:58] bamshanks
+You could debounce maybe
+
+
+[10.09.2026 11:00] yvez_me
+Is it also sending duplicate messages maybe?
+
+
+[10.09.2026 11:00] bamshanks
+Debounce would fix that
+
+
+[10.09.2026 11:00] bamshanks
+But I don’t think that’s the issue
+
+
+[10.09.2026 11:01] bamshanks
+Octa is super noisy midi wise in general though
+
+
+[10.09.2026 11:01] bamshanks
+Wants to tell you everything all the time
+
+
+[10.09.2026 11:02] yvez_me
+Hahaha
+
+
+[10.09.2026 12:36] bukkakeborealis
+I'll make a page like Em's patcher to build your midi scenes version from your 1.40C. wait a bit I am building the new version and I'll give you the link
+
+
+[10.09.2026 12:46] mentholatum1761
+Will it be possible to combine the midi scenes build with em's octakit later?
+
+
+[10.09.2026 12:53] bukkakeborealis
+yes that is the plan 🙂 I still want to provide with the patcher an easy access to stock 1.40C with just midi scenes on top. so you'll be able to use old projects and add midi scenes to them. but I think it should also work with the remix of octakit and midi scenes. trying to fix the bug Bam pointed out it can be done
+
+{Reactions}
+👍 💯
+
+[10.09.2026 13:10] bukkakeborealis
+https://bkkbrls-del.github.io/midisc-patcher/
+
+{Embed}
+https://bkkbrls-del.github.io/midisc-patcher/
+MIDISC patcher
+Browser patcher: build 1.40MIDISC for Elektron Octatrack from your own stock OS 1.40C.
+
+{Reactions}
+❤️ (2)
+
+[10.09.2026 13:11] bukkakeborealis
+the patch is yesterday's tested version. Will update with CC filters later
+
+
+[10.09.2026 16:39] emuyia
+hope this addresses things 🙂 
+- octakit only needs that `0x47fc7410..0x47fd910f` memory area on boot. after that its code lives in the reserved flex pool space, so the temporary copy is no longer needed
+- kits retain the part layout / offsets
+- saved kit data is available via `__gk_canonical_payloads`. the saved kit and active working kit are separate though, so changes need to go through octakit's editing functions so they’re included when you save the kit. the sequence is `gk_workspace_prepare`, `gk_physical_acquire`, `gk_descriptor_store_byte` for each changed byte, `gk_workspace_mark_dirty_pending`, `gk_workspace_commit_update` and `gk_descriptor_release`
+
+{Reactions}
+🙏🏻
+
+[10.09.2026 18:35] reubenfinger
+Haven't tested it much, but even just editing the arp settings with scenes is buckets of fun all by itself, can't wait to stress test some outward bound CC melee later, thanks so much for all the hard work you're all doing on this...it's amazing
+
+
+[10.09.2026 20:22] homeboiflex
+push it to its limit 😈🎹
+
+
+[10.09.2026 20:28] bukkakeborealis
+I’m taking a little break it has been a lot of work and I need to step away from it a bit to finish it properly. I encountered a bug (sticky locks on parts after part paste) and couldn’t fix it today. I’ll be back at it tomorrow and hopefully get it done 🙂
+
+{Reactions}
+❤️ (9)
+
+[10.09.2026 20:36] yldopactyly
+You are a legend, you could literally retire now and be remembered each time Octa is discussed
+
+{Reactions}
+🔥
+
+[10.09.2026 20:51] pituzinho9269
+long live bukkake
+
+{Reactions}
+👍 🫟 (3) 😂
+
+[10.09.2026 23:01] tenacious_lemur_99636
+Strange sentence if you ask me 😂
+
+{Reactions}
+😂 🤣
+
+[11.09.2026 06:00] avlantis
+Sounds good to me!
+
+Does remind me of how I felt back ~25 years ago as a teen, when one night browsing the seedier sides of the internet, I came upon the category of "Driveby Bukkake". Thought it was the funniest thing I'd ever heard 😂
+
+
+[11.09.2026 13:15] bukkakeborealis
+Ok it’s coming! Fixed the parts/project, save/reload issue. Testing now. New version will be available in a bit
+
+{Reactions}
+❤️ (2)
+
+[11.09.2026 14:24] bukkakeborealis
+midi scenes/patcher updated  -Version 1.40MIDISC5
+- parts/projects-save/reload fixed
+- CC leak fixed
+- CC filter not there on this one yet
+if you used the previous version and saved projects with midi scenes project reload might brick, use a new project or one you didn't save on previous version
+
+{Reactions}
+❤️ (2)
+
+[11.09.2026 14:56] homeboiflex
+would really love to see a video demo of the crossfader controlling a synth, this is a really big deal if it works
+
+
+[11.09.2026 14:58] homeboiflex
+I guess the real challenge is also making the rest of the firmware rock solid like is being done, following closely 👀
+
+
+[11.09.2026 15:02] mayrakissa
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1545532434660196464/1547955380464910386/VID_20260909_134953.mp4?ex=6aaf308a&is=6aaddf0a&hm=71253ec102a71dbe4cd86966506b7a67ac0e94aff0f91674149a7b04ebaee5ef&
+
+{Reactions}
+🔥
+
+[11.09.2026 15:02] mayrakissa
+this is controlling a synth machine's filter on an analog rytm mk1
+
+
+[11.09.2026 15:03] mayrakissa
+also +1 pitch on max right scene
+
+
+[11.09.2026 15:05] bukkakeborealis
+It’s basically 1.40C. With midi scenes. Parts and project are behaving properly. Also works with old projects. Always backup everything before trying though 😅🫣
+
+{Reactions}
+❤️ (2)
+
+[11.09.2026 15:10] bryant12345
+Is it a bit laggy?
+
+
+[11.09.2026 15:11] mayrakissa
+yeah, very old version though
+
+
+[11.09.2026 15:14] machinista__21901
+indeed very laggy (but of course still great!). I think if used only for MIDI exclusively it's less of a deal as it can be "human compensated" 🙂 but the issue will be if having scene controlling both MIDI and OT audio
+
+
+[11.09.2026 15:15] mayrakissa
+the lagginess honestly sounds very musical for this kind of choppy sound but i'm sure the newer versions are far better
+
+
+[11.09.2026 15:16] bukkakeborealis
+I have not been encountering much lag. How did you try it?
+
+
+[11.09.2026 15:17] mayrakissa
+oh, i thought it was something being addressed already 😆 i just connected ot1 midi out to ar1 midi in
+
+
+[11.09.2026 15:18] bukkakeborealis
+A thing to remember is notes locked to scenes update only on trigs. XF on a CC should not lag much though
+
+
+[11.09.2026 15:18] mayrakissa
+dont quite remember the settings but something like ot in auto mode, ar one midi channel per track
+
+
+[11.09.2026 15:19] mayrakissa
+then on ot i scened some cc parameters
+
+
+[11.09.2026 15:20] bukkakeborealis
+You had lag with scenes both on audio/midi?
+
+
+[11.09.2026 15:20] mayrakissa
+or no not auto mode, all 8 tracks routed to channel3 -> on ot and ar
+
+
+[11.09.2026 15:20] mayrakissa
+i didnt use audio
+
+
+[11.09.2026 15:21] mayrakissa
+but like i said this is likely the first test version
+
+
+[11.09.2026 15:42] bukkakeborealis
+I’ve done some tests again and no lag even with plenty of parameters locked. Midi CCs are near zero latency with crossfader. Curious to have more feedback
+
+
+[11.09.2026 15:43] bukkakeborealis
+You can hear the XF hitting left/right
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1545532434660196464/1547965824965550163/IMG_0972.mov?ex=6aaf3a44&is=6aade8c4&hm=6448084f9bbe8a55eada5dc519737fc38ac46535afa54f9cc4cb8f326f21145d&
+
+{Reactions}
+❤️
+
+[11.09.2026 15:45] bukkakeborealis
+But that’s CCs. Maybe notes with arpeggio can be delayed. I’ll run more tests on that
+
+
+[11.09.2026 16:05] bukkakeborealis
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1545532434660196464/1547971306643923034/IMG_0973.mov?ex=6aaf3f5f&is=6aadeddf&hm=245de29cf79c5cdb9014b90b61de7cdc460e90298c3a5ee2ec9dc6c2d6b14ce8&
+
+{Reactions}
+❤️ (5) 🔥
+
+[11.09.2026 16:06] bukkakeborealis
+Note / arp locks controlling dfam steps via mafd mdi to CV. kick on octatrack as reference
+
+
+[11.09.2026 16:08] bryant12345
+I’m going to play around with it tonight with my Subsequent 37. Very excited to feel/hear it in action.
+
+{Reactions}
+❤️
+
+[11.09.2026 16:09] mayrakissa
+nice bukkake!
+
+
+[11.09.2026 16:09] bukkakeborealis
+If you have a chance make short videos like this. Excited to see/hear what will come up
+
+
+[11.09.2026 16:09] fearlessgruntox
+looks incredible.
+
+
+[11.09.2026 16:21] bukkakeborealis
+Another shitty demo before I go get my kid. Here scenes lock 1 LFO (depth/speed) assigned to a CC to DFAM filter
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1545532434660196464/1547975444341456947/IMG_0974.mov?ex=6aaf4339&is=6aadf1b9&hm=4377ac9e26f0b52e4c8735249b9e8d5ecf62d835082cdb08536be738e5d8faa3&
+
+{Reactions}
+❤️ (6) 🔥 (2)
+
+[11.09.2026 16:26] machinista__21901
+Does this FW include midi scenes exclusively or are there any other features included (like octakit etc)? I assume the former but would like to confirm
+
+
+[11.09.2026 16:27] bukkakeborealis
+Just midi scenes for now. On top of 1.40C
+
+{Reactions}
+👍 (2)
+
+[11.09.2026 16:57] notein
+I can’t wait to try midi scenes with my OB-6 and Alpha Base! 🔥
+
+{Reactions}
+❤️
+
+[11.09.2026 20:35] homeboiflex
+OMG
+
+
+[11.09.2026 20:35] homeboiflex
+to see this in reality is ..
+
+
+[11.09.2026 20:36] homeboiflex
+My Sirin is gona get f slapped around
+
+{Reactions}
+🤣
+
+[11.09.2026 21:29] bukkakeborealis
+A word to say that I will only update a few things to midi scenes (not including bug fixes) before moving on to other mods projects:
+- CC filtering for stock CC 48/55/56 aka crossfader/sceneA/sceneB) 
+They will still be available as midi out from midi tracks
+- expand ARP setup scales
+
+
+[11.09.2026 21:30] bukkakeborealis
+But I am open to suggestions
+
+
+[11.09.2026 22:08] devilfish707
+Trying out latest version with a Korg multi/poly, awesome stuff
+
+{Reactions}
+❤️
+
+[11.09.2026 22:08] _anfim
+I think the lag might be on the AR side, it's known to freak out when you hit it with too many ccs
+
+
+[11.09.2026 22:21] bukkakeborealis
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1545532434660196464/1548066021166940290/IMG_0979.mov?ex=6aaf9795&is=6aae4615&hm=0f76368759645ccd584ce3836668b8fc1af61cf6d7eb36bad8f141ea911dca5e&
+
+{Reactions}
+❤️ (6) 🔥 (2)
+
+[11.09.2026 22:22] bukkakeborealis
+Midi scenes to DFAM into OT (thru/delay) + hi hat
+
+
+[11.09.2026 22:24] bukkakeborealis
+Arp setting and notes are triggering different notes (steps) on DFAM. CC + LFO to filter . Simple but fun
+
+
+[11.09.2026 22:29] bukkakeborealis
+1 track 3 trigs 😅
+
+
+[11.09.2026 22:32] bukkakeborealis
+What is happening? Notes,CCs,both? You can tirn chords into arps btw with a poly  synth 😉
+
+{Reactions}
+❤️
+
+[11.09.2026 22:33] bukkakeborealis
+And create chords changes with scenes in a pattern
+
+{Reactions}
+🔥 (2)
+
+[11.09.2026 22:39] mayrakissa
+ahh okay good to know
+
+
+[11.09.2026 22:41] bukkakeborealis
+I remember experiencing it with AR, makes more sense to me now I was a bit surprised about CC lag issue as I don’t have any
+
+
+[11.09.2026 23:25] bukkakeborealis
+Would love to know how that one goes  sounds like a dooe combo
+
+{Reactions}
+👍
+
+[11.09.2026 23:25] bukkakeborealis
+Dope*
+
+
+[11.09.2026 23:45] bamshanks
+Nearly sorted @BUKKAKEBOREALIS one more little fix please
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1545532434660196464/1548087182550499338/octabam-notes-for-bkkbrls-del.md?ex=6aaf028a&is=6aadb10a&hm=6332de86c81a20b925a6024de7be281a5c8dd881ccbf8e87ffeb805b8cab547e&
+
+
+[11.09.2026 23:46] devilfish707
+Both! but so many possibilities, it's awesome. Got sidetracked by Claude working again and finally got inflator working
+
+
+[12.09.2026 00:07] bukkakeborealis
+Ok !  I’ll fix it in the morning, can’t do it right now. 🙏🏻
+
+
+[12.09.2026 00:22] bamshanks
+thanks mate, no rush
+
+
+[12.09.2026 00:47] notein
+They work beautifully together! The OB-6 is an analog heaven and Alpha Base is a weird beast that has a magical analog resonant filter; combined with OB’s variant state filter makes everything sound so deep and energetic at the same time.
+
+
+[12.09.2026 03:27] bryant12345
+Tried it out with my moog. Controlled three parameters with totally predictable behavior. Looking forward to experimenting more!
+
+{Reactions}
+❤️ (2)
+
+[12.09.2026 04:06] bamshanks
+Popped a PR in to enable your repo as an upstream source
+
+
+[12.09.2026 11:50] devilfish707
+@BUKKAKEBOREALIS been testing a bit more. when assigning filter cutoff w my multi/Poly moving the scene crossfader is quite steppy sounding while wiggling the cc knob is completely smooth. Is this unavoidable behaviour? I'm on the latest OS
+
+
+[12.09.2026 11:53] bukkakeborealis
+Do you also sequence the multi/poly from same midi track as the CC. I made a change yesterday to the mix behaviour. That might be it
+
+
+[12.09.2026 11:53] devilfish707
+Yeah i am!
+
+
+[12.09.2026 11:53] bukkakeborealis
+Not at home now but will test against previous mix version later
+
+{Reactions}
+❤️
+
+[12.09.2026 11:53] devilfish707
+Cool thanks
+
+
+[12.09.2026 11:53] bukkakeborealis
+Ok I ll check
+
+
+[12.09.2026 11:54] bukkakeborealis
+Also there is a known bug if you save project on any other bank than bank1. Reloading project will hang. I’ll fix that soon
+
+{Reactions}
+👍
+
+[12.09.2026 11:56] bukkakeborealis
+Try assigning CC to another midi track with no trigs. And please let me know. thanks
+
+
+[12.09.2026 12:04] devilfish707
+Hmm if i assign the cc on track 2 it doesn't work. So i have a long droning note on track 1 (Chan 1), and CC5 assigned on track 2 (Chan 1). Here the scene fader doesn't Respond, Cc knob works fine
+
+
+[12.09.2026 12:07] devilfish707
+It just flips to the max value of the scene if i set the fader all the way to right+wiggling the cc5 knob
+
+
+[12.09.2026 12:22] bukkakeborealis
+Ok. Will look into that
+
+
+[12.09.2026 12:22] bukkakeborealis
+Thanks
+
+{Reactions}
+❤️
+
+[12.09.2026 12:41] bukkakeborealis
+Ok I noticed the stepping issue. I think I know why it is doing that. Currently focusing on fixing banks reloads then I’ll work on CC steps behaviour
+
+{Reactions}
+❤️
+
+[12.09.2026 12:45] fantastic_avocado_20824
+i guess it will be "limited" only to CC, no 14-bit messages like channel pressure or pitchbend?
+
+
+[12.09.2026 12:50] bukkakeborealis
+Octatrack PB and AT can be locked to scenes. And messages go out properly
+
+{Reactions}
+🔥
+
+[12.09.2026 13:28] rbl0k_28323
+@BUKKAKEBOREALIS does midi-scences allow to sequence audiotracks from miditracks without having a midi-cable from DIN-Out to DIN-In AND additional to external gear?
+
+
+[12.09.2026 13:33] bukkakeborealis
+No. But this could be added to midi note setup selection after 1-16 (T1-T8). I successfully did it the other way around with my first MSCN midi effect. I plan on working on something like that to control notes/slices with arpeggiator. But I gotta finish midi scenes first for good 😅
+
+
+[12.09.2026 13:36] rbl0k_28323
+Thx, i should have separated it into 2 questions: may i send midi-notes to audio-tracks without the physical midi-cable? And use another midi-track to send to external gear?
+
+
+[12.09.2026 13:44] bukkakeborealis
+Could be possible yes. Not yet without midi cable
+
+
+[12.09.2026 13:46] rbl0k_28323
+Alright. Thx, mate
+
+
+[12.09.2026 20:43] bukkakeborealis
+Little update: 
+- the proper project save/reload from all banks (not just bank1) is fixed. Reloads to proper bank/pattern
+- currently fixing values jumps on trigs
+Hopefully sorted tonight as well
+I’ll let you know when new version is ready
+
+{Reactions}
+👍 (2)
+
+[12.09.2026 22:45] bukkakeborealis
+I've removed the values jumps on XF moves over Trigs, banks save fix applied. 
+Github updated and patcher as well
+
+
+[12.09.2026 22:49] bukkakeborealis
+I think that’s fixed now. Updated GitHub and patcher. Let me know how it goes. It should be way smoother now
+
+{Reactions}
+❤️
+
+[12.09.2026 23:27] pituzinho9269
+small thing I noticed just now is that FLEX and STATIC machines, you can  select by going right with the pad but not for any other machine, it still selects the machine but it doesn't move nor animate anything, you can just select it overtly with YES but that's beside the point
+
+
+[12.09.2026 23:56] bukkakeborealis
+Ok just checked and yeah there is something to fix there. I might have done something when selecting new machines and the menu for CC filters and didn’t revert. Will look at it tomorrow
+
+
+[13.09.2026 10:03] devilfish707
+Just flashed and tried it, had to start a new project but much better now! Thanks
+
+{Reactions}
+❤️
+
+[13.09.2026 10:03] devilfish707
+(the old one was still jumpy)
+
+
+[13.09.2026 10:58] bukkakeborealis
+was the project that didn't work saved on previous OS  version of MIDISN? could be the problem
+
+
+[13.09.2026 10:59] bukkakeborealis
+Thanks for testing. I am pretty happy with the result now
+
+{Reactions}
+❤️
+
+[13.09.2026 11:36] devilfish707
+Yes saved with MIDISN5
+
+
+[13.09.2026 11:37] devilfish707
+I thought so, quickly made a new project
+
+{Reactions}
+👍
+
+[13.09.2026 11:39] bukkakeborealis
+I am updating soon after another slight fix. added CC 48/55/56 filters as well
+
+{Reactions}
+❤️
+
+[13.09.2026 13:59] bukkakeborealis
+Known bugs on last version being fixed:
+- part reload
+- part change waits for pattern length
+
+
+[13.09.2026 18:51] bukkakeborealis
+New update 1.40MIDISCN8
+- fixed the part reload
+- fixed part change latency
+- CC filters in midi control menu (they don’t persiste on reboot or project save yet)
+
+{Reactions}
+❤️ (7)
+
+[13.09.2026 22:23] devilfish707
+Last one builds 1.40MIDISC8.bin and 1.40MIDISC68GOLDEN.bin,  is there a difference?
+
+
+[13.09.2026 22:28] bukkakeborealis
+No they’re the same
+
+{Reactions}
+👍
+
+[13.09.2026 23:23] bukkakeborealis
+Can’t decide if I get into midi slides or not
+
+
+[13.09.2026 23:27] bukkakeborealis
+I would like to find a combo to easily set trig slides: 2 trigs or more + a button press to put the slides without diving in the trig menu
+
+{Reactions}
+👍 ❤️
+
+[13.09.2026 23:44] bryant12345
+That’s an interesting idea.
+
+
+[14.09.2026 00:30] re5etuk
+Having a graphic box on the ui that inverts a ‘sld’ box graphic would be great too .
+
+
+[14.09.2026 00:30] tenacious_lemur_99636
+Maybe a menu similar to audio tracks Slides? FUNC + BANK in Grid Recording mode while in Midi tracks?
+
+
+[14.09.2026 00:34] bukkakeborealis
+The idea of a combo would be for audio and midi . Like a shortcut. I don’t put as many slides as I’d like to because of that extra menu step
+
+
+[14.09.2026 00:41] tenacious_lemur_99636
+Not sure a combo that you would have to enter for each trig would be faster than entering a menu and select each trig to get a slide
+
+
+[14.09.2026 00:53] bukkakeborealis
+I find it difficult to read and put the slides trigs on the right steps from the tiny screen UI
+
+
+[14.09.2026 00:55] bryant12345
+Can’t you use the 16 trig buttons to enter them?
+
+{Reactions}
+🤣
+
+[14.09.2026 00:56] bryant12345
+(Not a feature I use much!)
+
+
+[14.09.2026 00:57] bryant12345
+My annoyance with slide trigs is that they don’t cross the pattern end. I want to be able to slide from 16 to 1. And it interprets that as a slide from 1 to 16.
+
+{Reactions}
+👍
+
+[14.09.2026 00:58] bukkakeborealis
+I mean I like to put them to link 2 trigs for pitch or rate slide for exemple. Not that I use them much but mostly because of the menu 😅
+
+
+[14.09.2026 01:00] bukkakeborealis
+They don’t? They are annoying to work with in generalI guess
+
+
+[14.09.2026 01:04] bryant12345
+I don’t think so. They always go left->right.  There’s no notion of “start” and “end”.
+
+
+[14.09.2026 01:08] bryant12345
+I think i understand what you’re saying now about the screen. In my mind I know i want one on 4 so I place it on 4. But if you weren’t sure it was 4 then figuring that out from the track trig edit screen is hard.
+
+{Reactions}
+❤️
+
+[14.09.2026 01:20] bukkakeborealis
+Yeah that’s it
+
+
+[14.09.2026 19:42] bukkakeborealis
+I have removed the CC filtering (for now) it was giving me trouble and I’ll wait to see if midi-scenes need more work. For now I’ll settle on the last version and work on other things. And make music with OKMS firmware 🥳
+
+
+[14.09.2026 19:47] bryant12345
+Let’s not forget to make music. 🙂
+
+{Reactions}
+❤️ (8)
+
+[15.09.2026 12:55] dwz0679_70302
+What is the status of the current midi scenes ‘update’? I have a lack of overview at the moment
+
+
+[15.09.2026 13:07] bukkakeborealis
+It’s all there and working so far. If anyone finds a bug just let me know
+
+
+[15.09.2026 13:43] dwz0679_70302
+Thank you, that sounds very good. I will try
+
+{Reactions}
+👍 (2)
+
+[16.09.2026 23:22] bukkakeborealis
+Checking if those who tried midi scenes have bugs or weird behaviour to report since I’ll work on it for a couple things for my own setup tomorrow. I am happy to leave them as they are if it works well
+
+
+[17.09.2026 01:27] machinista__21901
+I see on github that the latest version is 1.40MIDISC8 and it seems to have the CC filtering still enabled? Thanks
+
+
+[17.09.2026 02:14] pituzinho9269
+the only one I found without delving really deep is that selecting machines with the pad works only for static and flex and no other, going right to select I mean. Just that...
+
+{Reactions}
+👍
+
+[17.09.2026 09:35] bukkakeborealis
+I’ll update today. It is actually MIDISC8.1 without CC filters
+
+
+[17.09.2026 18:30] lepoip
+So I’ve been using the OT for a year, mainly as a midi sequencer. Wondering if anyone’s brainstormed or tried ideas relating to midi scenes in a musical way? I’m still a noob to intermediate features on the OT. I can already think of some interesting ways to use midi scenes and the fader to modulate the sequence in real time. Increases in velocity, raising the composition up a note, increasing note length on the fly. Then you get into midi CC and depending on the synths you’re using this could turn the fader into a midi macro controller?
+
+
+[17.09.2026 18:30] lepoip
+This is exciting stuff
+
+
+[17.09.2026 18:45] kjnilsson
+you're in the midi-scenes room... you're in the right place. 🙂
+
+
+[17.09.2026 18:46] pituzinho9269
+Got some bad ones right now, I have some audio patterns playing on tracks 1-4 without problems but on 5-8 when I create a patterns on STATIC it doesnt sound, when I select FLEX it does sound but as soon as I select the sound and get out of the machine page it reverts to static automatically, it happens with any machine but only makes sound with FLEX... I also got a crash when going back and forth between midi and audio and lost all my pattern info on the midi side, after a reboot at least channel assignments came back.
+
+
+[17.09.2026 19:07] bukkakeborealis
+Wow ok it does sound bad . I’ll try that in a bit and see how it goes on my machine. Thanks for the feedback
+
+
+[17.09.2026 19:15] pituzinho9269
+ok, so it seems I have to select the machine, when I press YES it reverts to static, and then if I do it again it sticks. The error is consistent, I also had some blinking lights and false triggers that dont make sound when changing from midi to audio
+
+
+[17.09.2026 19:22] bukkakeborealis
+Are you on latest version?
+
+
+[17.09.2026 19:22] bukkakeborealis
+I will check when I get to my desk
+
+
+[17.09.2026 19:24] pituzinho9269
+yeah, the midiscene8.1, no CC filters
+
+
+[17.09.2026 19:33] bukkakeborealis
+Ok can I tried that version just now. Flex and Static machines on tracks 5-7 and it does not happen
+
+
+[17.09.2026 19:37] bukkakeborealis
+Was it a new project? Which firmware was your project last saved on?
+
+
+[17.09.2026 19:43] bukkakeborealis
+Can you please check the version number when turning the unit on?
+
+
+[17.09.2026 19:47] pituzinho9269
+8.1
+
+
+[18.09.2026 18:57] devilfish707
+Ok 'll talk here 🙂  i think it's something with the extra Cc the fader sends bcs turning the Cc knob is butter smooth
+
+
+[18.09.2026 18:58] bukkakeborealis
+Which channel is the mono/poly on?
+
+
+[18.09.2026 18:59] bukkakeborealis
+I removed filters so channel 1 is not the best
+
+
+[18.09.2026 18:59] devilfish707
+1
+
+
+[18.09.2026 18:59] devilfish707
+Ah ok i'll test other channels
+
+{Reactions}
+👍
+
+[18.09.2026 18:59] bukkakeborealis
+CC48 (XF) goes on 1
+
+
+[18.09.2026 19:00] bukkakeborealis
+And “talks” a lot 😅
+
+
+[18.09.2026 19:00] devilfish707
+Hehe ok 🙂 thing is m/p has 48 not assigned
+
+
+[18.09.2026 19:01] devilfish707
+But i'll try other channels
+
+{Reactions}
+👍
+
+[18.09.2026 19:03] bukkakeborealis
+If you move the parameter alone no CC48. Might be that
+
+
+[18.09.2026 19:04] devilfish707
+Hmm not much better, i should check with a filter myself
+
+
+[18.09.2026 19:04] devilfish707
+Yeah i think so
+
+
+[18.09.2026 19:04] bukkakeborealis
+Yes if you can filter 48 better do it
+
+
+[18.09.2026 19:05] bukkakeborealis
+That’s what I do on Midihub(should test without)
+
+
+[18.09.2026 19:08] devilfish707
+Ah yes, i don't have a midihub but will try w software tomorrow
+
+{Reactions}
+👍
+
+[18.09.2026 19:10] devilfish707
+Do you think an internal Midi filter is feasible? Because you implemented one, or was it buggy?
+
+{Reactions}
+❤️
+
+[18.09.2026 19:11] devilfish707
+I Mean for cc48
+
+
+[18.09.2026 19:17] bukkakeborealis
+Yes it’s possible. Just dropped it because I was spending too much time debugging it
+
+
+[18.09.2026 19:21] bukkakeborealis
+@devilfish707 PM'd you
+
+{Reactions}
+❤️
+
+[18.09.2026 19:30] devilfish707
+Sent you a msg
+
+
+[19.09.2026 00:17] pituzinho9269
+Hey so I found it crashes when pressing FUNC + Record menu 2, I get  an EXCEPTION message, it happens from any page.
+
+
+[19.09.2026 00:21] pituzinho9269
+To circumvent the machine selection rebound into static machines I go to a flex and then transition to a thru machine which I need and its kind of a 50/50 that it stays, it works best if I change the machine and without getting out of that menu I choose another track, then its guaranteed 🧙‍♂️
+
+
+[19.09.2026 00:48] bukkakeborealis
+Ok so I bricks with func+rec2. I’ll have a look at that. 
+But the other trouble you have with static I don’t really understand how this happens. Flex turns into static? When you switch midi to audio ?
+
+
+[19.09.2026 00:49] bukkakeborealis
+Must be a part issue if machines switch
+
+
+[19.09.2026 01:52] pituzinho9269
+If I select any machine and then say NO to get out of the machine selection menu then it bounces back into a static machine but if you select a machine and change track then the new machine sticks, I sometimes lose the machine in the track because I double pressed the track button and it goes into the machine menu and it reverts to static 😣
+
+
+[19.09.2026 02:27] zackyoti_98392
+Ensure you reload your project before testing. Not sure if that’s your issue, but I’ve noticed that can clear up a lot of stuff that looks like bugs at first
+
+
+[19.09.2026 02:27] bukkakeborealis
+So it happens when you exit the menu, right? I just tried that and it stays on flex or any machine I selected. I updated GitHub and the patcher with a know good version today. Can you please try that? Also is it midi scenes or midi scenes + octakit you’re using? I just hope  it’s not a live project you need and that you backed up before 😅. There are for sure some bugs left to fix. Thanks for the feedback anyway, I’ll look at that tomorrow
+
+
+[19.09.2026 02:28] pituzinho9269
+Alright I'm installing the new OS then, lets see. Mine is only midiscenes
+
+
+[19.09.2026 02:29] bukkakeborealis
+Yes very true. After installing a new firmware I reload a project before trying, and make sure it wasn’t saved from another experimental firmware
+
+
+[19.09.2026 02:30] pituzinho9269
+I'm gonna create a new project just to test
+
+{Reactions}
+👍
+
+[19.09.2026 02:31] bukkakeborealis
+Midiscenes + octakit is pretty stable so far. I had a freeze at some point though. so much fun
+
+
+[19.09.2026 02:31] pituzinho9269
+Should I create the OS from a stock 1.40C from elektron?
+
+
+[19.09.2026 02:32] bukkakeborealis
+On the patcher yes
+
+
+[19.09.2026 02:32] pituzinho9269
+Ok, then its ok
+
+
+[19.09.2026 02:32] pituzinho9269
+so the new version is still 8.1?
+
+
+[19.09.2026 02:34] bukkakeborealis
+Yeah. But I was working on new stuff and suspect some of it was pushed by cursor at some point. So I made sure today to revert to known good version just in case. Still 8.1
+
+{Reactions}
+❤️
+
+[19.09.2026 02:44] pituzinho9269
+Now its working, great!
+
+{Reactions}
+❤️
+
+[19.09.2026 03:14] bukkakeborealis
+Awesome! Enjoy! I finally had time to play tonight. Did some midi scenes of arpeggio looped back to sliced sample chain in audio tracks. So much fun
+
+{Reactions}
+🔥
+
+[19.09.2026 04:00] pituzinho9269
+you created a disgusting thing indeed
+
+
+==============================================================
+Exported 327 message(s)
+==============================================================

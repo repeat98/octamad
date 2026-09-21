@@ -1,47 +1,24 @@
-"""Vintage Verb -- a Freeverb-lineage reverb replacing stock DARK REV.
+"""Vintage Verb -- a Dattorro plate reverb, running at half the audio rate,
+replacing stock DARK REV. modules/vintageverb/vintageverb.asm's own header
+has the full ground (signal path, the tank's per-line offset table, why
+half rate); this module has gone through two earlier structures (v1 was a
+Freeverb of six comb filters + three allpasses, scrapped for being 1.6x
+stock DARK REV's instruction count with too small a room -- see the
+README) -- v3, current, is the Dattorro figure-8 tank.
 
 A per-track insert on DARK REV's id 0x16 (FX2-only on stock, so none of the
-FX1-buffer-size hazard in MenuEntry.replaces applies). Inspired by
-stancsz/fnd-reverb-vst3 (github.com/stancsz/fnd-reverb-vst3), whose own
-"reverb core" is JUCE's stock `dsp::Reverb` -- itself Jezar's Freeverb: eight
-parallel damped comb filters per channel summed into four series allpass
-filters -- wrapped in a pre-delay and a chorus ("WARP") stage ahead of the
-tank. This module is not a port of that C++ (JUCE's float DSP classes don't
-exist here), but the same lineage, sized down and reimplemented in this
-project's own fixed-point idioms:
+FX1-buffer-size hazard in MenuEntry.replaces applies).
 
-  * SIX comb filters per channel (not eight -- CPU budget; Jezar's own first
-    six tunings, 1116/1188/1277/1356/1422/1491 samples, the right channel
-    offset +23 each for stereo spread, exactly as Freeverb does), each with
-    a one-pole damping filter INSIDE the feedback loop (the classic
-    Freeverb topology: read the old tap, low-pass it, scale by DECAY, add
-    the input, write back) -- the same one-pole idiom this repo's own
-    BusVerb and the previous GloamVerb used, just simpler addressing (one
-    pointer per line, no separate read/write offsets, since a comb filter
-    reads and writes the SAME cell each sample).
-  * THREE series allpass filters per channel (not four), Schroeder's
-    classic form (fixed feedback g=0.5): output = bufout - g*input;
-    buffer[p] = input + g*output.
-  * A pre-delay line (2048 words, PRE 0..~46 ms) and a WARP stage -- one
-    small modulated (integer, non-interpolated) delay per channel, a shared
-    triangle LFO (nimbus's `mpy phase,mult` + `abs` idiom, ~1.3 Hz, fixed
-    rate) with a half-period phase offset between L/R for width -- ahead of
-    the tank, for the chorused "vintage" movement the reference's own WARP
-    knob is named for.
-  * Comb write pointers wrap via compare + `tge` (Jezar's tunings are NOT
-    powers of two, so AND-masking -- this repo's usual idiom -- cannot wrap
-    them; `move #>LEN,x0 / cmp x0,a / move #>0,x0 / tge x0,a` is the exact
-    pattern `modules/modulation/modulation.asm` already uses for a clamp,
-    reused here for a wrap. Verified against CLAUDE.md's Tcc-sharing trap:
-    the plain `move #>0,x0` between `cmp` and `tge` does not disturb the
-    condition codes, so this is the SAME single-compare pattern, not a
-    shared one).
-
-One Vintage Verb per core: the buffer is the fixed core-private
-FX2-instance region Y:0x4000-0x9851 (22,610 of the 32,768 words available),
-the same ground BusVerb's tank, Nimbus's line and the previous GloamVerb
-used. MIX=0 is an exact passthrough (during warm-up the effect outputs pure
-dry).
+Up to FOUR independent instances per core: init reads this FX2 slot's own
+16,384-word base from the stock allocator (X:$213, the same mechanism
+modules/tapeecho/tape_echo.asm uses), rather than hardcoding the fixed
+core-private address a single shared instance used before. Two of the
+allocator's four per-core bases ($4000, $8000) are the low core-private
+region; the other two are in the cross-core shared window
+(docs/firmware/DSP.md section 10) -- Claims.stock_instance_buffer makes the
+ledger refuse this module beside BusVerb, BusDelay or Nimbus, which
+hardcode those same four addresses. MIX=0 is an exact passthrough (during
+warm-up the effect outputs pure dry).
 """
 
 from remix.schema import (BusRole, Claims, DspSection, Formatter, Harness,
@@ -88,9 +65,10 @@ MODULE = Module(
         r7_latch_slot=None,
         gate_label=None,
     ),
-    # The comb/allpass banks, warp lines and pre-delay are hardcoded into
-    # Y:0x4000-0x9851, inside the per-core region BusVerb's tank and
-    # Nimbus's line also use.
-    claims=Claims(owns_fx2_buffers=True),
-    harness=Harness(layout_char="Q", is_server=False),
+    # An allocator reader: init takes this FX2 slot's own 16,384-word base
+    # from X:$213 (vintageverb.asm), so it does not hardcode BusVerb's tank
+    # or Nimbus's line's addresses -- but the ledger still refuses it beside
+    # them, since they hardcode the same four per-core addresses.
+    claims=Claims(stock_instance_buffer=True, buffer_words=16384),
+    harness=Harness(layout_char="5", is_server=False),
 )

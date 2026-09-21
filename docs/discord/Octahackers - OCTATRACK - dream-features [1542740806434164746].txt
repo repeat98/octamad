@@ -1,0 +1,3595 @@
+==============================================================
+Guild: Octahackers
+Channel: OCTATRACK / dream-features
+==============================================================
+
+[28.08.2026 09:10] bukkakeborealis
+P-lockable and scene lockable Cue in studio mode (tried it without success
+
+
+[28.08.2026 09:13] bamshanks
+interesting, what do you use cue for?
+
+
+[28.08.2026 09:16] bukkakeborealis
+I have an Eventide Blackhole on Cue out. So I can send any track to it in studio mode with their own amount of send. The idea is use the CUE with scenes to send to external gears
+
+
+[28.08.2026 09:16] bukkakeborealis
+Someone mentioned a pan for CUE which would be awesome as well for 2 mono send FX buses
+
+
+[28.08.2026 09:17] bamshanks
+ah yeah I have an h90 hanging off it for the same thing
+
+{Reactions}
+❤️
+
+[28.08.2026 09:17] bamshanks
+Although with these new verbs and delays I'm hoping to not have to do it quite as often
+
+
+[28.08.2026 09:18] bamshanks
+the h90 is nice for that purpose because it's got 4 ins. So I use it as an aux loop but also where I send a feed off my mixer
+
+
+[28.08.2026 09:18] bukkakeborealis
+Yeah I have to try your effects, internal send is awesome
+
+
+[28.08.2026 09:19] bamshanks
+low key hoping someone makes better ones 🙂
+
+
+[28.08.2026 09:19] bamshanks
+But they are better enough for me now, just tuning them up
+
+{Reactions}
+👍
+
+[28.08.2026 09:19] bamshanks
+I would love to put the menus for it somewhere else, rather than a track hosting it, but I don't think it's really possible
+
+
+[28.08.2026 09:19] bamshanks
+needs a host track
+
+
+[28.08.2026 09:22] bukkakeborealis
+You had to cancel all other reverbs/delays for it right?
+
+
+[28.08.2026 09:24] bukkakeborealis
+It will be hard to decide what new FX to put in a firmware haha. Maybe a tools to easily switch FX in new firmwares would be cool to try combos
+
+
+[28.08.2026 09:25] bamshanks
+yeah I had to kill the verbs
+
+
+[28.08.2026 09:25] bamshanks
+the delay lives elsewhere so it's technically still accessible, I just haven't figured out how to wiree that back in to the ui just yet
+
+
+[28.08.2026 09:25] bukkakeborealis
+I used spring and plate for Clouds and Tape delay
+
+
+[28.08.2026 09:25] bamshanks
+you can't bus it though, so gotta think through the routing
+
+
+[28.08.2026 09:25] bamshanks
+yeah the verbs are good to use because they are big but I don't find them super useful
+
+{Reactions}
+❤️
+
+[28.08.2026 09:27] bukkakeborealis
+I used Soatializer for MSCN (CC out FX)  but I guess it could be an extra FX if it doesn’t take much space
+
+
+[28.08.2026 09:28] bamshanks
+the harness is locked to the same limitations as the hardware, so you can tell how much space you have as you are getting it in there
+
+
+[28.08.2026 09:29] bamshanks
+explains how to set up and use the harness
+
+
+[28.08.2026 09:29] bukkakeborealis
+Awesome
+
+
+[28.08.2026 13:29] bryant12345
+I was surprised at how much room the spring reverb takes up. It is an effect I almost never use, so it is prime real estate for redeveloping.
+
+
+[28.08.2026 13:35] bamshanks
+100%
+
+
+[28.08.2026 19:31] bryant12345
+My real dream feature: clickless “sound-on-sound” looping at any BPM and RLEN. I have a large set of BPM/RLEN combinations that work, but it is an annoying limitation of the OT.
+
+{Reactions}
+👍🏻 👍
+
+[29.08.2026 14:34] tenacious_lemur_99636
+Could we imagine an auto assignation of a slot and playing track after sampling something ? I never use sampling because I find it too cumbersome to have to go thru all the steps, especially when you're used to traditional loopers.
+
+
+[29.08.2026 15:02] sezare56_40656
+If you assign a Flex to a recording slot, this is already possible. But I guess you'd also want auto-save...to Self (Recording slot) free Flex or Static slot. Theses saving functions exists, but there should be a Flex / Static / Self choice before recording if you'd want to save automatically. 
+
+Playback stops during saving IIRC. 
+
+Saving to Self is not convenient because it can be used only once per Recording Slot and per project.
+
+
+[29.08.2026 15:13] sezare56_40656
+Multi Zone mode for crossfader / scenes. I already tested and approved it using midi processing : sending crossfader CC48 to a midi processor that sends back CC48 to 4 zones, and switching to scenes pairs (1-2, 3-4, 5-6, 7-8). See beginning of first video to see scenes pairs. Interpolations worked really well.
+https://youtu.be/cLQ4cUzpuy8
+
+https://youtu.be/lf_DzWHNLfY
+
+Second video is the same principle but with part changes (actually pattern changes). I prefer above solution.
+
+{Embed}
+Mistere William
+https://www.youtube.com/watch?v=cLQ4cUzpuy8
+Octatrack Multi Scene Crossfader Control
+https://images-ext-1.discordapp.net/external/iRPJXh90zsOxOoNe5m4fVqYy3mvZdkdZur1qlmi9gk4/https/i.ytimg.com/vi/cLQ4cUzpuy8/sddefault.jpg
+
+{Embed}
+WiliWoW Music
+https://www.youtube.com/watch?v=lf_DzWHNLfY
+Octatrack - Crossfader Part Control
+https://images-ext-1.discordapp.net/external/d19Qis0ANvVo6utXRBPO75NZH48ad4o3H25hTUOV-Gk/https/i.ytimg.com/vi/lf_DzWHNLfY/maxresdefault.jpg
+
+
+[29.08.2026 15:16] tenacious_lemur_99636
+Basically i would like an auto save from a Flex to a Static slot + auto selection of that slot. Like an immediate save & play, and not only for a single use.
+
+
+[29.08.2026 15:20] sezare56_40656
+To sum up : Auto Save to free Flex or Static.
+Ideally not stopping playback.
+
+{Reactions}
+❤️
+
+[29.08.2026 15:21] yldopactyly
+Onboard sidechain compression and a real true peak limiter!!!!!
+
+{Reactions}
+❤️
+
+[29.08.2026 15:22] tenacious_lemur_99636
+Not only, ideally the track could also switch from Flex to Static and points automatically to the lastly created sample.
+
+
+[29.08.2026 16:34] antonio110582._72773
+My dream OT firmware would be something along these lines:
+
+• EM’s 256 Kits system instead of the current Parts system.
+• OctaBAM’s send/return bus, with a really good shared delay and reverb.
+• The ability to choose/replace the insert FX, so we could build our own firmware by selecting, for example, 4–5 different FX modules.
+• Keep the original OT core completely intact — triggers, scenes, sequencing, project structure, etc. should behave exactly as they do now. Only the selected DSP/FX would change. • Scenes for MIDI tracks would also be amazing. • And, as already mentioned in the thread, automatically assigning a recorded sample to another slot and saving it directly would be a huge improvement.
+I honestly think we’re already heading in a very good direction. 256 Kits + the OctaBAM bus + interchangeable FX, while keeping the original OT core intact, would be pretty much my dream Octatrack.
+
+{Reactions}
+👍 (4)
+
+[29.08.2026 16:35] yldopactyly
+Yes holy crap. Repos of interchangeable growing lists of Octatrack bespoke FX.
+
+{Reactions}
+👍
+
+[29.08.2026 16:35] yldopactyly
+Would be super nutty if we could program them in pure data or something and then convert that to Octa-compatible code.
+
+{Reactions}
+💯
+
+[30.08.2026 11:17] jeroen020
+These are great. Scenes for MIDI alone would be worth getting an Octatrack again. 
+The other main one for me would be BPM detection and clock sync, so it becomes easier to use in hybrid DJ setups, no more manual tapping.
+
+{Reactions}
+💯 👍
+
+[30.08.2026 19:24] mrscruff2277
+I'm working on a build for my own use, with these current ideas:
+
+- Double tap scene buttons to mute/unmute for one handed operation (implemented)
+- A version of the 'active scenes persist through part switching' feature that Octamax has (implemented)
+- Allow midi tracks to send duplicate CC's if a trig is present. (implemented)
+- Improved Lofi Distortion/Saturation algorithm. (implemented)
+- Improved reverb to use for DJ wash/transition type effects.
+
+
+[30.08.2026 20:39] bukkakeborealis
+Would it be possible in the future to modify the source page? Like extending pitch range and adding/changing some machines. A mono synth engine with a couple oscillators and Machinedrum EFM and PI machines would be amazing
+
+
+[30.08.2026 20:43] bukkakeborealis
+Would definitely buy another Octatrack if this ever happens 😅
+
+{Reactions}
+🔥
+
+[30.08.2026 22:19] homeboiflex
+Not to change BPM when changing banks (it defaults to project BPM when patterns have their own bpms) 
+
+It’s a known bug but it’d be a dream to have it fixed 😭
+
+
+[30.08.2026 22:45] bryant12345
+A simple dream: remove DC offset from the stock offending effects.
+
+{Reactions}
+❤️
+
+[30.08.2026 22:49] devilfish707
++100 for extending pitch range, fixing BPM bug and DC offset filtering
+
+
+[30.08.2026 22:51] devilfish707
+So many stuff we've been bugging elektron for for years, this is pretty exciting  i hope it can be done
+
+{Reactions}
+👍 (3)
+
+[01.09.2026 13:16] politicpolicy
+Yes! Could be the king of groove boxes.
+
+
+[01.09.2026 13:20] mayrakissa
+could it be possible to improve upon the time stretching algorithm? 🤔
+
+{Reactions}
+👍
+
+[01.09.2026 18:23] synthetivv
+⬆️ and/or deeper, p-lockable control over timestretch parameters like grain size or fade size – that's been a dream feature for me for ages, I came here to look into how feasible it might be...
+
+
+[01.09.2026 18:24] synthetivv
+(or to put it differently, "make the time stretching algorithm worse")
+
+
+[01.09.2026 18:29] mayrakissa
+yeah ableton stretchmodes / aphex twin style stretches would be so cool
+
+
+[01.09.2026 18:34] bryant12345
+Did you find the .md file about timestretching?
+
+https://discord.com/channels/1542713713360904252/1542740659419488376/1543357176721178675
+
+
+[01.09.2026 18:37] synthetivv
+yes, thank you! it makes it sound at least feasible-ish! I'm still digging around in here to learn what I can 🙂
+
+
+[02.09.2026 21:12] w_winter
+I agree on all this and would just add:
+- LST and !LST trig conditions
+- a direct pattern jump option 
+
+I'd love to see if either are possible to implement.  In all the elektrons that offer one or the other, neither are offered simultaneously.  I can imagine why elektron might prefer not to work around their inherent conflict (e.g. by temporarily disabling all LST trig conditions whenever direct jump is enabled), but in my own firmware mod I would happily embrace that small behavioral weirdness
+
+I imagine neither are trivial and that direct jump might not be very viable.  Gotta find out soon
+
+
+[03.09.2026 13:47] everything_is_sine
+hi ! so hyped about this
+
+
+[03.09.2026 13:53] everything_is_sine
+a feature i dreamt about for some time was slide trigs for scenes, or a way to put the fader in the sequencer somehow
+also something like a window function somewhere to better deal with single cycles (wavetable synthesis might be close? idk if it's imaginable)
+
+
+[03.09.2026 15:02] bryant12345
+What do you mean by “somewhere to better deal with single cycles”? I do a bit with single cycle waveforms and a lot of the prep is on the computer. One version stitches together 64 samples with different waveforms for wavetable synthesis by changing the slice. The other keeps the waveform the same, but each slice is a different pitch. I use the second version a lot.
+
+
+[03.09.2026 15:13] bamshanks
+I have longer term thoughts about porting something like braids to the coldfire
+
+
+[03.09.2026 15:14] bamshanks
+But that’s down the list
+
+{Reactions}
+😆
+
+[03.09.2026 15:21] bukkakeborealis
+I am testing an oscillator (replacing static machine for now) it enters the Amp page and can be shaped by enveloppes but having some trouble tuning it properly. It does react to chromatic mode
+
+
+[03.09.2026 15:47] bryant12345
+Very interesting. What sorts of things are you hoping to do with it?
+
+
+[03.09.2026 15:48] antonio110582._72773
+Port something like Plaids would be brilliant for generating sound. It doesn’t seem to require many resources, it’s simple and incredibly versatile!!!
+
+{Reactions}
+💯 (2)
+
+[03.09.2026 15:49] everything_is_sine
+we tried to do the first technique you were talking about, no matter how we preped the samples we always get a click when changing the slice :/
+
+
+[03.09.2026 15:50] everything_is_sine
+so impossible to get a clean sine wobble for example
+
+
+[03.09.2026 15:55] bukkakeborealis
+If I can fix the pitch drifting which is the issue now, there could be a new machine with synthesis (plaits is a good idea, I was thinking machindrum machines 😅) I’ve found out there are 3 more machines slot after pickup but couldn’t select them yet. Octamachine?
+
+{Reactions}
+❤️
+
+[03.09.2026 16:08] bryant12345
+I've had success with each trig getting a fresh slice.  I'm not sure if you can smoothly change the slice while a trig is held.
+
+
+[03.09.2026 16:10] everything_is_sine
+yeah we tried with the crossfader (scene A slice 1 -> scene B slice 64), it did work ok but super thrash
+
+
+[03.09.2026 16:11] bukkakeborealis
+@Bryan T (ukulele owner) do you think there could  be a way to set overdub in Flex?
+
+
+[03.09.2026 16:12] bukkakeborealis
+like resampling the same track before effects not after
+
+
+[03.09.2026 16:13] bryant12345
+Ooh!  Not sure.  My current approach with that is a neighbor track.  T1 is Flex doing the looping/resampling, T2 is the Neighbor adding the effects that don't get added to the loop.
+
+{Reactions}
+👍
+
+[03.09.2026 16:15] bryant12345
+The Project I have open at the moment has T1 as Flex that samples T2.  T2 is a Neighbor with effects that I add by triggering a plays free sequence.  T3 is a Neighbor that adds effects on top of that that don't get added to the loop.  Lots of racket. 🙂
+
+
+[03.09.2026 16:17] bukkakeborealis
+If resampling a track before effects would be possible pickup machines would retire 😅
+
+
+[03.09.2026 16:19] bryant12345
+Pickup machines should retire anyway. I never use them.
+
+{Reactions}
+👍 (3)
+
+[03.09.2026 16:20] avlantis
+dynamic recorders all the way
+
+
+[03.09.2026 16:21] bryant12345
+Do pickup machines resample before effects? That’s not what I remember.
+
+
+[03.09.2026 16:25] bukkakeborealis
+No but they overdub. I usually use them to sample/overdub inputs
+
+
+[03.09.2026 16:39] bryant12345
+Have you seen my writeup about sound-on-sound recording?
+
+
+[03.09.2026 16:41] bryant12345
+https://drive.google.com/file/d/1vPD5GU_6IkaBdKB9aTK2y2HaYwBwvVDr/view?usp=drive_link
+https://docs.google.com/spreadsheets/d/1O0bGngFqRzBWiUyuq5MtmtfVWN0q_mLN/edit?usp=drive_link&ouid=109645928635107374488&rtpof=true&sd=true
+
+{Embed}
+https://drive.google.com/file/d/1vPD5GU_6IkaBdKB9aTK2y2HaYwBwvVDr/view?usp=drive_link
+octatrack_sound_on_sound_primer.pdf
+
+{Embed}
+https://docs.google.com/spreadsheets/d/1O0bGngFqRzBWiUyuq5MtmtfVWN0q_mLN/edit?usp=drive_link&ouid=109645928635107374488&rtpof=true&sd=true
+octatrack_clickless_loops.xlsx
+https://images-ext-1.discordapp.net/external/SBI2cDHGTeUGlMX5HLurbC5Dcfxes2GYKxcBBshbhfw/https/lh7-us.googleusercontent.com/docs/AHkbwyL7jk2aICPUGyDkYach4_dVmJ4l2Z1RoJGZHWGM0Oxm1CnME3A1_sg8y15jqiysOvJJUYBz2ddCfXM1j-m1MhQDS9uzg6ATlbdZ_g%3Dw1200-h630-p
+
+
+[03.09.2026 16:47] bryant12345
+I was just playing around with Pickup machines and it does seem that they resample before the effects.  I didn't remember them working that way.  Neat.
+
+
+[03.09.2026 16:54] bukkakeborealis
+Yes if a flex mode could overdub like this instead of overwriting it would be amazing
+
+
+[03.09.2026 16:58] bryant12345
+But Flex can overdub?
+
+
+[03.09.2026 16:58] bryant12345
+I’m missing something about what you’re asking!
+
+
+[03.09.2026 17:26] bukkakeborealis
+It overdubs if assigned are inAB and if SRC parameter is it’s own track for exemple. But it records it’s own track after the effects so the source changes (like your sound on sound technique I think) the idea would be to record the own track pre FX
+
+
+[03.09.2026 17:28] bukkakeborealis
+Could be an option in SRC of recorder maybe
+
+
+[03.09.2026 17:33] bryant12345
+Got it. If you’re willing to use a Neighbor track for effects, then no reprogramming needed. 
+
+I’m not sure where the audio routing back to the recording buffer is programmed. Since the Pickup machine does this pre-effects (that was new to me), there is precedent to route earlier. I’ll look into it.
+
+
+[03.09.2026 17:40] bryant12345
+Although my mental model now has the Pickup machine entirely on the Cloudfire side, then passing the loop to the DSP. So I’m not sure it’ll be possible. I’ll add it to the open questions section
+
+
+[03.09.2026 17:57] w_winter
+maybe a dual wavetable oscillator machine that reads off the CF drive and gives Tonverk's a run for its money 😝
+
+my dream one would, even if monophonic, mirror the Microwave XT's basic signal path better than Tonverk allows (e.g. at least ring mod between the 2 oscs, and some kind of aliasing/quantization-error effect that's *pre-filter*).  maybe doable in my own side quests
+
+{Reactions}
+❤️ (2)
+
+[03.09.2026 18:12] bryant12345
+I think that’s asking a lot of the CF. Probably better as a Flex machine that uses RAM.
+
+{Reactions}
+👍 (2)
+
+[03.09.2026 22:09] yldopactyly
+Barebones, proof of concept, polyphonic machine
+
+
+[04.09.2026 10:14] mayrakissa
+Something that I liked on Korg Volca custom firmware was round robin sequencing... You load up to 4 samples and every time you trig it moves onto the next sample and loops back after the last sample. I wonder if something like that would be possible on vanilla OT or mods?
+
+
+[04.09.2026 10:15] mayrakissa
+Overall more control on sample loading would be great. Like aforementioned sample slot lfo or loading a batch of samples at once on conseding sample slots
+
+
+[04.09.2026 10:15] bamshanks
+Kind of like how (og) monopoly and the oberheim four voice allocate voices. I've always thought that looked super fun
+
+
+[04.09.2026 10:16] bamshanks
+Doing it with samples and some fun effects would be awesome
+
+
+[04.09.2026 10:16] mayrakissa
+yeah exactly like voice allocating
+
+
+[04.09.2026 10:16] bamshanks
+yeah that would be great
+
+
+[04.09.2026 10:18] mayrakissa
+and yeah obvioisly it doesnt have to be max 4 samples but thats an easy way to make 4/4 sequences, odd numbers make for easy polyrythms
+
+{Reactions}
+💯
+
+[04.09.2026 13:01] mayrakissa
+oh i have a good one: disable arranger button/make it require a long press. i cant count how many times i've accidentally hit the arranger while playing live and wondering why everything stopped 🙃
+
+
+[04.09.2026 13:30] kjnilsson
+enabling arr mode is func + ARR right? and even if you do whilst playing a plain pattern it doens't stop playback, at least for me
+
+
+[04.09.2026 13:34] mayrakissa
+yeah it happens sometimes when i'm trying to swap patterns after using func to mute tracks on the fly and it plays through the pattern once and then reaches end/stop
+
+{Reactions}
+👍
+
+[04.09.2026 14:24] bukkakeborealis
+In mixer page it would be useful to have DIR input A,B,C,D instead of paired AB,CD . Could then put 4 mono devices without using Thru machines
+
+{Reactions}
+🔥
+
+[04.09.2026 14:27] bukkakeborealis
+Not sure how the mixer UI could be for that though. But this would be very useful in some setups to save a track
+
+
+[04.09.2026 17:40] michaelknubben
+One thing I've actually mailed back and forth with Elektron about years ago is the possibility of the midi sequencer being not only polyphonic per _step_, but across them. Currently if you play a chord of length 64 on one step, any other trig between the chord and it's end 64 steps later will end the chord. 
+On top of that having midi tracks part of scenes/parts would be a gamechanger!
+Another dream 'feature' would be an external software emulation (win/osx/linux), so in the absence of Elektron making a proper sequel, I can at least multitrack record my performances
+
+
+[04.09.2026 21:58] tenacious_lemur_99636
+I thought the MIDI scenes thing was restrained to avoid MIDI panic due to the high number of parameters that could be changed. That would be amazing to have them indeed, even with limited amount of parameters.
+
+
+[04.09.2026 22:03] bukkakeborealis
+I ‘ve been sending tons of midi in real time in and out using Lemur even with midi loopback/randomization of any parameters and it always went well. But it was physical midi cables. Now with midi scenes I noticed a bit of lag when routing things internally. Let’s see. If you want something with little amount of parameters I have made an FX that sends midi out( 5CC) works great with scenes/crossfader and step locks
+
+{Reactions}
+😮
+
+[04.09.2026 22:07] michaelknubben
+That's what they said when I asked, but yeah: I'd be okay with limited parameters if it's necessary
+
+
+[04.09.2026 22:32] bukkakeborealis
+You can test it, I put the .bin in demos. You select the midi channel, CCs and you can morph your external synth CCs with scenes. Also 2 fx to try there. Feedback is welcome. I’ll start a channel for those btw
+
+
+[05.09.2026 03:26] hyperstationjr
+If we’re wishing wishes…
+
+My main request would be QOL UI updates that would make things like adding trig conditions easier, or surfacing specific submenu params as plocks.
+
+I think I also read someone talk about enabling midi in scenes - yes please!
+
+
+[05.09.2026 03:30] bamshanks
+yeah I've been focused on my big ticket items first (mostly effects), but I have a heap of qol stuff i'd like to port back from the newer devices.
+
+
+[05.09.2026 03:30] bamshanks
+Those should be super easy to add to the remixer so you can stamp out the ones you want
+
+
+[05.09.2026 03:31] bamshanks
+There is still heaps that is unknown but everyone is decoding stuff at a crazy rate
+
+
+[05.09.2026 03:47] hyperstationjr
+This is absolutely nuts. Like, never in my wildest dreams would I have considered it even being possible. Don’t mind being wrong about that, can’t wait to see how this goes.
+
+
+[05.09.2026 03:47] bamshanks
+yeah is pretty nuts
+
+
+[05.09.2026 03:56] zackyoti_98392
+It’s killing me to not have access to my hardware right now. I have like six bins ready to flash, and I’m dying to see the results
+
+
+[05.09.2026 04:33] bamshanks
+Haha yeah I did a couple days and it was pretty tangled on what flashes caused what issues when I got back
+
+
+[05.09.2026 07:56] michaelknubben
+Yeah. An OT3 would be well-served with two extra pots, and a resulting screen where you can set slides, conditions etc as on the newer boxes
+
+
+[05.09.2026 07:56] michaelknubben
+The OT is deep, but people wouldn't be half as confused without the trigless trig shit 😅
+
+
+[05.09.2026 07:58] bamshanks
+The interesting thing is that it might actually be easier for us to extend than them in some ways. 
+
+Because we are dropping assembly in little caves in the gaps, vs writing and compiling from source
+
+
+[05.09.2026 10:52] mayrakissa
+i would LOVE to be able to use Analog Rytm master distortion when using individual outputs...
+
+
+[05.09.2026 10:54] bamshanks
+Sadly I believe that would be a hardware constraint
+
+
+[05.09.2026 10:54] bamshanks
+could be wrong but I would assume so
+
+
+[05.09.2026 10:55] mayrakissa
+dang. guess i just have to hunt an analog heat then haha
+
+
+[05.09.2026 10:55] bamshanks
+I've been umming and Ahhing on a heat for about a decade
+
+
+[05.09.2026 10:55] bamshanks
+or basically however long they've existedd
+
+
+[05.09.2026 10:58] mayrakissa
+same here, i thought i could replace it with my digital mixer but no way. shame mk2's are so scarce, i don't want to pay 1k for effects i wont use
+
+
+[05.09.2026 10:58] mayrakissa
+might just build an eurorack end of chain system then
+
+
+[05.09.2026 11:07] bamshanks
+coz that will end up cheaper…
+
+
+[05.09.2026 11:07] bamshanks
+😜
+
+
+[05.09.2026 11:08] bamshanks
+The possibilities on what you could do with a cheap mk1 octa are interesting though
+
+
+[05.09.2026 11:09] bamshanks
+For end of chain
+
+
+[05.09.2026 11:24] mayrakissa
+good point! however i ended up getting a mk2 for EZBOTs effect template because of the better inputs and outputs, mk1 gets crispy far too easily for what i'm doing (loud ass techno)
+
+{Reactions}
+👍🏻
+
+[05.09.2026 11:25] mayrakissa
+also good point hahah
+
+
+[05.09.2026 11:39] w_winter
+Wonder if p-lockable lfo parameters (like on the newer boxes) arent doable.  Would also be great
+
+{Reactions}
+🤔
+
+[05.09.2026 11:41] mayrakissa
+oh yeah thats a good one, we need tempo synced lfo wubs
+
+
+[05.09.2026 11:41] bukkakeborealis
+Go to a music store and brick their octatrack 🤣
+
+
+[05.09.2026 11:42] bukkakeborealis
+Can’t wait to try direct jump!
+
+
+[05.09.2026 11:43] mayrakissa
+as a music store worker - thats funny 😆
+
+
+[05.09.2026 19:29] zackyoti_98392
+Haha, it’s awful but I did contemplate that 😆
+
+
+[05.09.2026 19:31] bryant12345
+"Sir, why are you inserting your own compact flash and rebooting the display unit?  Please leave at once!"
+
+{Reactions}
+🤣
+
+[05.09.2026 23:54] bryant12345
+Milestone! My first effect.  It rendered.  Tears of joy.
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740806434164746/1545915168045928521/Screenshot_2026-09-05_at_2.53.22_PM.png?ex=6aaf04b1&is=6aadb331&hm=7b83025720d8797909916cc713e5526696f343dcc862d8c714159a89e8913957&
+
+{Reactions}
+❤️ 🎉
+
+[05.09.2026 23:55] bamshanks
+eyyyyyyyy
+
+
+[05.09.2026 23:55] bamshanks
+grats
+
+
+[05.09.2026 23:55] bamshanks
+what did you change?
+
+
+[05.09.2026 23:56] bukkakeborealis
+Feedback?!
+
+
+[05.09.2026 23:56] bryant12345
+Dropped the distortion.  Ring mod will have a low mode and a high mode, more like the Moog 102.  I'm adding a frequency shifter mode that will have subtraction and addition modes.  Feedback is for the frequency shifter.
+
+{Reactions}
+❤️ (2)
+
+[05.09.2026 23:57] bamshanks
+awesome
+
+
+[05.09.2026 23:57] bamshanks
+278 words is cheap cheap that ~~will~~ should drop straight back in
+
+
+[05.09.2026 23:57] bryant12345
+Oh!  The Bode shifter isn't in yet.  That'll be expensive since it will be stereo.  The one from mutable was mono ...
+
+
+[05.09.2026 23:58] bamshanks
+oh you doing a stereo bode?  that's cool
+
+
+[05.09.2026 23:59] bamshanks
+those mutable ones were pretty much a straight vibe port
+
+
+[05.09.2026 23:59] bamshanks
+sounded surprisingly good
+
+
+[05.09.2026 23:59] bryant12345
+A few years ago I wrote a looper plugin with a bunch of effects in the feedback path.  Trying to get that behavior into hardware.
+
+
+[05.09.2026 23:59] bamshanks
+sound on soundy as well?
+
+
+[05.09.2026 23:59] bryant12345
+This was all in the feedback path.
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740806434164746/1545916339993051156/Screenshot_2026-09-05_at_2.58.44_PM.png?ex=6aaf05c9&is=6aadb449&hm=c5b1915f42b04206672722d9729d965535032a1f8991e4a51b7d612e6334147d&
+
+
+[05.09.2026 23:59] bamshanks
+awesome
+
+
+[05.09.2026 23:59] bryant12345
+Of course!
+
+{Reactions}
+❤️
+
+[05.09.2026 23:59] bamshanks
+that graphic top left looks familiar :p
+
+
+[06.09.2026 00:00] bryant12345
+That's the routing matrix for the loops.  Not quite possible on Octatrack (yet), but maybe ...
+
+
+[06.09.2026 00:00] bamshanks
+and the source of your avatar I assume 🙂
+
+{Reactions}
+👍
+
+[06.09.2026 00:01] bamshanks
+I've got the seq running in the emulator now btw, which can hopefully answer some more questions for your use case
+
+
+[06.09.2026 00:02] bamshanks
+slow work, as it is a play and record and eval loop, but it's chugging away
+
+
+[06.09.2026 00:02] bamshanks
+chasing that pesky drop right now
+
+
+[06.09.2026 00:07] ambient.signals_76175
+Honestly y'all are insane
+
+
+[06.09.2026 00:07] ambient.signals_76175
+It's a wild time to own an octatrack
+
+
+[06.09.2026 00:07] bamshanks
+really is
+
+
+[06.09.2026 00:07] bamshanks
+As far as community hacking platforms go, it's pretty incredible
+
+
+[06.09.2026 00:08] bamshanks
+The hardware lends itself real nice
+
+
+[06.09.2026 00:08] ambient.signals_76175
+Yeah won't lie I've been following some of the work and asking Claude about your work and just the original hardware
+
+
+[06.09.2026 00:09] ambient.signals_76175
+They really squeezed the juices from this 15+year tech. And then to see y'all squeeze even more and crack decade long requests in a matter of weeks is mindblowing
+
+
+[06.09.2026 00:11] tenacious_lemur_99636
+The last FM is like 5+years ago so they squeezed less than 15 years 😉 Tbh I guess no one at Elektron understands wtf is going on in the OT code and neither they have the will to do so
+
+{Reactions}
+💯
+
+[06.09.2026 00:14] bamshanks
+Yeah they really do amazing work cramming more and more stuff in. While everyone accuses them of feature gating constantly
+
+
+[06.09.2026 00:15] bamshanks
+There was an interview with one of the engineers around getting song mode working on the dt
+
+
+[06.09.2026 00:15] bamshanks
+And he was like "we wanted to but it was almost impossible to fit"
+
+
+[06.09.2026 00:15] ambient.signals_76175
+Yeah absolutely correct like Bryan and bam said earlier it's truly some alien tech
+
+{Reactions}
+💯
+
+[06.09.2026 00:15] ambient.signals_76175
+And the creators were just as mad to make this beast
+
+
+[06.09.2026 00:16] bamshanks
+Yeah the creativity and originality is off the charts
+
+
+[06.09.2026 00:16] bamshanks
+and engineering skill
+
+{Reactions}
+💯
+
+[06.09.2026 00:17] ambient.signals_76175
+Facts it's bonkers dudes were level 99+ master wizards casting straight spells 😂😂
+
+{Reactions}
+💯
+
+[06.09.2026 00:19] tenacious_lemur_99636
+The simple fact they imagined P-locking could work with 256 parameters on a cross fader ... It must have given some headaches
+
+{Reactions}
+💯 (2)
+
+[06.09.2026 00:20] bamshanks
+imagine
+
+
+[06.09.2026 00:20] ambient.signals_76175
+Hahahaha
+
+
+[06.09.2026 00:23] ambient.signals_76175
+Board meeting:
+
+"so guys what if we could build an instrument that can modulate every  parameter I. Real time between two parameter states, and we give it a crossfader"
+
+Board:
+Promote this man
+
+
+[06.09.2026 00:24] tenacious_lemur_99636
+Then the guy went away (maybe in TE) and they created DT: "Ok guys, the next dude who comes with a cross fader or any exotic idea is fired"
+
+{Reactions}
+🤣
+
+[06.09.2026 01:35] bamshanks
+I feel like the TV is actually a pretty big novel swing and will turn into something great. But isn't quite the flagship form factor I was hoping for
+
+
+[06.09.2026 01:36] yldopactyly
+It feels like a game released unfinished tbcqf&h
+
+
+[06.09.2026 01:36] yldopactyly
+(to be completely quite frank & honest)
+
+
+[06.09.2026 01:37] bamshanks
+yeah
+
+
+[06.09.2026 01:37] bamshanks
+agree
+
+
+[06.09.2026 01:37] bamshanks
+But I imagine they were suuuuuuper deep into a new platform and behind schedule and under pressure to release something
+
+
+[06.09.2026 01:37] bamshanks
+Coz I work in software and that's what it's always like
+
+
+[06.09.2026 01:38] yldopactyly
+I'm just gonna keep shaking my fist at private equity
+
+
+[06.09.2026 01:39] yldopactyly
+I hate to say it but nu-Elektron is partially enshittified
+
+
+[06.09.2026 01:39] bamshanks
+haha yeah PE can be pretty yucky
+
+
+[06.09.2026 01:39] bamshanks
+we will see
+
+
+[06.09.2026 01:39] bamshanks
+too soon to tell imo
+
+
+[06.09.2026 01:39] yldopactyly
+Well idk I have enormous respect for finally updating A4.
+
+
+[06.09.2026 01:39] bamshanks
+Digitone 2 is incredible
+
+
+[06.09.2026 01:39] yldopactyly
+I'm so conflicted man.
+
+
+[06.09.2026 01:39] bamshanks
+yeah and the last AR update was a monster
+
+
+[06.09.2026 01:39] yldopactyly
+The lion has been feeling a little ambivalent about his electronic music products lately
+
+
+[06.09.2026 01:40] bamshanks
+haha
+
+
+[06.09.2026 01:40] bamshanks
+I'm still a deep fan
+
+
+[06.09.2026 01:40] bamshanks
+until they do something to make me not
+
+
+[06.09.2026 01:40] bamshanks
+likewise moog
+
+
+[06.09.2026 01:40] yldopactyly
+The original thing is so good that even if it is being skinsuited it will continue to be good just based on that original momentum
+
+
+[06.09.2026 01:40] yldopactyly
+For a time
+
+
+[06.09.2026 01:40] bamshanks
+feel like that undersells the passionate people still working there
+
+
+[06.09.2026 01:41] yldopactyly
+They need to do something different though man. Idk. I would love an Elektron dedicated sequencer or mixer.
+
+
+[06.09.2026 01:41] yldopactyly
+This is very fair
+
+
+[06.09.2026 01:41] bamshanks
+The Tonverk is the most different thing ever
+
+
+[06.09.2026 01:41] bamshanks
+not what I wanted but extremely different
+
+
+[06.09.2026 01:42] bamshanks
+As an Elektron person with a Prophet X they couldn't have released something less gas inducing for me personally lol
+
+
+[06.09.2026 01:42] yldopactyly
+Idk I just don't see it that way, I find it like a tragic follow up to Octatrack, there's so much I dislike about what they've done with it and I do not own one.
+
+
+[06.09.2026 01:42] yldopactyly
+At the same time what u say is very fair and I am glad u enjoy the machine.
+
+
+[06.09.2026 01:43] bamshanks
+Oh I don't have it, I just think they released a hardware multisampler, which are super rare, and everyone was like "why isn't it an octatrack?"
+
+
+[06.09.2026 01:44] bamshanks
+Not even remotely similar things aside from being samplers
+
+
+[06.09.2026 01:44] bamshanks
+I don't know of a single other device that does it on device
+
+
+[06.09.2026 01:45] yldopactyly
+*pounds fist on the table* crossfader!
+
+{Reactions}
+😁 💯
+
+[06.09.2026 01:45] yldopactyly
+Lol I am joshing at this point. Idk man what you say is perhaps true. I am no sage. But what I can say is the Tonverk gives me upset feelings in my tummy for that reason I shun it.
+
+
+[06.09.2026 01:45] bamshanks
+hahahaha
+
+
+[06.09.2026 01:45] bamshanks
+I support that
+
+{Reactions}
+👍
+
+[06.09.2026 01:46] yldopactyly
+Thank you. 😔
+
+
+[06.09.2026 01:46] bamshanks
+an AR/A4 mk2 format octa was more what I was hoping for, for the next flagship
+
+{Reactions}
+👍
+
+[06.09.2026 01:46] bamshanks
+but the hopes have never been strong
+
+
+[06.09.2026 01:47] bamshanks
+so hence lets see what we can squeeze out of the og
+
+
+[06.09.2026 01:47] yldopactyly
+Yes.
+
+
+[06.09.2026 01:47] yldopactyly
+Simply put yes.
+
+
+[06.09.2026 01:48] yldopactyly
+It would be a definitive monster and completely unprecedented in raw awesomeness, that's why I broke the mirror in my bathroom last night high on acid, they could've literally made the ultimate electronic music station. The chops of the team around Octatrack MKI development were literally historic.
+
+
+[06.09.2026 01:48] yldopactyly
+They really could have delivered on something just epic, not even joking.
+
+
+[06.09.2026 01:49] bamshanks
+Leaves an opening for the rest of us though 🙂
+
+{Reactions}
+👍
+
+[06.09.2026 01:50] bamshanks
+I've got too many projects but it feels inevitable this eventually crosses over into a hardware hacking situation
+
+
+[06.09.2026 01:50] yldopactyly
+Is the sequencing thing patented?
+
+
+[06.09.2026 01:50] bamshanks
+every other manufacturer has ripped off almost every part of it
+
+
+[06.09.2026 01:50] yldopactyly
+Will they come after me for making basically the same sequencer on a different kind of instrument? Squarp stuff does parameter locks no?
+
+
+[06.09.2026 01:51] bamshanks
+everything does now they just call it other things
+
+{Reactions}
+👍
+
+[06.09.2026 01:51] yldopactyly
+I have no other sequencers except Korg SQ-64, which is more useful as a blunt weapon tbf
+
+
+[06.09.2026 01:51] yldopactyly
+Rofl
+
+
+[06.09.2026 01:51] bamshanks
+the new roland drum machine sequencer is very very inspired by
+
+{Reactions}
+😏
+
+[06.09.2026 01:51] bamshanks
+but also kinda shite still coz roland
+
+
+[06.09.2026 01:51] yldopactyly
+Watch out I'm sure Roland legal team has us wired up.
+
+
+[06.09.2026 01:51] bamshanks
+maybe they think if they copy it badly they wont get sued
+
+
+[06.09.2026 01:52] bryant12345
+I’m sure the manual is great. (Lol)
+
+{Reactions}
+😁 😏
+
+[06.09.2026 01:52] yldopactyly
+I'm glad u also think their stuff is wack, it bothers me
+
+
+[06.09.2026 01:52] bamshanks
+almost readable I'm sure
+
+
+[06.09.2026 01:52] bamshanks
+Probably not too radical in an Elektron discord lol
+
+
+[06.09.2026 01:52] bamshanks
+but yes I have tried many times
+
+
+[06.09.2026 01:52] bamshanks
+and their ux is awful
+
+
+[06.09.2026 01:52] bamshanks
+and their manuals are worse
+
+
+[06.09.2026 01:53] yldopactyly
+My homie is a Roland guy, coincidentally doesn't know how to operate his equipment not sure if those are correlated,,,, tried reading the manual for his TR-skadippity doo and had to give up
+
+
+[06.09.2026 01:53] bamshanks
+Yeah I found the TR8 kinda clunky but incredible sounding and pretty usable
+
+{Reactions}
+👍
+
+[06.09.2026 01:53] bamshanks
+the TR8S, where they tried to add all the elektron features
+
+
+[06.09.2026 01:53] bamshanks
+is a nightmare
+
+
+[06.09.2026 01:53] bamshanks
+and those tiny screens, always with the tiny screens
+
+
+[06.09.2026 01:54] yldopactyly
+Got my other friend the P-something that little sampler sequencer with the big GRANULAR button in the middle of the UI, thought it would be easy to use, instantly felt terrible once got started trying to load samples for him
+
+
+[06.09.2026 01:55] bamshanks
+yeah loading samples is their achilles heel it seems
+
+
+[06.09.2026 01:55] yldopactyly
+Then I was trying to explain to him (anime weeb buddy who wants to make gabber with Chobits samples) and it was just a lost cause it's like operating special 80s medical equipment
+
+
+[06.09.2026 01:55] bamshanks
+hahahaha
+
+
+[06.09.2026 01:55] bamshanks
+accurate
+
+
+[06.09.2026 01:55] yldopactyly
+Oml
+
+
+[06.09.2026 01:56] bryant12345
+Fortunately Elektron never puts out a confusing manual ..
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740806434164746/1545945719179972709/4B05DB23-CD0D-4AFB-B497-F96D9C33C905.jpg?ex=6aaf2125&is=6aadcfa5&hm=624b220c0dbebbbcba04207d0418de6d608929681e24f4740cbd045bb93dc72e&
+
+{Reactions}
+doyouevenpwm
+
+[06.09.2026 01:56] yldopactyly
+It does sound good. That's what bothers me. U guys know that artist Dom and Roland? Literally "hey it's me Dom and these are my Rolands" and it just sounds absolutely nasty and classic. They have great sounds. I just despiseeeee the form factor and presentation of how they deliver it. The colors and horrific LEDs especially but that is just me.
+
+{Reactions}
+💯
+
+[06.09.2026 01:57] yldopactyly
+And the UIs! Omg. Like they've created an online anti-Roland junta just over that.
+
+
+[06.09.2026 01:57] tenacious_lemur_99636
+Yeah and the OT which was my first device is not confusing at all 😵‍💫
+
+
+[06.09.2026 01:57] yldopactyly
+Perfectly FINE damnit at least it is there explained to u.
+
+
+[06.09.2026 01:58] yldopactyly
+Wait where is that in OT manual what page is that?
+
+
+[06.09.2026 01:58] yldopactyly
+I've never even used the pickup machines tbqh
+
+
+[06.09.2026 01:58] bamshanks
+Haha I actually have one of those (probably related to the rizz) weird brains that read the whole octa manual and found it great
+
+
+[06.09.2026 01:59] tenacious_lemur_99636
+I feel like we're getting away from the purpose of #dream-features
+
+
+[06.09.2026 01:59] bryant12345
+Page 51!
+
+
+[06.09.2026 01:59] bamshanks
+haha
+
+
+[06.09.2026 01:59] yldopactyly
+I happen to enjoy it too and appreciate their effort, reading it makes me feel like a smart fella (or a fart smella) and I come away feeling so much respect for the instrument, I work in the trades and I love feeling that the thing I have is this weighty intricate device.
+
+{Reactions}
+💯
+
+[06.09.2026 01:59] bryant12345
+A good manual is a dream feature!
+
+{Reactions}
+👍
+
+[06.09.2026 01:59] tenacious_lemur_99636
+Mostly I feel like Audio companies should ask musicians and not only developers and engineers
+
+{Reactions}
+👍 (2)
+
+[06.09.2026 02:00] tenacious_lemur_99636
+Most probably a You Can Always Dream feature
+
+
+[06.09.2026 02:00] yldopactyly
+Part of OTs allure is its mystique and idiosyncrasies and the vagueness, like what is this thing even for, what can it do
+
+
+[06.09.2026 02:01] yldopactyly
+It feels like a device from an alien musical culture
+
+{Reactions}
+💯
+
+[06.09.2026 02:01] tenacious_lemur_99636
+Last job I'd like to get is the one of the dude in charge of putting simple concepts into complicated sentences
+
+
+[06.09.2026 02:01] yldopactyly
+That man would destroy us all unfortunately, in 2,000 BC he would be respected swedish warlord, I would be careful
+
+
+[06.09.2026 02:02] yldopactyly
+Do guys wanna flip over to general
+
+{Reactions}
+👍🏻
+
+[06.09.2026 02:02] yldopactyly
+Idw clog this channel up
+
+
+[06.09.2026 02:02] yldopactyly
+Feeling a little guilty
+
+
+[06.09.2026 02:03] tenacious_lemur_99636
+The mystic of OT is especially due to the fact it was never intended to get all those features from the get go, hence 38.4 different ways to do the same thing and yet impossible to translate what you had in mind onto the machine. Instead of intentional device, it is king of happy accidents and WTF AMAZING Shite is that?!
+
+
+[06.09.2026 11:07] mentholatum1761
+Not sure if it was mentioned before, but:
+- DT-style midi off behavior (not velocity 0 like currently, but a proper NOTE OFF -message
+- DT-style overlapping long midi notes (for polyphonic pads etc). Currently OT cuts off all previous notes on the same channel when playing a new note
+- More sequencer steps! (pretty sure someone already brought it up)
+
+{Reactions}
+❤️
+
+[06.09.2026 11:09] tenacious_lemur_99636
+How would you implement more sequencer steps in the UI?
+
+
+[06.09.2026 11:11] mentholatum1761
+Double blinking lights for odd pages?
+
+
+[06.09.2026 11:11] _bradf
+So a huge thing that bugs me about octatrack in context of elektron ecosystem / pattern change management, is that it contains 256 patterns where as all the other devices are 128 patterns.
+
+What this means is if you have multiple devices chained at the hip for patterns to match up (for example a digitakt and an octatrack). This system can only work for the first half of the octatrack patterns, the latter half dont work when using the elektron standard program change system.
+
+What would be cool is a setting somewhere that you can select either banks 1-8 to respond or send to program change or banks 9-16. (So two groups of program change 0-127 switchable).
+
+This would allow 1 octatrack project to be syncable / shared with 2 projects in most of  other elektron devices.
+
+
+[06.09.2026 11:12] tenacious_lemur_99636
+- I wish we could loop a portion of the sequencer.
+- I'd like an option where setting a page length <16 steps would jump to the next page.
+Ex: 48 steps can display 12 steps on first page, 12 on the second, etc. The display could be set by the user so we could have a choice of exotic displaying. 
+- Bringing the euclidean thing would be great.
+- Getting rid of the limitation of 8 Arrangements in the Arranger
+
+
+[06.09.2026 11:13] tenacious_lemur_99636
+Already used for active Fill.
+
+
+[06.09.2026 11:14] mentholatum1761
+True! Hmm... Are the lights rgb? Maybe a different color? Or a slower blink...
+
+
+[06.09.2026 11:17] tenacious_lemur_99636
+The glass itself is red so no RGB possible I think.
+
+
+[06.09.2026 11:26] mentholatum1761
+Maybe then a "bank-modifier" would make sense for pages 5-8. Pages 1-4 would act normal and pages 5-8 would be "inverted" so page 5 shows led 1 = off leds 2-4 = on, page 6 would show led 1 = on, led 2 = off, leds 3,4 = on plus "+1"modifier displayed on the screen.
+
+{Reactions}
+👍
+
+[06.09.2026 11:27] mentholatum1761
+1000,0100,0010,0001,0111,1011,1101,1110
+
+
+[06.09.2026 11:28] tenacious_lemur_99636
+Add an 8-page sequencer mode by introducing two 4-pages banks. PAGE cycles through pages 1–4 as it currently does. 
+A combo like PAGE + YES toggles between page banks 1–4 and 5–8. 
+The four existing PAGE LEDs continue to indicate the current page, with reduced LED brightness used to distinguish pages 5–8 from pages 1–4. All existing PAGE combinations remain unchanged, including FILL, SCALE SETUP and page copy/paste. 
+
+Now I'm not so sure about the visual feedback of a dim light when playing live.
+
+
+[06.09.2026 11:28] mentholatum1761
+yeah I think inverted leds on pages 5-8 would be more clear
+
+{Reactions}
+☝️
+
+[06.09.2026 11:29] tenacious_lemur_99636
+The inverted lights might be confusing when the OT is using FILLS.
+
+
+[06.09.2026 11:30] mentholatum1761
+Hmm I rarely use OT fills so can't really say...
+
+
+[06.09.2026 11:33] mentholatum1761
+Honestly I would say it's a pretty good tradeoff. Users who like fills can just stay with 64 steps...
+
+
+[06.09.2026 11:36] tenacious_lemur_99636
+Ahahah "after me the chaos" solution 😉 
+A solution must fit to everyone though but I think the inverted light is the best visual feedback and anyway the user triggering a FILL is aware that the leds will temporary display a visual feedback of the FILLS. 
+
+I think inverted is indeed a good solution considering it's simple and what it brings on the table 😉
+
+
+[06.09.2026 11:38] mentholatum1761
+Glad you see it that way! I'm overwhelmed anyways when triggering an OT fill as I feel like I need all my fingers and toes to perform the combo so won't have time to look at any leds...
+
+
+[06.09.2026 12:00] tenacious_lemur_99636
+Bro, it's just 2 keys 😅
+
+
+[06.09.2026 12:22] mentholatum1761
+Too many! (can't do it 1-handed)
+
+
+[06.09.2026 13:25] tenacious_lemur_99636
+Someone on Elektronauts asked for gain & level values to dB-values in the mixer section... and I agree!
+
+{Reactions}
+❤️
+
+[06.09.2026 13:29] bamshanks
+Yeah I’d love to change heaps of the 0-127s but it might be harder than it seems
+
+
+[06.09.2026 13:29] bamshanks
+Like how would you measure the db?
+
+
+[06.09.2026 13:29] bamshanks
+When there is a separate gain control on the sample setting
+
+
+[06.09.2026 14:19] bryant12345
+Gain staging on the Octatrack is an art. They only gave us like 47 places to adjust it with no indication of which point clips. Lol.
+
+
+[06.09.2026 14:31] machinista__21901
+Would be great to have a mechanism to map incoming velocity from external MIDI controller to amp VOL. I'd probably map velocity 0-127 to vol -64 - +16 (so velocity 100 equals VOL 0)
+
+Also, if we could map the note length..
+
+
+[06.09.2026 14:33] bamshanks
+Yeah I made a big mess with it. I had Claude gain stage my whole project with amp and vol on level the other day
+
+
+[06.09.2026 14:41] befriendthedragon_93582
+has anyone thought about the "dub aborted" errors that occur with pick up machines? Master Tempo overide, maybe the ability to turn off timestretch if that has something to do with it?
+
+
+[06.09.2026 14:47] bamshanks
+Not me but I never use pick up machines to date
+
+
+[06.09.2026 14:50] befriendthedragon_93582
+Fair enough many use flex. im just wondering why pickups can overdub while flex overwrites the buffer? I think @BUKKAKEBOREALIS mentioned flex dub?
+
+
+[06.09.2026 14:50] bryant12345
+Flex with a recording buffer can overdub.
+
+
+[06.09.2026 14:51] befriendthedragon_93582
+normally with 1 buffer or by using multiple recording buffers?
+
+
+[06.09.2026 14:57] bryant12345
+One buffer. I’ll use (for example) Input A for a guitar and SRC3 is T1 to record onto Recording Buffer 1. Track 1 is a flex track playing recording buffer 1.
+
+
+[06.09.2026 14:59] bryant12345
+Have a look at this. You don’t have to leave the buffer always recording - you can arm it and overdub as needed. The clickless stuff only really matters if you’re leaving it recording perpetually.
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740806434164746/1546142833570746448/octatrack_sound_on_sound_primer.pdf?ex=6aaf2ff9&is=6aadde79&hm=bf106f3d9c163e95d8b196a172bd1779b4c5484d1cd3f1788255c0a085826cd8&
+
+{Reactions}
+💯
+
+[06.09.2026 16:26] bryant12345
+Dream feature: internal midi loopback. I’ve never understood why this isn’t allowable on the device. I’m probably missing something obvious.
+
+{Reactions}
+👍 (5) 💯 (2)
+
+[06.09.2026 16:46] gotem4life
+Working on that! Initially i was plocking roots and chords on a FX2 slot, but there may be a way to go through an internal midi channel. We'll see if that works though..
+
+{Reactions}
+🔥
+
+[06.09.2026 16:46] pituzinho9269
+A simple but needed one is congruent snap values when pressing function on every available value. What do you guys think about how note controls are implemented, could that be improved? Always felt it's kind of all over the place
+
+{Reactions}
+👆 (2)
+
+[06.09.2026 16:51] mentholatum1761
+Oh an another dream feature: get rid of accidental double-clicks on trigs (on mkII). I think the sensitivity is somehow off, as I end up often deleting trigs when adjust p-locks. Some kind of minimum timeout for double-clicks should fix it. Or maybe a setting for this could be useful? edit: On my DT I don't accidentally delete trigs, and it has the same buttons, so should be an UI tweak
+
+
+[06.09.2026 17:26] tenacious_lemur_99636
+Another feature would be to cancel a Delete function accidentally pressed without limit of time. I lost too many patterns/tracks sequences that way. Like a true UNDO combo.
+
+
+[06.09.2026 21:33] rolandjx3p
+Hi, there is a ‘bug’ in the official FW : on a MIDI track, if you input a note via an external keyboard by holding the step and pressing the key, it registers it properly with the correct velocity but then if you replace the note with the same action, the velocity remains the same and the actual velocity is ignored. Would it be possible to fix ?
+
+{Reactions}
+👍
+
+[06.09.2026 22:29] bryant12345
+One feature I’m thinking about is more routings for SRC3 on the recording buffers. I’d ideally like to pick/choose between all eight tracks without using the cue bus. Not sure how tractable (lots of combinations!) or feasible that would be. Any thoughts?
+
+{Reactions}
+❤️
+
+[06.09.2026 22:44] pituzinho9269
+Been stocked about all of this. Maybe get the LFO to resemble more the ones on the digi's with the bipolar depth knob? That's my only gripe with the OT one and also maybe different filter slopes or any other variation on the filters?
+
+
+[06.09.2026 23:15] falken202
+and allow lfo parameters to be p-locked like on the more modern elektrons (destination etc). dunno how feasible that would be on OT
+
+
+[06.09.2026 23:17] bamshanks
+Oh that’s interesting. Will need to pull the veil back on that section a bit more but that could be doable
+
+{Reactions}
+👍
+
+[06.09.2026 23:41] bukkakeborealis
+If setup pages can be p-locked then that’s it 🙂
+
+{Reactions}
+👍
+
+[06.09.2026 23:54] gurttractor
+Crossposting from an earlier Elektronauts post - 
+
+**Per-track trig modes**. This is already a thing on the device except for external MIDI input, where if you have “MAP/TRACK” enabled in your audio note in settings it allows each track to respond differently to incoming notes, so slices for one track, slots for another etc. Frustratingly this wasn’t implemented for trig modes on the device itself, you have to keep switching back and forth manually whenever you change track and want to control notes/slices/slots/quick mute etc. It would make so much sense if when you switched between tracks that the trig mode + LEDs changed automatically. I think it would also make the device a bit more logical and intuitive to use generally.
+
+**Response to velocity for the audio tracks**. I’m not sure what would be the best way to implement this, maybe an LFO wave type? I just really wish I could use the OT for expressive finger drumming or note playing, not having any reaction to velocity is quite disappointing. In addition to this I’d really like to see an **ability for live recording to register note offs/setting the hold time**, so you can play something in and have it play back something resembling your actual performance.
+
+
+[06.09.2026 23:54] gurttractor
+Also it would be extremely nice to have a **gate FX**, maybe a toggle to turn the compressor into one?
+
+{Reactions}
+❤️
+
+[06.09.2026 23:55] bamshanks
+yeah i do a gate on my reverb, but could add it to any of them pretty easy
+
+
+[06.09.2026 23:56] gurttractor
+And some way to do crossfade looping, even a non-realtime process in the audio editor would be great.
+
+
+[06.09.2026 23:57] bamshanks
+I'm working on the recording clicks for sound on sound recording for/with Bryan at the moment
+
+
+[06.09.2026 23:57] bamshanks
+Are you wanting crossfade to get rid of clicks?
+
+
+[06.09.2026 23:58] gurttractor
+Well yeah just a way to make smoothly looping loops. Good for drones and pads etc.
+
+
+[06.09.2026 23:59] gurttractor
+I know there's a manual way to do it by copy pasting and stuff in the OT's audio editor, but something that automates it would be great. I mean it would be even better if it could be done realtime, but that would require per-track polyphony and I'm not sure if that's on the table atm..
+
+
+[07.09.2026 00:06] bamshanks
+we are on it 🙂
+
+
+[07.09.2026 00:07] bamshanks
+I've got most of the recording stuff emulated locally now, which is the (huge) first step
+
+
+[07.09.2026 00:07] bamshanks
+And Bryan has done an insane amount of research and doco on it, that I'm using to feed it
+
+
+[07.09.2026 00:10] bryant12345
+That Bryan guy sounds like a good chap. 🙂 
+
+I have a very — very! — particular use case for the Octatrack. I’m thrilled if any of my peculiar desires spill over to things that other folks care about.
+
+{Reactions}
+😁
+
+[07.09.2026 00:11] bamshanks
+oh for sure
+
+
+[07.09.2026 00:11] bamshanks
+it's all cross credits at a certain point
+
+
+[07.09.2026 00:11] bamshanks
+And the clearing of the fog of war 🙂
+
+
+[07.09.2026 00:12] bamshanks
+I knew the rtos stuff was going to push back my main work, but I also know it will unlock a lot
+
+
+[07.09.2026 00:12] bamshanks
+the more we can test off device the more things will be accelerated
+
+{Reactions}
+👍 (2)
+
+[07.09.2026 03:10] bamshanks
+Hey @Bryan T (ukulele owner) , quick one. Got the firmware running under emulation far enough to watch it arm a recorder trig at your default, 128 BPM / RLEN 4. The length it writes for the buffer is 20,672 samples, your sheet's 20,671.875 rounded up, computed once per frame from the same steps × 44100 × 720 / tempo24 with a round-half-up. At 120 it writes 22,050 exactly. So the workbook matches the machine.
+
+One question back: are the clicks at 128/4 something you hear on hardware, or the sheet's verdict? If you hear them, that's the interesting bit, because the rounded-up length on its own comes out clean, and the rest has to be in where the recording starts and stops within a frame, which we can't see yet.
+
+
+[07.09.2026 03:11] bamshanks
+getting closer
+
+
+[07.09.2026 03:23] bryant12345
+You absolutely will hear it.
+
+
+[07.09.2026 03:23] bamshanks
+awesome
+
+
+[07.09.2026 03:23] bamshanks
+Really interesting how it works
+
+
+[07.09.2026 03:23] bryant12345
+That 0.1275 samples is the problem.
+
+
+[07.09.2026 03:24] bamshanks
+yeah makes sense
+
+
+[07.09.2026 03:24] bamshanks
+The testing is super slow because it's running those long recorders in the emu, but it's building up heaps of knowledge
+
+
+[07.09.2026 03:24] bamshanks
+every now and then I stamp a couple projects and verify on hardware, but that's getting less and less
+
+
+[07.09.2026 03:25] bryant12345
+“Oh, we detected a gap and just inserted silence” seems to be the solution they decided on. Sorry if that inserted a click into your recording. 🙂
+
+
+[07.09.2026 03:26] bamshanks
+haha yeah it's looking that way
+
+
+[07.09.2026 03:26] bamshanks
+it's not looking intractable though
+
+
+[07.09.2026 03:26] bryant12345
+Hard to crossfade through it!
+
+
+[07.09.2026 04:08] bamshanks
+Haha yes indeed
+
+
+[07.09.2026 04:08] bamshanks
+ok so @Bryan T (ukulele owner)  click at 128 / RLEN 4 being hardware settles how far to go. The emulator now reaches the end of that recording, so the loop and playback side against the 20,671.875-sample sequencer period is the next thing to read. Our arithmetic makes the residue 0.125 samples, not your 0.1275. How are you computing?
+
+
+[07.09.2026 05:44] _bradf
+Dream feature: this empty spot on the amp page, where the “xvol” dial pops up for assigning crossfader to volume.
+
+Im thinking if you hold CUE and then press/hold the scene A or B button (and then release cue for ergonomics).. it instead has a scene lockable “send volume to cue”. So the cue level still functions as normal, but this adds a scene assignable pre-stage.
+
+Obvs this would be awesome when sending cue outs to external effects.
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740806434164746/1546365420217303041/IMG_1480.png?ex=6aaf5686&is=6aae0506&hm=7880ec954389967111276a64349c103b90f14616d8ac04aa516c33de218144a7&
+
+{Reactions}
+💯 (2)
+
+[07.09.2026 06:03] bryant12345
+Hmmm. I’m honestly not sure about the arithmetic.
+
+
+[07.09.2026 06:04] bamshanks
+ok all good
+
+{Reactions}
+👍
+
+[07.09.2026 06:04] bamshanks
+think it may be ever so slightly off but am interrogating
+
+
+[07.09.2026 06:04] bamshanks
+the premise remains valid
+
+
+[07.09.2026 06:05] bamshanks
+according to Claude an exact half rounds up
+
+
+[07.09.2026 06:05] bamshanks
+but that doesn't invalidate any of the findings
+
+
+[07.09.2026 06:09] bamshanks
+the seams are still where you had them either way
+
+
+[07.09.2026 08:43] bamshanks
+Alright @Bryan T (ukulele owner) got a present for you.
+
+Will need you to test on your end but after I got a local emu up I think we may have sorted your sample clicks:
+
+The 128 / RLEN 4 click: root cause and a patch, on main at 4405a12
+
+We found it and there's a fix. Read docs/RTOS_FORK.md §10.16.4 and §10.16.5 for the mechanism, then §10.17 for the patch.
+
+Mechanism. The sequencer keeps exact fractional event times and fires each recorder trig at ⌊event⌋. The recorder length is computed once per pass and never moves. At 128 / RLEN 4 the period is 20,671.875, so the eighth-of-a-sample accumulates and, once every 8 passes, two arms are 20,671 apart while the recording is 20,672 long. That one-sample overlap at the loop point is the click, once every 2 bars. Measured over ten passes in §10.16.5.
+
+Two corrections to the sheet. The residue doesn't walk in the trig positions; it accumulates in the exact event times and ⌊·⌋ releases it as one whole sample every 1/ε passes. And the length converter multiplies by the truncated reciprocal ⌊2³¹/tempo24⌋, so an exact x.5 quotient rounds down. Your 128 / RLEN 16 row is 82,687 in the firmware, not 82,688 (§10.16.4).
+
+The patch. modules/recorder-seam/ — a ColdFire cave at the length converter's tail (0x40006e0c). It re-derives the length every frame from the sequencer's next step event with the frame builder's own arithmetic and substitutes it only when within one sample of the stock length, so anything that isn't a looping re-trig keeps its RLEN. seam_cave.s is the source, manifest.py pins the bytes, README.md has the register map. Build it with the seamtest remix (remixes/seamtest.py = bus + the cave): REMIX=seamtest make bus, or REMIX=seamtest BUILD=<nn> make image for a card image.
+
+{Reactions}
+🐋
+
+[07.09.2026 08:43] bamshanks
+https://github.com/sambanks/octabam/commit/4405a122133262389cfcd4d8672312ddbeb35076
+
+{Embed}
+https://github.com/sambanks/octabam/commit/4405a122133262389cfcd4d8672312ddbeb35076
+Merge pull request #129 from sambanks/recorder-seam · sambanks/oct...
+RTOS 10.17: recorder-seam ColdFire cave -- fixed-RLEN recordings sized from the sequencer's next event (seams 0 in route A, unflashed)
+https://images-ext-1.discordapp.net/external/0qoE0Oc_rjuSqULHd5DADM7VPD9t8u7PbAHzarvHUuo/https/opengraph.githubassets.com/497ced44f81e6d53565cbfef9a6afac1c158c90a1530dda151ac5f855fb88ffd/sambanks/octabam/commit/4405a122133262389cfcd4d8672312ddbeb35076
+
+{Reactions}
+✊ (2)
+
+[07.09.2026 11:19] michaelknubben
+This is one of my main request for _any_ Elektron box. Doing non 4/4 stuff becomes a hassle quickly, and the solution's been suggested _so_ many times! I'd much prefer to have each bar start on a new screen, keeping relative relationships between trigs more easily readable. Having to think 'Oh, page 2, so everything's offset by x steps' is such a workflow-killer
+
+{Reactions}
+👆 (2)
+
+[07.09.2026 12:06] yldopactyly
+@Bryan T (ukulele owner) @bamshanks I think it's getting close to the time when we ought to make a pin, or a main read-only channel/page, for all the stuff and where to find it. Its gonna get bigger and bigger I think and if we are gonna go the route of modular firmware (:o) then perhaps it would be good for everything to be listed cleanly for newbs and the uninitiated.
+
+{Reactions}
+👍🏻 (2)
+
+[07.09.2026 12:06] yldopactyly
+There are like what 4 separate firmware mods present here already?
+
+
+[07.09.2026 12:07] yldopactyly
+Along with their respective creators/hackers.
+
+
+[07.09.2026 12:07] bamshanks
+Yeah I’m happy for whatever
+
+{Reactions}
+👍
+
+[07.09.2026 12:08] bamshanks
+You sir have Ben admind 😛
+
+
+[07.09.2026 12:08] yldopactyly
+What's that
+
+
+[07.09.2026 12:08] yldopactyly
+Oh crap!
+
+
+[07.09.2026 12:11] bamshanks
+Sir / Madame
+
+
+[07.09.2026 12:42] bryant12345
+Great idea. We’re nearly at 200 members and there are a lot of things going on. I definitely don’t have a good handle on everything!
+
+{Reactions}
+👍
+
+[07.09.2026 14:25] politicpolicy
+Still small though = 200. 30-50 online regularly.
+
+
+[07.09.2026 16:57] bryant12345
+Notes in the attached.  The whale remains elusive!
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740806434164746/1546534819012284517/note-for-bam-seam-flash.md?ex=6aaf4b8a&is=6aadfa0a&hm=c76d3a5448f6ecbee9603d60898522352ae58a1f78811346a8457fd903304efc&
+
+
+[07.09.2026 17:18] pituzinho9269
+obligatory gratitude post for all of you people work, just 1 day and so many things have advanced forward 🫀, is there any idea or plan about the recorders?
+
+{Reactions}
+💯 (2) ❤️
+
+[07.09.2026 17:32] bryant12345
+What functionality are you thinking about for the recorders?
+
+The things I’m interested in: 
+
+- sorting out the clicks so any BPM/RLEN can play smoothly for sound-on-sound 
+- opening up the settings (sources in particular) to MIDI control
+- a routing input matrix so you can sample any combination of tracks without using the CUE bus. 
+- perhaps making the recorders available as pre- or post-effects
+
+{Reactions}
+🔥 (3)
+
+[07.09.2026 17:36] bukkakeborealis
+All of them are so useful! Hard to pick one
+
+
+[07.09.2026 17:45] pituzinho9269
+That's why I was asking, a lot of ideas, all good. I guess conditional recording is something that could be cool?
+
+{Reactions}
+👍 💯
+
+[07.09.2026 17:47] pituzinho9269
+Also I'm noticing that when laying a recorder trig the sources are highlighted as to lock the source to the trig but its not functional... That would be cool
+
+
+[07.09.2026 17:51] bryant12345
+Conditional recording is definitely something to think about. You can do it with midi loopback, but it really should be on the record trig sequencer.
+
+
+[07.09.2026 17:59] pituzinho9269
+My last thought about this is the midi implementation, on one hand it is extensive and that's cool but on the other it's very convoluted with all the midi notes triggering different things, sometimes I end up muting/cueing tracks if the sequence strays from it's margins. I filter the notes and such but maybe something could be done to improve the implementation?
+
+
+[07.09.2026 18:29] yvez_me
+Could we maybe add pitch up to the lo-fi section and just drop half of the samples for a gritty pitched sound?
+
+
+[07.09.2026 18:32] yvez_me
+Higher pitch is higher srr
+
+
+[07.09.2026 18:37] bryant12345
+I wonder how complicated a Euclidean sequencer expansion would be.
+
+
+[07.09.2026 19:18] w_winter
+I've thought about this but I worry there may not be enough resources especially alongside other additions, and there are some very capable midi seqs today that do Euclidean well
+
+
+[07.09.2026 19:19] w_winter
+I would definitely enjoy it in my octa though
+
+
+[07.09.2026 19:21] w_winter
+I'd like to see about track layering and choke groups
+
+
+[07.09.2026 22:33] bamshanks
+Dang. Figured it was a maybe. Any chance I can get the sample you are using?
+
+
+[07.09.2026 22:40] bryant12345
+I’m playing moog into input A …
+
+
+[07.09.2026 22:45] bamshanks
+Ah ok I was testing on samples. Recording in from another track, I’ll do some live recording today and test
+
+
+[07.09.2026 22:45] bamshanks
+I could a/b click and no click, but maybe another factor at play here or only a partial fix
+
+
+[08.09.2026 09:00] bamshanks
+@Bryan T (ukulele owner) In the RLEN MAX test, did the flex track have play trigs on the same steps as the record trigs, or was it just looping the buffer with no trigs, and does the clicking ever stop on its own after a minute or so?
+
+
+[08.09.2026 09:04] yvez_me
+SP-404 always running buffer. So that you can retrieve the last 20 or so seconds of recording.
+
+{Reactions}
+👍
+
+[08.09.2026 11:42] brave_pomelo_12416
+Make OT 16 trig buttons, then QUICK MUTE mode selected, to send midi CC messages for two way communication with software (lights on/off and track colors). Usefull when OT used as external midi controller for Ableton for example. For now it doesn't send any midi messages in this mode. Only sends them in TRACK mode, but in that mode you can't see what audio tracks are muted/unmuted. Is it possible to implement this function?
+
+
+[08.09.2026 13:03] yldopactyly
+404 does black box recording?
+
+
+[08.09.2026 13:05] yldopactyly
+Also how are u using OT as an Ableton controller?
+
+
+[08.09.2026 13:05] yldopactyly
+That is very interesting idea.
+
+
+[08.09.2026 13:38] bryant12345
+REC trigs and PLAY trigs on the same steps. I usually have both on 1, but tested 2/6/10/14.  
+
+Clicking definitely does not stop. Once it is in the buffer it is always in it. 
+
+I can send you a project file so you can see how I set things up for sound-on-sound.
+
+
+[08.09.2026 13:42] bamshanks
+that would be great
+
+
+[08.09.2026 13:42] bamshanks
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740806434164746/1546848288509136918/image.png?ex=6aaf1dfb&is=6aadcc7b&hm=3a30a9111a8ea5796a8a2d3d67f0ee95864af478323aed4daaf3466e2200e914&
+
+
+[08.09.2026 13:43] bamshanks
+My other angle is starting to bear fruit
+
+
+[08.09.2026 13:43] bamshanks
+always better when you can reproduce locally
+
+
+[08.09.2026 13:43] bamshanks
+it's been a journey
+
+
+[08.09.2026 13:44] bamshanks
+certainly could be a red herring, but I'm pushing back the fog of war
+
+
+[08.09.2026 13:47] bryant12345
+Yep … “Towards thee I roll, thou all-destroying but unconquering whale; to the last I grapple with thee; from hell's heart I stab at thee; for hate's sake I spit my last breath at thee.”
+
+{Reactions}
+😁 (2) 🙏
+
+[08.09.2026 13:48] bamshanks
+🐳
+
+
+[08.09.2026 13:54] bamshanks
+Project file would be awesome, but also:
+
+1. Record one pass, then delete the REC trig and keep the PLAY trig every 4 steps. Does it click?
+2. Then delete the PLAY trig too and let the buffer free-loop with LOOP on. Does it click?
+
+Clean on one and clicks on the other tells us whether it is the recorded content, the retrig, or the loop point.
+
+
+[08.09.2026 13:54] bamshanks
+(if that makes sense)
+
+
+[08.09.2026 14:02] yvez_me
+Skip-back recording it is called.
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740806434164746/1546853268322390138/image0.jpg?ex=6aaf229e&is=6aadd11e&hm=7afa63a2c66c600973899a3816f2a41463f2e490995fce240350075fadedc9b5&
+
+{Reactions}
+👍 (2)
+
+[08.09.2026 14:09] yvez_me
+You could kind of do this already with recording trigs.. but you will never have the benefits of a continuous running buffer ready to save.
+
+{Reactions}
+👍
+
+[08.09.2026 14:19] yvez_me
+I guess the delay control is maybe already doing some buffering, right?
+
+
+[08.09.2026 14:27] bamshanks
+Yeah the freeze delay is a buffer but it is triggered. Would be interesting to try and make that continuously recording
+
+
+[08.09.2026 14:29] bamshanks
+by interesting I mean maybe possible maybe not even close 🙂
+
+
+[08.09.2026 14:29] bamshanks
+I would think you would likely have to sacrifice quite a bit if it was possible
+
+
+[08.09.2026 14:30] bryant12345
+The delay is a four-second buffer that’s constantly recording.
+
+
+[08.09.2026 14:30] yvez_me
+Aaah right it is triggered by a button 😅
+
+
+[08.09.2026 14:31] bamshanks
+yeah true right you are
+
+
+[08.09.2026 14:31] bamshanks
+when not in freeze, I was on the wrong end 🙂
+
+
+[08.09.2026 14:32] yvez_me
+Maybe just a button combo that saves the buffer to the flash card immediately?
+
+
+[08.09.2026 14:33] bryant12345
+I could kind of see automatic saving and replacing with the recording buffers. You could keep long chunks, then overwrite them when they’re stale. Interesting idea.
+
+
+[08.09.2026 14:34] yvez_me
+Coolest of all would be streaming of all 8 tracks to compact flash as a multitrack recording!
+
+{Reactions}
+🤔 (2)
+
+[08.09.2026 14:35] yvez_me
+Would be too slow probably, the card…
+
+
+[08.09.2026 14:36] yvez_me
+(dream-features 🤷‍♂️)
+
+
+[08.09.2026 14:36] bamshanks
+Gets the gears spinning 😀
+
+
+[08.09.2026 14:38] yvez_me
+Well… there are of course other recording devices already that write to cards (maybe always assumes some kind of buffer)
+
+
+[08.09.2026 14:39] yvez_me
+Or something as 2 dedicated recording busses would already be great! One for bass, one for high stuff
+
+
+[08.09.2026 14:41] bryant12345
+I definitely want a routing matrix to the recording buffers that doesn’t rely on MAIN or CUE. Not sure what’s feasible.
+
+
+[08.09.2026 14:42] mayrakissa
+i would like to drill 8 jacks into the case and motherboard and have separate outputs for each track
+
+{Reactions}
+❤️ (2) 👍 (2)
+
+[08.09.2026 14:46] homeboiflex
+Honestly what I’d love most is to see a “1.40D” where it’s just the official FW but with the little bugs fixes, a focus on reliability/stability.
+
+I love the ambition here, but I simply float this idea of also polishing it to where you can comfortably gig with a safely enhanced version.
+
+{Reactions}
+❤️ (3)
+
+[08.09.2026 14:49] mayrakissa
+also probably not possible on firmware level but dear god i hope someone finds a way to fix rytm mk1 pads, they are unusable even after swapping the contact sheet and cleaning everything up
+
+
+[08.09.2026 14:54] anglingar
+Gonna drop a very crazy idea: if the box is topped up feature wise but we still want to develop some functionality...what about removing functions to make some space, extend the API and then think on a companion hardware device (or phone app) to perform what the box cannot do by itself. 
+
+I say removing functionalities because I'm assuming the space available is not much for any extension.
+
+
+[08.09.2026 14:55] anglingar
+This should be standard for any multitrack device.
+
+
+[08.09.2026 14:57] mayrakissa
+yeah, my first groovebox was Novation Circuit and I just kept dreaming about individual outputs
+
+
+[08.09.2026 14:58] yldopactyly
+Seriously
+
+
+[08.09.2026 14:59] bamshanks
+So.... MCL? 🙂
+
+
+[08.09.2026 15:03] yvez_me
+Ow wait… a flash recorder trig! 
+
+That records until the next trig (or stop) directly to a folder on the flash card. 
+
+Maybe in a dedicated folder for that session.
+
+
+[08.09.2026 15:04] yvez_me
+You could then record externally sequenced gear. Automatically creating and saving samples.
+
+
+[08.09.2026 15:05] yvez_me
+Kick, snare, pad recordings while tweaking parameters. At the end you have folder filled with all of them.
+
+
+[08.09.2026 15:10] mayrakissa
+kind of like tonverk multisampling?
+
+
+[08.09.2026 15:10] yvez_me
+Jep
+
+
+[08.09.2026 15:12] mayrakissa
+that would be fantastic with stuff like bass station 2 where you have a different preset per key
+
+
+[08.09.2026 15:12] mayrakissa
+10 seconds to record a whole kit
+
+
+[08.09.2026 15:15] yvez_me
+(Another small one… if you save a recorded sample twice in the same minute. The automated naming fails. You then need to adjust the naming of the recording manually. Would be nice to include seconds maybe?)
+
+
+[08.09.2026 15:38] brave_pomelo_12416
+Well, I'am trying to replicate OT in Ableton for studio sessions to record all midi and audio data straight to DAW. So OT is basically is MIDI controller for Ableton and VSTs in this setup. But I can't mute tracks in Ableton with OT 16 trig buttons as I used to and can't select Ableton tracks with OT track buttons to control parameters, also can't switch Scenes in Ableton as patterns/banks in OT. For crossfader i see there is already a solution with midi-scenes. So I want mimic my OT workflow in DAW
+
+{Reactions}
+👍
+
+[08.09.2026 15:39] michaelknubben
+@OTM If you get that working, I'd _love_ get my hands on it
+
+
+[08.09.2026 15:40] michaelknubben
+I've got so many projects that are just essentially stuck on my OT because performance is just baked into them, and and any performance I do can only ever be captured in a mixed down fashion...
+
+
+[08.09.2026 16:08] _bradf
+Is messing with the crossfader curve an option? Would be sick to give this a few different curve types like dj mixers.
+
+{Reactions}
+❤️ (3)
+
+[08.09.2026 16:36] bryant12345
+That seems knowable. Someone should definitely map the crossfader’s processing if it hasn’t already been.
+
+
+[08.09.2026 16:40] mayrakissa
+oh yeah dj-stuff would be crazy. biggest issue is the tempo detection and beat matching
+
+
+[08.09.2026 16:48] mayrakissa
+oh is it possible to change analog distortion behaviour with just firmware? like taking Analog Heat distortion modes and put that in Analog Rhytms distortion circuit? Genuine noob question
+
+
+[08.09.2026 17:09] bryant12345
+And XVOL already shows that different curves are possible …
+
+
+[08.09.2026 17:17] pituzinho9269
+more ranges in the pitch? Can timestretch be improved?
+
+
+[09.09.2026 22:04] yvez_me
+@bamshanks Working myself a bit into the project(s).. will do a PR in a few minutes on the Octabam repo 🙂
+Bit of documentation and a proposition for 8-track recording to CF.
+
+{Reactions}
+❤️ (2)
+
+[09.09.2026 22:11] yvez_me
+@bamshanks PR is out. Highly vibe-coded 😄 So, as always lot's and lot's of grains of salt...
+
+{Reactions}
+👍🏻
+
+[09.09.2026 22:49] falken202
+Ive always wished OT had ctrl-all.
+
+I know the fader is the goat but sometimes I just wanna do some off the cuff grab'n'go ctrl-all stuff. it'd be cool if it had it too.
+
+{Reactions}
+❤️
+
+[09.09.2026 22:51] falken202
+.
+.
+...and a probability dial like the newer units. always irked me how ot's trig conditions are stuck in a shift menu. kills my flow a bit. I love on A4 being able to use probability as a performance feature.
+
+{Reactions}
+💯
+
+[10.09.2026 00:26] kjnilsson
+Plockable overalll probability is something I’d like as well. At least for the midi sequencer. Question is what UI estate you give up on.
+
+{Reactions}
+❤️
+
+[10.09.2026 00:40] semi4136
+something like plaits palette would be amazing, compiling a firmware with chosen mods
+
+
+[10.09.2026 21:30] trickerry
+Dream feature: Overbridge compatibility… [I know it’s probably almost impossible to do and the beta testing would be insane! But we are dreaming here!]
+
+
+[10.09.2026 21:32] trickerry
+Thanks so much for all your independent work on the different mods everyone! Super exciting to give the Octatrack an afterlife beyond 1.40c!
+
+
+[10.09.2026 22:37] re5etuk
+Dream feature - creating a list of values that can be used for lfo , midi cc send ( instead of an encoder just cycling from 0-127) … simpler than an lfo designer but similar . Basically I could send lfo to delay time and the values I’ve defined correspond to only tempo syncd values (0,1,2,4,6,8 or whatever they are ) .. i could define that list to go up , down, whatever value I decide .. I did similar on midi designer 2 pro ( iPad) and it was very handy . Midi controllers are so basic ( looking at you novation)
+
+{Reactions}
+🔥 ❤️
+
+[11.09.2026 00:35] exit_planet_dust
+This is an interesting one to ponder, OT is on the same general architecture to other boxes that do have OB. I can only assume there’s a hardware limitation in the way the audio is routed/processed that prevents this.
+
+
+[11.09.2026 00:36] exit_planet_dust
+Possibly also a limitation in the USB controller.
+
+
+[11.09.2026 01:07] homeboiflex
+To hold function and cycle through certain values, would be so good. They only did it for a few params like transpose (locks to 0), I want it on all params, like MIDI transpose should lock to octaves
+
+{Reactions}
+👆 (2)
+
+[11.09.2026 01:15] sawtoothwave
+dream feature - being able to reconfigure any of the 1/4" I/O to be inputs or outputs on a per-project basis - imagine being able to say "I'm not doing anymore sampling on this project so instead I'm gonna use all 8 jacks as assignable outputs" I'm sure this is completely impossible on a hardware level but hey, you asked
+
+{Reactions}
+❤️ (2)
+
+[11.09.2026 01:26] w_winter
+another one i'm hoping to squeeze in - renaming midi CCs
+
+{Reactions}
+👍 (5) 💯 (4)
+
+[11.09.2026 01:36] j_blanco
+Silly but a menu toggle to disable the stop button and clear pattern hotkey combo, the amount of times I cleared a pattern or stopped my sequencer during a live improv is enough to drive me to figure out how to do this lol
+
+{Reactions}
+💯
+
+[11.09.2026 02:06] tenacious_lemur_99636
+I suggested a true Undo function without timebomb
+
+{Reactions}
+💯 (3)
+
+[11.09.2026 02:12] re5etuk
+im surprised theyve never allowed editing of start / end value , setup mid point (eg for panning)  though i apprecaite a 0-127 setup is not complex (i presume) . ..if i defined (for example) values 45-89 it has to extrapolate those values throughout the entire 'knob turn' . ..plus theres the ui/ux  time/memory for the user to define it .
+
+
+[11.09.2026 06:06] avlantis
+In a similar vein, would love if the LFOs had context sensitive values that made sense, and different resolutions of sample and hold that allowed you to have a 'stepped' shape that stepped every x steps/x beats (or divide into length/x steps). Not just for custom LFO shapes, but also for LFO depth values. LFO rates always annoyed me too. They weren't hard to divide down/mult up in powers of 2/etc, but I wished I could perform without having to avoid unwanted values while changing manually. (eg scan from 1/16 note up through divisions of 2, avoiding triplet/dotted/inbetween values). Naming of value enums would be super good on it's own.
+
+{Reactions}
+👍 (3)
+
+[11.09.2026 06:08] avlantis
+Kinda related but I guess separate scope.. Always wanted scale-degree aware values so I could MIDI LFO->Transpose note, without ending up with weird scale quantisations if scale is set in arp. And the ability to modulate/automate the arp step length parameter in the arp editor (so you could say start with the first 4 steps of a custom arp, then after x bars, expand to 8 or 16). Then you could write the peak motif, reduce it to a basic intro version, and if you combine with note transposing could transpose the evolving motifs too, meaning you could create complex pieces from simple clips
+
+
+[11.09.2026 09:58] mayrakissa
+ooh i would love Noise Engineering stuff to be ported for OT
+
+{Reactions}
+🔥 (2) 💯
+
+[11.09.2026 10:17] mayrakissa
+also an OTT style compressor
+
+
+[11.09.2026 11:15] michaelknubben
+Oh this'd be great for feedback loops
+
+
+[11.09.2026 11:20] mayrakissa
+speaking of, RAS Bonkers style effect would be crazy cool
+
+
+[11.09.2026 11:20] mayrakissa
+giga distortion and eq and feedback
+
+
+[11.09.2026 12:03] yvez_me
+Control over volume levels on each track CUE/MAIN in STUDIO mode using the fader/p-locking/scenes.
+
+{Reactions}
+👍
+
+[11.09.2026 14:23] bryant12345
+I’m going to add a gain cut/restore to my lo-fi effect. The idea is that cutting the volume into bit reduction changes the sound significantly, but then you need to bring the volume back up afterward. It’ll be one control that handles the cut/boost. 
+
+Are there other effects that would be improved/expanded with something like this?
+
+{Reactions}
+🎉
+
+[11.09.2026 14:30] exit_planet_dust
+I’d like real world numbers on the compressor
+
+
+[11.09.2026 14:33] bryant12345
+The parameter values?
+
+
+[11.09.2026 14:33] exit_planet_dust
+Yeah
+
+
+[11.09.2026 14:33] bryant12345
+I did some deep dives on elektronauts when i was testing stuff instead of digging through code
+
+
+[11.09.2026 14:33] bryant12345
+Let me dig it up
+
+
+[11.09.2026 14:36] bryant12345
+Ratios
+
+https://www.elektronauts.com/t/ot-compressor-meaning-behind-the-values/151923/35
+
+Gain
+
+https://www.elektronauts.com/t/compressor-makeup-gain/254416
+
+{Embed}
+https://www.elektronauts.com/t/ot-compressor-meaning-behind-the-values/151923/35
+OT Compressor - Meaning Behind The Values
+Bumping an old thread.  I did some testing of the RAT control and thought folks might benefit from a table of common compression ratios on the knob.      target ratio RAT     1:1 0   1.2:1 21   1.5:1 43   1.8:1 57   2:1 64   2.5:1 77   3:1 86   4:1 96   5:1 105   6:1 109   8:1 115   10:1 119   12:1 122   15:1 127    A few things struck me about ...
+https://images-ext-1.discordapp.net/external/_AggGhWqv5dbklmc4lBsaaawUwzNTeZWhpOHrVsdbHY/https/eu5.dh-cdn.net/uploads/db8181/original/3X/6/5/653ee57cf417d28eee2d69cd6f2aca0dc55d5fd1.png
+
+{Embed}
+https://www.elektronauts.com/t/compressor-makeup-gain/254416
+Compressor makeup gain
+Another way-in-the-weeds analysis.  I wanted to use the compressor for clean make-up gain after another effect cut the signal quite a bit.  I figured that I could keep THRS=127, RAT=0, and MIX=127.  Varying GAIN should just increase gain.  But by how much?  I looked at it in two ways:  I measured it with a null signal and then I started “pokin...
+https://images-ext-1.discordapp.net/external/_AggGhWqv5dbklmc4lBsaaawUwzNTeZWhpOHrVsdbHY/https/eu5.dh-cdn.net/uploads/db8181/original/3X/6/5/653ee57cf417d28eee2d69cd6f2aca0dc55d5fd1.png
+
+
+[11.09.2026 14:37] exit_planet_dust
+Cheers!
+
+
+[11.09.2026 14:39] j_blanco
+In my experience, being able to tweak levels before and after a filter is useful when you are trying to get resonance sounding just right, it's why synths having a mixer at the oscillator step before the filter is useful
+
+{Reactions}
+👍
+
+[11.09.2026 14:39] bryant12345
+This compression was right when I was shifting from testing in my DAW (learned a ton!) to poking code.
+
+
+[11.09.2026 14:39] michaelknubben
+So... more gain staging? 😄
+
+
+[11.09.2026 14:41] j_blanco
+Yep, a constant challenge on the OT, "where the hell have I set levels on this track so far"
+
+
+[11.09.2026 14:42] bamshanks
+Yeah I though it would be an obvious low hanging fruit situation
+
+
+[11.09.2026 14:42] bamshanks
+It wasn’t
+
+
+[11.09.2026 14:43] bamshanks
+Doable but not easy necessarily
+
+
+[11.09.2026 14:48] bryant12345
+Yep. Takes some creativity to recover the values for the more complex effects. My simple mental model was “look up value in table, plug into equation” … if only.
+
+
+[11.09.2026 15:37] bamshanks
+Yeah same
+
+
+[11.09.2026 15:37] bamshanks
+Alien tech
+
+
+[11.09.2026 16:54] misterairplane
+Has anyone tried to remove the auto setting of bpm when using the pickup machines? I received a tool from someone on elektronauts but I they didn’t exactly give permission to share it or anything. I was just wondering if someone was working on that. They also added a couple of features like long press copy pattern to duplicate to the next pattern.
+
+edit: messaged the person to see if they are on here yet
+
+{Reactions}
+👍
+
+[11.09.2026 16:56] bukkakeborealis
+Haha I tried it too. Long press next pattern paste is awesome. Hope it comes soon. Pickup machine with tape effect is great as well
+
+{Reactions}
+❤️
+
+[11.09.2026 16:59] bryant12345
+If we can fix some of these core looping capabilities I think it would greatly increase demand for the Octatrack. Loopers are very particular about what/how they want their gadgets to work and Octatrack’s flexibility suits that well. If only it didn’t have a few Achilles heels.
+
+{Reactions}
+❤️ (2)
+
+[11.09.2026 17:08] misterairplane
+Yeah it’s the only alt firmware i’ve been using because that feature rules so hard
+
+
+[11.09.2026 18:42] ambient.signals_76175
+I was asking about the pick up machine earlier but I believe no body has dove I to them
+
+{Reactions}
+❤️
+
+[11.09.2026 20:57] pituzinho9269
+Now that I'm playing with the midi scenes I realize that it would be nice to have at least the CC number on the upper label of the knob instead of CC1, CC2, etc. When assigning values to a scene it gets cumbersome to remember the assigned CC.
+
+{Reactions}
+👍
+
+[11.09.2026 20:58] bukkakeborealis
+I hear you
+
+
+[11.09.2026 20:59] bukkakeborealis
+Not sure if it’s possible though
+
+
+[11.09.2026 21:00] bukkakeborealis
+Because after machines/fx selection it gives static names in stock
+
+{Reactions}
+😲
+
+[11.09.2026 21:05] pituzinho9269
+Then I go back to the snap values necessity on every (?) value
+
+
+[11.09.2026 21:32] devilfish707
+Does the long press copy pattern works in realtime? That would be awesome
+
+
+[11.09.2026 21:33] devilfish707
+Or if Digi style copy/paste pattern in realtime would be feasible, would be awesome. I might look into that one
+
+{Reactions}
+❤️
+
+[11.09.2026 21:34] bukkakeborealis
+It does. Long press and you stay on current pattern. That copied pattern is available without silence in next available pattern. It’s awesome!
+
+{Reactions}
+❤️ (3)
+
+[11.09.2026 21:35] bukkakeborealis
+Please do!
+
+{Reactions}
+👍
+
+[11.09.2026 21:35] devilfish707
+omg yes that's awesome
+
+
+[11.09.2026 21:38] bukkakeborealis
+That implemented with Octakit’s kit/pattern combo would be mind blowing
+
+{Reactions}
+❤️
+
+[11.09.2026 22:05] _anfim
+Speaking of looping, what about allowing the flex recording to punch in and out instead of erasing the whole buffer every time rec is triggered?
+
+{Reactions}
+👍 (4) 🙏
+
+[11.09.2026 22:33] bryant12345
+Great idea.
+
+
+[11.09.2026 22:35] _anfim
+For all the OT's strengths that part of the buffer implementation always felt weird to me
+
+
+[11.09.2026 22:37] bryant12345
+I don’t think the Elektron folks really talked to people who do looping.
+
+{Reactions}
+💯 👍
+
+[11.09.2026 22:58] tenacious_lemur_99636
+Clearly not. I originally bought the OT as a first device not to lose my brain but to replace a Boomerang looper. Half brain lost later, I still use the Boomerang
+
+
+[11.09.2026 22:59] tenacious_lemur_99636
+The simple fact you have to save and attribute/select... My God.
+
+{Reactions}
+😂
+
+[11.09.2026 22:59] _anfim
+Boomerang is a little clunky but rock solid. Great looper
+
+
+[11.09.2026 22:59] tenacious_lemur_99636
+Hardly never failed in 15 years
+
+
+[11.09.2026 23:00] tenacious_lemur_99636
+press, play, press. The essence of looping, nothing more
+
+
+[11.09.2026 23:00] tenacious_lemur_99636
+Engineers should try to ask musicians when developing musical devices
+
+
+[11.09.2026 23:55] exit_planet_dust
+Gonna throw one in. Additional wavetable(s) for ST chord engine :awesome:
+
+{Reactions}
+❤️ (2)
+
+[12.09.2026 00:02] mentholatum1761
+outbox support for OT would be pretty sweet btw
+
+{Reactions}
+🔥
+
+[12.09.2026 00:06] _anfim
+Outbox depends on overbridge, OT doesn't have the hardware
+
+{Reactions}
+😢 💯 (2)
+
+[12.09.2026 02:37] cruffoc
+dream feature: the man M.M himself as consultant of all this jam.
+
+
+[12.09.2026 07:20] trickerry
+Please, we are dreaming in this chat 😢😢😢😢
+
+
+[12.09.2026 08:59] petajaja
+Has anyone mentioned instant pattern change? Would be great to have it like we have on the A4 with multi map but alternatively having the option to set switch behaviour would be incredible with the OT
+
+
+[12.09.2026 09:02] befriendthedragon_93582
+I think someone made a direct jump
+
+
+[12.09.2026 09:03] zackyoti_98392
+I built it. Can’t flash for a couple days for testing, but it’s emulator verified end-to-end. Coming soon
+
+
+[12.09.2026 09:05] petajaja
+Oh amazing, you're all doing such incredible work here, I was recently just coming round to starting a project heavily using octatrack so all this couldn't have come along at a better time 🙂
+
+{Reactions}
+👍
+
+[12.09.2026 12:27] fantastic_avocado_20824
+I hope this is the right channel for a Octabam feature suggestion..
+
+A relatively simple adjustment, but one that I think would improve the usability of the Octatrack.
+
+It relates to the track modes (CHROMATIC, SLOTS, SLICES, QUICK MUTE, DELAY CONTROL). 
+
+By default, the selected track mode is set globally for all tracks. If you want to access a different mode, you always have to select it using FUNC + UP/DOWN. 
+
+What if a specific track mode remains per Track? For example: Track 1 is in Slice mode because I always have a long chain with slices on Track 1. Track 2 is in Chromatic, Track 3 is in Slice mode, and Track 4 is in Quick Mute (to quickly mute multiple tracks or solo a track for improvisation), and so on..
+
+Currently, you would have to select the mode using FUNC + UP/DOWN. And you would have to do this every time you want to use a different mode.
+
+I imagine this could be elegantly implemented with an entry in the Personalize Settings: "Remember Track Mode: Yes/No"
+
+This way, a mode would remain set for each track, and specific tasks could be assigned to the tracks, which could then be played directly.
+
+{Reactions}
+💯 (3)
+
+[12.09.2026 12:28] fantastic_avocado_20824
+This might affect the map/track function.
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740806434164746/1548279006992801873/Bildschirmfoto_2026-09-12_um_12.27.32.png?ex=6aaf0c70&is=6aadbaf0&hm=34ac640282739530c44923da2bfbe2634185ec15f98b120d1a3f51fa3e292f34&
+
+
+[12.09.2026 13:06] mrscruff2277
+Not at my computer but I would assume that means finding 3 bits of unused storage per pattern and then adding a hook on pattern change to set the mode.
+
+Worth mentioning for the non-programmers here - you might consider getting an OpenAI/Anthropic pro account for a month and installing codex/claude code and trying to implement some of these patches yourself. It does help a bit if you think like a programmer but the agent is doing all of the work and you don’t need to look at a single line of code. The process is roughly ‘build me this feature’ and then testing the firmware it builds for you and reporting back what happens.
+
+
+[12.09.2026 14:29] bryant12345
+I think I've convinced myself that this was a silly undertaking.  In practice, it would basically take a given bit depth and throw out the top part of the range ... which is exactly what a lower bit depth setting would do.
+
+
+[12.09.2026 15:12] fantastic_avocado_20824
+100% this! same for the mixer section (gain values n dB)
+
+
+[12.09.2026 18:06] bryant12345
+Made some good progress with LOFI2. Tested it on the Octatrack. Big changes are low/high modes for the ring modulator. And I added modes for frequency shift up and frequency shift down. 
+
+The phase control for the ring mod now does stereo stuff. Not sure I’ll keep that. Maybe make it switchable.
+
+{Reactions}
+❤️ (3) 👀
+
+[12.09.2026 18:34] yvez_me
+Bash Run verify_stems.py, first GREEN run
+
+Working on a POC... Recording 15 seconds, 16-bit sound of T1 directly to CF.
+
+{Reactions}
+❤️
+
+[12.09.2026 18:35] yvez_me
+A lot of Claude windows filled and 70 EUR on Fable credits later 😄
+
+
+[12.09.2026 18:39] hyperstationjr
+Just had a thought earlier; probably more for the Machinedrum or maybe digis, but anyway, would there be anything stopping you from removing all of the machines, and or effects and setting up some kind of hot-swappable machine that you could freely replace? Almost like a machine dock that would route the parameters to the devices encoders? That you could then edit or expose whatever custom machine you’d want to use, possibly through a sub-menu or a page2 parameter?
+
+Not a dev or anything, just thinking out loud.
+
+
+[13.09.2026 02:08] bryant12345
+I’ll do a demo tomorrow. I keep sitting down to do a demo and just end up playing for half an hour without hitting record.
+
+{Reactions}
+❤️
+
+[13.09.2026 02:45] homeboiflex
+Copy MIDI trigs to audio tracks and visa versa; audio trigs to MIDI tracks.
+
+Even without any fancy conversions like making them have the same pitches/notes, simply just default notes in the same places, that’d be so handy for composish.
+
+{Reactions}
+❤️
+
+[13.09.2026 07:22] politicpolicy
+The md machines can simply be replaced ala hot swop. Today just waiting on a midi transfer to test a few on the md. If all goes well - and im sure it will not lol - in the future i will try set up some sort of new machine preset hot swop that compiles the firmware.
+
+
+[13.09.2026 09:27] _anfim
+Anyone poked around in the rytm firmware yet? I think my biggest wish would be the envelope types from A4
+
+
+[13.09.2026 11:06] machinista__21901
+- base/width filter for sample part would soo useful
+- not to mention 2nd LFO of course 🙂
+
+
+[13.09.2026 11:29] _anfim
+True a bw filter would be amazing! I don't have high hopes for the 2nd lfo since elektron said they tried and failed, but they also said the OT was maxed out...
+
+
+[13.09.2026 11:35] morcela_
+dont even mention it. I love Rytm. I really really wish for control ALL over there
+
+{Reactions}
+💯
+
+[13.09.2026 11:36] morcela_
+but snappier envelopes too, so much, I keep wasting LFO's for that (ONE) exponential curve.
+I imagine envelopes to be analog controlled though (so you'd need to mod the circuit). But I have absolutely no info to back this speculation hahaha
+
+
+[13.09.2026 13:40] yldopactyly
+Those guys are ridiculous sometimes.
+
+
+[13.09.2026 15:55] antonio110582._72773
+Slice Mode is what I'll miss the most about the Rytm...
+
+
+[13.09.2026 16:16] morcela_
+yup, slice mode, but that's probably tough to implement (?)(unless it would be possible to copy the code from digitakt?). I would say keytracking modulation would work, so when you assign SAMPLE START to keytracking you get a different start point for every note.
+
+
+[13.09.2026 19:46] re5etuk
+in terms of digitakt 1 idea.
+ability to send the internal pattern/track data to external boxes too.. atm a user has to copy/paste it to a midi machine channel ... my basic idea is that for example
+track 1 could be playing samples etc 
+track 9 (the corresponding track underneath track 1) could be set to mirror track 1 but send externally , automatically ? or select internal track to be mirrord externally (wouldnt need them to correspond) advantage or using another track to mirror is that the user can easily mute the 'midi mirror' track . 
+the other option is to be able to set the midi channel send for a normal internal machine too, removing the limit that a slice/werp machine only work internally ... 
+
+the other idea. be able to route midi machine / 16 x midi cc controllers to an internal track, instead of using loopback / midi lead ..
+
+
+[14.09.2026 10:09] canardval_92147
+Is multitrack USB audio with 8 separated stereo tracks for the OT mk2 considered a dream feature here ? It's a dream feature of mine so I've started working on it and, surprisingly, it seems doable. It will be a long work so I'm not really sure yet
+
+{Reactions}
+😮 (2) ❤️‍🔥
+
+[14.09.2026 10:14] bukkakeborealis
+Of course it’s a dream feature to me, if doable that would be awesome for recording
+
+
+[14.09.2026 10:28] yvez_me
+I’m working on streaming directly to CF. A bit similar 🤷‍♂️
+
+{Reactions}
+👍 (4) 🙏
+
+[14.09.2026 10:40] bryant12345
+Crazy if the USB can carry the audio. That has been shot down for years on Elektronauts.
+
+
+[14.09.2026 10:48] bukkakeborealis
+Already very interesting to have 8 separate audio tracks on CF cards to edit later
+
+
+[14.09.2026 11:21] exit_planet_dust
+stems to CF seems achievable.
+
+
+[14.09.2026 11:23] exit_planet_dust
+OB/class compliant, probably not, because USB is managed by the CPU and it would require completely changing how the CPU manages USB
+
+
+[14.09.2026 11:23] exit_planet_dust
+however
+
+
+[14.09.2026 11:24] exit_planet_dust
+if you were happy to forgo class compliant/OB, I *think* it might be possible to come up with an async method
+
+
+[14.09.2026 11:25] exit_planet_dust
+set aside a little SDRAM for a ring buffer, which is how the recorders already operate, have the cpu chunk it in blocks and send to USB, then you'd need something on the computer to unpack.
+
+
+[14.09.2026 11:25] exit_planet_dust
+It won't be precisely live, but it might be a way to record stems
+
+
+[14.09.2026 11:26] exit_planet_dust
+Same idea to dump stems to CF really
+
+
+[14.09.2026 11:29] exit_planet_dust
+would require some investigation into the DSP56300 if it can write all 8 tracks to ringbufs without affecting anything else
+
+
+[14.09.2026 11:33] exit_planet_dust
+gemini seems to think plausible, at 152 cycles of DSP cost, and 1.35MB RAM
+
+
+[14.09.2026 11:33] exit_planet_dust
+in the ballpark of 100ms latency
+
+
+[14.09.2026 11:37] exit_planet_dust
+could potentially drop the DSP cycle cost if you had it collate into it's own DRAM first, but then you're eating space needed for FX.
+
+
+[14.09.2026 11:37] exit_planet_dust
+oh and some saving across the board if you were happy with 16bit
+
+
+[14.09.2026 11:38] exit_planet_dust
+(I'm very much not a coder, but I am an electronics person)
+
+
+[14.09.2026 12:56] trickerry
+If you guys somehow get USB multitracking and/or CF multitrack recording to work that would actually make the OT close to perfect (now that we have MIDI scenes!). Best of luck on your multitracking endeavours!! 🍀🍀🍀🍀
+
+{Reactions}
+👍
+
+[14.09.2026 14:01] mayrakissa
+i would love different sequencer styles, such as step sequencing, 303 style, euclidean
+
+
+[14.09.2026 14:06] mayrakissa
+would it be possible to get rid of trig modes (slot, slice, chromatic etc) to free up memory? i havent used the chromatic mode in years and would love a different seq mode instead to live there
+
+
+[14.09.2026 14:45] hyperstationjr
+I did this DIY by recording to the track buffers while playing a pattern. I was able to get track “stems” that way, even if it’s only for a short while. I wonder if there’s a way to use that process to make some sort of streaming record mode?
+
+
+[14.09.2026 14:47] hyperstationjr
+It’d be really cool if you could use an external trigger to progress a specific track, step by step, with parameter locks and trig conditions applied.
+
+
+[14.09.2026 14:50] mayrakissa
+oh yeah
+
+
+[14.09.2026 14:55] hyperstationjr
+You could probably already do it with “plays free”, and a mix of triggering then stopping the track and some other settings, but obviously I’d be pretty janky and sloppy, but I’d bet there’s enough there to build off of to make it work cleanly.
+
+
+[14.09.2026 15:41] bryant12345
+It already does this in multiple ways. Each track has a 4 second delay circular buffer. And each track has a recording buffer. You can use all 16 simultaneously.
+
+But I don’t think you’ll have enough space for 8 24-bit stereo tracks that were song length.
+
+
+[14.09.2026 15:42] bryant12345
+Maybe in chunks?
+
+
+[14.09.2026 15:42] exit_planet_dust
+no, just packing on the dsp
+
+
+[14.09.2026 15:44] bryant12345
+Sorry, just waking up and not fully getting what you’re describing.
+
+
+[14.09.2026 15:44] exit_planet_dust
+the first idea was having the dsp write the tracks back to ringbufs, have the CPU chunk it and send it to USB
+
+
+[14.09.2026 15:45] exit_planet_dust
+which is trivial for the CPU but adds about 5% dsp load
+
+
+[14.09.2026 15:47] bryant12345
+I was wondering how big the buffers would need to be in that approach.
+
+
+[14.09.2026 15:47] exit_planet_dust
+1.35MB
+
+
+[14.09.2026 15:48] bryant12345
+That’s like 5 seconds of audio
+
+
+[14.09.2026 15:49] exit_planet_dust
+yeah
+
+
+[14.09.2026 15:52] bryant12345
+Do you think you can write to the compact flash from that point? That feels like it would tax the poor CF.
+
+
+[14.09.2026 15:52] exit_planet_dust
+the first method you eat DSP cycles cos it's waiting for main memory
+
+
+[14.09.2026 15:52] yvez_me
+@hillbilly @Bryan T (ukulele owner) https://github.com/yvesrosius/octabam/tree/stem-rec-poc
+
+If you want to have a look... got this far on the saving to CF.
+
+I'm looking for some second opinions on the work... before I flash 🙂
+
+{Embed}
+https://github.com/yvesrosius/octabam/tree/stem-rec-poc
+GitHub - yvesrosius/octabam at stem-rec-poc
+Custom DSP effects for the Elektron Octatrack MKII — original DSP56300 algorithms (ChonVerb reverb, BongDelay) on a cross-core send bus, delivered by patching the stock OS image - yvesrosius/octabam
+
+
+[14.09.2026 15:53] exit_planet_dust
+second method is getting the DSP to drop frames into on-chip SRAM and flushing every 32 frames (at about 2KB SRAM cost)
+
+
+[14.09.2026 15:53] exit_planet_dust
+that drops DSP cost to 16 cycles
+
+
+[14.09.2026 15:55] exit_planet_dust
+no that's well within the capabilities of CF
+
+
+[14.09.2026 15:56] exit_planet_dust
+8 stereo tracks at 24/44.1 is 2.11MB/sec, I am not certain of the bus write speed of the OT but CF cards can easily do 10 times that.
+
+
+[14.09.2026 15:57] exit_planet_dust
+might take some figuring out if some sort of interleaving of writes is required (thinking about ram cost)
+
+
+[14.09.2026 16:00] bryant12345
+Right, but it is also doing playing tasks … I’ve gotten the “!” symbol enough times using Static tracks. But I’m not sure exactly what it is complaining about at that point.
+
+
+[14.09.2026 16:00] exit_planet_dust
+might be worth evaluating the CF card
+
+
+[14.09.2026 16:00] bryant12345
+Anyhow … this is dream features so I won’t squash the dream. 🙂
+
+{Reactions}
+🫂
+
+[14.09.2026 16:00] exit_planet_dust
+write speed test, clean format, etc
+
+
+[14.09.2026 16:09] exit_planet_dust
+so this just writes 15 sec to ram then writes to CF on stop?
+
+{Reactions}
+👍
+
+[14.09.2026 16:20] exit_planet_dust
+I'm thinking the 8 track version will need to be a multichannel file rather than 8 separate tracks (if that was the intention).
+
+
+[14.09.2026 16:20] exit_planet_dust
+fewer locks to deal with. still might be some issues with CF controller... there's so much variability with CF cards
+
+
+[14.09.2026 16:30] exit_planet_dust
+```[DSP Core (DSP56300)]
+       │ (Taps 8 stereo tracks into 32-frame mini-chunks)
+       ▼
+[Internal DSP SRAM] ──(2 KB burst every 0.725 ms)
+       │ 
+       ▼ (DSP Hardware DMA / Host Interface)
+[SDRAM 4 MB Ring Buffer] ──(Accumulates until 128 KB)
+       │
+       ▼ (stems_task)
+[CF Card] ──(Sequential ATA write burst: 20 ms lock / ~70 ms free window)```
+
+
+[14.09.2026 16:31] exit_planet_dust
+hopefully that's sufficient free time on the ATA bus for static track reads
+
+
+[14.09.2026 16:31] exit_planet_dust
+but yeah how the CF will respond to all that is a bit unknown.
+
+
+[14.09.2026 16:32] bryant12345
+I’m not sure the DSP SRAM step is needed. DSP currently writes to rings on SDRAM (delay, recording buffers).
+
+
+[14.09.2026 16:33] exit_planet_dust
+yeah large grains of salt with anything I say 🙂
+
+
+[14.09.2026 16:36] bryant12345
+We were very surprised with how the Delay was handled. But that might make this problem a bit simpler. Octabam probably has some .md files about the delay and the recording buffers that you might check out.
+
+
+[14.09.2026 16:38] exit_planet_dust
+another consideration is what CF cards people are using, I have no idea of the spec of the OEM card... might try testing it if I find some time. OT doesn't use UDMA and it's not required but a UDMA7 card will have a significantly better controller which may have fewer issues with write stall.
+
+
+[14.09.2026 16:41] exit_planet_dust
+is it already pushing all 8 tracks to sdram?
+
+
+[14.09.2026 16:42] bryant12345
+It has the plumbing since that is what the Delay and recording buffers do.
+
+
+[14.09.2026 16:43] exit_planet_dust
+yeah of course
+
+
+[14.09.2026 16:43] bryant12345
+Individual stereo tracks, not as one 16-channel thing.
+
+
+[14.09.2026 16:44] exit_planet_dust
+the DSP SRAM stage was in an effort to reduce DSP cycles as allegedly it's waiting for SDRAM
+
+
+[14.09.2026 16:48] exit_planet_dust
+if it's already streaming all 8 tracks back to sdram that changes a lot
+
+
+[14.09.2026 16:50] exit_planet_dust
+I have to admit I haven't really had much time to read everything that's been going on
+
+
+[14.09.2026 16:53] exit_planet_dust
+so just grab it from the readback buffer, have the cpu interleave into a multichannel wav, write in 128kb chunks
+
+
+[14.09.2026 17:33] pituzinho9269
+Well, playing the digitakt always makes me want the OT to have a sample select CC, its maybe digitakt's defining feature for me. I much prefer the OT navigation of samples but the lack of an automated sample selection or its destination on the LFO is missed, so fun
+
+
+[14.09.2026 18:17] jeroen020
+Some more MIDI / sequencer related dreams:
+- 6 or even 8 note polyphony
+- support for NRPN in addition to MIDI CC
+- more pages for CC control
+
+
+[14.09.2026 21:02] tenacious_lemur_99636
+The ability to name the CC's for Midi tracks would be great
+
+{Reactions}
+❤️ (7)
+
+[14.09.2026 21:24] tenacious_lemur_99636
+I offloaded the OT from the shelf after like year for a new project. I can't wait for a v1.0 of a FW with Midi Scenes + octakit (and eventually new FX) ☺️🔥
+
+{Reactions}
+🔥 (3) ❤️
+
+[15.09.2026 07:56] bamshanks
+Mine came with the sandisk extreme, which I'm lead to believe is the best one
+
+
+[15.09.2026 08:00] exit_planet_dust
+Yeah p much
+
+
+[15.09.2026 08:41] mayrakissa
+would be interesting if we could assign an lfo to the crossfader, obviously the fader wouldn't match the movement but yeah
+
+
+[15.09.2026 09:27] simulation.sickness
+Would it be possible to change behavior of one two setting in the recorder menu when using rec sequencer? First trig would start recording. Second would stop recording. Now the second trig just restarts the recording.
+
+
+[15.09.2026 17:47] sezare56_40656
+- Wavefolder fx à la Tonverk
+- Waveshaper fx à la WMD Geiger Counter / Bleass Fusion
+
+{Reactions}
+👍 🔥
+
+[15.09.2026 20:08] yldopactyly
+Bigger chords, better scale diversity, perhaps a setting that autos certain chords and has chord sets built in. For example, an encoder-scrollable list of common and less common chords types. Would be extremely useful for the tonality-inclined people on the platform.
+For example, scrolling a list of each major triad in the first inversion, which would come after each major triad in basic form.
+
+
+[15.09.2026 20:08] yldopactyly
+(On MIDI tracks)
+
+
+[15.09.2026 20:09] yldopactyly
+Fuck it, wavetable synth machine.
+
+
+[15.09.2026 20:12] bryant12345
+Dream feature: loop start can update while looping. A use case is a bunch of single-cycle waveforms in one file. I don’t think you can change the loop start after the trig.
+
+
+[15.09.2026 21:21] sezare56_40656
+Fuck it ? Why ?
+Stop talking to me like that.
+Apples and oranges. Wavetable synth is not an fx, waveshaper and wavefolder are totally different. And…OT can do wavetables (without smoothing). I am not against something better.
+
+https://youtu.be/u5lSEnqBpbM?is=NYgUlGCk8-MdKD9m
+
+https://youtu.be/oABfTj5Vkos?is=loDYPoDETq7Klaft
+
+{Embed}
+WiliWoW Music
+https://www.youtube.com/watch?v=u5lSEnqBpbM
+Octatrack  as poly wavetable synth
+I used 64 pitched samples, in 64 different slots. The start value is assigned to the crossfader I can control with modwheel, assigned to CC48. 
+FOLLOW TRig mode, Slots mode 
+
+I used a wavetable I made for OT. I made a few, I can make more, tell me if you'd be interested in a pack...
+
+I'm using a Korg Taktile 49 keyboard and a RK002 midi processo...
+https://images-ext-1.discordapp.net/external/j4QVSlAQtczjS-ygqNfxVJkDz_vJd9oVACLU2YN_KA0/https/i.ytimg.com/vi/u5lSEnqBpbM/maxresdefault.jpg
+
+{Embed}
+WiliWoW Music
+https://www.youtube.com/watch?v=oABfTj5Vkos
+Octatrack - Poly Granular / Wavetable Amen Break
+See what I mean? :)
+Don't hesitate to ask for more informations.
+Basically scrolling start points with crossfader.
+LEN=1
+Scene B set to start 127.
+
+Retrokits RK002 for poly, dispatching keyboard notes to 6 different channels alternatively,
+https://images-ext-1.discordapp.net/external/Fqi1JdsSfR4dMLtzVhZEmEAA-DIgYouLNk7q6u8Fqxs/https/i.ytimg.com/vi/oABfTj5Vkos/maxresdefault.jpg
+
+
+[15.09.2026 23:16] yldopactyly
+I'm American; that is a common expression we use. It means, "let's dispense with the limitations and go all the way"
+I've actually seen your videos. Cool stuff but not what I was really talking about.
+I am also not against and am in fact asking for something better.
+
+
+[15.09.2026 23:45] sezare56_40656
+Ok ! Sorry for overreacting, long day, but waveshaper and wavefolder are really different from wavetables. They modulate incoming signal.
+
+{Reactions}
+👍
+
+[15.09.2026 23:50] bryant12345
+Both waveshaping and wave folding seem totally doable. I’m actually surprised none of the Mutable effects that were ported do it.
+
+
+[15.09.2026 23:54] sezare56_40656
+WMD Geiger Counter uses waveshaping, you can get nasty distortion, filtering. Would be perfect in LOFI instead of DIST, with input level + wave select ! 
+https://youtu.be/w_mcRcTGFo8?is=7291hTfKrT-NhMCd
+
+{Embed}
+WMDevices
+https://www.youtube.com/watch?v=w_mcRcTGFo8
+WMD Geiger Counter Civilian Issue on the Drumbrute Drum Machine
+The WMD Geiger Counter Civilian is a stripped down version of our flagship guitar effects pedal, the Geiger Counter.  It features a super simple interface, 16 preset tone styles which are essentially knob positions we dig on the regular GC, as well as a lo-fi mode for each preset for a total of 32 presets!  Bit crushing, high gain, digital destr...
+https://images-ext-1.discordapp.net/external/t9EXGxy8pnnKJvuzWcXztfOuH8Tari6EcBgTbgBwQoI/https/i.ytimg.com/vi/w_mcRcTGFo8/maxresdefault.jpg
+
+
+[15.09.2026 23:55] bryant12345
+Look at “character” in octabam’s repo.
+
+
+[16.09.2026 00:06] sezare56_40656
+Is it a waveshaper ?
+
+
+[16.09.2026 00:19] bryant12345
+It has a wavefolder … and a bunch of other stuff. Might be a good starting point to look at if you “just” want to swap out the distortion circuit in LOFI for something else.
+
+
+[16.09.2026 00:19] bryant12345
+https://github.com/sambanks/octabam/blob/main/modules/character/README.md
+
+{Embed}
+https://github.com/sambanks/octabam/blob/main/modules/character/README.md
+octabam/modules/character/README.md at main · sambanks/octabam
+Custom DSP effects for the Elektron Octatrack MKII — original DSP56300 algorithms (ChonVerb reverb, BongDelay) on a cross-core send bus, delivered by patching the stock OS image - sambanks/octabam
+https://images-ext-1.discordapp.net/external/DuO1BwzdQ9jNC8fAq_m83hKgL_f_nrnT3pFHrThS9P8/https/opengraph.githubassets.com/e03d0a31bd7dc6769f2c0e478c194920bb95fc025c8238bd87cb526906f05f6d/sambanks/octabam
+
+
+[16.09.2026 00:31] bamshanks
+Yeah warps port is in on it's own as well https://github.com/sambanks/octabam/tree/main/modules/warpfold
+
+{Embed}
+https://github.com/sambanks/octabam/tree/main/modules/warpfold
+octabam/modules/warpfold at main · sambanks/octabam
+Custom DSP effects for the Elektron Octatrack MKII — original DSP56300 algorithms (ChonVerb reverb, BongDelay) on a cross-core send bus, delivered by patching the stock OS image - sambanks/octabam
+https://images-ext-1.discordapp.net/external/DuO1BwzdQ9jNC8fAq_m83hKgL_f_nrnT3pFHrThS9P8/https/opengraph.githubassets.com/e03d0a31bd7dc6769f2c0e478c194920bb95fc025c8238bd87cb526906f05f6d/sambanks/octabam
+
+{Reactions}
+😮
+
+[16.09.2026 00:32] bamshanks
+But yeah character is the effects station I'm working on for that sort of stuff
+
+
+[16.09.2026 00:33] bamshanks
+Character is pretty tested and ready. As is spectrum (filters and stuff), I'm just working on my final one now which is a modulation station.
+
+No idea what individual effects you would have to swap out for any of them though, as I'm replacing the whole effects architecture for my stuff
+
+{Reactions}
+👍
+
+[16.09.2026 00:51] sawtoothwave
+dream feature: software scaling to make the insanely sensitive octa mk2 knobs less insanely sensitive
+
+
+[16.09.2026 00:52] sawtoothwave
+dream feature: ability to name tracks and patterns in addition to projects (would make it way easier to re-situate in an old project)
+
+
+[16.09.2026 11:01] michaelknubben
+This isn't even a crazy feature, but I find myself wanting it constantly: A visual clue if the pattern/track uses any Fill conditions! It can't be the Fill button glowing on the OT as that's used for queued-up fills, but anything would work for me. On the Syntakt as well, actually. I currently prepend my pattern name with a tilde to indicate it uses the fill (and an underscore if there are track Mutes), but that's obviously a manual process, and needs to be painstakingly done for every pattern
+
+
+[16.09.2026 11:51] bukkakeborealis
+I’d like to add global trig condition per track. % applied to all trigs. It needs to be on a parameter page to be lockable and make it interesting. Only place I found is XVOL. Any idea?
+
+
+[16.09.2026 11:52] michaelknubben
+@BUKKAKEBOREALIS I briefly discussed this a little higher up, would an extra page not work best?
+
+
+[16.09.2026 11:53] michaelknubben
+The button combo could be the one for conditional trigs, if we put those on this page too
+
+
+[16.09.2026 11:53] michaelknubben
+Slide and env triggering could be on there too
+
+
+[16.09.2026 12:00] bukkakeborealis
+Extra page would be nice for new features like this on for sure. How about a TRACK page, hold T#+arrow up ? Thinking out loud here. I would also like to add a simple arp for audio tracks. Could live there as well
+
+{Reactions}
+💯
+
+[16.09.2026 13:13] michaelknubben
+Yeah, something like that could work. As long as the parameters are able to be p-locked, it'll be great
+
+{Reactions}
+👍
+
+[16.09.2026 13:44] michaelknubben
+And arp on audio saves me the midi loopback troubles!
+
+{Reactions}
+👍 (3)
+
+[16.09.2026 14:05] .reliktfarn
+We finally need a repitch warp mode. Currently on it
+
+{Reactions}
+🔥
+
+[16.09.2026 15:12] kjnilsson
+"working" on a harmonic tremolo effect...
+
+
+[16.09.2026 15:45] homeboiflex
+it’s all happening so fast 😅
+
+
+[16.09.2026 18:03] vagabond_z
+Envelope Follower please - Allow an audio signal to be used as a modulation source relative to amplitude -
+
+{Reactions}
+❤️ (7)
+
+[16.09.2026 21:14] bicd.
+Is it technically feasible to get threshold record for sampling?
+
+{Reactions}
+😲
+
+[16.09.2026 22:10] icx7620
+As someone with no experience with any of this.. The new machines and FX people are creating. We can load up a variety of different reverbs and delays into the memory card. Best case - each bank gets the fx and machines the user chooses within that bank. Which changes up whats in the ram thats necessary
+
+
+[16.09.2026 22:44] exit_planet_dust
+Probably not. You have to push the code to the DSP, which is really a firmware flashing thing.
+
+
+[16.09.2026 23:04] plentynights
+u back up @hillbilly
+
+
+[17.09.2026 01:04] tenacious_lemur_99636
+Any sidechain in sight? Or feasible?
+
+{Reactions}
+➕ (2)
+
+[17.09.2026 01:31] yldopactyly
+Ik thank u. 🙂
+
+{Reactions}
+🙃
+
+[17.09.2026 02:25] sezare56_40656
+After a search, I think I understood "fuck it" (let's be crazy?) as "fuck that" (that sucks?). I am french, been 6 month in Dublin, and I remember someone said something like "fuck" or "fucking" could replace any word, like : 
+"You can throw that thing in the bean"
+could be said : 
+"You can fuck that fucking fuck in the fucking fuck". 😅 
+(Very exaggerated example of course, but it surprised me enough to remember it after 30 years. Don't hesitate to correct that if it is wrong !)
+
+{Reactions}
+😂 (3) 👍 (3) ❤️ (2)
+
+[17.09.2026 02:33] exit_planet_dust
+once you've mastered americanisms we can move you on to australianisms 😛
+
+
+[17.09.2026 02:36] anglingar
+Spewin' I just missed ya, mate!
+
+
+[17.09.2026 05:01] yldopactyly
+Could anyone just make it so the compressor can have a 0 attack and work as a limiter?
+
+
+[17.09.2026 05:01] yldopactyly
+We use it how finns use perkele
+
+
+[17.09.2026 05:01] yldopactyly
+or russians use blyadj
+
+
+[17.09.2026 05:02] exit_planet_dust
+or australians "not here to fuck spiders"
+
+{Reactions}
+👍
+
+[17.09.2026 05:22] yldopactyly
+?
+
+
+[17.09.2026 05:23] yldopactyly
+Particularly interested in stuff like this, nothing too fancy. Would explode the utility of this machine to have onboard sidechain.
+
+
+[17.09.2026 07:10] .reliktfarn
+Absolutely feasable and prob easy to implement
+
+
+[17.09.2026 12:27] bamshanks
+Yeah I’m pretty sure someone did
+
+
+[17.09.2026 14:21] .reliktfarn
+Did anyone already try to extend the pitchrange?
+
+
+[17.09.2026 14:23] .reliktfarn
+Triggering samples via midi should probably be decoupled from the +- 12 semitone pitch range, so the pitch knob becomes relative?
+Should work maybe for non timestretched samples
+
+{Reactions}
+👍🏻 💯
+
+[17.09.2026 14:23] plentynights
+I like the idea of having true large pitch range
+
+
+[17.09.2026 14:23] plentynights
+with midi support
+
+
+[17.09.2026 14:35] j_blanco
+That'd be cool, I always figured chromatic was just automating locking the pitch knob, may have to adjust the chromatic mode function and midi mapping for that too
+
+{Reactions}
+👍
+
+[17.09.2026 14:45] bukkakeborealis
+I was planing to look at this today. But maybe tomorrow. Trying to create a 6th page now
+
+{Reactions}
+❤️ (2)
+
+[17.09.2026 15:14] .reliktfarn
+An extended pitch range should probably be a menu toggle that globally disables time-stretching - I highly doubt both will work simultaneosly.
+
+
+[17.09.2026 15:15] .reliktfarn
+Maybe I'm wrong though
+
+
+[17.09.2026 15:15] bukkakeborealis
+Yes I think so
+
+
+[17.09.2026 15:16] bukkakeborealis
+Or time stretch could sound.. who knows haha
+
+
+[17.09.2026 15:18] .reliktfarn
+You would need an insane range to be able to still pitch and stretch a 300BPM sample at 30bpm
+
+{Reactions}
+😎
+
+[17.09.2026 15:57] bryant12345
+This is a simple one: a slew control for LFOs to smooth discontinuities. Sometimes you want your square or sample & hold slightly rounded.
+
+{Reactions}
+👍 (3) 👆 (3) ❤️
+
+[17.09.2026 16:52] pituzinho9269
+Well, mine is external control over the 6 encoders via midi implementation, instead of controling specific pages I would like to just control the encoders contextually according to the page I'm looking. Yes my encoders are blasted...
+
+
+[17.09.2026 16:53] kjnilsson
+I'm working on a way to globally (per track) set PROB in the midi sequencer. Just in case anyone else is also.
+
+{Reactions}
+❤️ (2)
+
+[17.09.2026 17:01] kjnilsson
+the idea is to enable the LEV knob for this
+
+
+[17.09.2026 17:03] kjnilsson
+easier said than done apparently but we'll see where we end up
+
+
+[17.09.2026 17:29] bukkakeborealis
+Auto channel per page?
+
+
+[17.09.2026 17:31] bukkakeborealis
+Haha yes I was trying that yesterday. I am currently building a new page. The parameter could live there
+
+
+[17.09.2026 17:31] bukkakeborealis
+I tried XVOL with no luck
+
+
+[17.09.2026 17:33] kjnilsson
+no XVOL in midi seq, did you do this for audio?
+
+
+[17.09.2026 17:37] bukkakeborealis
+Ah yes I was in audio
+
+
+[17.09.2026 17:44] kjnilsson
+I kinda got it working for MIDI
+
+{Reactions}
+❤️
+
+[17.09.2026 18:08] pituzinho9269
+Yeah, select track, control its encoders externally, doesn't matter the page, for old mk1's it would be a life saver, plus it kind of bypasses the need for faster turn speeds
+
+
+[17.09.2026 18:10] pituzinho9269
+the only thing would be the parameter jumps...On ableton I created a rack with macros to CC's and with a twister and the 16 macro script I get no parameter jumps but it updates automatically via ableton 😕
+
+
+[17.09.2026 18:58] lepoip
+Also is it realistic to imagine a midi drum sequencer you can assign to a midi channel? For example, right now I use the OT to control my PULSAR23, which has a midi learn function on each drum voice, that is listening on all midi channels and is learned to a specific note. Right now, to easily program a drum sequence in, I am using 4 midi channels. I could use a single midi channel, and use the additional midi notes from that channel to trigger each drum voice, but if I were to look at that sequence it wouldn’t be clear at a glance which drums would activate on which step, as all steps would likely be lit up with various drum sounds activating on each step. I imagine some system to display the additional notes (drum triggers) on the screen so that at a glance you can see what drum sounds trigger on what steps, all from 1 channel. Hope this makes sense
+
+
+[17.09.2026 19:02] bukkakeborealis
+Could be a setup menu in which you change between classic midi in implementation to 6 selectable CC (for each pages of each track) and only allow update of parameters of the current page. Wouldn’t be too difficult
+
+
+[17.09.2026 19:05] bukkakeborealis
+A midi drum sequencer is a good idea. I am thinking of midi tracks as midi “machines” now. Each track could select a different behaviour
+
+{Reactions}
+👆 😮 (2)
+
+[17.09.2026 19:14] lepoip
+Do you believe the OT to be capable of sending more than 4 notes at once? Another feature I thought about is the ability to add a sort of “humanization” to chords. So rather than all 4 (or more hopefully) notes triggering at once, that there would be a few MS (or less depending on how the setting is dialed) of delay between the activation of each note in a chord, with some variance in velocity and note length? Would be mimicking how a player plays the keys. Could be really good for lofi music
+
+
+[17.09.2026 19:20] pituzinho9269
+wouldn't be difficult? I mean, I trust you 😂 , sadly for me this is very esoteric
+
+
+[17.09.2026 19:26] bukkakeborealis
+Don’t trust me my patches break 😅
+
+
+[17.09.2026 19:26] pituzinho9269
+not alwaysss
+
+
+[17.09.2026 19:39] kjnilsson
+I started poking at midi machines but didn’t get super far.
+
+
+[17.09.2026 20:43] .reliktfarn
+Maybe it would make sense to build a community firmware flasher app to manage FX slots. That way, users could easily select and upload custom effects while seeing an overview of free disk space and DSP load. Similar to the Zoom Effects Manager@bamshanks
+
+{Reactions}
+👆 (3)
+
+[17.09.2026 21:00] bryant12345
+I feel like the building blocks are there with what bam did.
+
+
+[17.09.2026 21:01] bukkakeborealis
+Lot of work I think because machine selection in the midi tracks  is not there yet. For midi scenes I had to build everything since it was not just disabled but not there to start with. Or if it was and did not figure it out I wasted weeks. Not a problem happy it’s there now
+
+{Reactions}
+❤️ (2)
+
+[17.09.2026 21:13] jamesstaub
+just discovered this project and I'm very excited to see all these developments! A dream feature of mine would be to assign a custom LFO shape to the crossfader to achieve nonlinear interpolation between scenes
+
+{Reactions}
+⚡
+
+[17.09.2026 21:21] bukkakeborealis
+Midi loopback can get you there if you can
+
+
+[17.09.2026 21:22] bukkakeborealis
+I recommend a midi processor/filter in between
+
+{Reactions}
+👍
+
+[17.09.2026 21:27] zackyoti_98392
+Yes, I built sidechain. Working, but I’m still hunting a fix for a bug in my keytrack monitoring - the monitor audio passes through a multimode filter that is jacking up the sound when a trig fires on the target track. The main sidechaining function is solid, but I don’t want to ship until the monitor is bug free.
+
+{Reactions}
+❤️ (3)
+
+[17.09.2026 21:30] zackyoti_98392
+Not quite as easy as you might think 😉 esp making it cross-core
+
+
+[18.09.2026 04:17] bamshanks
+Yeah I’ve done the building blocks that would enable that, but it’s not something I’m personally looking to implement or support. PRs welcome or course 🙂
+
+
+[18.09.2026 04:26] j_blanco
+Maybe edge case, but midi filtering, I don't like to send note data to sample tracks since I use them for drums in a live setting so normally just disable all midi to the sample tracks, but wanting to be able to still map a foot pedal to looper controls, Ive been playing with an hxmidi for filtering and it has worked decently but maybe something i dig into as I setup for some firmware modifications for my personal live improv streams edge case
+
+
+[18.09.2026 11:41] bukkakeborealis
+Managed to create a new parameter page. Now the hard work is getting them locked etc
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740806434164746/1550441669877571705/IMG_1020.jpg?ex=6aaf0193&is=6aadb013&hm=81b1845f79048b560b7859443bf89bdd5879425f39f89296418c86974892c8f3&
+
+{Reactions}
+💖
+
+[18.09.2026 11:42] ambient.signals_76175
+Access by double tapping or how's it work with the UI buttons?
+
+
+[18.09.2026 11:47] bukkakeborealis
+For now it’s arrow up/down combo. I gotta get the setup page up as well. Then they could be assignable extra params (target different params, different tracks) and add proba per tracks etc
+
+
+[18.09.2026 13:19] mayrakissa
+wow cool
+
+
+[18.09.2026 13:20] mayrakissa
+i dream of being able to use fx while using individual outs on analog rytm mk1
+
+
+[18.09.2026 13:20] tenacious_lemur_99636
+One of my ultimate wish would be to ve able to search and filter samples, at least by name. It's a real nightmare when you have folders and folders of packs to look for a snare, real flow breaker
+
+
+[18.09.2026 13:20] mayrakissa
+i have master out into my mixer as a reverb/delay send kind of but unable to use distortion :(
+
+
+[18.09.2026 13:28] tenacious_lemur_99636
+Would also love to be able to swap tracks and samples slots
+
+
+[18.09.2026 14:55] pinkpanther606_77482
+Hello fellow Octatrack users. I have got my head around rewriting parts of the firmware for myself since approx. 1 year but did not really ever start it. I find it really exciting and awesome that so many people are into upgrading the mighty Octatrack and bring the device into a new chapter. What a time to have people revive the OT OS with so awesome features many people thought about and wished for them to exist.
+
+So my take on some features which are not mentioned yet, as of my now-state after reading through the full octa-bam repo. Maybe you are also interested in those and there are people already working and thinking actively about those as well so I want to mention them here. If it belongs somewhere different feel free to tell me.
+
+**Live Pattern Fork / Copy to Empty Slot While Playing**
+I’ve always missed a way to duplicate the currently playing Pattern into another slot without selecting/queuing that destination Pattern. The idea would be: keep A01 playing, clone it to A02, edit A02 as a variation, then switch between A01/A02 when ready. Stock OT can copy/paste Patterns, but selecting the destination is tied to normal Pattern selection, so there isn’t really a clean “background fork” workflow.
+
+**MIDI P-lock Slides / CC Glide**
+The MIDI LFO Designer already allows excellent continuous CC modulation, including interpolation between its 16 waveform points. What I'd love in addition is Elektron-style glide directly between MIDI CC parameter locks: e.g. CC74=20 on step 1 and CC74=100 on step 9, with a slide flag causing continuous CC interpolation between those actual p-locks. Unlike using the three MIDI LFOs, this could potentially work independently on multiple CC lanes and would automatically follow the distance/timing between p-locks.
+
+
+[18.09.2026 14:56] pinkpanther606_77482
+*
+If MIDI CC p-lock slides are feasible, it would also be great to have different interpolation shapes rather than only linear ramps — e.g. Linear, Exponential, Logarithmic and S-curve, perhaps with one Curve/Tension parameter.
+The existing LFO Designer UI already feels like a good visual model for this: show the start/end CC values and the resulting curve between them.
+
+**Step-Locked MIDI Program Change**
+Allow Program Change to be p-locked like a CC, so one MIDI track could call different synth patches on individual steps rather than Program being tied to the Part/Kit state. This is already possible externally by p-locking an unused CC and converting CC value → Program Change with something like Midihub, so it’s not impossible conceptually — native support would just make it much cleaner. Probably worth warning that some synths cannot load patches fast enough for rapid changes. 
+
+**Pre-Send Filter for the new AUX Bus** (Addition to an existing feature that is being worked on)
+A configurable HPF before the shared BusDelay/BusVerb would be very useful to stop kicks/sub-bass muddying the effects. Something like OFF / 60 / 90 / 120 / 160 / 220 Hz, potentially with an LPF too. BusVerb already has internal tone/damping filtering, but that happens inside the reverb architecture rather than filtering the summed signal before it enters the delay/reverb bus, so this would still be a separate useful feature. Maybe I am mistaken here as this is some pretty obvious thing to do on a Aux Bus.
+
+In Austria we like to say, this is my mustard to the topic here. 
+Thanks for your time and if you are interested in further discussion just send me a message or reply here 🙂
+
+
+[18.09.2026 17:01] plentynights
+live pattern copy is in my list as well
+
+
+[18.09.2026 21:24] holyinternet
+steplocked midi program change is something i’ve always missed on the octatrack - newer little digis have it working well.
+would be a great feature to add that shouldn’t be too complicated or costly to implement
+
+
+[18.09.2026 23:16] bukkakeborealis
+It works in octakit, clone pattern+kit to next one instantly 👌🏻
+
+
+==============================================================
+Exported 730 message(s)
+==============================================================

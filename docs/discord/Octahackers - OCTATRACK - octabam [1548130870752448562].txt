@@ -1,0 +1,1719 @@
+==============================================================
+Guild: Octahackers
+Channel: OCTATRACK / octabam
+==============================================================
+
+[12.09.2026 02:40] bamshanks
+@Bryan T (ukulele owner) I think your loop clicking white whale might be three whales and I think I have got them this time.
+
+{Reactions}
+😮
+
+[12.09.2026 02:41] bamshanks
+Will want you to test of course
+
+
+[12.09.2026 02:41] bryant12345
+I’m always down for whale hunting.
+
+
+[12.09.2026 02:41] bamshanks
+aight let me pack it for you
+
+
+[12.09.2026 02:42] bamshanks
+I'll make a remix with just this fix
+
+
+[12.09.2026 02:42] bamshanks
+or... these three fixes 🙂
+
+
+[12.09.2026 02:44] bamshanks
+just doing a final run against your non golden tempos but it's sounding clean
+
+
+[12.09.2026 03:31] bamshanks
+@Bryan T (ukulele owner) 🐳 https://github.com/sambanks/octabam/blob/main/docs/firmware/RECORDER_CLICK.md
+
+{Embed}
+https://github.com/sambanks/octabam/blob/main/docs/firmware/RECORDER_CLICK.md
+octabam/docs/firmware/RECORDER_CLICK.md at main · sambanks/octabam
+Custom DSP effects for the Elektron Octatrack MKII — original DSP56300 algorithms (ChonVerb reverb, BongDelay) on a cross-core send bus, delivered by patching the stock OS image - sambanks/octabam
+https://images-ext-1.discordapp.net/external/L-i3jlbw9b825zGC96OPfqcFSs8j6jpw1rElp33eWtA/https/opengraph.githubassets.com/9447fa75655f1926180ac8863ec743fcd5b715a0313defb0676a32a8a7b5349f/sambanks/octabam
+
+
+[12.09.2026 03:31] bamshanks
+If you could 🙏🏻
+
+
+[12.09.2026 03:32] bryant12345
+I’m on it!
+
+
+[12.09.2026 03:32] bamshanks
+https://klipy.com/gifs/sweats-7
+
+{Embed}
+https://klipy.com/gifs/sweats-7
+Jordan Peele Sweating Meme
+https://images-ext-1.discordapp.net/external/jytSSFW1WndWNM0Rbp7unBKecB0x98NRdCqIrv3bYXg/https/static.klipy.com/ii/2711dd8a75a85be822d136ec94899b3f/34/89/RmEsRir0.webp
+
+
+[12.09.2026 03:50] bryant12345
+octabam-gas is giving me issues on the build
+
+{Reactions}
+👀
+
+[12.09.2026 03:53] bamshanks
+should be working on main
+
+
+[12.09.2026 03:54] bamshanks
+or are you running make check?
+
+
+[12.09.2026 03:54] bamshanks
+there are notes about the submodules in that doc if it's that
+
+
+[12.09.2026 03:55] bamshanks
+ah he's deleted it I see.
+
+
+[12.09.2026 03:55] bryant12345
+Whoops
+
+
+[12.09.2026 03:57] bamshanks
+just testing in a clean main clone now
+
+
+[12.09.2026 04:02] bamshanks
+try again now @Bryan T (ukulele owner) 
+
+```
+git pull
+git submodule update --init --recursive
+make check REMIX=recfix
+```
+
+
+[12.09.2026 04:30] bryant12345
+Ran exactly that — clean pull, submodule update, even a full make os/make recon for good measure. Still 32 fails in verify_menu.py, same as before. The FX2_LIST entries past index 2 are reading garbage (0x42565242 etc. — looks like leftover "BVRB"/"Verb"/"Bus" text), and the check seems to be comparing against 0x400d6b00 while build_bus.py's own log says it wrote the relocated chooser list to 0x400d7bbc. Might be verify_menu not accounting for recfix's shape (no FX2-visible modules)?
+
+
+[12.09.2026 04:31] bryant12345
+(That's from Claude, not from me ...)
+
+
+[12.09.2026 04:32] bamshanks
+ah ok one moment thanks
+
+
+[12.09.2026 04:32] bamshanks
+he did a clean run allegedly but i'll dig
+
+
+[12.09.2026 04:34] bamshanks
+ah yeah I see
+
+
+[12.09.2026 04:41] bamshanks
+```
+git pull
+git submodule update --init --recursive
+make check REMIX=recfix
+make image REMIX=recfix BUILD=84
+```
+
+should work now
+
+
+[12.09.2026 05:21] bryant12345
+I keep failing at this point:
+
+python3 tools/verify/verify_octakit.py
+  [PASS] verify_octakit: stock + 650 writes + 73,111 B append == Em's own combined OS (ot-26905-141307 26905, m68k-elf-gcc 16.2.0 vs her pinned 16.1.0)
+python3 tools/verify/verify_midiscenes.py
+  [PASS] verify_midiscenes: gas/*.s reproduce the encoder's bytes at his addresses
+REMIX=recfix python3 tools/verify/verify_dram_boot.py
+  [ -- ] verify_dram_boot: recfix carries no DRAM payload
+  [SKIP] recfix has no labelled selects
+OK
+  [SKIP] per-mode knob names: no .venv, or this remix has none
+  [ -- ] recfix does not carry MENU SHORTCUT -- nothing to check
+  [ -- ] recfix does not carry CF PROBE -- nothing to check
+  [SKIP] bus screen table relocation: no .venv
+  [SKIP] cc page-2 cave: no .venv
+  [ -- ] recfix hides nothing -- nothing to check
+python3 tools/verify/verify_grains.py recfix
+  [ -- ] recfix runs four grains -- no lever to check
+REMIX=recfix python3 tools/verify/verify_menu.py
+  [FAIL] out/mainos_bus.bin was built for remix 'bus', but REMIX=recfix -- run `make bus REMIX=recfix` first (or `make check REMIX=recfix`, which does)
+make: *** [verify] Error 1
+
+{Reactions}
+😭
+
+[12.09.2026 05:24] bamshanks
+running again in a clean checkout
+
+
+[12.09.2026 05:26] bryant12345
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1548130870752448562/1548172816057106532/message.txt?ex=6aaf524b&is=6aae00cb&hm=86731c0bfdac161bd9f9be7bf6bf00a3e249f96ac0e8f5144b93b947efb6cdd9&
+
+
+[12.09.2026 05:29] bamshanks
+ah yep
+
+
+[12.09.2026 05:29] bamshanks
+one mo
+
+
+[12.09.2026 05:32] bamshanks
+can you pull again and try:
+
+```
+brew install cmake            # if you don't have it — that's my first guess
+rm -rf vendor/dsp56300/build
+make setup                    
+ls vendor/dsp56300/build/source/dsp_host/dsp_host
+make check REMIX=recfix
+```
+
+
+[12.09.2026 05:36] bryant12345
+/Users/bryantysinger/git_repos/octabam
+bryantysinger@Mac octabam % ls vendor/dsp56300/build/source/dsp_host/dsp_host
+ls: vendor/dsp56300/build/source/dsp_host/dsp_host: No such file or directory
+
+Something's missing here ...
+
+
+[12.09.2026 05:42] bamshanks
+ah ok yeah that's it
+
+
+[12.09.2026 05:42] bamshanks
+make setup should be downloading it
+
+
+[12.09.2026 05:43] bamshanks
+does make setup have any errors?
+
+
+[12.09.2026 05:44] bryant12345
+It thinks it is OK:
+
+bryantysinger@Mac octabam % make setup
+scripts/setup.sh
+== 1) System tools (via Homebrew) ==
+   binwalk and radare2 already present.
+
+== 1b) mc68k (ColdFire core for the headless machine) ==
+   already cloned; git pull ...
+Already up to date.
+
+== 2) elektron-firmware-tool (mischa85) ==
+   already cloned; git pull ...
+Already up to date.
+   local patch already applied (or upstream changed: check /Users/bryantysinger/git_repos/octabam/tools/patches/elektron-firmware-tool.patch)
+   building ...
+make[1]: `elektron-firmware-tool' is up to date.
+
+== 3) Ghidra (optional, manual) ==
+   Ghidra not detected. For ColdFire disassembly:
+     brew install --cask ghidra      # needs JDK 17+ (brew install temurin)
+   Ghidra has no perfect native ColdFire processor; the m68k module covers
+   most of the ISA. Alternative: radare2/rizin with -a m68k.
+   Only needed for OS archaeology, not for building effects.
+
+== 4) dsp56300 -- assembler, disassembler and emulator for the audio DSP ==
+   already built: vendor/dsp56300/build/source/disassemble/dsp56kDisassemble
+
+== setup complete. Next:  make os  then  make bus ==
+
+But if I do make -B setup it has some issues.
+
+
+[12.09.2026 05:44] bryant12345
+Err .. I thought it did.
+
+
+[12.09.2026 05:44] bryant12345
+Hmm.
+
+
+[12.09.2026 05:44] bamshanks
+ah yeah that suggests it's the old script
+
+
+[12.09.2026 05:45] bamshanks
+doesn't look like the git pull landed if you are still getting that
+
+
+[12.09.2026 05:46] bamshanks
+checking my end
+
+
+[12.09.2026 05:46] bamshanks
+yeah it should defo give a different message on the new script
+
+
+[12.09.2026 05:47] bryant12345
+I pulled again ...
+
+It does error out:
+
+/Users/bryantysinger/git_repos/octabam/vendor/dsp56300/source/dsp_host/dsp_host.cpp:590:20: error: 
+      no member named 'setSharedWindow' in 'dsp56k::Memory'
+  590 |             C.mem->setSharedWindow(a.shareLo, a.shareHi,
+      |             ~~~~~~~^
+6 warnings and 1 error generated.
+gmake[4]: *** [source/dsp_host/CMakeFiles/dsp_host.dir/build.make:79: source/dsp_host/CMakeFiles/dsp_host.dir/dsp_host.cpp.o] Error 1
+gmake[3]: *** [CMakeFiles/Makefile2:1474: source/dsp_host/CMakeFiles/dsp_host.dir/all] Error 2
+gmake[2]: *** [CMakeFiles/Makefile2:1481: source/dsp_host/CMakeFiles/dsp_host.dir/rule] Error 2
+gmake[1]: *** [Makefile:660: dsp_host] Error 2
+gmake[1]: Leaving directory '/Users/bryantysinger/git_repos/octabam/vendor/dsp56300/build'
+   [!] dsp56300 build FAILED -- make check cannot run without dsp_asm and dsp_host.
+       Fix what cmake printed above, then: rm -rf vendor/dsp56300/build; make setup
+make: *** [setup] Error 1
+
+Not sure if that is the first or just the most recent.
+
+
+[12.09.2026 05:48] bryant12345
+I think I should do a clean checkout.
+
+
+[12.09.2026 05:52] bamshanks
+Ahhhhh
+
+
+[12.09.2026 05:52] bamshanks
+that's a better error
+
+
+[12.09.2026 05:52] bamshanks
+would have been getting swallowed before
+
+
+[12.09.2026 05:54] bamshanks
+looks like a version mismatch of DSP56300
+
+
+[12.09.2026 05:54] bamshanks
+let me push a fix to pin the version
+
+
+[12.09.2026 05:55] bamshanks
+apologies on this, hopefully the fix will be worth it 🙂
+
+
+[12.09.2026 05:59] bamshanks
+Ok give it the old:
+
+```
+git pull
+rm -rf vendor/dsp56300
+make setup 2>&1 | tail -20      # step 4 should end without a "[!]" line
+make check REMIX=recfix
+```
+
+
+[12.09.2026 06:40] bryant12345
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1548130870752448562/1548191599396257955/message.txt?ex=6aaf63c9&is=6aae1249&hm=84924750544d917c40b223471fe3f25d3ea0c479bb46afbbd6689192a092ae87&
+
+
+[12.09.2026 07:17] bryant12345
+Scrolling way up, I see this first:
+
+                   cycles/sample
+stock rows           NOT COUNTED   [FILTER, EQUALIZER, DJ EQ, PHASER, FLANGER, CHORUS, SPATIALIZER, COMB FILTER, COMPRESSOR, LO-FI, DELAY, PLATE REV, SPRING REV, DARK REV] -- stock code; FILTER measured 192
+
+WORST ONE CORE                 0   (nothing of ours)
+                                   4 FX2 slots, at most one server (the design rule)
+budget/core                 4535   (200 MIPS / 44.1 kHz)
+usable by us                3120   measured 23 Aug 2026; stock takes the other ~1415
+headroom                    3120   against the worst core above
+                                   ⚠️ the counter reads ~270 LOW on the reverb (CHIP.md s2); the wall is a CLIFF
+
+
+[12.09.2026 08:53] bamshanks
+Hmmm ok
+
+
+[12.09.2026 08:53] bamshanks
+Will check into later when I get back in
+
+
+[12.09.2026 10:20] bamshanks
+Ok that's a clean check you should be good
+
+
+[12.09.2026 10:20] bamshanks
+```
+make image REMIX=recfix BUILD=84
+shasum -a 256 out/OCTATRACK_OCTABAM84.bin
+```
+
+Should start ecb574a9. If it does, that's byte-for-byte the image I tested on my unit
+
+
+[12.09.2026 10:41] bamshanks
+the exclamations are fine
+
+
+[12.09.2026 11:04] anglingar
+Question from a noob: do you have access to the DSP code via the firmware in the Octa (I just probably said something very stupid... But that's learning).
+
+
+[12.09.2026 11:20] bamshanks
+Yeah the firmware contains the coldfire code and the dsp code and at boot the coldfire loads the dsp code into each core and it runs from there.
+
+The DSP machine code can be disassembled. Each effect is an entry in a dispatch table indexed by the FX id, so we can read a stock effect's code, and we can replace an entry with our own code assembled for the DSP, then rebuild the image.
+
+
+[12.09.2026 11:20] anglingar
+Apparently not in the DN2
+
+
+[12.09.2026 11:20] bamshanks
+For Octabam I'm going pretty heavy on the replacments though
+
+
+[12.09.2026 11:20] bamshanks
+Making my personal dream setup
+
+{Reactions}
+❤️
+
+[12.09.2026 11:20] bamshanks
+Others will likely want to be less invasive
+
+
+[12.09.2026 11:21] bamshanks
+But now it's mostly all mapped out it should be easy for them to do so
+
+
+[12.09.2026 11:21] bamshanks
+Not the same on the Digis?
+
+
+[12.09.2026 11:22] anglingar
+Apparently no DSP code in the firmware I'll make sure but that is the first impression
+
+
+[12.09.2026 11:22] bamshanks
+that would be weird
+
+{Reactions}
+👍
+
+[12.09.2026 11:22] bamshanks
+would have to be I would have thought
+
+
+[12.09.2026 11:26] mentholatum1761
+Elektronauts locked the octabam thread. Any chance Elektron will start cracking down on these mods too? Should I start downloading everything I see?
+
+
+[12.09.2026 11:29] bamshanks
+They can't really I don't think. They shut that down more because of people playing up I believe
+
+{Reactions}
+👍
+
+[12.09.2026 11:30] bamshanks
+I wasn't really following along on that thread (someone else came across my repo and created it) but some people have certainly had some attitudes
+
+
+[12.09.2026 11:30] .mdee
+i think i have a mostly done SLEIGH module for SHARC VISA on DT2 but need to check
+
+{Reactions}
+🎉
+
+[12.09.2026 11:31] bamshanks
+What's sleigh module do?
+
+
+[12.09.2026 11:32] bamshanks
+I'm tuning wave folders and distortions and comps at the moment. Satrting to sound pretty good to me
+
+
+[12.09.2026 12:14] __chaoticneutral
+I’m sure they are both reasonable and clever regarding this. Tightening these discussions would only drive them more underground and more out of reach for themselves to control. It’s an easy game theory decision.
+
+
+[12.09.2026 12:19] anglingar
+`And no section carries a DSP instruction stream:
+bootstrap, MAIN OS, updater — all ColdFire
+section 8 — ARM Cortex-M, and new in 1.11, but the DN2 made sound in 1.10E
+blob — 32-bit word data. Stride-3 column entropy is 0.01, which rules out the DSP56300's 24-bit word outright, against 1.17 at stride 4. The low-entropy final byte is a little-endian float32 exponent.`
+
+Perplexed...
+
+
+[12.09.2026 12:21] bamshanks
+Strange
+
+
+[12.09.2026 12:22] anglingar
+Yeah...would they seal the DN2 somehow? Like the DSP is what it is and sealed from factory?
+
+
+[12.09.2026 12:23] bamshanks
+Not sure tbh
+
+
+[12.09.2026 12:23] anglingar
+That's very little room to adjustment and any upgrade will need to piggy back on code already implemented In the chip
+
+
+[12.09.2026 13:13] bryant12345
+It makes the .syx, but fails when making the .bin:
+
+=== wrote out/OCTATRACK_OS1.40C_OCTABAM84.syx (622684 bytes, Octatrack) ===
+python3 tools/build/make_bin.py out/elek_84.bin \
+      -o out/OCTATRACK_OCTABAM84.bin
+Traceback (most recent call last):
+  File "/Users/bryantysinger/git_repos/octabam/tools/build/make_bin.py", line 117, in <module>
+    main()
+    ~~~~^^
+  File "/Users/bryantysinger/git_repos/octabam/tools/build/make_bin.py", line 74, in main
+    elek = Path(args.container).read_bytes()
+  File "/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py", line 777, in read_bytes
+    with self.open(mode='rb', buffering=0) as f:
+         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py", line 771, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'out/elek_84.bin'
+make: *** [image] Error 1
+
+
+[12.09.2026 13:14] bamshanks
+😭
+
+
+[12.09.2026 13:15] bryant12345
+I could load the .syx ... just takes a while.  🙂
+
+
+[12.09.2026 13:17] bamshanks
+elektron-firmware-tool needs pinned as well, sorry didn't expect it to take so many loops
+
+
+[12.09.2026 13:18] bryant12345
+whack-a-mole.  (whack-a-whale?)
+
+{Reactions}
+😁
+
+[12.09.2026 13:23] bamshanks
+updated now for next time, need to delete the newer elektron-firmware-tool though
+
+```
+git pull
+rm -rf vendor/elektron-firmware-tool
+make setup                       # should print "at 065d18f (pinned)" and "local patch applied"
+make image REMIX=recfix BUILD=84
+```
+
+
+[12.09.2026 13:25] bryant12345
+It built!  Loading now ...
+
+{Reactions}
+❤️ (2)
+
+[12.09.2026 13:36] bryant12345
+Good news and bad news.  Good news: I do not think the click gets recorded into the buffer.  Bad news:  it does still click on playback. 
+
+For example, 128.0 BPM with RLEN 16 - while recording I still hear a click every other pass.
+
+If I put record and play trigs on 1/5/9/13 I hear clicks on seven of the eight repetitions.
+
+🐋
+
+
+[12.09.2026 13:39] bamshanks
+iinteresting, it completely got rid of them on the testing material. wonder what I'm doing different. Will have a think and to return to the whale hunt after I wind up these effects
+
+
+[12.09.2026 13:40] bryant12345
+thanks for all of your effort on this.  like i said before, you can stop chasing this whenever you want.
+
+
+[12.09.2026 13:41] bamshanks
+No worries 🙂 
+
+Been good fodder for the emulator build
+
+
+[12.09.2026 13:43] bamshanks
+Thought it was three 🐳  Must be more
+
+
+[12.09.2026 13:46] bryant12345
+a pod of 'em
+
+{Reactions}
+😁
+
+[12.09.2026 13:49] bamshanks
+these effects are nearly done which I'm pumped about
+
+
+[12.09.2026 13:53] rbl0k_28323
+Do you do new fx or rework the existing one? Im still very very happy with your busverb. And I say that as someone who has way more reverbs than synths 😉
+
+{Reactions}
+❤️
+
+[12.09.2026 13:53] bamshanks
+Moar 🙂
+
+
+[12.09.2026 13:53] bamshanks
+Glad to hear you are enjoying it!
+
+
+[12.09.2026 13:53] bamshanks
+It's had a few tweaks but nothing major
+
+
+[12.09.2026 13:54] rbl0k_28323
+You mad!
+
+
+[12.09.2026 13:55] bamshanks
+I'm doing a very opinionated dream setup for myself with this one. Replacing everything 🙂
+
+{Reactions}
+😂
+
+[12.09.2026 13:55] bamshanks
+But it's all modular so bits can be easily lifted and modified for others to do themselves
+
+
+[12.09.2026 13:56] rbl0k_28323
+Follow your dream (or the rabbit into the hole)
+
+{Reactions}
+❤️
+
+[12.09.2026 13:56] bamshanks
+my dream is down there somewhere 🙂
+
+
+[12.09.2026 13:57] bamshanks
+I've done stations with modes, like the bus effects, to squeeze more functionality into the same space. Just Voiced the modulation station and am super happy with it
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1548130870752448562/1548301545739788339/image.png?ex=6aaf216e&is=6aadcfee&hm=744ef75b0050cf5a99d19f900ee9fca778e498ab8708f36bd4cec090b067751b&
+
+
+[12.09.2026 14:03] rbl0k_28323
+It looks like Stock-FX is getting an bigger update? To be honest, the only thing I'm missing right now is the ability to place a chorus after the reverb without having to sacrifice another track. But please don't get me wrong—I'm so incredibly happy with your reverb; the lack of decent reverbs was the only real pain for me with the Octa the whole time.
+
+
+[12.09.2026 14:08] bryant12345
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1548130870752448562/1548304307177132123/note-for-bam-recfix-click.md?ex=6aaf2400&is=6aadd280&hm=6a28c4b570f4cba3f8a25f4eefbc05a53cd5556d9531fd364ef0a51ca4faa929&
+
+{Reactions}
+❤️
+
+[12.09.2026 14:11] rbl0k_28323
+Type Error if switching columns in workbench (latest build on macos 14.7.1)
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1548130870752448562/1548305125146099823/Bildschirmfoto_2026-09-12_um_14.11.04.png?ex=6aaf24c3&is=6aadd343&hm=bc5cc357dd92bfa6b3f271508596092d1c7743dcbd631665fb428a7a713699e3&
+
+{Reactions}
+👍🏻
+
+[12.09.2026 14:23] bamshanks
+Ah yeah workbench has been a bit unloved since the turbo work on the emulator and the effects. Will get it all ship shape and get Octakit and Scenes and stuff rolled in soon.
+
+{Reactions}
+❤️‍🔥
+
+[12.09.2026 14:23] bamshanks
+You could definitely get a chorus behind a reverb
+
+
+[12.09.2026 14:24] rbl0k_28323
+Im on the fix. Octakit is already working in earlier release & i assumed midi-scenes is in this new one im struggling with?
+
+
+[12.09.2026 14:25] bamshanks
+yeah and there are a bunch of fixes going on for other stuff that could be treading on it
+
+
+[12.09.2026 14:41] rbl0k_28323
+How to get a chorus behind a reverb? Or do you speak of future releases?
+
+
+[12.09.2026 14:48] bamshanks
+yeah
+
+
+[12.09.2026 14:48] bamshanks
+be easy enough to remix, but there is always sacrifice
+
+{Reactions}
+👍
+
+[12.09.2026 15:30] rbl0k_28323
+Type-error-fix: https://github.com/rbl0k/octabam/tree/octabam-local-fixes
+
+{Embed}
+https://github.com/rbl0k/octabam/tree/octabam-local-fixes
+GitHub - rbl0k/octabam at octabam-local-fixes
+Custom DSP effects for the Elektron Octatrack MKII — original DSP56300 algorithms (ChonVerb reverb, BongDelay) on a cross-core send bus, delivered by patching the stock OS image - rbl0k/octabam
+
+
+[12.09.2026 17:17] rbl0k_28323
+@bamshanks Idea check: T8 FX1 runs Character in BUS mode and brings the BusVerb return into T8’s audio path. Could a custom chorus then run on T8 FX2, but use Character/T8 FX1’s otherwise-unused 3072-word buffer for its delay memory? BusVerb already owns Core A’s FX2 buffer pool. Would that be architecturally valid?
+
+
+[12.09.2026 21:18] bryant12345
+Are files rendered from remix 6dB quieter than the file that’s being processed? Not sure what I’m seeing.
+
+
+[12.09.2026 23:06] bamshanks
+Yeah for sure
+
+
+[12.09.2026 23:07] bamshanks
+When you say files rendered what do you mean? 
+
+I’m still voicing the effects on the emulator which is a different volume. So the volumes could be a bit whacky until I’ve got to that bit
+
+
+[12.09.2026 23:19] bryant12345
+The ones written to disk when i press “r”
+
+
+[12.09.2026 23:20] bamshanks
+Ah ok in the remixer
+
+
+[12.09.2026 23:20] bryant12345
+Remixer … yes
+
+
+[12.09.2026 23:20] bamshanks
+yeah that hasn't been kept up with, with all the other changes, i'll give it some attention before I hand all this over
+
+
+[12.09.2026 23:21] bamshanks
+lemme know any other wonkiness you come across but I wouldn't expect it to be super smooth right now
+
+
+[12.09.2026 23:23] bryant12345
+Err … maybe i do mean emulator.  The interface that loads effects, you set parameters, then can listen or write a wav to disk.
+
+
+[12.09.2026 23:24] bryant12345
+I’m slowly losing my mind today …
+
+
+[12.09.2026 23:25] bamshanks
+yeah remixer
+
+
+[12.09.2026 23:25] bamshanks
+but there are volume mismatch things all over the place I'm working through
+
+
+[12.09.2026 23:25] bamshanks
+with the emulators etc
+
+
+[12.09.2026 23:25] bamshanks
+because they aren't voiced the same as the device
+
+
+[12.09.2026 23:26] bamshanks
+that's all very wip poc until I get v1 across
+
+
+[12.09.2026 23:37] bryant12345
+What i was running into was a test file of sine waves (100, 200, 400, 800 Hz) that I ran through an effect I was working on. When mix was off, i was getting a 6 dB quieter output with the rendering.
+
+
+[12.09.2026 23:38] bamshanks
+gotcha, will add it to the remixer uplift notes
+
+
+[12.09.2026 23:39] bamshanks
+lotta work going on with the underlying emulators etc, will be doing remixer at the end
+
+
+[12.09.2026 23:40] bamshanks
+But mostly focused on voicing my effects rig first
+
+
+[12.09.2026 23:44] bamshanks
+I feel like today is the day the various things i've been working on will converge 🤞🏻
+
+
+[12.09.2026 23:47] bamshanks
+one day I will make music again 😅
+
+{Reactions}
+😂 (3) 🙏
+
+[13.09.2026 00:32] anglingar
+Was not the whole point 😛
+
+
+[13.09.2026 00:33] anglingar
+The additional fun of electronic instruments...you can play them and hack them
+
+
+[13.09.2026 00:54] bamshanks
+All part of the fun 🙂
+
+
+[13.09.2026 10:51] devilfish707
+I ported RC inflator and vladg's  jc tapehead + jc Phoenix in octabam. Still a mess (Phoenix also eats a lot of words). They work on hardware OT though but more proof of concept for now. What would be the Future for sharing these FX?
+
+
+[13.09.2026 10:52] bamshanks
+can either PR my repo or send me the code or I can add from your repo as a git submodule like octakit https://github.com/sambanks/octabam/tree/main/modules/octakit
+
+{Embed}
+https://github.com/sambanks/octabam/tree/main/modules/octakit
+octabam/modules/octakit at main · sambanks/octabam
+Custom DSP effects for the Elektron Octatrack MKII — original DSP56300 algorithms (ChonVerb reverb, BongDelay) on a cross-core send bus, delivered by patching the stock OS image - sambanks/octabam
+https://images-ext-1.discordapp.net/external/0viMYxpgF9VkzlyMJkAVa6zde_5gXEFVyDuxeuTMZg4/https/opengraph.githubassets.com/1dbe787bfeab6f182db6825196102a6d76731c2761eab62fa83a63f71ba037b3/sambanks/octabam
+
+{Reactions}
+👍
+
+[13.09.2026 10:53] devilfish707
+Ok cool, thanks. I'll share them later
+
+
+[13.09.2026 10:53] bamshanks
+Awesome, intrigued to try
+
+
+[13.09.2026 10:54] bamshanks
+hopefully not better than the ones i've been trying to get work for days :p
+
+{Reactions}
+😄
+
+[13.09.2026 10:54] devilfish707
+I'm currently running into the id problem (no more free id's, dunno how to handle that)
+
+
+[13.09.2026 10:56] devilfish707
+So i had to take spatializer's id for Phoenix but that messes up the controls
+
+
+[13.09.2026 10:56] bamshanks
+is this these? https://github.com/JClones/JSFXClones
+
+{Embed}
+https://github.com/JClones/JSFXClones
+GitHub - JClones/JSFXClones: Collection of JSFX plugins
+Collection of JSFX plugins. Contribute to JClones/JSFXClones development by creating an account on GitHub.
+https://images-ext-1.discordapp.net/external/dZs9hPlkw-6jz1y43VoVnaERYOcRwNI6nGJBhUAaZZg/https/opengraph.githubassets.com/58ad25309306534d6c75631998fa09b5371260711d5903b4e0ef8b6f82bf1a2d/JClones/JSFXClones
+
+
+[13.09.2026 10:56] devilfish707
+Yeah these
+
+
+[13.09.2026 10:56] bamshanks
+are they good?
+
+
+[13.09.2026 10:57] bamshanks
+maybe I need to A/B them with my comp and saturator etc
+
+
+[13.09.2026 10:57] devilfish707
+Yeah it's that vladg guy from TDR Molot
+
+
+[13.09.2026 10:57] bamshanks
+I see I see
+
+
+[13.09.2026 10:57] devilfish707
+Phoenix is a guesstimate Clone i think
+
+
+[13.09.2026 10:58] devilfish707
+RC inflator is a 1:1 Clone from elsewhere
+
+
+[13.09.2026 10:59] devilfish707
+And tapehead is like the old Massey plugin cloned i suppose
+
+
+[13.09.2026 10:59] bamshanks
+i've got a character effect I'm fighting at the moment that has tape / tube / fuzz...
+
+
+[13.09.2026 10:59] bamshanks
+I bet theirs are better
+
+
+[13.09.2026 10:59] bamshanks
+uh oh
+
+
+[13.09.2026 11:00] devilfish707
+These are quite subtle though, you can push a little but inflator and Phoenix are more for busses
+
+
+[13.09.2026 11:01] devilfish707
+I wouldn't sweat it, always better to have more options 😄
+
+
+[13.09.2026 11:01] bamshanks
+I'm trying to make this effect work for both insert and bus usage on the master...
+
+
+[13.09.2026 11:01] bamshanks
+due to space
+
+
+[13.09.2026 11:01] bamshanks
+has been a time 🙂
+
+
+[13.09.2026 11:02] bamshanks
+looking forward to see what you come up with and what the word usage is like
+
+
+[13.09.2026 11:03] devilfish707
+Inflator and tapehead are quite cheap
+
+
+[13.09.2026 11:04] devilfish707
+Phoenix eats like all three reverbs but it might be optimisable
+
+
+[13.09.2026 11:04] devilfish707
+(it s like 4-5 tape modes with each 3 brightness settings)
+
+{Reactions}
+👍🏻
+
+[13.09.2026 11:05] devilfish707
+Sec i'll pm you the module files
+
+{Reactions}
+👍🏻
+
+[13.09.2026 11:10] devilfish707
+Yes pm'd, hope that works i had to send them first to my phone haha
+
+
+[13.09.2026 18:34] bryant12345
+Can the remixer render through the stock effects? I’m feeding a sine sweep through the stock Equalizer and it doesn’t seem to change.
+
+
+[13.09.2026 19:56] rbl0k_28323
+scene-kit in workbench isnt anymore neccessary?
+
+
+[13.09.2026 22:29] devilfish707
+Just checked stock Equalizer works over here in remix
+
+
+[13.09.2026 22:30] devilfish707
+I got airwindows ironoxide5 working too and got it optimized to like 877 words from like 1200
+
+{Reactions}
+❤️
+
+[13.09.2026 22:30] bryant12345
+I'm not sure what I was doing wrong.  The file that is rendered to disk (when you press "r" - stored in out/_audition) was the same as my input file regardless of settings.
+
+
+[13.09.2026 22:30] devilfish707
+Ah yeah had it too already
+
+
+[13.09.2026 22:31] devilfish707
+Had to make remix again i think
+
+
+[13.09.2026 22:43] devilfish707
+Ironoxide5 is cool bcs it got a baxandall like thing with the Lo/hi freq speed squeezed into the tape emu, it's quite flexible. Bam this might be my favorite for channels on the OT. I'm going to revisit the sausage fattener clone with tables next
+
+{Reactions}
+❤️
+
+[13.09.2026 22:51] reubenfinger
+@devilfish707 I was hoping that someone would port some of airwindows tape stuff, cool
+
+{Reactions}
+👍
+
+[13.09.2026 23:22] devilfish707
+I'll look into totape, but that one will be expensive. I already had to cut out flutter and noise in ironoxide5
+
+{Reactions}
+👍🏻 (2)
+
+[14.09.2026 03:50] bamshanks
+not a bad lil cleanup 🙂
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1548130870752448562/1548873487815548968/image.png?ex=6aaf3bd8&is=6aadea58&hm=01b547562a8d4577acc8e5e0573dd680f168eec64deba4e90cb64a5c4d65169c&
+
+{Reactions}
+👏
+
+[14.09.2026 05:42] bryant12345
+What was involved in this?
+
+
+[14.09.2026 05:42] bryant12345
+Any lessons learned?
+
+
+[14.09.2026 05:45] bamshanks
+Not really, I just did a massive suite of effects in one hit to replace all the onboards
+
+
+[14.09.2026 05:45] bamshanks
+So was rapid vibe dev, followed by cleanup
+
+
+[14.09.2026 05:46] bamshanks
+didn't expect that much though, can add a few things back 🙂
+
+
+[14.09.2026 05:54] bryant12345
+One of the things that drew me to Octatrack was the finiteness of it. Less option anxiety than the DAW. But here we are …
+
+
+[14.09.2026 06:08] bryant12345
+I’m thinking hard about what I really need/want.
+
+
+[14.09.2026 06:24] bamshanks
+Yeah I have been working toward a pretty fixed list as I use it in a specific way
+
+
+[14.09.2026 06:25] bamshanks
+So it will become even more finite and opinionated
+
+
+[14.09.2026 06:25] bamshanks
+I’m voice tuning my character station now and should have a video tonight
+
+
+[14.09.2026 06:25] bamshanks
+I could almost cry thinking that I get to have these on the octa
+
+
+[14.09.2026 06:25] bamshanks
+😅🥹
+
+
+[14.09.2026 06:26] bamshanks
+Sounding better than I hoped
+
+
+[14.09.2026 06:26] bamshanks
+@devilfish707 put me on to these https://github.com/JClones/JSFXClones/tree/master
+
+{Embed}
+https://github.com/JClones/JSFXClones/tree/master
+GitHub - JClones/JSFXClones: Collection of JSFX plugins
+Collection of JSFX plugins. Contribute to JClones/JSFXClones development by creating an account on GitHub.
+https://images-ext-1.discordapp.net/external/dZs9hPlkw-6jz1y43VoVnaERYOcRwNI6nGJBhUAaZZg/https/opengraph.githubassets.com/58ad25309306534d6c75631998fa09b5371260711d5903b4e0ef8b6f82bf1a2d/JClones/JSFXClones
+
+{Reactions}
+❤️ (2)
+
+[14.09.2026 06:26] bamshanks
+And they have made my character station quite a bit nicer
+
+
+[14.09.2026 06:28] bamshanks
+cherry picking all my favourite open source effects into a monster channel strip and master bus
+
+
+[14.09.2026 13:48] bamshanks
+Nice work on the exception screen @em !
+
+{Reactions}
+❤️ 👍
+
+[14.09.2026 13:48] bamshanks
+That's expedited some troubleshooting
+
+
+[14.09.2026 13:58] emuyia
+glad to hear 🙂
+
+
+[14.09.2026 14:06] yvez_me
+@bamshanks PR is coming your way! A 15-second, 16-bit recording of T1 that can be armed from the menu 🥳
+
+I did not flash anything yet, since I do not have a USB-to-MIDI DIN cable.
+
+Next steps would be:
+- Somebody sanity checks the work 
+- Flash to a real device (could be me, but I a cable first to flash factory if bricked)
+- Make a recording of 15 seconds (or shorter) and verify if it is written succesfully to CF
+
+Then, if all succeeds... 
+- Extend 15 seconds to maybe a "safe" 3600 seconds for now?
+- Extend to T1 - T8 simultaneously
+- 24-bit recording instead of 16-bit
+
+What do you think?
+
+{Reactions}
+👍 (3)
+
+[14.09.2026 14:23] bamshanks
+hey @yvez good stuff, happy to roll it in but you will want to test it first please
+
+{Reactions}
+👍
+
+[14.09.2026 16:02] bamshanks
+Aight first remix of @em 's octakit and @BUKKAKEBOREALIS 's midi scenes is up for testing
+
+https://github.com/sambanks/octabam/blob/main/docs/remixes/ok-ms.md
+
+{Embed}
+https://github.com/sambanks/octabam/blob/main/docs/remixes/ok-ms.md
+octabam/docs/remixes/ok-ms.md at main · sambanks/octabam
+Custom DSP effects for the Elektron Octatrack MKII — original DSP56300 algorithms (ChonVerb reverb, BongDelay) on a cross-core send bus, delivered by patching the stock OS image - sambanks/octabam
+https://images-ext-1.discordapp.net/external/bHLF1vviyEWBzG0f9zJ1IUSui_cX7f4mbBR7RWEymw8/https/opengraph.githubassets.com/164d2d3b67d4a84cc7958a70c964b483b2b7ee843bf558e8c2a8374e64f88d14/sambanks/octabam
+
+{Reactions}
+❤️ (9)
+
+[14.09.2026 16:02] ambient.signals_76175
+Ohh sick
+
+
+[14.09.2026 16:03] ambient.signals_76175
+Will be firing up the ol girl shortly🤌🏾🔥
+
+{Reactions}
+dogspin
+
+[14.09.2026 18:18] rbl0k_28323
+i afraid im still not getting the octabam-concept, i was expecting ok-ms as a workbench-system-module? Is this just a single remix for everyone who doesnt want to install octabam completely?
+
+
+[14.09.2026 18:25] bryant12345
+You can spec your own remix with the features you want.
+
+
+[14.09.2026 18:32] bryant12345
+I used it yesterday to put no effects at all on my Octatrack, just some test code to check something. You spec this with a file in /remixes and then build pointing to that.
+
+{Reactions}
+👍
+
+[14.09.2026 22:32] rbl0k_28323
+@bamshanks Checkout b38dd21 with these choosings if selecting Send, Busverb oder Busdelay
+used the latest octakit with bugfix instead of your pin 92cf70b
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1548130870752448562/1549155937007313026/IMG_3683.JPG?ex=6aaf9a25&is=6aae48a5&hm=6b5495b1d44e1b4450e331e990581cea0bb5de40bd3d25af94cb21a9f3bd94e8&
+https://cdn.discordapp.com/attachments/1548130870752448562/1549155937372340328/Bildschirmfoto_2026-09-14_um_22.31.24.png?ex=6aaf9a25&is=6aae48a5&hm=f4541dd8f582d7aec2174d3d171a10a3023d313743cd22ffb353b5460d7373a3&
+
+
+[14.09.2026 22:44] bamshanks
+It’s something I’ve built for myself that I’m sharing so people that can hack around can also use it. The tui has not been shared yet as my efforts have been elsewhere and it’s highly unfinished. 
+
+I’m sure someone else will make something more user friendly in future
+
+
+[14.09.2026 22:45] bamshanks
+I’ve not got any intention of creating a product to suppor, I’m just sharing my tooling
+
+
+[14.09.2026 22:46] bamshanks
+Yes
+
+
+[14.09.2026 22:48] rbl0k_28323
+Get it. Sorry for harassing 😔
+
+
+[14.09.2026 22:55] bamshanks
+All good
+
+
+[15.09.2026 01:00] rbl0k_28323
+If using Verb/Delay & octakit together they actually use two different lists for the same cursor index when switching to FX2 which causes the crash. Will push fix tomorrow after verifiying
+
+{Reactions}
+👍🏻 (3)
+
+[15.09.2026 08:00] mayrakissa
+just to make sure - i cannot build a remix os on windows?
+
+
+[15.09.2026 08:01] bamshanks
+@yvez got it working on wsl I believe
+
+{Reactions}
+👍
+
+[15.09.2026 08:03] mayrakissa
+i have no idea what that is so im just gonna patiently wait 😆
+
+
+[15.09.2026 08:04] bamshanks
+haha yeah fair enough, I have no plans to make anything beyond how it works now fyi, but I'm sure someone will
+
+
+[15.09.2026 08:16] __chaoticneutral
+@bamshanks we all appreciate your work as is so don’t feel pressured to be ready to answer every question. I think people are just madly excited and don’t intend to overburden you or the mods here. Much love to you and all the other active contributors for getting the ball running and cumulatively building this, really cool to see how this is unfolding collaboratively. imagine where we’ll be in just a few months 😍
+
+{Reactions}
+❤️ (7)
+
+[15.09.2026 08:17] bamshanks
+yeah it's wild how quickly it's progressing
+
+
+[15.09.2026 08:18] bamshanks
+I still haven't had much of a play with octakit (must. finish. effects re-architecture) but it's crazy to think that's possible now
+
+{Reactions}
+🔥 💯
+
+[15.09.2026 13:05] rbl0k_28323
+https://github.com/sambanks/octabam/pull/280
+
+{Embed}
+https://github.com/sambanks/octabam/pull/280
+fix: keep Octakit FX2 chooser validation in sync by rbl0k · Pull R...
+Summary
+Keep Octakit&#39;s hardcoded stock FX2 chooser table in sync with OCTABAM&#39;s relocated live FX2 chooser when OCTAKIT is present.
+Root cause
+Octakit&#39;s machine-selection ru...
+
+{Reactions}
+❤️
+
+[15.09.2026 13:15] bamshanks
+Nice one! Hadn't tried using them yet together
+
+
+[15.09.2026 13:30] bamshanks
+just adding fx1 to your branch and will merge in
+
+
+[15.09.2026 13:35] bamshanks
+done
+
+{Reactions}
+❤️
+
+[15.09.2026 17:47] pituzinho9269
+what would be the dream with this development? Custom Fx? To take out the old and use new ones?
+
+{Reactions}
+👍🏻
+
+[15.09.2026 17:57] rbl0k_28323
+After finally fixed the bug at 2 a.m., I realized that delay-verb routing is fixed.  Now just »quickly« switching back to the old behaviour with two sends before I can finally make some music 😉
+
+{Reactions}
+😁
+
+[15.09.2026 22:29] rbl0k_28323
+Right now, as I'm taking it apart, i've realize how brilliant your test logic for verb & delays is. 
+You're a real ace, @bamshanks  Thanks so much for your great work!
+
+{Reactions}
+💯 ❤️
+
+[16.09.2026 00:02] bamshanks
+yes that's what i've been working on and am nearly finished with. Plus integrating other peoples fixes and things like midi kits
+
+
+[16.09.2026 23:44] .reliktfarn
+Just finished the repitch warping feature / remix
+
+{Reactions}
+❤️ (4) 😲 (4) 🔥
+
+[17.09.2026 02:16] pituzinho9269
+expand a little? What changed? I'm salivating
+
+
+[17.09.2026 05:23] _anfim
+repitch is high on my OT wishlist for sure!
+
+
+[17.09.2026 05:25] yldopactyly
+Repitch u mean similar to a classic AKAI sampler for breaks etc.?
+
+
+[17.09.2026 05:28] _anfim
+it's a different 'timestretch' mode that changes pitch when you change the bpm, like slowing down a vinyl record. it's a feature present on the digitakt but not OT despite people asking for it for years
+
+{Reactions}
+❤️ (2)
+
+[17.09.2026 07:20] bamshanks
+Can’t wait for that PR 🙂
+
+
+[17.09.2026 07:25] .reliktfarn
+@bamshanks do you accept pull requests on this repo?
+
+
+[17.09.2026 07:25] .reliktfarn
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1548130870752448562/1550014879069376512/IMG_9053.jpg?ex=6aaf6e59&is=6aae1cd9&hm=3327b5838e737521ff4dea1cecd7e4562d1db5edce515c61bc86eccf35764c39&
+
+{Reactions}
+❤️ (5) 🤯 (2)
+
+[17.09.2026 07:27] bamshanks
+Absolutely!
+
+
+[17.09.2026 07:28] bamshanks
+Feature requests? Nah. PRs? Heck yeah
+
+
+[17.09.2026 08:37] .reliktfarn
+Will push tonight
+
+{Reactions}
+❤️
+
+[17.09.2026 10:26] braek1471
+What is going on here..I am new to this group. Can anyone please explain? 😆
+
+
+[17.09.2026 10:54] .mdee
+love when i see locals/peeps i know join
+
+{Reactions}
+❤️
+
+[17.09.2026 22:26] ambient.signals_76175
+@bamshanks is one of the chosen octa wizards helping compile a baseline repo to build custom os from for the octatrack, his work is focused on revamping the effects in the octatrack, all of them. 
+
+His GitHub repo I believe is also the main repo where everyone else's work is being dropped into. 
+
+There's many features in development
+
+But currently you can flash a frimware that has @BUKKAKEBOREALIS midi scene and @em octakit.
+
+Just grab a LLM and feed it the GitHub repos in the mods section of discord. There's a lot going on though and things are moving fast. what I mentioned is hardly a quarter of what's going on in this discord but I hope it helps answer some of your questions besides making more?
+
+{Reactions}
+❤️ (6)
+
+[17.09.2026 23:51] braek1471
+Thank you, that makes sense. This is very exciting 😎
+
+
+[18.09.2026 10:54] .reliktfarn
+Anyone have a working new reverb implementation? My own ones still have lots of quirks, crossbleeding and bugs while having multiple instances running. Also the Busverb implementation instantly crashed the sequencer
+
+
+[18.09.2026 11:27] bamshanks
+Busverb is stable for me now, but you gotta do it on a clean project and kinda set everything up right.
+
+
+[18.09.2026 11:28] bamshanks
+I’m gonna do some pressure testing tomorrow and will get some remixes up that are a bit better tested.
+
+
+[18.09.2026 11:29] bamshanks
+If you look in the known issues Claude calls the sequencer stall a wedge
+
+
+[18.09.2026 11:30] bamshanks
+But yeah it doesn’t play well with others, you gotta go all in coz it steals all the resources 🙂
+
+
+[18.09.2026 11:30] bamshanks
+Couple people have been using it successfully for quite a while
+
+
+[18.09.2026 11:33] devilfish707
+I've been thinking about porting tukan jsfx reverbs, their lexicon 480 is really nice but way too many parameters and probably way too expensive
+
+
+[18.09.2026 11:34] bamshanks
+Reverb was probably harder than all the other effects combined
+
+
+[18.09.2026 11:34] bamshanks
+Damn it’s nice to hear a massive vintage verb style with shimmer on an Elektron though
+
+
+[18.09.2026 11:34] devilfish707
+Yeah i can imagine
+
+
+[18.09.2026 11:35] bamshanks
+Tomorrow is demo and (famous last words) finish the rig day for me
+
+
+[18.09.2026 11:35] bamshanks
+But tuning up all those allpass filters and stuff was so time consuming and tricky
+
+
+[18.09.2026 11:36] bamshanks
+Lost a day trying to make pre delay work but not enough grunt
+
+
+[18.09.2026 11:37] bamshanks
+Everything else I could say Claude make me a thing for the most part. But reverb I had to hand roll to the hardware
+
+
+[18.09.2026 11:38] bukkakeborealis
+I tested a bit the effects, noticed crackles from spectrum with high resonance settings. Sounds great though
+
+
+[18.09.2026 11:38] bamshanks
+Haha damn thought id exorcised the crackles
+
+
+[18.09.2026 11:39] bamshanks
+Pushing the limits
+
+
+[18.09.2026 11:39] bamshanks
+Wife is with her parents this weekend so I’ve got two days to knock it off
+
+
+[18.09.2026 11:39] ambient.signals_76175
+The crackles in question
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1548130870752448562/1550441150056239114/image0.gif?ex=6aaf0117&is=6aadaf97&hm=c605a2dbef6adf71cfef68afd9f1a71828d6c646f3f50a73b26d8cbaa218561e&
+
+
+[18.09.2026 11:39] .reliktfarn
+Also getting crackles with my tape echo implementation still 🙁
+
+
+[18.09.2026 11:39] bukkakeborealis
+Exact same haha
+
+{Reactions}
+❤️
+
+[18.09.2026 11:40] bamshanks
+They are so hard to track down
+
+
+[18.09.2026 11:40] bamshanks
+Mine seem to be mostly when adjusting the time and feedback
+
+
+[18.09.2026 11:40] devilfish707
+Are these cpu crackles?
+
+
+[18.09.2026 11:40] bamshanks
+Hard to say
+
+
+[18.09.2026 11:40] bamshanks
+That’s the problem
+
+
+[18.09.2026 11:40] devilfish707
+Or param smoothing
+
+
+[18.09.2026 11:40] devilfish707
+Hmm ok
+
+
+[18.09.2026 11:40] bamshanks
+They don’t happen on the emu
+
+
+[18.09.2026 11:40] devilfish707
+Ah ok i see
+
+
+[18.09.2026 11:40] bamshanks
+Param smoothing initially
+
+
+[18.09.2026 11:40] bamshanks
+But there are other ones
+
+
+[18.09.2026 11:41] bamshanks
+That don’t go away until you reload
+
+
+[18.09.2026 11:41] bamshanks
+Which I thought / hoped I’d sorted
+
+
+[18.09.2026 11:41] bamshanks
+I think it’s cycles but I’m not 100%
+
+
+[18.09.2026 11:42] devilfish707
+I'll flash your fx later on and test a bit, don't have much time atm
+
+
+[18.09.2026 11:43] bamshanks
+Yeah let me get it a bit more testable tomorrow
+
+{Reactions}
+👍
+
+[18.09.2026 11:43] bamshanks
+I feel like if you just sub part of it in it’s probably gonna have issues
+
+
+[18.09.2026 11:43] bamshanks
+As I’ve only done full rig testing
+
+
+[18.09.2026 14:14] 256k
+oh, hi @Anfim 😄
+
+{Reactions}
+🦕 👀
+
+[18.09.2026 16:39] rbl0k_28323
+GPt claims that the latest octabam (3f19cfd1069a3deb6770c1e49ec39a40aad0d0f9) is going back to having Delay/Reverb completly independent from each other. Is that true? 
+Just wondering because the lastest version i've hardwareflashed had Delay hardwired into reverb.
+(additionally this would save me from getting mad, im failing since days patching the old 2Bus for Delay/Reverb from 9da61068 back 🤯 )
+
+
+[18.09.2026 17:29] bamshanks
+I’m doing them hard wired
+
+
+[18.09.2026 17:30] reubenfinger
+Is there any particular place in Bam that the crackles occur, and I'll try and replicate, was it just high resonance?
+
+
+[18.09.2026 17:32] bamshanks
+I’ve not been having them on the latest but giving them a proper stress test tomorrow
+
+
+[18.09.2026 17:32] bamshanks
+But it was happening when messing with time and feedback controls mostly
+
+
+[18.09.2026 17:37] reubenfinger
+I think I'm on the latest, just got my issues sorted and flashed the bin this morning, haven't had a proper play yet, but so far Character is a Boss with Bryan's sound on sound technique.....first time really seeing/hearing properley what you've been producing Bam, super impressive, really awesome sounding work....can't wait till the trifecta
+
+
+[18.09.2026 17:38] bamshanks
+We are close 🤞
+
+{Reactions}
+🔥 (2) 🥳
+
+[18.09.2026 17:39] reubenfinger
+Legends
+
+
+[18.09.2026 17:42] reubenfinger
+you guys will be heralded for ages
+
+
+[18.09.2026 18:10] devilfish707
+Bam i've been testing ok-ms and it's not very stable for me. Got a crash after creating a new project, sequencer hanged when rebooting. Tried to reload the project sequencer hanging again
+
+
+[18.09.2026 18:17] bamshanks
+Dang. Will probably need to test them individually and see if it’s either of them individually. All I did was combine em, so it’s likely either one of them doing it or resource usage maybe. 
+
+I’ve not actually tested them together as it isn’t my goal, but I believe @BUKKAKEBOREALIS has been
+
+
+[18.09.2026 18:19] devilfish707
+I'm going to give it another shot. Noticed some cfw behave buggy when USB is still plugged in, gotta rule that out
+
+
+[18.09.2026 18:19] reubenfinger
+Haven't done any severely critical listening, but just ran an 808 kick through all filter types on my build at peak resonance and am not hearing a crackle
+
+
+[18.09.2026 18:22] reubenfinger
+For clarity, an 808 kick sample on my octatrack, not through the inputs
+
+
+[18.09.2026 18:27] devilfish707
+Yeah might have been very well the USB cable, OT was tripping out lol
+
+
+[18.09.2026 18:27] devilfish707
+Gonna test some more
+
+
+[18.09.2026 18:31] rbl0k_28323
+Had crackles on latest checkout on my MK1 too, @bamshanks are you hardwaretesting on MK2 oder MK1?
+
+
+[18.09.2026 18:32] reubenfinger
+Mines MK2
+
+
+[18.09.2026 18:33] reubenfinger
+can you describe the crackle?
+
+
+[18.09.2026 18:33] reubenfinger
+other than it's a crackle
+
+
+[18.09.2026 18:34] reubenfinger
+I realise that's a pretty stupid question
+
+
+[18.09.2026 18:34] rbl0k_28323
+not really. but try if a quick record is working
+
+
+[18.09.2026 18:37] rbl0k_28323
+Mainly digital noise, but you hear the crackles in it. pleay it VERY silent, plz!
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1548130870752448562/1550546234819870921/Output_1-2.wav?ex=6aaf62f6&is=6aae1176&hm=f89419c84d0deaf779f0398f0c9ee517bdacecded45f5114ce4ff9b64dab5b9e&
+
+
+[18.09.2026 18:40] reubenfinger
+yeah like a digital noise , thank you
+
+
+[18.09.2026 18:41] reubenfinger
+let me put a tone through rather than just a bass drum and see if I can replicate
+
+
+[18.09.2026 18:46] bukkakeborealis
+Yes together. And with other remixes 🫣Might be why they glitched. I still need to find time to try them individually. Because really interested in using some of them, filters especially for new flavors
+
+
+[18.09.2026 18:48] devilfish707
+Been testing ok-ms for half an hour without USB, seems stable for now
+
+{Reactions}
+❤️
+
+[18.09.2026 18:50] devilfish707
+Bukka the fader values are still a bit jumpy for me compared to turning the knob directly. I'm gonna test with some other synths
+
+
+[18.09.2026 18:53] reubenfinger
+@rbl0k can't replicate the digital noise with the tone on the mk2 either
+
+
+[18.09.2026 18:53] bukkakeborealis
+Version 8.1
+
+
+[18.09.2026 18:53] bukkakeborealis
+?
+
+
+[18.09.2026 18:53] devilfish707
+It's the version the ok-ms remix pulls
+
+
+[18.09.2026 18:54] devilfish707
+But i'm starting to suspect my multi/Poly doesn't play Well with the fader
+
+
+[18.09.2026 18:54] devilfish707
+Micromonsta2 seems smoother
+
+
+[18.09.2026 18:56] bukkakeborealis
+I think different synths might react differently. AR for exemple is not happy with midi CC in. You used mono/poly with external midi device before I guess?
+
+
+[18.09.2026 18:56] bukkakeborealis
+Can go on midi scenes if you want to not crowd this channel
+
+
+[18.09.2026 18:57] bukkakeborealis
+Or PM me
+
+
+[18.09.2026 22:19] _anfim
+Look at me getting all excited by vibe coding!!
+
+{Reactions}
+👀 (2) 😂
+
+[18.09.2026 22:21] 256k
+this will be our dirty lil secret ok? 🤫
+
+{Reactions}
+👮 😂
+
+[18.09.2026 22:21] 256k
+shit
+
+
+[18.09.2026 22:21] 256k
+we're busted
+
+{Reactions}
+🚨
+
+[18.09.2026 22:22] 256k
+er.. this is a different 256k
+
+{Reactions}
+😏 🤥
+
+[18.09.2026 22:22] 256k
+https://klipy.com/gifs/awkward-side-eye
+
+{Embed}
+https://klipy.com/gifs/awkward-side-eye
+Awkward Side Eye Glance
+https://images-ext-1.discordapp.net/external/U099nWuDS8VuwuydTK1Cr557vxisNTZnT30oWE_6ZWY/https/static.klipy.com/ii/d7aec6f6f171607374b2065c836f92f4/bd/1e/ZkAfZ71O.webp
+
+
+[19.09.2026 01:01] tristanh1
+Just a little appreciation message : thank you guys for doing all this great work 🙂
+
+{Reactions}
+❤️
+
+==============================================================
+Exported 330 message(s)
+==============================================================

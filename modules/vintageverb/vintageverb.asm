@@ -44,14 +44,24 @@
 ;   Round-trip gain is DECAY^4 per figure-8, loop 0.607 s, so DECAY
 ;   0.28..0.82 spans RT60 ~0.8 s .. ~5.3 s.
 ;
-; ---- ONE circular buffer, every line a window on one head ------------------
-; Y:0x4000..0x7FFF, 16,384 words, m5 = $3FFF, r5 = the head. Line i writes at
-; (head - W_i) and reads at (head - W_i - D_i), so its data occupies the
-; fixed relative window [W_i, W_i+D_i] and the AGU's modulo does every wrap
-; for free -- no per-line pointer, no compare, no mask. The head is now kept
-; IN r5 across the whole block and advanced with `move (r5)+` (one cycle,
-; wrapped by the AGU) instead of being rebuilt from an r7 word every sample.
-; 0x4000 is 16,384-aligned, which is what the modulo mode requires.
+; ---- ONE circular buffer per instance, every line a window on one head -----
+; 16,384 words, m5 = $3FFF, r5 = the head. Line i writes at (head - W_i) and
+; reads at (head - W_i - D_i), so its data occupies the fixed relative
+; window [W_i, W_i+D_i] and the AGU's modulo does every wrap for free -- no
+; per-line pointer, no compare, no mask. The head is now kept IN r5 across
+; the whole block and advanced with `move (r5)+` (one cycle, wrapped by the
+; AGU) instead of being rebuilt from an r7 word every sample.
+;
+; The base is no longer the fixed literal $4000: init reads this FX2
+; instance's own 16K slot from the stock allocator (X:$213, the same
+; mechanism modules/tapeecho/tape_echo.asm uses), so up to four tracks per
+; core each get an independent buffer instead of all sharing one -- a
+; second track selecting Vintage Verb no longer corrupts an already-running
+; one. All four of the allocator's per-core bases ($4000, $8000, and two
+; shared-window addresses -- docs/firmware/DSP.md section 10) are
+; 16,384-aligned, which is what the modulo mode requires, so the SAME
+; per-line offset table below is correct at any of them: only r5's WARM-UP
+; starting value changes, nothing else in the sample loop does.
 ;
 ;   PRE   W=0      D=2047     AP1  W=2048  D=105    AP2  W=2154  D=79
 ;   AP3   W=2234   D=281      MAP1 W=2516  D=417 (+40 slack for the mod)
@@ -64,7 +74,8 @@
 ;
 ; ---- r7 slots ---------------------------------------------------------------
 ;   $20 DECAY  $21 damp coeff  $22 WARP  $23 -(predelay)  $24 MIX  $25 WIDTH
-;   $26 head address (PERSISTENT)   $28 toggle (P)   $29 previous input (P)
+;   $26 head address (PERSISTENT)   $27 allocator-provided 16K base (P)
+;   $28 toggle (P)   $29 previous input (P)
 ;   $2c wetL now / tap acc   $2d wetR now / tap acc
 ;   $2e wetL previous (P)    $33 wetR previous (P)
 ;   $2f allpass park         $30 diffused input     $34/$35 this sample's out
@@ -87,6 +98,25 @@
 ; ---------------------------------------------------------------------------
 
 init:
+; X:$213 points at this instance's allocator-table entry during init (valid
+; there only -- docs/firmware/DSP.md section 8). Stash the 16K base it names
+; so the warm-up below starts the head there instead of a fixed literal.
+        move    x:>$213,r4
+        move    #>$ffffff,m4
+        move    x:(r4),a
+        move    a,x:(r7+$27)
+; The warm-up gate below trusts a tagged counter at r7+$31 to tell a fresh
+; instance from one already 128 blocks in -- but nothing ever cleared it,
+; so a live reselect inherits whatever the track's PREVIOUS effect (or DSP
+; boot) left there. verify_dirtystate's four fixed fills never land on the
+; tag pattern by chance, so this passed silent on all of them and still
+; produced full-scale garbage (r7+$26, the head, was equally never set from
+; the base above) the one time a fill actually collided with it -- measured
+; 18 Sep 2026, fill $320080: peak 32,762 where every other fill is silent.
+; Clearing it here is unconditional and cannot collide, so the first proc
+; call is always block 0 of the real warm-up, on every init, garbage or not.
+        clr     a
+        move    a,x:(r7+$31)
         rts
 
 proc:
@@ -116,7 +146,8 @@ vv_wtag:
 vv_wrun:
         move    a,x:(r7+$32)
         asl     #$7,a,a                 ; count*128
-        add     #>$4000,a
+        move    x:(r7+$27),x0            ; the allocator-provided base
+        add     x0,a
         move    a,r1
         clr     b
         do      #128,>vv_wz
@@ -134,7 +165,7 @@ vv_wz:
         move    b,x:(r7+$3d)            ; branch-1 damp state
         move    b,x:(r7+$3e)            ; b1
         move    b,x:(r7+$3f)            ; branch-2 damp state
-        move    #>$4000,a               ; the head, as an absolute address
+        move    x:(r7+$27),a            ; the allocator-provided base, as the head
         move    a,x:(r7+$26)
         move    x:(r7+$32),a
         add     #>$1,a

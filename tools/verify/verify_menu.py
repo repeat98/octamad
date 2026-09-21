@@ -154,6 +154,10 @@ def main():
         if not cond:
             fails.append(msg)
 
+    check(img[0x400d24d0-BASE:0x400d24e0-BASE] ==
+          stock[0x400d24d0-BASE:0x400d24e0-BASE],
+          "stock DELAY filter-table tail (entries 508..511) is not an overflow cave")
+
     print("=== FUN_40052474 / FUN_4005996c both embed 0x400d6090 as an "
           "absolute operand at these 3 sites (GhidraChooser.java found them "
           "inside those two functions); confirm all three now read the SAME "

@@ -29,7 +29,13 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 HOST = ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_host"
 FRAMES, BLOCKS, TAIL = 15, 100, 300
 FLOOR_DB = -100.0
-FILLS = (0x7fffff, 0x800000, 0x400000, 0x5a5a5a)
+FILLS = (0x7fffff, 0x800000, 0x400000, 0x5a5a5a,
+         0x320080)   # a tagged-counter warm-up gate's own "already warm" pattern
+                      # ($upper15 == a magic constant, $low9 >= a threshold) -- the
+                      # four fills above never land on one by chance, so this is
+                      # what caught VintageVerb's own gate reading uncleared r7+$31
+                      # as "128 blocks in" on a live reselect and skipping the zero
+                      # (18 Sep 2026: peak 32,762 where every other fill is silent)
 R7 = 0x6100                       # dsp_host: instance 0 with -r7 1 sits at X:0x6100 (it prints so)
 
 
@@ -40,11 +46,12 @@ def mem_with_fill(base: pathlib.Path, fill: int, out: pathlib.Path) -> pathlib.P
     out.write_bytes(body + run + term); return out
 
 
-def render(mem: pathlib.Path, init: int, proc: int, params, tmp: pathlib.Path):
+def render(mem: pathlib.Path, init: int, proc: int, params, tmp: pathlib.Path,
+           alloc: int = 0):
     n = FRAMES * BLOCKS
     src = tmp / "in.raw"; src.write_bytes(b"\0" * (8 * n)); out = tmp / "out.raw"
     cmd = [str(HOST), "-mem", str(mem), "-init", f"{init:x}", "-proc", f"{proc:x}", "-inst", "1", "-r7", "1",
-           "-alloc", "0", "-inmask", "1", "-stereo", "-frames", str(FRAMES), "-blocks", str(BLOCKS),
+           "-alloc", str(alloc), "-inmask", "1", "-stereo", "-frames", str(FRAMES), "-blocks", str(BLOCKS),
            "-in", str(src), "-out", str(out), "-params", ",".join(str(x) for x in params)]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode:
@@ -91,11 +98,13 @@ def main():
             if ep == send_ep[pl]:
                 print(f"  {mod.name:14s} not placed on either payload -- skipped"); continue
         init, proc = ep
+        claims = getattr(mod, "claims", None)
+        alloc = 1 if claims is not None and claims.stock_instance_buffer else 0
         for label, params in knob_sets(mod):
             worst = None
             for fill in FILLS:
                 mem = mem_with_fill(mems[pl], fill, tmp / f"{key}_{fill:06x}.mem")
-                res, err = render(mem, init, proc, params, tmp)
+                res, err = render(mem, init, proc, params, tmp, alloc)
                 checked += 1
                 if res is None:
                     fails += 1; print(f"FAIL {mod.name:14s} {label:20s} fill {fill:06x}: dsp_host failed: {err.strip()[-160:]}"); continue

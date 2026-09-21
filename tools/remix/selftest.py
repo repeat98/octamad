@@ -514,6 +514,8 @@ def main():
                  "DJ EQ", "COMB FILTER")
     _want = {"restock": (), "recfix": (), "mods": (), "ok-ms": (),
              "repitch": (),
+             "octaclidean": ("PLATE REV", "SPRING REV", "DJ EQ"),
+             "octaclidean-miniverb": ("PLATE REV", "SPRING REV", "DARK REV", "DJ EQ"),
              "octapitch-euclid": ("PLATE REV", "SPRING REV", "DJ EQ"),
              "octapitch-euclid-debug": ("PLATE REV", "SPRING REV", "DJ EQ"),
              "euclid": ("SPATIALIZER", "FLANGER", "CHORUS", "COMB FILTER"),

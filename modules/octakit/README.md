@@ -63,6 +63,19 @@ PAGE 2 shares her MIDI CC dispatch entry through `modules/scenes-kits`.
   `gk_workspace_mark_dirty_pending` → `gk_workspace_commit_update` →
   `gk_descriptor_release`. All six are `.global` in her runtime.
 
+## Open integration checks
+
+- The Kit write protocol above has not been measured against MIDI SCENES'
+  Part save/reload hooks. Any module that writes Part-shaped data must use the
+  active-workspace editing functions rather than changing only the saved Kit.
+- An OK-MS hardware report from 14 Sep 2026 describes REC SETUP state surviving
+  a Part change: the screen showed the new Part's `RLEN`/`SRC3`, but recording
+  still used the value last tweaked in the previous Part until a power cycle or
+  reload. This is a report, not a root cause. A regression should vary Part,
+  Pattern and record trig independently and compare the displayed descriptor,
+  saved Kit bytes and live recorder state before assigning it to Octakit, MIDI
+  SCENES or stock firmware.
+
 ## Updating
 
 Bump the submodule and rebuild; the identity checks either pass or name the

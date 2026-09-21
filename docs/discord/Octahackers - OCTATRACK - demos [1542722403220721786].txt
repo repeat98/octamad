@@ -1,0 +1,1205 @@
+==============================================================
+Guild: Octahackers
+Channel: OCTATRACK / demos
+Topic: Videos and Samples of what people are doing with custom firmare
+==============================================================
+
+[28.08.2026 09:41] bukkakeborealis
+Be careful with feedbacks they can get a bit wild
+
+{Reactions}
+🔥 (3)
+
+[28.08.2026 11:13] emuyia
+Octakit - 4 Parts per Bank replaced with 256 Kits per Project. There will be a github repo for this soon
+https://www.junes.website/goodies/octakit
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542722403220721786/1542824440709128244/image.png?ex=6aaefafa&is=6aada97a&hm=0461fbac9543c8a95384071e58fb97753823c56b820e2a000c3265c967a701d6&
+https://cdn.discordapp.com/attachments/1542722403220721786/1542824441304850483/image.png?ex=6aaefafb&is=6aada97b&hm=8e6d20ea015120468d5446dcc4f123980f5295080b51da3d82490fd96e6c005d&
+https://cdn.discordapp.com/attachments/1542722403220721786/1542824441640132660/image.png?ex=6aaefafb&is=6aada97b&hm=f8690e8b77c421fdaf14d9eea4db988f8da40b36087e7a723bc3a28c8b1437f3&
+https://cdn.discordapp.com/attachments/1542722403220721786/1542824441967280158/image.png?ex=6aaefafb&is=6aada97b&hm=246bca4062d99e1de1d36661dc9f0028e85b7ea6fc373c6be3352a17af61dd52&
+
+{Reactions}
+❤️ (5)
+
+[28.08.2026 11:14] bamshanks
+Sheeeiitt that is interesting
+
+
+[28.08.2026 11:14] bamshanks
+My workflow is around parts but this makes the cogs spin a bit
+
+
+[28.08.2026 12:35] bukkakeborealis
+Testing it now. It’s awesome to have unlimited parts. I noticed changing patterns don’t always recall properly the right kit
+
+{Reactions}
+👍
+
+[28.08.2026 12:38] bukkakeborealis
+Could it be possible to have kits directly assigned and saved with patterns? I mean each pattern has it’s own kit saved automatically. That way the workflow would be a lot faster than having to save kits every time when modified
+
+{Reactions}
+👍
+
+[28.08.2026 12:40] bukkakeborealis
+There could still be a save option to recall the part though
+
+
+[28.08.2026 12:51] emuyia
+I could try introduce a quick save, and/or a toggle to enable auto-save in place, like pattern data. or like parts: kits left in a dirty state until Save / Save All
+
+
+[28.08.2026 12:52] bamshanks
+Risky side effect wise but could be awesome
+
+
+[28.08.2026 12:58] bukkakeborealis
+Yeah quick save would be great and when saving decide which kit to save it to. Why I thought of assigning pattern1-kit1, pattern2-kit2 etc by default is that when copy/paste a pattern modifying the kit would be saved with the pattern without having to assign a save a new kit after modification. Hope that makes sense 😅
+
+
+[28.08.2026 13:01] bukkakeborealis
+Had a crash after a while
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542722403220721786/1542851536533594153/IMG_0862.jpg?ex=6aaf1437&is=6aadc2b7&hm=de9ffbddaaf7e3db15b711352e5c4224865bc371ca67a2caff9b97a0bb94f33b&
+
+{Reactions}
+👍
+
+[28.08.2026 13:01] emuyia
+ah I gotcha, I misunderstood what you meant. that's interesting, will have a think 🙂
+
+
+[28.08.2026 13:02] emuyia
+when I get the github up there'll be a better place to report crashes
+
+{Reactions}
+👍
+
+[28.08.2026 13:04] bukkakeborealis
+It’s basically like each pattern would have it’s own kit with 16 scenes, different sounds, FX etc. But with the option to save, copy and paste kits from the kit menu
+
+
+[28.08.2026 13:05] bukkakeborealis
+And if copying a pattern would also copy/paste the kit it could make a killer workflow
+
+{Reactions}
+❤️
+
+[29.08.2026 11:52] emuyia
+https://github.com/emuyia/ems-octakit
+https://github.com/emuyia/ems-octakit/issues/new?template=bug_report.md
+
+
+[29.08.2026 11:53] rbl0k_28323
+Sounds like MM behaviour to me?
+
+
+[29.08.2026 12:09] bukkakeborealis
+I don’t know how MM works. It’s really just each pattern owns it’s own Kit but that could be copied to other patterns and saved for reloading
+
+
+[29.08.2026 12:29] kjnilsson
+I assume it is still possible for patterns to share a kit, like for parts?
+
+{Reactions}
+👍
+
+[29.08.2026 12:46] bukkakeborealis
+I tested and so far that’s how it works. Kits are 256 parts
+
+
+[29.08.2026 12:47] kjnilsson
+So just more parts. Potentially one per pattern. Got it. Thanks.
+
+
+[29.08.2026 12:50] xopek6813
+How kits quickly load?  “part consists of machine, sample and effect assignments along with track parameter settings and up to 16 scenes”
+
+
+[29.08.2026 14:19] emuyia
+I'm thinking of a 'special' pattern paste action which includes kit data, but puts the kit data in the next available kit slot. if kit slots are full, then it would place it in the next unassigned kit slot (which there will always be at least one of, even if all pattern slots are populated as well)
+
+{Reactions}
+👍 (2) ❤️ (2)
+
+[29.08.2026 14:23] emuyia
+that way you can mess with a kit, and then save the current state of everything into a new pattern & kit slot, messed-up-kit included
+
+
+[29.08.2026 15:05] bukkakeborealis
+Sounds great 🙂
+
+
+[30.08.2026 13:37] homeboiflex
+Similar to above but even simpler, I’ve always wanted a shortcut to do all this in one-click:
+
+copy current part
+paste to new part 
+select that new part 
+
+(I do it manually all the time to continue working while not messing previous music, might be more practical now with kits!)
+
+
+[30.08.2026 15:35] homeboiflex
+Also imagine that but to a new pattern too, one click to:
+
+copy pattern
+copy its part
+paste to new pattern
+paste to new part 
+
+(it wouldn’t play the new pattern yet, you’d just have a duplicate pattern there with a fresh duplicate part to play whenever you’re ready)
+
+
+[30.08.2026 16:22] emuyia
+that sounds good
+
+{Reactions}
+🔥 ❤️
+
+[30.08.2026 16:29] emuyia
+that sounds useful as well but if the pattern isnt selected afterwards as part of the action, I figure there may need to be something to help inform where the pattern was pasted to
+
+
+[30.08.2026 16:29] emuyia
+or simply always paste it in the next slot or something
+
+
+[30.08.2026 16:39] homeboiflex
+Yeah I wondered, and I figure next pattern over is the most logical. 
+
+What’s most important to me is that the music never stops, having to stop to copy a pattern is a bummer.
+
+
+[30.08.2026 16:45] emuyia
+yes, agreed. there's also being able to copy/paste/clear/undo other patterns, without loading them. I have that working for an upcoming mnm firmware beta update, and I think that would be welcome on OT too. currently that is BANK+FUNC+TRIG+copy/paste/clear on mnm
+
+{Reactions}
+🔥
+
+[31.08.2026 05:33] bamshanks
+Added a lil renderer for the effects so you can mess around with your effects and have claude read the log. Should make voicing a bit quicker and easier
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542722403220721786/1543826140962103326/2026-08-31_13-29-38.mov?ex=6aaf5422&is=6aae02a2&hm=acfb6130a32c162c1827dc9f62d477691d93d9dc6b3ab6ecfdf309f2d6d70660&
+
+{Reactions}
+❤️ (4)
+
+[31.08.2026 05:36] bamshanks
+And did a lil ui work on the remixer, not complete but mostly working and useful
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542722403220721786/1543826674313986068/image.png?ex=6aaf54a2&is=6aae0322&hm=652f7f8c5b71c69e7bd5215a4de1e3db9c1e002703528c29c08d0344643769b1&
+
+
+[31.08.2026 06:47] bamshanks
+Some nice shimmers
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542722403220721786/1543844548822700103/2026-08-31_14-43-57.mov?ex=6aaf6547&is=6aae13c7&hm=3cfdc5769ea1b8eeb68e79b0badd64c68f1f7ec9f03ed43f15276512dfe0c937&
+
+{Reactions}
+❤️ (3)
+
+[31.08.2026 14:49] bryant12345
+The renderer is sweet. Really impressive.  
+
+Are you giving any thought to presets for the effects? Another layer of complexity, but might be useful for the more fiddly/flexible effects.
+
+
+[31.08.2026 19:10] __chaoticneutral
+Very stoked for this, much appreciation headed your way for sharing your nifty tools! I will be happy to help test in the coming weeks, let us know if there is a new version and I will flash when I can. Is there any other forum/channel to discuss the Octakit?
+
+{Reactions}
+❤️
+
+[31.08.2026 22:13] bamshanks
+Umm they have modes, shimmer, reverse, grain, etc; but are you meaning like saveable presets?
+
+
+[31.08.2026 22:29] bryant12345
+Yeah, saveable presets. With reverbs in particular I find presets are valuable.
+
+
+[31.08.2026 22:30] bamshanks
+interesting idea
+
+
+[01.09.2026 02:07] emuyia
+Hmm, there are the [github issues and discussions sections](https://github.com/emuyia/ems-octakit), but that's currently the only place other than here. I think a Thread could work well
+
+{Reactions}
+❤️
+
+[01.09.2026 02:09] bamshanks
+Made you a channel now
+
+{Reactions}
+❤️ (2)
+
+[01.09.2026 02:10] bamshanks
+If that’s what you were after?
+
+
+[01.09.2026 02:10] bamshanks
+Happy to upgrade peeps to admin if they have the desire
+
+
+[01.09.2026 02:12] emuyia
+Thanks that works! 🙂
+
+{Reactions}
+❤️
+
+[01.09.2026 02:13] bamshanks
+No probs!
+
+
+[05.09.2026 11:30] befriendthedragon_93582
+Howdy hey yall big up on everything you guys are achieving. I'm not a coder or programmer but would love to help out if anybody want a test dummy, Im now available to do some tests with the mk1. Just drop me a line and ill start checking things out and recordiing the interactions
+
+{Reactions}
+👍🏻 (2) 👍 (3)
+
+[08.09.2026 21:31] mrscruff2277
+I've been working on a new machine I'm calling DUALBUS. It currently replaces pickup but I'll look into if it's possible to add it as an additional machine instead.
+
+It's intended for doing DJ style transitioning between two configurable buses. Each bus is fed by a configurable selection of other tracks, even if those tracks are muted. The input tracks levels are still respected. Then you have a level control (fully bus A, A + B, fully bus B). A DJ style bass kill control (B fully cut, both fully cut, A fully cut), and a Low mid control for additional shaping. It also has a binary swap control which let's you flip the buses for when you're transitioning eg. from live into a recorded loop.
+
+The nice thing is no configuration is done per track, everything is done on the DUALBUS machine. You can use it like a more flexible master track if you want. Eg. put it on T7, bus into it and then have T8 as a neighbour to have a master with 4 FX slots.
+
+{Reactions}
+👍 (4)
+
+[08.09.2026 21:33] kjnilsson
+Sounds cool.
+
+
+[08.09.2026 21:36] mrscruff2277
+I built it as I don't like having the crossfader managing both DJ style mixing duties at the same time as transition effects - it gets complicated really quickly. With this, DUALBUS does the DJ style mixing entirely (mixing between two groups of tracks) so I can keep the crossfader just for effects.
+
+
+[08.09.2026 22:01] homeboiflex
+In future we’ll be like “oh you Octatrack? Which strand?”
+
+{Reactions}
+👍
+
+[08.09.2026 22:29] kjnilsson
+Every user will have their own, “just right” firmware.
+
+{Reactions}
+👍 (4)
+
+[08.09.2026 22:44] yldopactyly
+Give it one year. We can't even imagine
+
+
+[08.09.2026 22:44] yldopactyly
+There may even be a MnM/MD fusion into Octatrack
+
+
+[08.09.2026 22:45] yldopactyly
+Some point someone will crack porting the machines
+
+
+[08.09.2026 22:45] yldopactyly
+People just need to keep hammering away
+
+{Reactions}
+👍
+
+[09.09.2026 00:35] w_winter
+octa such an amazing hardware platform for this
+
+{Reactions}
+💯 (2)
+
+[09.09.2026 00:36] w_winter
+elektron: "nooooo that's not what we meant"
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542722403220721786/1547012691963551764/Screenshot_2026-09-09_at_12.34.43_AM.png?ex=6aaf0e57&is=6aadbcd7&hm=d906746cb87ea20c758afc8edf830581f82fc52baf5e4168f37020e72da1872b&
+
+
+[09.09.2026 01:15] yldopactyly
+The ad copy all over their stuff now is so atrocious
+
+{Reactions}
+😂
+
+[09.09.2026 02:51] bryant12345
+Not a demo of any feature I'm building ... just a recording of "clickless" looping so folks know what I'm chasing with the Octatrack.  I want to be able to do this sort of sound-on-sound recording at any possible BPM/RLEN combination, which isn't possible with the stock firmware.  My cat -- pickles -- makes an appearance for posterity.
+
+https://on.soundcloud.com/sYopCOeOiSxmT6bDu7
+
+{Embed}
+BryanTysinger
+https://on.soundcloud.com/sYopCOeOiSxmT6bDu7
+pickles
+I write and play music for the guitar and lap steel.
+https://images-ext-1.discordapp.net/external/q7Tu__gt23gIYfSSbFuag0DiKFXd2ppMj8E19Rw5SDU/https/i1.sndcdn.com/artworks-HHjsbJkp90pb9MZb-JApqaA-t500x500.jpg
+
+{Reactions}
+👍🏻 (2) ❤️ (3)
+
+[09.09.2026 03:06] bamshanks
+🐳🐋
+
+
+[09.09.2026 06:16] bamshanks
+So after I guess about a week I can finally reproduce this on my emulator 🤣
+
+
+[09.09.2026 06:16] bamshanks
+Not fix it but reproduce
+
+
+[09.09.2026 08:18] noeisgirl
+horrible demo and horrible quality bc i had to compress it to fit discord’s file size limit but there are fun things here. 
+
+1. trx b2 from machinedrum successfully ported. 
+2. efm-sd ported (but with bugs that need fixing). better as a synth than a snare drum atm. 
+3. “vintage distortion” fx1 that replaces lofi effect. 
+4. “lex verb” that replaces spring reverb with infinite sustain on full decay setting
+5. octave up option on aed
+6. not shown on the demo but i made fully controllable varispeed looper possible on the pickup machine, that lets me record in any rate, and then change rate of playback and then record on top of that, reverse, etc.
+7. not shown but long press on func+rec to automatically duplicate current pattern to the next available pattern slot. intended for saving “snapshots” of a pattern while u perform and edit the pattern on the fly. 
+
+currently all of this is fully compatible + running alongside with em’s octakit. its a fun performance/idea sketch tool. 
+
+i should make a better demo later for the ones not in the vid. 
+
+i was able to get all of this done with a “free 1 month of plus account” promotion event thingy on chatgpt. apparently it’s ending tomorrow and i dont ever wanna actually spend money on any ai shit so i will prol be full-stopping here. maybe i’ll tinker with the free version to fix some bugs.. but seeing how fast the weekly limit burned through working on it, idk if its gonna pick up the pace at all on the free version. 
+
+it was an interesting experience trying it out seeing what’s capable with llm and stuff these days tho.
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542722403220721786/1547129083702419506/8mb.video-GLC-ObwCRUxf.mp4?ex=6aaf7abd&is=6aae293d&hm=fd026d7110f78dfe97110dddc7f26b98aa3714043094448c54b0a25077597fdb&
+
+{Reactions}
+💯 (6) 🔥 (11) ❤️
+
+[09.09.2026 08:36] bamshanks
+Nice work!
+
+
+[09.09.2026 09:21] _anfim
+Amazing! What's the actual process for this? Do you have to run a desktop/cli agent and give it access to ghidra?
+
+
+[09.09.2026 10:06] ambient.signals_76175
+Can happily say @BUKKAKEBOREALIS midi scenes works very well. Tests done on mk1.
+
+{Reactions}
+❤️
+
+[09.09.2026 10:17] zackyoti_98392
+Wait, did they post a GitHub link?
+
+
+[09.09.2026 10:18] ambient.signals_76175
+Nay been testing for him. He should have the GitHub ready in a few days time
+
+
+[09.09.2026 10:18] ambient.signals_76175
+Stress testing as we speak
+
+
+[09.09.2026 10:19] zackyoti_98392
+Can’t wait to hear #of locks and which device is connected!
+
+
+[09.09.2026 10:19] bryant12345
+Are you going to share any .md files so others can benefit from what chatgpt figured out in doing this work?
+
+
+[09.09.2026 10:24] ambient.signals_76175
+Currently I'm sending 4 channels of sequencing to a digitione keys. 
+
+4 channels of sequencing with 9 ccs per channel hooked to crossfade. No latency. I have another 4 channels just for more cc control of the other parameters in the keys also at 9cc. This doesn't include mw or breath control which if set up in the keys would give even more control 
+
+9cc x 8 channels= 72 ccs being modulated via xfade
+
+{Reactions}
+❤️ (5)
+
+[09.09.2026 14:05] kjnilsson
+From what I could hear the lex verb sounded quite good. Is it shared anywhere?
+
+{Reactions}
+➕ (3)
+
+[09.09.2026 14:51] yarr_
+amazing proof of concept of what's possible nice job man. You should honestly keep going
+
+
+[09.09.2026 14:53] bamshanks
+or share the code 😉
+
+{Reactions}
+💯
+
+[09.09.2026 14:54] yarr_
+True that as well
+
+
+[09.09.2026 17:03] kjnilsson
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542722403220721786/1547261247769157673/8d0afccc-5496-4f54-b75f-c4a1a163c383.mp4?ex=6aaf4d14&is=6aadfb94&hm=4fb16705e15cd230633ba0c9660a886e6756808ca73626caf28bf3f9fe7d8fa5&
+
+{Reactions}
+😲 (2) ❤️ (3)
+
+[09.09.2026 17:05] bamshanks
+is that the walk?
+
+
+[09.09.2026 17:05] kjnilsson
+no that's ACCU
+
+
+[09.09.2026 17:05] kjnilsson
+so a note accumulator
+
+
+[09.09.2026 17:05] bamshanks
+Ahh
+
+
+[09.09.2026 17:05] kjnilsson
+ill make a vid for WALK as well
+
+
+[09.09.2026 17:05] bamshanks
+I was thinking, that doesn't sound like a walk
+
+
+[09.09.2026 17:05] kjnilsson
+whcih maybe hsould be called CYCL
+
+
+[09.09.2026 17:06] bamshanks
+never heard of accu
+
+
+[09.09.2026 17:06] kjnilsson
+never heard or note accumulators in sequencers?
+
+
+[09.09.2026 17:09] bamshanks
+Ahh was thinking ACCU was a term
+
+
+[09.09.2026 17:09] bamshanks
+not a machine name
+
+
+[09.09.2026 17:09] bamshanks
+🙂
+
+
+[09.09.2026 17:09] kjnilsson
+no sorry just the new arp mode 🙂
+
+
+[09.09.2026 17:10] bamshanks
+love it
+
+
+[09.09.2026 17:11] kjnilsson
+they're really quite simple but it took quite a lot of claude time to get there
+
+
+[09.09.2026 17:11] bryant12345
+Optimizing working with Claude is half the battle
+
+{Reactions}
+💯 (2)
+
+[09.09.2026 17:12] kjnilsson
+spending all day at work with claude then also your spare time gets quite a lot, this is more fun than work tho
+
+{Reactions}
+💯
+
+[09.09.2026 17:15] bamshanks
+agreed on both fronts
+
+
+[09.09.2026 17:16] bamshanks
+spending all day on claude for work and this at the same time though
+
+
+[09.09.2026 17:35] kjnilsson
+hrm, same
+
+
+[09.09.2026 17:35] pituzinho9269
+I wasn't expecting accumulators on the arpp dude amazing, chord mode would be possible? Like the micromonsta arp 😁
+
+
+[09.09.2026 17:37] kjnilsson
+well it actually bypasses the arp and only accumulates each time a note is triggered (strictly speaking each time the pattern plays)
+
+
+[09.09.2026 17:43] kjnilsson
+what is micromonsta chord mode?
+
+
+[09.09.2026 17:44] kjnilsson
+what is quite fun is that the accumulator also works with chords
+
+
+[09.09.2026 17:49] pituzinho9269
+I only know how the cirklon accumulators work, CC's are out of the question I guess but with the midi scenes oof! The micromonsta has one of the best little arps in any machine
+
+
+[09.09.2026 17:51] pituzinho9269
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542722403220721786/1547273128319647805/image.png?ex=6aaf5824&is=6aae06a4&hm=0f120faa9608e0dbe0c085fa7b677a773040360f2064b13980e2d44baf4e3f82&
+
+
+[09.09.2026 17:51] pituzinho9269
+so you could use either the actual note, any note number from that chord even if not in turn or the whole chord when available
+
+
+[09.09.2026 18:11] kjnilsson
+Not sure I follow fully.
+
+
+[09.09.2026 18:19] pituzinho9269
+Well, these functions on the arp could be applied to the arp designer, holding a step and pressing the pad vertically transposes but laterally does nothing, it could cycle through some options similar to these
+
+
+[09.09.2026 18:20] kjnilsson
+Oh I see. So some extension to the arp designer.  I don’t know if it’s doable I haven’t really looked into that side of the arp. Just overloaded the arp modes with a couple of new options.
+
+
+[09.09.2026 18:22] kjnilsson
+Lots of things are doable with some sacrifices and lots of tokens.
+
+{Reactions}
+fingergunscry
+
+[09.09.2026 18:22] pituzinho9269
+and water heh
+
+
+[09.09.2026 18:23] kjnilsson
+Yes one of the sacrifices is the planet.
+
+
+[09.09.2026 18:24] pituzinho9269
+I never expected the OT to be getting anything so now I'm just dreaming like a kid
+
+{Reactions}
+👍
+
+[09.09.2026 18:29] kjnilsson
+Nothing wrong with dreaming.
+
+{Reactions}
+🧙‍♂️ (2)
+
+[09.09.2026 18:29] bamshanks
+that's what we are here for 🙂
+
+
+[09.09.2026 18:55] noeisgirl
+honestly not sure what the best way to share all the findings would be. my process for all of this was extremely primitive as im not really a developer and dont know what “the proper way” is. i just asked for a flashable .bin file each time and tested it on the hardware every time. if it crashed or appeared broken or unfunctional, i just reported the error code or the parts i didnt like, and told it to fix it. did that through 354 versions. so all i have are 354 .bin files, not sure how to go about sharing the info on them, as i dont wanna share the firmware file directly for obvious precautionary reasons.
+
+{Reactions}
+👍
+
+[09.09.2026 18:56] bamshanks
+You can ask your ai to shared an Md file of everything you discovered during your work
+
+
+[09.09.2026 18:56] noeisgirl
+its based on the dattorro’s reverb. a famous algorithm used by old lexicon reverbs. it’s my favorite reverb sound and i’m honestly kinda surprised it even fit within ot’s resources. had to optimize the fuck out of it tho. so it’s not quite the same algo. but sounds close enough.
+
+{Reactions}
+❤️
+
+[09.09.2026 18:57] bamshanks
+Yeah mine is dattorro as well
+
+
+[09.09.2026 18:57] bamshanks
+Would love to compare notes
+
+
+[09.09.2026 18:57] bamshanks
+Tuning it was a bitch
+
+
+[09.09.2026 18:57] kjnilsson
+But this is a straight insert swap?
+
+
+[09.09.2026 18:58] noeisgirl
+i ran out of weekly limit and my account is expiring at the end of the day today. i’ll see if it can still have it make the .md file when it switches to the free account.
+
+{Reactions}
+👍🏻
+
+[09.09.2026 18:58] bamshanks
+Yeah that’s what’s interesting as mine certainly isn’t
+
+
+[09.09.2026 18:58] bamshanks
+It’s at least 4x too big for that
+
+
+[09.09.2026 18:58] kjnilsson
+Cool. Me wants.
+
+
+[09.09.2026 18:59] bamshanks
+I couldn’t get it not metallic without a heap of allpasses and long tanks
+
+
+[11.09.2026 12:04] kjnilsson
+Little noodle made whilst testing midi accumulators / walk modes with mu-law encoding/decoding effect into cirrus (clouds but cleaner) reverb
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542722403220721786/1547910809978675200/arp-modes-cirrus-colour-test.mp3?ex=6aaf0707&is=6aadb587&hm=763abbe8de96c0a964d9b58eb89d099ddb69b72d9c00ec2807b396c2c6403384&
+
+{Reactions}
+❤️ (8)
+
+[11.09.2026 12:17] kjnilsson
+one nice thing about the cirrus reverb is that I managed to get it to fit exactly into the plate reverb slot
+
+{Reactions}
+🔥 (2)
+
+[11.09.2026 13:54] falken202
+sounds great
+
+
+[11.09.2026 13:59] machinista__21901
+Plate Reverb is actually quite useful (at least in my case) with it's unique Gate thing. At the same time Spring sounds pretty shitty 🙂 Do you think new effect could replace either (they're equal memory wise) or perhaps Plate frees up more memory? Thx
+
+
+[11.09.2026 14:04] kjnilsson
+One man’s shitty is another man’s wonderful. 🙂
+
+plate is the smallest of the reverbs so you can sacrifice any of the other reverbs or maybe even a couple of other effects. Not sure. 
+
+I’m planning a cirrusxl version with access to more Params as well as 12 bit emulation etc. that would fit into spring or dark only.
+
+{Reactions}
+❤️
+
+[11.09.2026 14:07] michaelknubben
+I'd personally prefer to lose Spring over Plate, too. I love Spring Reverb in general, but find it lacking on the OT
+
+{Reactions}
+💯
+
+[11.09.2026 14:07] michaelknubben
+The cirrusxl with 12bit emulation sounds amazing!
+
+
+[11.09.2026 14:12] bryant12345
+Stock effect code size (words)
+-------------------------------
+DARK REV     1,067      CHORUS       329
+SPRING REV   1,063      FLANGER      289
+FILTER         727      EQUALIZER    282
+PLATE REV      594      COMB         277
+LO-FI          537      SPATIALIZER  261
+DJ EQ          345      PHASER       207
+                         COMPRESSOR  180
+
+{Reactions}
+❤️
+
+[11.09.2026 14:14] kjnilsson
+I’m sure we can make a better one. 🙂
+
+
+[11.09.2026 14:14] kjnilsson
+/me adds to TODO
+
+
+[11.09.2026 14:15] michaelknubben
+I've got an actual spring reverb sat next to my OT 😅  (well, two if I count my guitar amp)
+
+
+[11.09.2026 14:16] bryant12345
+It kills me that they spent 1063 words of Spring and it is … fine. Never use it.
+
+{Reactions}
+💯 (3)
+
+[11.09.2026 14:17] kjnilsson
+I find it useful to create a little bit of interest to very transfer sounds. But true I never really use it as a normal reverb.
+
+
+[11.09.2026 14:18] bryant12345
+But I’m much more of a delay user anyway, unless it is a big, dark hall.
+
+
+[11.09.2026 14:18] mayrakissa
+its honestly not fine
+
+{Reactions}
+😆 (2)
+
+[11.09.2026 14:19] mayrakissa
+a mixed reverb/delay effect would be huge
+
+
+[11.09.2026 14:31] kjnilsson
+The delay is implemented entirely through black magic as far as I understand so that might be tricky.
+
+
+[11.09.2026 14:32] exit_planet_dust
+That’s super nice :chefkiss:
+
+{Reactions}
+👍
+
+[11.09.2026 14:32] bryant12345
+Lol. Not black magic … just RAM.
+
+
+[11.09.2026 14:40] bamshanks
+Yeah it’s a flex track
+
+
+[11.09.2026 14:40] bamshanks
+More or less
+
+
+[11.09.2026 14:56] bryant12345
+I am curious how the pre-delay on the dark reverb works. I wonder if it has its own buffer
+
+
+[11.09.2026 14:56] kjnilsson
+just had the same question
+
+
+[11.09.2026 15:06] kjnilsson
+I would definitely just use that one then 🙂
+
+
+[11.09.2026 15:06] kjnilsson
+Always wanted to the knas spring reverb thing...
+
+
+[11.09.2026 15:24] kjnilsson
+Does anyone have any more specific feedback around the OT spring reverb than "it's crap" | "I dont like it" - e.g. what else would you like from it?
+
+
+[11.09.2026 15:28] mayrakissa
+it's just a strange choice for s synth/sample based machine overall
+
+
+[11.09.2026 15:28] kjnilsson
+never used a space echo? 😉
+
+
+[11.09.2026 15:28] mayrakissa
+who in their right mind goes "yeah this beautiful arp needs a spring reverb"
+
+
+[11.09.2026 15:28] mayrakissa
+instead of any other kind of reverb
+
+
+[11.09.2026 15:30] mayrakissa
+i work in a guitar shop so yeah, i have 😅 still different to a dingy spring sound
+
+
+[11.09.2026 15:36] bryant12345
+I spent some time playing guitar into it a few weeks ago. It is fine. Just not something I ever reach for on the Octatrack. Even if it were the best spring reverb ever … not something I’d use much.
+
+
+[11.09.2026 15:38] mayrakissa
+yeah my point exactly, this guy has 4 inputs and a pseudo fx loop, why the hell would i choose a spring reverb on the ot when i could use any outboard gear 😆
+
+
+[11.09.2026 15:39] bamshanks
+Yeah I did pre delay for my verb and abandoned it because it was so expensive
+
+
+[11.09.2026 15:47] j_blanco
+Fine was my feeling as well. Was useful for quickly throwing onto some drum loops for Jamaican dub style, but that almost always led to me just routing stuff externally to the real spring reverb I have (vermona retroverb)
+
+
+[11.09.2026 15:52] j_blanco
+Honestly maybe more options on the filtering, I don't remember if the HP/LP is pre spring or post, but found it was just hard to dial in more subtle spring washiness, felt that it was got into that scratchy noisy range really quick even when playing with the types on the setup page. For me, just not enough interesting range to use it over other available effects most of time
+
+
+[11.09.2026 16:03] kjnilsson
+yes it is a bit "safe"
+
+
+[11.09.2026 16:05] falken202
+for me, and this might be a bit of a curveball, if it was technically possible I'd be removing the spring verb completely and using the space to upgrade the comb filter. but tbh  replacing it with a clouds (as shown above by Karl-johan) would be chefs kiss.
+
+
+[11.09.2026 16:06] bryant12345
+Definitely technically possible!
+
+
+[11.09.2026 16:07] mayrakissa
+interesting idea, maybe a chord mode?
+
+
+[11.09.2026 16:13] kjnilsson
+I have only done the reverb from clouds, not clouds itself ofc
+
+{Reactions}
+👍
+
+[11.09.2026 16:17] bryant12345
+Just auto-compensating for pitch when filtering the comb filter’s low pass would be huge. I mapped out the compensations on elektronauts at some point.
+
+
+[11.09.2026 16:18] mayrakissa
+full karplus-strong machine incoming
+
+{Reactions}
+👍
+
+[11.09.2026 16:21] falken202
+ah gotcha. still sounds v good 🙂
+
+
+[11.09.2026 16:25] kjnilsson
+if I was going to do a granular thing I would run it like a flex off a sample or a record buffer, not using an input buffer (like an effect)
+
+
+[11.09.2026 16:25] kjnilsson
+so a machine, not an effect
+
+
+[11.09.2026 16:26] kjnilsson
+don't think it would be able to support many grains tho
+
+
+[11.09.2026 16:44] kjnilsson
+crippled / uninspired granular is worse than no granular
+
+{Reactions}
+👍
+
+[11.09.2026 20:00] w_winter
+although i am really fond of the Morphagene's sound in the mode that plays up to 4 overlapping grains.  if OT flex machines could behave more like morphagene that would be pretty awesome
+
+
+[11.09.2026 22:02] _anfim
+Yeah the comb on the new digis is amazing
+
+{Reactions}
+💯
+
+[12.09.2026 23:09] bamshanks
+Try the digis channel
+
+{Reactions}
+👍
+
+[13.09.2026 00:34] anglingar
+Assumed demos was shared 😸
+
+
+[14.09.2026 00:30] bryant12345
+A few demos of LOFI2.  I'm showing off the ring modulator (low and high modes, showing off the stereo a bit) and the frequency modulator.  The first is processing a static loop.  The second is playing a synth into it and letting the effect be in the feedback path of some sound-on-sound playing.
+
+https://on.soundcloud.com/RNKiFlABp2BuyjLBMs
+
+https://on.soundcloud.com/ipiRkMjmj61jOeNlWQ
+
+{Embed}
+BryanTysinger
+https://on.soundcloud.com/RNKiFlABp2BuyjLBMs
+lofi2_demo1
+I write and play music for the guitar and lap steel.
+https://images-ext-1.discordapp.net/external/_x7FFCI4-ghX3cD3A6LA0yHbK7jVvF-locsTo3moE3E/https/i1.sndcdn.com/artworks-KXLQAKKyj4YN4spy-yTe9Cg-t500x500.jpg
+
+{Embed}
+BryanTysinger
+https://on.soundcloud.com/ipiRkMjmj61jOeNlWQ
+lofi2_demo2
+I write and play music for the guitar and lap steel.
+https://images-ext-1.discordapp.net/external/8gFPvyjZDfh0SD3lBwkFWWbHGqrcLhTq_YHodPfbqi4/https/i1.sndcdn.com/artworks-RqgV84Ztj2hZpd2k-Zs9XSA-t500x500.jpg
+
+{Reactions}
+👍 (2) ❤️ (6) ❤️‍🔥 (3)
+
+[14.09.2026 00:40] bukkakeborealis
+Very good sounding. Looking forward to try it !!!
+
+{Reactions}
+❤️
+
+[14.09.2026 01:14] bamshanks
+Nice upgrade!
+
+{Reactions}
+❤️
+
+[14.09.2026 09:05] politicpolicy
+Nice digging it. Soundz unlike the OT, in a nice way 👌
+
+{Reactions}
+❤️ (2)
+
+[14.09.2026 18:23] ambient.signals_76175
+Sounds very nice. And quite musical🎶
+
+
+[14.09.2026 19:48] pituzinho9269
+Sound amazing, much better than the comb filter
+
+
+[16.09.2026 09:03] mrscruff2277
+Finally finished a v1 of the machine I've built for my own liveset. The overall goal was to streamline DJ style transitioning between a group of live thru tracks and a group of live sampled versions of those tracks. So basically a replacement for the crossfader transition trick that let's you use the crossfader exclusively for effects and builds, even while doing extended transitions between a sampled loop and the next incoming track from your live setup. Also, it can act like a more flexible master track - in my setup it sits on T6 with T7 and T8 as thru tracks meaning I have 6 master effects slots. I don't know when I'll get round to pushing it to github, but if anyone's interested in the idea I can post the mod files here. Full description from Claude below:
+
+-----
+
+DUALBUS — a submix/bus machine for the Octatrack
+
+DUALBUS is a new machine type (it takes the place of PICKUP). Set any track to DUALBUS and it stops being a sound source and becomes a mixer bus: you choose which of the other tracks feed it, and their audio is summed into that track. From there it behaves like any normal track — its own level fader, mute, cue and its own two effect slots — so you can compress, filter or reverb a whole group of tracks at once, mute the group with one button, or cue the group to headphones.
+
+The bus has two sides, A and B, with a DJ-style crossfade and EQ between them. A track can also be set to bypass all of that and stay permanently in the mix.
+
+
+[16.09.2026 09:03] mrscruff2277
+Features:
+
+- Group tracks together. Page 2 gives you two columns, A and B. For each one you pick which of tracks 1–8 feed it.
+- Four states per track. Off, crossfaded on A, crossfaded on B, or — by setting it in both columns — always present. An always-present track is added after the crossfade and EQ at full level, so nothing you do with the knobs affects it.
+- Process the group. The bus track's FX1 and FX2 slots act on the summed audio, so one reverb or one compressor can serve several tracks instead of one per track.
+- Real track controls. Level, mute, solo, cue and scene/crossfader assignments all work on the bus as they do on any track.
+- A/B crossfade. The LVL knob fades between the two sides — full left is A only, centre is both at full, full right is B only.
+- DJ-style BASS kill. A second-order high-pass at around 200 Hz that swaps between A and B: turn one way to kill B's bass, the other way to kill A's, centre kills both. Matched by measurement to an Allen & Heath Xone:96.
+- LO MID dip. A −27 dB bell at ~360 Hz, again matched to the Xone:96, for taking the clash out of one side while the other stays intact. Centre is pass-through, so it's out of the way when you don't need it.
+- SWAP. Instantly exchange A and B — everything the knobs are doing to A now applies to B and vice versa. It sweeps rather than hard-switching, so it doesn't click. Always-present tracks are unaffected.
+- Send levels follow the source fader. How much a track sends to the bus is set by that track's own level. Muting a source track removes it from the main mix but it keeps feeding the bus, which makes it easy to run a track "into the group only".
+- Click-free knobs. Level, bass and low-mid all ramp smoothly, including on FUNC+encoder jumps.
+
+{Reactions}
+🔥 (6) ❤️ (4)
+
+[16.09.2026 09:55] _anfim
+Definitely post the github and a video demo if you can! Sounds awesome
+
+
+[16.09.2026 09:56] _anfim
+Also are you the mr scruff? 👀
+
+
+[16.09.2026 10:10] mrscruff2277
+Nope, not the real Mr Scruff! 🙂
+
+Updated the description after reading my own post and realising I could simplify the workflow! Will try and record a video at some point.
+
+{Reactions}
+PES_GunL 🐟 PES_GunR
+
+[16.09.2026 12:34] dwz0679_70302
+Like this?
+
+
+[16.09.2026 12:34] dwz0679_70302
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542722403220721786/1549730257504837702/IMG_0118.png?ex=6aaf0e05&is=6aadbc85&hm=b994d36bb9de26337b3ca2fb5722ccb96bd1d28f8c65806004d2e094fbc03f59&
+
+
+[16.09.2026 17:18] mrscruff2277
+Not as pretty as that I’m afraid! Will post some screenshots tonight but it’s not that exciting to look at. Very useful though (at least for me).
+
+
+[16.09.2026 21:45] mrscruff2277
+A couple of screenshots. In this config, 1 & 3 route to bus A, 2 & 4 route to bus B, and 5 is added to the result.
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542722403220721786/1549868914085855282/IMG_8300_Small.jpeg?ex=6aaf8f28&is=6aae3da8&hm=e666d9e8c5896972297455fcc7ceec20212e8a19cfc078c41ea9e7e28e630a7b&
+https://cdn.discordapp.com/attachments/1542722403220721786/1549868914333450360/IMG_8294_Small.jpeg?ex=6aaf8f28&is=6aae3da8&hm=8575eebe5b6d306570ce0a900483423bd54b29569903ec9630de5923de70cf31&
+
+{Reactions}
+❤️ (6)
+
+[16.09.2026 21:46] plentynights
+@MrScruff is your CFW code available on github or private
+
+
+[16.09.2026 21:47] plentynights
+I'm really interested in getting a better understanding of the entire audio pipeline
+
+
+[16.09.2026 21:51] mrscruff2277
+Currently private. I'll DM you.
+
+
+[16.09.2026 21:53] bryant12345
+A matrix router is on my wish list. Can’t wait to see your code!
+
+
+[16.09.2026 22:22] homeboiflex
+Compressing drums + bass together (glue) while keeping all else clean, is such a sick thing to have in OT 🔥
+
+{Reactions}
+❤️ (4)
+
+[18.09.2026 10:40] mrscruff2277
+I’ve started working on the Rytm. First mod adds accents to the Euclidean sequencer. The logic control now has 4 new options which target accents rather than trigs. Going to also look into how much scope there is for adding velocity randomisation which is impossible with the LFO.
+
+{Reactions}
+❤️ (3)
+
+[18.09.2026 11:32] bamshanks
+I’m pretty happy with the Rytm as it is and the last firmware update was awesome. 
+
+But an extra lfo would be very tempting
+
+
+[18.09.2026 11:32] bamshanks
+But I’m pretty reluctant to mess with ones that are still getting updates
+
+
+[18.09.2026 11:43] anglingar
+Just flash the official if the time comes
+
+
+[18.09.2026 11:44] bamshanks
+Yeah maybe
+
+
+[18.09.2026 11:44] bamshanks
+I’m pretty happy with it to be honest
+
+
+[18.09.2026 11:44] bamshanks
+Octa effects have always been my biggest gripe
+
+
+[18.09.2026 11:44] bamshanks
+And some niggles with working in 16 bars
+
+
+[18.09.2026 11:45] bamshanks
+Elektron leave a lot of headroom and things virtually never crash and I do appreciate that
+
+
+[18.09.2026 11:46] bamshanks
+I get super nervous live so gear issues are scary
+
+
+[18.09.2026 11:46] bamshanks
+I have a meltdown if my stuff dies on stage 😅
+
+{Reactions}
+😂
+
+[18.09.2026 11:48] antonio110582._72773
+Totally agree, a second LFO is definitely something the Rytm is missing. For me, the other big missing feature is a slice mode. Even something as simple as the old Digitakt one, dividing a sample into 16/32/64 equal slices, would be enough for me.
+
+
+[18.09.2026 11:49] bamshanks
+For chopping breaks?
+
+
+[18.09.2026 11:52] anglingar
+The LFOs are all out of the DSP in the DN2 so is "easy" to get one working.
+
+Unsure what the architecture of the AR.
+
+
+[18.09.2026 11:52] bamshanks
+Still be coldfire id imagine
+
+
+[18.09.2026 11:52] bamshanks
+Although I put lfos on heaps of my dsp effects so…
+
+
+[18.09.2026 11:52] bamshanks
+Hmmmm don’t think about that 😅
+
+
+[18.09.2026 12:16] mrscruff2277
+It should be trivial for Claude to rebuild any mods on top of new firmware revisions.
+
+
+[18.09.2026 12:20] antonio110582._72773
+Not specifically for break chopping, although that would be useful too, especially on the MK1 since it doesn’t show the waveform. My main use would be to pack lots of one shots into a single sample, e.g. 16/32 kicks or kits in one file,  and slice them into equal parts. Ideally, of course, it would detect transients automatically, but I assume that would be more complicated to implement. The Rytm’s RAM can hold much more than 128 short one-shots, so this would be a great way to make better use of the available memory.
+
+
+[18.09.2026 12:24] bamshanks
+Ah yeah sample chains
+
+
+[18.09.2026 13:02] _anfim
+You can already do chains of up to 120 slices no? Just set sta to coarse
+
+
+[18.09.2026 13:04] antonio110582._72773
+Exactly
+
+
+[18.09.2026 13:05] antonio110582._72773
+Yes, but it's quite tedious because all the samples have to be the same length. So if one sample is longer, all the slots will take up a lot more memory.
+
+
+[18.09.2026 13:13] _anfim
+Ah I was confused because above you mentioned wanting it to slice into equal parts. How would you picture it working?
+
+
+[18.09.2026 13:17] antonio110582._72773
+No, that's actually not what I want 😄. I’d much prefer a transient-based mode that automatically detects the transients and creates the slices accordingly. I only mentioned equal-length slices (16/32/64) as a simpler alternative in case automatic transient detection is much harder to implement. The transient mode would definitely be my preference.
+
+{Reactions}
+❤️
+
+[18.09.2026 16:30] mrscruff2277
+One other non-mod thing I'm doing with the Rytm is trying to characterise the compressor as I always find it quite unintuitive to tune. So I have a loopback via ext in with Claude driving, sending test signals and driving the compressor parameters via CC to build a model of it.
+
+
+[18.09.2026 18:40] bukkakeborealis
+Testing my last version of CLAUDS. Inspired by Clouds..
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542722403220721786/1550547185769390160/IMG_1021.mov?ex=6aaf63d8&is=6aae1258&hm=a4f0ee8589a702df342a2e1a76c063e46f2e502375f96913d37f354b3de24f4e&
+
+{Reactions}
+🔥 (6) ❤️
+
+[18.09.2026 23:16] bamshanks
+Haha Claud’s I called mine nimbus
+
+
+[18.09.2026 23:18] bukkakeborealis
+Yeah Claud’s is better haha
+
+
+[18.09.2026 23:18] bukkakeborealis
+Gonna borrow that
+
+
+[19.09.2026 02:29] zackyoti_98392
+Any Rick and Morty fans? Mr. Nimbus lol 😂
+
+{Reactions}
+👍🏻 😁
+
+==============================================================
+Exported 229 message(s)
+==============================================================

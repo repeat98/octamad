@@ -1,0 +1,119 @@
+==============================================================
+Guild: Octahackers
+Channel: the-mods
+Topic: Listing firmware modifications, tooling, creators/modders, and other resources.
+==============================================================
+
+[07.09.2026 20:55] yldopactyly
+Hello. This is the channel which will list and provide links and basic info for the firmware modifications, creators/hackers, their tooling, and the other resources associated with this server.
+
+
+[13.09.2026 01:19] zackyoti_98392
+## Elektron Firmware Tool
+### Instruments: Elektron instruments utilizing container formats ELE3, ELE2, ELEK, AD, and the older Pre-ELE (Machinedrum/Monomachine).
+### Category: Tools
+An unofficial C tool to inspect and modify Elektron instrument OS files (.syx). Not affiliated with or endorsed by Elektron.
+https://github.com/mischa85/elektron-firmware-tool
+By @mischa85
+
+{Embed}
+https://github.com/mischa85/elektron-firmware-tool
+GitHub - mischa85/elektron-firmware-tool
+Contribute to mischa85/elektron-firmware-tool development by creating an account on GitHub.
+https://images-ext-1.discordapp.net/external/_tFcupme5_h_Y_WvS73yz1NJ6bpuG0qqmJQmhPjgRPY/https/opengraph.githubassets.com/1a9b6a41b28837f50381fe2613815d6514ba25ab7e160ad8dea6f3af714df311/mischa85/elektron-firmware-tool
+
+
+[13.09.2026 01:21] zackyoti_98392
+## Octamax
+### Instrument: Octatrack MK1/MK2
+### Category: Modifications, Tools
+An educational toolkit for understanding how the firmware of the Elektron Octatrack works. A reverse engineering project.
+https://github.com/mxldyn/octamax
+By @maxolydian
+
+{Embed}
+https://github.com/mxldyn/octamax
+GitHub - mxldyn/octamax: Educational reverse engineering of the Ele...
+Educational reverse engineering of the Elektron Octatrack MKII firmware (OS 1.40C, ColdFire + DSP56xxx) — tooling, notes and behavior patches - mxldyn/octamax
+https://images-ext-1.discordapp.net/external/Px417ImR7Jpex7g_LNejV-dKb7s0ab-80QUJ653vcLo/https/opengraph.githubassets.com/476807d11b73bafa0c9f56eb60e83002c49db9ac9ef9066f221646da17ebc7f2/mxldyn/octamax
+
+
+[13.09.2026 01:22] zackyoti_98392
+## Octabam
+### Instrument: Octatrack MK1/MK2
+### Category: Modifications, Tools
+Custom DSP effects and firmware patches for the Elektron Octatrack MKI/MKII.
+https://github.com/sambanks/octabam
+By @bamshanks
+
+{Embed}
+https://github.com/sambanks/octabam
+GitHub - sambanks/octabam: Custom DSP effects for the Elektron Octa...
+Custom DSP effects for the Elektron Octatrack MKII — original DSP56300 algorithms (ChonVerb reverb, BongDelay) on a cross-core send bus, delivered by patching the stock OS image - sambanks/octabam
+https://images-ext-1.discordapp.net/external/a3Cx1jPFCn0UbBbDUZMhB8urlyNoqUsRcGEKqTHMfqk/https/opengraph.githubassets.com/1a6904136a15a238b49b26402b4394bc6f415057ef05418cb0fd2555d030098f/sambanks/octabam
+
+
+[13.09.2026 01:23] zackyoti_98392
+## Octakit
+### Instrument: Octatrack MK1/MK2
+### Category: Modifications
+Firmware mod providing 256 Kits per Project, replacing the native Parts per Bank system.
+https://www.junes.website/goodies/octakit
+https://github.com/emuyia/ems-octakit
+By @em
+
+{Embed}
+https://github.com/emuyia/ems-octakit
+GitHub - emuyia/ems-octakit: Custom firmware mod for the Elektron O...
+Custom firmware mod for the Elektron Octatrack. Replaces 4 Parts per Bank with 256 Kits per Project. - emuyia/ems-octakit
+https://images-ext-1.discordapp.net/external/2u5yrFvH0cj_acSPUwIYRSiZYoj6EZdVw0kVGUWEnI8/https/opengraph.githubassets.com/6e28eddf243ea10df39ba190ed0f0b5ac4ef07c08a7fbc4454d3da555d8a1fdf/emuyia/ems-octakit
+
+
+[13.09.2026 01:23] zackyoti_98392
+## MIDI scenes
+### Instrument: Octatrack MK1/MK2
+### Category: Modifications
+MIDI scenes usable with the crossfader.
+https://github.com/bkkbrls-del/midisc
+By @BUKKAKEBOREALIS
+
+{Embed}
+https://github.com/bkkbrls-del/midisc
+GitHub - bkkbrls-del/midisc: Octatrack 1.40C MIDI scene locks (1.40...
+Octatrack 1.40C MIDI scene locks (1.40MSCN6) — rebuild from your own stock OS - bkkbrls-del/midisc
+https://images-ext-1.discordapp.net/external/HbUK8HzpV8-STqnkgZi_k34WdnP5R3oalThUXNo9jP8/https/opengraph.githubassets.com/6c0ff0672cc0810554fc104cfa3eb6c6d49342f291b3b4332a93d1a773a353e7/bkkbrls-del/midisc
+
+
+[13.09.2026 01:24] zackyoti_98392
+## octalab-notes
+### Instrument: Octatrack MK1/MK2?
+### Category: Modifications, Tools
+Reverse-engineering notes on the Elektron Octatrack MKI, OS 1.40C.
+https://github.com/nordseele/octalab-notes
+By @BuMa
+
+{Embed}
+https://github.com/nordseele/octalab-notes
+GitHub - nordseele/octalab-notes
+Contribute to nordseele/octalab-notes development by creating an account on GitHub.
+https://images-ext-1.discordapp.net/external/Q5z7kkbNN-WjnQyZkFsxQ80nQwL8dLnVnixqK9Z2L7o/https/opengraph.githubassets.com/f9ddd0bedbfd5b35cf3a5c9ce1c16b4ef8e7c9cabf010a6f884fb2e67a3b6ef0/nordseele/octalab-notes
+
+
+[13.09.2026 01:24] zackyoti_98392
+## octa-bt-pt
+### Instrument: Octatrack MK1/MK2
+### Category: Modifications
+A parameter default patch tool for the Elektron Octatrack (OS 1.40C).
+https://github.com/bryantysinger/octa-bt-pt
+By @Bryan T (ukulele owner)
+
+{Embed}
+https://github.com/bryantysinger/octa-bt-pt
+GitHub - bryantysinger/octa-bt-pt: Tool for patching Octatrack firm...
+Tool for patching Octatrack firmware, focused on default values when a new project is created - bryantysinger/octa-bt-pt
+https://images-ext-1.discordapp.net/external/e_yA0S3tyu0USULsCs6zILoU940xTAmdg0YrFe57Qcw/https/opengraph.githubassets.com/f56298a0830e267e52d192e7be7e1b2c7e244cb531064c3d3673c32bac4cbb17/bryantysinger/octa-bt-pt
+
+
+==============================================================
+Exported 8 message(s)
+==============================================================

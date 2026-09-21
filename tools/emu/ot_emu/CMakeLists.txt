@@ -85,3 +85,8 @@ add_test(NAME filename-bpm COMMAND ot_fnbpm_test
 # Euclid's sequencer-to-filter adapter, including its compiled control engine.
 add_executable(ot_euclid_test ../../harness/euclid_probe.cpp)
 target_link_libraries(ot_euclid_test PRIVATE ot_machine)
+
+add_executable(ot_tapeecho_cpu_test ../../harness/tapeecho_cpu_probe.cpp
+    ../../../modules/tapeecho/cpu.c)
+target_compile_definitions(ot_tapeecho_cpu_test PRIVATE TE_HOST=1)
+target_link_libraries(ot_tapeecho_cpu_test PRIVATE ot_machine)

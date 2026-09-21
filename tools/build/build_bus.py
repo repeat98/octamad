@@ -83,11 +83,14 @@ ID2POS = 0x400d6150
 LIST_REFS = [0x400375f4, 0x40052496, 0x40059a42]
 DESC_LEN = 0x192
 NEW_LIST = 0x400d6b00
-# The other unclaimed zero run docs/firmware/MAINMENU.md section 5 names -- 2,064 bytes
-# at 0x400d24d0. The menu shortcut cave is pinned at its start; label
+# The apparent zero run starts at 0x400d24d0, but its first 16 bytes are
+# the tail of DELAY's 512-entry filter table at 0x400d1ce0. Stock's
+# BASE=0/WIDTH=127 reads entry 508 (0x400d24d0); fractional controls can
+# reach 511. Preserve those zeros, even when the UI allocations overflow.
+# The remaining 2,048 bytes are available. Label
 # formatters overflow into it when the clone window is full (the character
 # station's BUS-mode renames tipped the rig over by 56 bytes).
-OVERFLOW_RUN = 0x400d24d0
+OVERFLOW_RUN = 0x400d24e0
 OVERFLOW_RUN_END = 0x400d2ce0
 SAFE_CAVE_CEIL = 0x400d8000
 CLONE_BASE = 0x400d6b20
@@ -600,7 +603,12 @@ def main():
                 wr32(clone_P + 0x0fa + idx * 4, 0)
             for step_slot in STEPPED_SLOTS[name]:
                 wr32(clone_P + 0x0ca + step_slot * 4, 0x4003c718)
-                wr32(clone_P + 0x0fa + step_slot * 4, 0x40047254)
+                # CHORUS.TAPS' tick widget has five positions hard-coded and
+                # draws nothing above value 4. Wider selects use the plain
+                # dial (B=0) while their A formatter still prints each label.
+                _count = _MODS[name].params[step_slot].count
+                wr32(clone_P + 0x0fa + step_slot * 4,
+                     0x40047254 if _count is not None and _count <= 5 else 0)
             # ...and P+0x12a MUST BE ZERO for a stepped control. Surveyed all
             # 20 stepped params in stock FX2 (count < 128): every single one
             # has 0x12a = 0, no exceptions. MODE sits in slot 7 and inherited

@@ -1,0 +1,492 @@
+==============================================================
+Guild: Octahackers
+Channel: OCTATRACK / octakit
+==============================================================
+
+[01.09.2026 02:22] emuyia
+- [Octakit patcher](https://www.junes.website/goodies/octakit)
+- [GitHub repository](https://github.com/emuyia/ems-octakit)
+- [Report a bug / crash](https://github.com/emuyia/ems-octakit/issues/new?template=bug_report.md)
+
+{Reactions}
+❤️ (4)
+
+[01.09.2026 03:39] emuyia
+`ot-26901-014903-dev`
+- fix crash when copy/pasting or clearing Scenes
+- fix crash when previewing a sample
+- add quick kit save (FUNC+PART+YES - skips name input)
+- add extension to paste pattern action that also pastes kit state to the next available kit slot, and then loads it (FUNC+PASTE+PART when pasting a pattern)
+- add UNDO KIT option to LOAD KIT menu (same function as MnM / MD)
+- fix patterns still being assigned kits after they are cleared
+- fix empty patterns being assigned kits after old project migration
+
+{Reactions}
+👍 (2) ❤️ (2)
+
+[01.09.2026 03:59] emuyia
+https://discord.com/channels/1542713713360904252/1542722403220721786/1543615202346672188 https://discord.com/channels/1542713713360904252/1542722403220721786/1543632723011309568 - was just thinking these two things would be great paired with the ability to insert a blank pattern between other patterns. like creating a spot by nudging all patterns forward and then doing the proposed quick copy/paste pattern+kit to the next slot
+
+
+[01.09.2026 04:00] dvdmasr
+amazing!
+
+
+[01.09.2026 04:01] dvdmasr
+can i load old projects with octakit? how are the parts interpreted in this version? do they become kits 1-4?
+
+{Reactions}
+z_BunnyThumbsUp
+
+[01.09.2026 04:03] emuyia
+yeah bank A's parts become kits 1-4, bank B > 5-8, bank C > 9-12, and so on
+
+
+[01.09.2026 04:04] emuyia
+and each pattern is assigned the kit slot that their part was migrated to
+
+
+[01.09.2026 15:21] bukkakeborealis
+tested it ! And it works really well (pasting both pattern and kit is awesome). Except step 16 on default 16 steps that  is not sounding when switching pattern it seems, and it bricks when changing track scale. Now if it could paste on the next pattern both pattern and kit without stopping the sequencer (this is doable I tested it ) there would be no more obstacle to compose while jamming. Awesome work! thank you so much 🙂
+
+{Reactions}
+❤️ (2) 👍 (2)
+
+[05.09.2026 17:43] emuyia
+some of these should be fixed in the new build - i couldn't recreate the scale crash but that may be fixed as well
+
+{Reactions}
+❤️ (2)
+
+[05.09.2026 17:43] emuyia
+also, I'm going to be a little busy this month, so I predict less octatrack stuff from me for the moment 🙂
+but feel free to @ me and post issues
+
+
+[05.09.2026 20:16] emuyia
+`ot-26905-141307-dev`
+- fix last step of pattern not sounding during pattern transition
+- fix crash while changing track scale (maybe?)
+
+{Reactions}
+❤️ (3)
+
+[05.09.2026 20:17] emuyia
+source now provided: https://discord.com/channels/1542713713360904252/1542846840922312764/1545859041966948412
+
+{Reactions}
+❤️ (2)
+
+[06.09.2026 02:00] noeisgirl
+Hi I really like the idea of using kits on the OT, but I'm wondering how this interacts with scenes? As far as I'm aware, scenes were linked to parts, and octakit gets rid of parts, so I'm wondering how they interact? As in, does each kit have its own set of 16 scenes? or are the 16 scenes available per "groupings of kits" that replaced the parts, so every 4 adjacent scenes sharing a set of scenes? some other way?
+
+
+[06.09.2026 02:32] emuyia
+It's the former: A single Kit is equal to a Part, with all that a Part contained. So that means each Kit has its own set of 16 Scenes
+
+{Reactions}
+🔥 (4)
+
+[06.09.2026 02:32] emuyia
+I ought to clarify that somewhere
+
+
+[06.09.2026 02:39] noeisgirl
+oh wow that's amazing, thanks for the clarification 😄
+
+
+[06.09.2026 02:41] bamshanks
+yeah this is going to buy me probably 8 more songs per project
+
+
+[06.09.2026 12:21] _bradf
+Im at a pretty good point in my process for setting out a new “mega long stems into multi-bar slices style project” that also makes use of track scaling so seems a good time to give this one a test run, as kits instead of parts would be amazing at this point. Is it tested on mk2 units and then reinstall roll back to regular elektron firmware safely?
+
+
+[06.09.2026 12:43] reubenfinger
+Yes, I have tried it (I uploaded sysx) and successfully booted back on mk2
+
+
+[06.09.2026 13:05] bamshanks
+All of these firmware are reversible even if they crash. As long as you have a way of sending it midi
+
+{Reactions}
+👍
+
+[06.09.2026 13:19] tenacious_lemur_99636
+What's the procedure to change firmware with MIDI?
+
+
+[06.09.2026 13:22] emuyia
+hold FUNC while turning the device on, select option 3, and send the firmware syx file over the MIDI ports
+
+{Reactions}
+👍 👍🏻
+
+[06.09.2026 13:24] tenacious_lemur_99636
+Thanks I never checked that testing mode had a FW option
+
+
+[08.09.2026 04:19] _bradf
+Generally working really great. I was able to make this exception happen by changing kits within the same pattern too fast, as sometimes changing kits within the same pattern creates a little silence per track until the next active trig happens.
+
+Specifically this happened when selecting the same kit currently playing within the same pattern. (Kit 4 was playing and selected kit 4 again)
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1544137111605612684/1546706505095585912/IMG_1481.jpg?ex=6aaf42af&is=6aadf12f&hm=1ac3bd6255610ff9ab791a1eb89c84f3bef1df47130fce6c523c50d16fd345ae&
+
+
+[08.09.2026 04:21] _bradf
+But has been very stable so far when switching patterns that use different kits. The issues seem to be around selecting different kits in same pattern.
+
+
+[08.09.2026 04:22] bamshanks
+That sounds very promising generally
+
+
+[08.09.2026 14:32] emuyia
+thanks, I'll reproduce and get that fixed
+
+
+[08.09.2026 15:04] _bradf
+Bugger, I spoke a bit too soon. I did also have a crash just changing patterns with different kits. Likewise a crash when using the “change sets” option from project menu. Should be noted these are mega long stem slices. 128 bar, in case that matters.
+
+Even with crashes. This is Sooooo much better than the 4 parts per bank system, i love it
+
+{Reactions}
+👍 ❤️ (3)
+
+[08.09.2026 15:05] bamshanks
+yeah game changer
+
+
+[10.09.2026 02:38] w_winter
+my hunch so far is that octakit modded to do 128-160 kits (not 256) should give me a really nice foundation and headroom on the coldfire side to do all the DTII-inspired plock and sequencer modernization ive always wanted on my OT
+
+{Reactions}
+👍🏻 (3) 🙏
+
+[10.09.2026 02:50] emuyia
+https://discord.com/channels/1542713713360904252/1542713714028052642/1547405860274311279
+
+
+[10.09.2026 08:15] machinista__21901
+@em how much RAM (
+is currently repurposed from Flex to support 256 kits? What would be the difference if limit kiss e.g. to 128? Thx
+
+
+[10.09.2026 08:36] bamshanks
+Think it was about 3MB @em ?
+
+
+[10.09.2026 08:37] bamshanks
+Uncompressed
+
+
+[10.09.2026 16:51] emuyia
+yeah it's 3.1 MB. halving to 128 would save only about a quarter at the moment - 0.77 MB. some of the space is used for the code and other buffers
+
+{Reactions}
+👍🏻
+
+[10.09.2026 20:23] homeboiflex
+more parts is life-changing
+
+{Reactions}
+💯
+
+[12.09.2026 21:30] emuyia
+`ot-26912-163229-dev` - [diff](https://github.com/emuyia/ems-octakit/compare/ec70ddad6957af375d8cab02d76a2bc46aba748a...8ded51760dde63de67c2f59e759bea0b323a7998)
+- fix crash that could happen while switching between chained Patterns with different Kits and editing FX1
+- fix crash that could happen when pressing STOP during rapid Pattern and Kit changes
+- possible indirect fixes to other crashes
+- fix MKI FUNC+REC then BANK shortcut opening Pattern Settings instead of Recording Edit when FUNC remained held
+- fix LOAD KIT not assigning the selected Kit to the current Pattern
+- add build, model, D0, SP and more specific fault addresses to exception/crash screens to make tracking crashes easier for me
+- add MIT licence
+
+{Embed}
+https://github.com/emuyia/ems-octakit/compare/ec70ddad6957af375d8cab02d76a2bc46aba748a...8ded51760dde63de67c2f59e759bea0b323a7998
+Comparing ec70ddad6957af375d8cab02d76a2bc46aba748a...8ded51760dde63...
+Custom firmware mod for the Elektron Octatrack. Replaces 4 Parts per Bank with 256 Kits per Project. - Comparing ec70ddad6957af375d8cab02d76a2bc46aba748a...8ded51760dde63de67c2f59e759bea0b323a7998 ...
+https://images-ext-1.discordapp.net/external/tA0swXjQe_x5T1a525QJZlRSlLZwX3rgohL4VuKFAzw/https/opengraph.githubassets.com/9af47823f9bf1facd24efffc971a3a3c2605e323a5483ebf82df34d94010f65e/emuyia/ems-octakit
+
+{Reactions}
+❤️ (10)
+
+[12.09.2026 21:30] emuyia
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1544137111605612684/1548415648076669049/2026-09-12-16-04-37-592_1.jpg?ex=6aaf8bb2&is=6aae3a32&hm=0b8de9f29f04f87c33a236c13bf2982c161f1fb08067b2660ec6e1c4e392bc48&
+https://cdn.discordapp.com/attachments/1544137111605612684/1548415648571465869/2026-09-12-16-13-00-506_1.jpg?ex=6aaf8bb2&is=6aae3a32&hm=734901a8e3a64569491a2253020cf0e85dca5e4a67d2915e4ec760291f061de1&
+
+
+[12.09.2026 21:31] emuyia
+improved crash data
+
+{Reactions}
+👍 (3)
+
+[13.09.2026 02:25] homeboiflex
+“Octakit currently shaves off 18.4s (16-bit) / 12.3s (24-bit) from the flex pool (3.6%).”
+
+So slightly less recording time in flex + pickup machines? Defo worth it, but I’m just wondering if trimming from other areas would achieve the same, like removing fx we don’t use or something?
+
+
+[13.09.2026 02:34] emuyia
+for octakit I plan to investigate alternate ways of recovering the RAM, eventually. I have some leads that avoid removing anything
+
+
+[13.09.2026 02:35] emuyia
+https://discord.com/channels/1542713713360904252/1542713714028052642/1547405860274311279
+
+
+[13.09.2026 02:35] bamshanks
+Can't go on DSP where the effects live
+
+
+[13.09.2026 02:36] bamshanks
+Is a miracle you found this space at all, but if you managed to recover it that would be double amazing
+
+{Reactions}
+❤️
+
+[13.09.2026 02:37] bamshanks
+messing around with the fat fs is deep voodoo
+
+
+[13.09.2026 02:38] homeboiflex
+To get the RAM back’d be impressive, but I’d even sacrifice more for kits!
+
+Honestly if we had the 2 part-copy-shortcuts that we mentioned: https://discord.com/channels/1542713713360904252/1542722403220721786/1543585343159406633 with Octakit my Octa would be complete, anything else is a bonus
+
+
+[13.09.2026 02:48] emuyia
+yeah, that's still on my todo for sure :comfy:
+
+
+[13.09.2026 02:52] emuyia
+yes! i plan to get octakit more stable in the meantime
+
+
+[13.09.2026 02:52] emuyia
+but i'll want to resume the ram search after
+
+
+[13.09.2026 02:52] homeboiflex
+joy
+
+
+[14.09.2026 00:27] emuyia
+`ot-26913-223407-dev` - [diff](https://github.com/emuyia/ems-octakit/compare/8ded51760dde63de67c2f59e759bea0b323a7998...fc904c853f9d2307f4ffdc663d24c6b627da3d3c)
+- fix another crash that could happen while switching between chained Patterns with different Kits
+- add `PTN+FUNC+RIGHT` to (1) save current kit, (2) copy kit to next available slot, (3) copy pattern to next adjacent slot with the new kit, (4), load/queue that pattern
+- add `PTN+FUNC+TRIG` + copy/paste/clear/undo to manage inactive patterns without loading them. this is also possible across banks, by pressing and holding `BANK`, selecting the bank by tapping `TRIG`, then with `BANK` still held, you can then do `FUNC+TRIG` + copy/paste/clear/undo to manage patterns there
+
+{Embed}
+https://github.com/emuyia/ems-octakit/compare/8ded51760dde63de67c2f59e759bea0b323a7998...fc904c853f9d2307f4ffdc663d24c6b627da3d3c
+Comparing 8ded51760dde63de67c2f59e759bea0b323a7998...fc904c853f9d23...
+Custom firmware mod for the Elektron Octatrack. Replaces 4 Parts per Bank with 256 Kits per Project. - Comparing 8ded51760dde63de67c2f59e759bea0b323a7998...fc904c853f9d2307f4ffdc663d24c6b627da3d3c ...
+https://images-ext-1.discordapp.net/external/tA0swXjQe_x5T1a525QJZlRSlLZwX3rgohL4VuKFAzw/https/opengraph.githubassets.com/9af47823f9bf1facd24efffc971a3a3c2605e323a5483ebf82df34d94010f65e/emuyia/ems-octakit
+
+{Reactions}
+❤️ (8)
+
+[14.09.2026 00:48] homeboiflex
+JOY
+
+{Reactions}
+❤️
+
+[14.09.2026 00:52] emuyia
+let me know any issues 🙂
+
+
+[14.09.2026 00:55] bukkakeborealis
+I’ll try it as soon as I can. So nice!
+
+
+[14.09.2026 12:03] bukkakeborealis
+Ok that new PTN+FUNC+RIGHT is just amazing! Thank you so much for this  🙏
+
+{Reactions}
+👍
+
+[14.09.2026 12:09] bamshanks
+Kit copy is unreal
+
+{Reactions}
+❤️ (2)
+
+[14.09.2026 12:09] bamshanks
+I’ll get into combining this all with scenes shortly
+
+{Reactions}
+🔥 ❤️
+
+[14.09.2026 14:45] emuyia
+`ot-26914-011006-dev` - [diff](https://github.com/emuyia/ems-octakit/compare/fc904c853f9d2307f4ffdc663d24c6b627da3d3c...92cf70b3a51c99aebd9bb65f12919bbcb6ea2ce3)
+- fix `PTN+FUNC+RIGHT` sometimes assigning the source pattern the new kit rather than keeping its original assignment
+
+{Reactions}
+👍🏻 (2) 👍 (2)
+
+[14.09.2026 14:47] bamshanks
+🙏🏻 thanks will pull
+
+
+[14.09.2026 14:47] bamshanks
+just working on conflicting part reloads between octakit and midi scenes, so it's timely. Think we are nearly there
+
+{Reactions}
+👍
+
+[14.09.2026 15:27] bukkakeborealis
+Just noticed kit clear is not instant, it clears the kit slot but changes are not effective, the kit keeps going until it is changed
+
+
+[14.09.2026 15:35] emuyia
+the active kit state is distinct from a saved kit, so if a kit slot is cleared, that means only the saved kit in that slot was cleared
+
+
+[14.09.2026 15:35] emuyia
+if that's what you mean?
+
+
+[14.09.2026 15:44] emuyia
+actually I notice loading a blank slot does not clear the active kit - which is wrong. i can fix that
+
+
+[14.09.2026 15:46] bukkakeborealis
+Yes that’s what I meant
+
+{Reactions}
+👍
+
+[14.09.2026 17:34] emuyia
+`ot-26914-152100-dev` - [diff](https://github.com/emuyia/ems-octakit/compare/92cf70b3a51c99aebd9bb65f12919bbcb6ea2ce3...7ba0ad68127bbf3b3609dbb70174112cb4bc65ed) - https://discord.com/channels/1542713713360904252/1544137111605612684/1544140293727715328
+- fix loading an empty kit slot not clearing active kit state
+
+{Reactions}
+❤️ (3) 👍
+
+[14.09.2026 23:30] bamshanks
+Updated ok-ms remix with it now
+
+{Reactions}
+👍 (3)
+
+[15.09.2026 13:06] bukkakeborealis
+I tried latest update OK-MS and there is a little delay on first note after pattern change
+
+
+[15.09.2026 13:12] bamshanks
+Hmm
+
+
+[15.09.2026 13:12] bamshanks
+Doesn’t happen on the individual firmwares?
+
+
+[15.09.2026 13:12] bamshanks
+Might be pushing it
+
+
+[15.09.2026 13:16] bukkakeborealis
+Also little audio tick at project load and the A rec setup LED quick blink. But I need to test again because I noticed it was on a project from another firmware I was on so I might be wrong. Btw not sure where we should report bugs/ issues for this ok-ms remix
+
+
+[15.09.2026 13:17] bamshanks
+I'll take PRs but I won't be doing much in the way of bug fixing it.
+
+
+[15.09.2026 13:17] bamshanks
+It's not a combo i'll be using
+
+
+[15.09.2026 13:18] bamshanks
+and the fixes will quite likely be upstream in your code
+
+{Reactions}
+👍
+
+[15.09.2026 13:18] bamshanks
+I just do a thin wrap on the build which moves some bits round so you don't conflict with each other
+
+
+[15.09.2026 13:21] bukkakeborealis
+All good. I think if we fix bugs individually on octakit and midiscenes it will come together nicely. I’ll try in a new project later to see if it reproduces. Could just be fine
+
+{Reactions}
+👍🏻
+
+[15.09.2026 13:38] emuyia
+sorry to say I will probably be a bit MIA for octakit stuff until october. there is likely more weirdness and crashes to take care of so I wouldn't be surprised if it's causing issues. but anyone is welcome to make PRs in the meantime if they fancy 🙂
+
+
+[15.09.2026 13:40] bamshanks
+You've done plenty 🙂
+
+{Reactions}
+❤️
+
+[15.09.2026 13:40] bamshanks
+I'll be similar boat pretty soon
+
+{Reactions}
+👍
+
+[15.09.2026 13:49] bukkakeborealis
+That’s all good I understand and I also need to step away for a while soon 😅 it’s been intense
+
+
+[15.09.2026 13:50] bryant12345
+Fortunately the $$$ makes it worthwhile. 🙂
+
+{Reactions}
+🤣
+
+[15.09.2026 13:51] bamshanks
+Yeah im just in it for the riches
+
+{Reactions}
+🤣 (2)
+
+[15.09.2026 14:00] bukkakeborealis
+Been spending way too much on Cursor plan 😅. And nearly out of credit
+
+
+[15.09.2026 15:39] bukkakeborealis
+More tests from a fresh project. No issues yet
+
+{Reactions}
+👍🏻
+
+[17.09.2026 01:05] tenacious_lemur_99636
+With OK, can you rename any kit? with more characters than the Parts on the OG FW?
+
+
+[17.09.2026 01:21] emuyia
+You can name kits by saving them (no dedicated 'rename' option currently). 7 chars max - that's to have it fit on the main screen with the 3 char number (e.g. `001 ABCDEFG`) 🙂
+
+{Reactions}
+👍
+
+[17.09.2026 01:22] emuyia
+wanted to allow longer names but 8+ didn't look right
+
+
+[17.09.2026 01:30] machinista__21901
+is it still the case / reproducable issue (or rather one-time)? thx
+
+
+[17.09.2026 08:26] bukkakeborealis
+I was playing on a project saved under a wip firmware. Now I always reload projects or start a fresh project and no issues
+
+{Reactions}
+❤️
+
+==============================================================
+Exported 90 message(s)
+==============================================================

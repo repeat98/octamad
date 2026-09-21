@@ -152,6 +152,10 @@ def render(key, values, source, wet=False, tail=None, label="", log=print):
     mod = registry.by_key(key)
     if rig.category(mod) == rig.SYSTEM:
         _die(f"{mod.name} is not an effect")
+    if mod.name == "tapeecho":
+        _die("Tape Echo now runs on the CPU. This DSP-only audition would "
+             "render dry audio, not Tape Echo. Run tools/verify/verify_tapeecho_cpu.py "
+             "for its checked native audition instead.")
     if rig.category(mod) == rig.STOCK and mod.key in stock.NO_DSP:
         _die(f"{mod.key} runs on the ColdFire (DMA over SDRAM rings), not the "
              f"DSP -- its DSP dispatch is stock's passthrough stub, so there "

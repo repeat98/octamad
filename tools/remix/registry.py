@@ -2,7 +2,8 @@
 
 Every directory under `modules/` holding a `manifest.py` that exports a
 `MODULE` is a contribution; there is no central list. The registry refuses
-duplicate keys and ids. Directories whose name starts with `_` or `.` are
+duplicate keys; FX2 ids may be shared by alternative replacements, but never
+within a selected remix. Directories whose name starts with `_` or `.` are
 skipped (`modules/_template/`).
 
 The stock FX2 effects (tools/remix/stock.py) are registered alongside under
@@ -81,11 +82,7 @@ def modules() -> dict[str, object]:
             raise SystemExit(f"two modules claim the key {m.key!r}: "
                              f"{seen_dirs[m.key]} and {d.name}")
         if m.menu is not None:
-            if m.menu.fx2_id in seen_ids:
-                raise SystemExit(
-                    f"two modules claim FX2 id 0x{m.menu.fx2_id:02x}: "
-                    f"{seen_ids[m.menu.fx2_id]} and {d.name}")
-            seen_ids[m.menu.fx2_id] = d.name
+            seen_ids.setdefault(m.menu.fx2_id, d.name)
         seen_dirs[m.key] = d.name
         found[m.key] = m
     from remix import stock
@@ -98,13 +95,10 @@ def modules() -> dict[str, object]:
             # what it declared. It must name THIS effect, though: replacing
             # LO-FI while sitting on PHASER's id is a typo that would
             # otherwise ship.
-            other = found.get(seen_ids[m.menu.fx2_id]) or \
-                next((x for x in found.values()
+            owners = [x for x in found.values()
                       if x.menu is not None
-                      and x.menu.fx2_id == m.menu.fx2_id), None)
-            rep = other.menu.replaces if (other is not None
-                                          and other.menu is not None) else None
-            if rep != m.key:
+                      and x.menu.fx2_id == m.menu.fx2_id]
+            if any(x.menu.replaces != m.key for x in owners):
                 raise SystemExit(
                     f"module {seen_ids[m.menu.fx2_id]} claims FX2 id "
                     f"0x{m.menu.fx2_id:02x}, which is stock {m.key}'s -- the "
@@ -186,6 +180,15 @@ def remix(name: str = DEFAULT_REMIX):
         if k not in known:
             raise SystemExit(f"remix {name!r} selects unknown module {k!r} -- "
                              f"have {sorted(known)}")
+    selected_ids: dict[int, str] = {}
+    for k in r.modules:
+        menu = known[k].menu
+        if menu is not None and menu.fx2_id in selected_ids:
+            raise SystemExit(
+                f"remix {name!r} selects two modules for FX2 id "
+                f"0x{menu.fx2_id:02x}: {selected_ids[menu.fx2_id]} and {k}")
+        if menu is not None:
+            selected_ids[menu.fx2_id] = k
     # ⚠️ THE FIRMWARE'S OWN NONE IS ONLY SAFE WHEN THERE IS NO BUS. An
     # unassigned track then runs nothing at all -- including the housekeeping
     # block -- and a remix with a server on one core and no participant on

@@ -26,14 +26,19 @@ run at `0x401087e4` and the unit raised `VEC:03` in the menu draw loop
 
 ```
 0x400c45b0..0x400c4702     338 B
-0x400d24d0..0x400d2ce0   2,064 B
+0x400d24e0..0x400d2ce0   2,048 B
 0x400d2ee6..0x400d3020     314 B
 0x400d64da..0x400d7c3c   5,986 B   (the FX2 chooser's NONE row + terminator sit at
                                     0x400d6b00 in every build; descriptor clones
                                     grow from 0x400d6b20)
 ```
 
-midi-scenes as a pinned ROM snapshot needed 8,196 of these 8,364 bytes.
+The zeros at `0x400d24d0..0x400d24e0` are stock DELAY filter-table entries
+508–511, not free space. A whole-delay-path regression exposed a read at
+entry 508 with BASE=0/WIDTH=127. Overflow allocation must preserve them.
+
+midi-scenes as a pinned ROM snapshot needed 8,196 bytes of the formerly
+estimated 8,364-byte zero-run budget (16 bytes are now excluded).
 
 ## The DRAM (measured under the ColdFire port unless marked)
 

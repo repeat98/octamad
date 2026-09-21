@@ -299,3 +299,45 @@ through a station per knob value and reports the −3 dB corner, the peak of
 `docs/firmware/DSP.md` §6b is the bring-up of `dsp_host` and the ABI; the
 functional baseline (`TESTPASS.md`) and the hardware-measurement protocol
 (`CAPTURE_18AUG.md`) are in git history (`git show 3ceba41:docs/history/<name>`).
+
+### Reverb load and isolation regression
+
+`make benchmark-reverbs` executes pristine stock SPRING REV, PLATE REV and DARK REV
+against Mini Verb, with one and eight instances, all controls automated on
+all eight instances, and every 16-sample block split. It saves full meters,
+inputs and a report in `out/reverb_bench`. Counts are executed DSP
+instructions, not hardware cycles or ColdFire CPU usage. The report separates
+initialization from processing and identifies excluded work.
+
+Repeated `dsp_host -paramfile FILE` options now address successive instances;
+the first remains instance 0 for compatibility. Empty files reserve a slot.
+Each file contains ordered `block,p0,...` rows with 8 or 12 values in 0..127.
+Per-instance instruction totals include both calls of split blocks.
+
+`-guard-shared`, together with `-guard 16384`, extends the existing memory
+snapshot guard to shared Y:0x30000..0x3ffff. It takes a fresh shared snapshot
+before each call so another core's legitimate writes are not attributed to
+the current instance. Both halves of split calls are checked. This mode
+requires lock-step scheduling; use separate interleaved renders for race
+checks. As with the existing guard, it detects changed memory, not transient
+writes that restore the original value before return.
+
+`make verify-miniverb` checks all eight buffer positions, solo-versus-combined
+bit identity, one active input at a time, interleaved execution, dirty X/Y
+startup, private/shared buffer bounds and a deliberately injected cross-core
+write that must trigger the guard. It also creates impulse and percussion
+WAVs. The gate runs automatically in `make check REMIX=miniverb`.
+
+Mini Verb also checks continuous sample-clocked modulation across split calls,
+actual phase wrap and phase bounds, and unclipped, decaying percussion with
+maximum decay/brightness/modulation/rate, including moving in-loop modulation. The benchmark rejects a Mini Verb
+instruction peak above the stock spring peak measured in the same run; this
+does not imply equal cost in other paths or equivalent hardware CPU usage.
+
+On macOS with VintageVerb installed, `make compare-vintageverb` renders its
+unchanged fresh-instance Audio Unit default offline through the public AU
+API. Run `make verify-miniverb` first for the percussion source. The optional
+comparison saves raw parameter values, plugin version, impulse metrics and
+stereo-RMS-matched wet A/B WAVs in `out/vintage_study`. It never opens an audio
+device or saves a plugin preset. The reference plugin is not needed by
+`make check`, and its desktop CPU time is not a target DSP benchmark.

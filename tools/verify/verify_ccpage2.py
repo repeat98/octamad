@@ -119,9 +119,21 @@ def main():
     assert pokes[0] == (0x400d64a0, (0x4000e79c).to_bytes(4, "big"),
                         CAVE_AT.to_bytes(4, "big")), "dispatch poke wrong"
 
-    r = emu.boot("out/mainos_bus.bin")
+    # This isolated cave test supplies its own source-linked code and stock
+    # descriptor IDs. The last remix built may contain a DRAM loader that
+    # Unicorn cannot boot; those images are covered by verify_dram_boot/set.
+    r = emu.boot()
     uc = r.uc
     assert r.clean
+    # Supply the Character descriptor counts used by the FX1 cases below.
+    # This test exercises the cave's descriptor lookup; the chosen remix
+    # need not contain Character (stock LO-FI occupies the same effect ID).
+    from remix import registry
+    character = registry.by_name("character")
+    desc = int.from_bytes(uc.mem_read(0x400d5f58 + 4 * character.menu.fx2_id, 4), "big")
+    for slot, param in enumerate(character.params):
+        uc.mem_write(desc + 0x6a + 4 * slot, bytes(4))
+        uc.mem_write(desc + 0x9a + 4 * slot, (param.count or 128).to_bytes(4, "big"))
     # the cave also writes the shadow (0x100a5xxx), the part-modified byte
     # (0x100b145e) and the global changed flag (0x100f8598): map those pages
     for b in (CAVE_AT, MSG_AT, 0x100a0000, 0x100b0000, 0x100f0000, 0x460d0000):

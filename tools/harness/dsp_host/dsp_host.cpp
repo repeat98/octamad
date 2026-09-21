@@ -121,12 +121,15 @@
 //     -paramfile FILE       automate instance 0 per block. Each non-comment line
 //                           is block,p0,p1,... (8 or 12 values); omitted blocks
 //                           retain the last values. Events must be ordered.
+//                           Repeat -paramfile for instances 1, 2, ... (empty
+//                           files reserve an instance without automating it).
 //     -split N[,M..]        a=0 sub-block call of N frames, then a=1 for the rest.
 //                           A LIST gives each instance its OWN split, which is what
 //                           hardware does -- tracks trig independently.
 //                           (the post-trig state). Omitted = split 0, where the
 //                           a=0 call is SKIPPED -- what the dispatcher does.
 //     -guard [words]        police buffer bounds (default window 0x3800 words)
+//     -guard-shared         also police shared Y:30000..3ffff (lock-step only)
 //     -frames N             frames per block (default 32)
 //     -blocks N             blocks to run (default 256)
 //     -in file.raw          24-bit mono raw input, else an impulse is used.
@@ -163,6 +166,7 @@ namespace {
 
 struct ParamEvent {
     int block = 0;
+    int instance = 0;
     std::vector<int> values;
 };
 
@@ -186,9 +190,10 @@ struct Args {
     unsigned inmask = ~0u;                     // which instances get the input
     bool stereo = false;                       // -in is interleaved L,R
     std::vector<std::vector<int>> pv;          // one parameter set per instance
-    std::vector<ParamEvent> paramEvents;       // block automation for instance 0
+    std::vector<ParamEvent> paramEvents;       // block automation per instance
+    int paramFiles = 0;
     std::string allocProc = "perinst";
-    bool guard = false; TWord guardWords = 0x3800;
+    bool guard = false, guardShared = false; TWord guardWords = 0x3800;
     std::vector<TWord> peekY, peekX;
     std::string dumpyFile; TWord dumpyLo = 0, dumpyHi = 0;
     std::vector<TWord> track;              // r7-relative X words, dumped EVERY block
@@ -251,19 +256,26 @@ struct Guard {
     static const TWord Y_HI = 0xC000;
     static const TWord P_HI = 0x20000;
     std::vector<TWord> y, p;
+    TWord yHigh = Y_HI;
     bool armed = false;
     const std::vector<bool>* loadedY = nullptr;
     const std::vector<bool>* loadedP = nullptr;
 
-    void arm(Memory& mem, const std::vector<bool>& ly, const std::vector<bool>& lp) {
-        y.resize(Y_HI); p.resize(P_HI);
+    void arm(Memory& mem, const std::vector<bool>& ly, const std::vector<bool>& lp, bool shared = false) {
+        yHigh = shared ? 0x40000 : Y_HI;
+        y.resize(yHigh); p.resize(P_HI);
         loadedY = &ly; loadedP = &lp;
         snap(mem);
         armed = true;
     }
     void snap(Memory& mem) {
         for (TWord ad = 0; ad < Y_HI; ++ad) y[ad] = mem.get(MemArea_Y, ad);
+        snapShared(mem);
         for (TWord ad = 0; ad < P_HI; ++ad) p[ad] = mem.get(MemArea_P, ad);
+    }
+    void snapShared(Memory& mem) {
+        if (yHigh > Y_HI)
+            for (TWord ad = 0x30000; ad < yHigh; ++ad) y[ad] = mem.get(MemArea_Y, ad);
     }
     // Report anything that changed outside [lo, hi) in Y, or at all in P.
     // Returns the number of offending regions; resyncs the shadow either way.
@@ -284,7 +296,8 @@ struct Guard {
                             runClob ? " -- OVER A LOADED MODULE" : "");
             inRun = false; runClob = false;
         };
-        for (TWord ad = 0; ad < Y_HI; ++ad) {
+        for (TWord ad = 0; ad < yHigh; ++ad) {
+            if (ad == Y_HI) { flush(ad, "Y"); ad = 0x30000; }
             const TWord v = mem.get(MemArea_Y, ad);
             const bool changed = v != y[ad];
             if (changed) y[ad] = v;
@@ -294,7 +307,7 @@ struct Guard {
                 if ((*loadedY)[ad]) runClob = true;
             } else flush(ad, "Y");
         }
-        flush(Y_HI, "Y");
+        flush(yHigh, "Y");
         for (TWord ad = 0; ad < P_HI; ++ad) {
             const TWord v = mem.get(MemArea_P, ad);
             if (v != p[ad]) {
@@ -337,7 +350,7 @@ bool loadMem(Core& c, int& modules, long& words) {
     std::ifstream f(c.path, std::ios::binary);
     if (!f.is_open()) { std::cerr << "cannot open " << c.path << "\n"; return false; }
     modules = 0; words = 0;
-    c.loadedY.assign(0xC000, false);
+    c.loadedY.assign(0x40000, false);
     c.loadedP.assign(0x20000, false);
     for (;;) {
         uint8_t sp; uint32_t addr, cnt;
@@ -542,21 +555,25 @@ int main(int argc, char** argv) {
                 if (hash != std::string::npos) line.resize(hash);
                 if (line.find_first_not_of(" \t\r\n") == std::string::npos) continue;
                 auto row = parseList(&line[0]);
-                if (row.size() < 2 || row[0] < last) {
+                if (row.size() < 2 || row[0] < 0 || row[0] < last) {
                     std::cerr << "bad parameter automation row: " << line << "\n";
                     return 1;
                 }
                 ParamEvent e;
                 e.block = row[0];
+                e.instance = a.paramFiles;
                 e.values.assign(row.begin() + 1, row.end());
-                if (e.values.size() < 8 || e.values.size() > 12) {
+                if ((e.values.size() != 8 && e.values.size() != 12) ||
+                    std::any_of(e.values.begin(), e.values.end(), [](int x) { return x < 0 || x > 127; })) {
                     std::cerr << "parameter automation needs 8 or 12 values: " << line << "\n";
                     return 1;
                 }
                 a.paramEvents.push_back(e);
                 last = e.block;
             }
+            ++a.paramFiles;
         }
+        else if (k == "-guard-shared") a.guard = a.guardShared = true;
         else if (k == "-guard") {
             a.guard = true;
             if (i + 1 < argc && argv[i + 1][0] != '-')
@@ -601,7 +618,15 @@ int main(int argc, char** argv) {
                      "                [-frames N] [-blocks N] [-in raw[,raw..]] [-out raw] [-paramfile FILE] [-trace N]\n";
         return 2;
     }
+    if (a.guardShared && a.interleave) {
+        std::cerr << "-guard-shared needs lock-step scheduling to attribute writes\n"; return 2;
+    }
     if (a.inst < 1) a.inst = 1;
+    if (a.paramFiles > a.inst) {
+        std::cerr << "more -paramfile arguments than instances\n"; return 2;
+    }
+    std::stable_sort(a.paramEvents.begin(), a.paramEvents.end(),
+                     [](const ParamEvent& l, const ParamEvent& r) { return l.block < r.block; });
     if (a.pv.empty()) a.pv.push_back(std::vector<int>(8, 64));
 
     setvbuf(stdout, nullptr, _IONBF, 0);
@@ -842,15 +867,17 @@ int main(int argc, char** argv) {
     }
 
     if (a.guard) {
-        for (auto& Cp : cores) Cp->guard.arm(*Cp->mem, Cp->loadedY, Cp->loadedP);
+        for (auto& Cp : cores) Cp->guard.arm(*Cp->mem, Cp->loadedY, Cp->loadedP, a.guardShared);
         std::printf("guard armed: Y:0x0000..0x%05x + P:0x00000..0x%05x, "
                     "window %u words per instance\n", Guard::Y_HI - 1, Guard::P_HI - 1,
                     a.guardWords);
+        if (a.guardShared) std::printf("guard also armed: shared Y:0x30000..0x3ffff\n");
     }
 
     // ---- init, every instance, before any block ---------------------------
     for (int k = 0; k < a.inst; ++k) {
         Core& C = *cores[inst[k].core];
+        if (C.guard.armed) C.guard.snapShared(*C.mem);
         setAlloc(C, inst[k].alloc);
         setParams(C, inst[k].pv);
         C.dsp->regs().r[6].var = C.pblock;
@@ -1039,6 +1066,7 @@ int main(int argc, char** argv) {
     // Start a call: what the dispatcher does before `jsr (r2)`.
     auto beginCall = [&](CoreRun& R, const Call& call) {
         Core& C = *R.C; Instance& I = inst[call.inst];
+        if (C.guard.armed) C.guard.snapShared(*C.mem);
         if (a.allocProc == "perinst") setAlloc(C, I.alloc);
         setParams(C, I.pv);
         DSP& D = *C.dsp;
@@ -1095,6 +1123,13 @@ int main(int argc, char** argv) {
         const int k = R.cur.inst, b = R.block;
         char who[32]; std::snprintf(who, sizeof who, "inst %d", k);
         R.inCall = false;
+        I.cycles += R.cur.steps;
+        if (C.guard.armed) {
+            int cl = 0;
+            I.violations += C.guard.check(*C.mem, I.base, I.base + a.guardWords, who,
+                                          "proc", b, I.violations + I.clobbers > 12, cl);
+            I.clobbers += cl;
+        }
         if (R.cur.ctl) {
             // the a=0 call: nothing captured, the a=1 call follows
             return;
@@ -1110,13 +1145,7 @@ int main(int argc, char** argv) {
                 trackFile << '\n';
             }
         }
-        I.cycles += R.cur.steps; ++I.procCalls;
-        if (C.guard.armed) {
-            int cl = 0;
-            I.violations += C.guard.check(*C.mem, I.base, I.base + a.guardWords, who,
-                                          "proc", b, I.violations + I.clobbers > 12, cl);
-            I.clobbers += cl;
-        }
+        ++I.procCalls;
         if (a.diff && b == a.diff - 1 && k == 0) {
             std::printf("X writes during block %d (impulse block):\n", b);
             int n = 0; TWord runLo = 0; bool inRun = false;
@@ -1196,7 +1225,8 @@ int main(int argc, char** argv) {
     for (int b = 0; b < a.blocks; ++b) {
         while (nextParamEvent < a.paramEvents.size() &&
                a.paramEvents[nextParamEvent].block == b) {
-            inst[0].pv = a.paramEvents[nextParamEvent].values;
+            const auto& event = a.paramEvents[nextParamEvent];
+            inst[event.instance].pv = event.values;
             ++nextParamEvent;
         }
         // fill every instance's block: impulse on the first frame unless an

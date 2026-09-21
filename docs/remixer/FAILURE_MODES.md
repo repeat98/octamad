@@ -3,6 +3,243 @@
 Symptom → cause (measured, inferred or open) → fix. Add an entry the moment
 a mode is seen on hardware.
 
+## CPU Tape Echo: second-instance TIME / third-instance hard freeze (open)
+
+**Hardware report (19 Sep 2026).** A second Tape Echo instance freezes the
+screen and sequencer when TIME is edited; loading three instances also
+freezes. There is **no exception screen** for these failures. This is not
+the earlier reported Vec 03 at the scaled-index ring load. The exact panel
+version for this second failure has not been confirmed.
+
+**Status.** CPU deadline overrun is plausible, not established. The prior
+emulator gate exercised eight instances but did not sweep TIME on them or
+model real CPU/cache/DMA contention. No hardware fix is claimed.
+
+**OCTACLID3 follow-up (owner report).** Three instances now load, but
+tweaking TIME with the third running still freezes the machine. The
+single-head change did not fix the hardware failure. The next candidate
+targets a substantial reduction in steady and moving-TIME work, with the
+owner explicitly accepting a less detailed tape model. Do not reinterpret
+the successful emulator runs as evidence against this physical failure.
+
+**OCTACLID4 economy candidate (20 Sep).** Four filters instead of nine,
+one block-rate TIME slew instead of the per-sample motor, and two simple
+wow/flutter oscillators instead of five transport-integrated oscillators.
+The complete three-Tape/five-stock moving-TIME benchmark drops from
+27,582 to 17,931 instructions (35%); its increment over stationary TIME
+drops from 3,791 to 384. AGE moves to page-1 slot 3. All runnable checks
+pass for octaclidean, repitch-tapeecho and tapeecho; ASan/UBSan stress passes.
+Project-backed playback was not run (no OT_PROJECT). Real CPU deadlines
+and physical freeze recovery remain unverified. The candidate is not a
+confirmed fix, and old HEADS locks need clearing/remapping to the new AGE slot.
+
+**OCTACLID4 follow-up (owner report, 20 Sep).** The machine now freezes
+while tweaking the sixth instance. This improves the observed threshold,
+but does not establish a safe five-instance limit or prove deadline
+overrun. The target is eight active instances with editing headroom.
+Expand the meter beyond TIME/full-wet: default MIX=90 and simultaneous
+FDBK/WOW/AGE/MIX, FREE/BEAT and tempo edits are separate workloads.
+
+**OCTACLID5 candidate (20 Sep).** Two playback biquads plus a record FIR,
+staggered 64-sample tone updates, register-resident recording/gain ramps
+and FIR/curve kernels. Adjacent head reads share one uncached sample
+(17 instead of 32 data-word reads per settled block). Same-work eight-track
+instruction counts fall another 21–23% from OCTACLID4: moving FREE TIME
+34,680 → 26,934 mean; all six controls plus tempo moving 40,592 → 32,165.
+The separate full-synthetic-history stress peaks at 33,505 instructions.
+The expanded compiled/native oracle includes full history, gain ramps
+and an active-history wrap. State is 200 bytes/track. Voice reference
+tolerance deliberately allows 2 dB colour error (measured 1.89 dB),
+without relaxing feedback, wow, noise buildup or memory-safety gates.
+These reductions are not hardware timing measurements; the sixth-instance
+failure is still open until physical eight-instance playback/editing and
+representative streaming/timestretch/recording loads pass with headroom.
+
+**Candidate changes.** One playback head, removed DRIVE (fixed at the
+owner's preferred 0), bounded per-instance BEAT transitions, continuous
+FREE motor, acceleration-limited wow offset after snapped TIME changes.
+Compile for the real 54454 and independently verify matching ISA-B object
+encoding for the shared linker. Expanded tests sweep TIME/tempo/mode on
+eight instances, execute the entire stock delay/DMA path, and meter two
+and three instances both settled and changing TIME. Hardware deadlines,
+selection of the third instance, and live sequencer operation still need
+physical validation.
+
+**Separate local regression found while adding the TIME display.** The
+larger UI moved a lookup table into the apparent zero cave at 0x400d24d0.
+Stock DELAY actually reads that word as filter coefficient 508 at
+BASE=0/WIDTH=127. The full-routine comparison caught different stock-track
+audio at block 172. Reserve the first 16 bytes (entries 508–511), starting
+overflow allocation at 0x400d24e0. This is not evidence for the reported
+earlier hardware freeze; it prevents a new regression in the candidate.
+
+## Intermittent blackout and flashing LEDs during Euclid testing (open)
+
+**Hardware report (19 Sep 2026).** Screen goes black and CARD STATUS,
+A/B/C/D and INT LEDs flash rapidly, apparently without a user action.
+Subsequent reboots can return to the same state; unplugging and reconnecting
+the power cable is needed to boot normally. The owner thinks this may also
+have occurred before any custom firmware. The owner confirmed an Octatrack
+MkII with the original Elektron PSU. Exact running version is not yet
+confirmed.
+
+**Local evidence, not a diagnosis.** Image 106's compiled ColdFire control
+hooks completed 250,000 frames each in ENV and RAND-to-LOOP with sixteen
+instances and both outgoing buffers. Each run represents 90.70 seconds and
+crosses repeated raw-clock wraps; both-slot traces on tracks 1 and 8 match
+the native engine exactly. The stock dial renderer also completes. These
+are isolated control tests, not a full hardware burn test, and do not rule
+out firmware timing, peripheral interactions, or a hardware fault.
+
+**Next diagnostic step.** Pause flashing while boot/power is unstable.
+Isolate external connections and test with another known-good MkII-compatible
+supply; the original PSU being present does not establish that it is healthy.
+A stock-OS comparison remains useful once
+the unit is stable enough to update. Similar black-screen/LED symptoms have
+been reported independently of this firmware, including repairs; those
+reports do not establish the cause on this unit:
+[firsthand reports](https://www.elektronauts.com/t/octatrack-mk2-crashing/155301),
+[Elektron troubleshooting](https://support.elektron.se/support/solutions/articles/43000568024-general-troubleshooting-guide).
+No firmware fix is claimed.
+
+**Logging investigation (19 Sep 2026; not implemented in image 107).**
+The owner requested persistent diagnostics. The emulator has an existing
+exception-printer path (UART TXEMP polling at `0x4003afa0`, documented in
+`tools/emu/ot_emu/periph.cpp`); this is not evidence of a user-accessible
+persistent crash log or of a MIDI-compatible exception output. The stock
+card file API is partially mapped in `docs/firmware/SAMPLE_SAVE.md`, but its
+safe background-task use, locking, flush durability and bounded latency
+have not been established for a logger.
+
+Proposed capture fields: exact firmware identity, monotonic uptime,
+transport/tempo, active effect IDs, sequencer progress, and exception
+vector/PC/registers when an exception handler actually runs. Keep a small,
+fixed-size RAM event ring; never do filesystem I/O from the audio hook or
+exception handler. A RAM ring alone is insufficient here: unplugging loses
+it. An external MIDI capture could retain already-transmitted checkpoints,
+subject to verifying the actual MIDI OUT path, nonblocking queue behaviour,
+SysEx framing and coexistence with clock/notes. A CF alternative needs
+bounded background writes and recovery from a truncated final record.
+Neither route guarantees a final exception record on power loss or CPU lockup.
+Missing heartbeats alone do not distinguish those causes.
+
+Before shipping a diagnostic variant, inject a known exception and a
+simulated abrupt stop; verify capture decoding and recovery, then measure
+playback and MIDI timing with logging enabled and saturated output. Do not
+reuse an unverified battery-backed region or write arbitrary sectors.
+
+**Diagnostic implementation (19 Sep 2026).** The optional `CRASH TRACE`
+module and `octapitch-euclid-debug` remix implement MIDI checkpoints and a
+bounded exception-frame report before the stock panel printer. The Mac
+recorder is `tools/hw/ot_crashlog.py`; setup and limitations are in
+[`modules/crash-trace/README.md`](../../modules/crash-trace/README.md).
+Scarlett 18i8 USB was detected and raw incoming MIDI was recorded, proving
+the capture connection; no crash cause or physical diagnostic exception
+has yet been observed. Image 107 has no logger. Image 108 is the diagnostic
+variant; its package/check record lives in `out/crashtrace/`.
+
+**First physical trace (19 Sep 2026, image 108).** 314 valid checkpoints
+were captured via Scarlett 18i8 USB. They span 312.972 engine seconds;
+all consecutive frame deltas are 2,756, the largest host arrival gap is
+1.034 seconds, and skipped reports remain zero. The final packet at
+13:43:56.811 CEST is complete, with transport stopped, tempo 125 and Euclid
+in T4 FX1. Eight earlier checkpoints recorded playback. No exception,
+malformed trace, host overflow or unfinished SysEx was captured; all MIDI
+then ceased. Scarlett remained enumerated. The owner confirmed the same
+blackout/flashing LEDs while stopped and without interaction. The raw
+snapshot and analysis are in `out/crashtrace/crash-snapshot-20260919-134418.jsonl`
+and `out/crashtrace/crash-analysis-20260919-1344.json`.
+
+This establishes loss of telemetry concurrent with the reported crash,
+not its cause. An unreported exception, power failure, engine/CPU stall or
+MIDI-path failure remains possible. No new firmware fix is justified by
+this trace alone. A known-good compatible PSU is the next independent
+control; a stock-firmware comparison requires stable boot/update conditions.
+
+## Reverbs absent from Euclid's FX2 chooser (OCTABAM104–105)
+
+**Symptom (19 Sep 2026, hardware report).** The reverb effects are missing
+from FX selection after installing Euclid.
+
+**Cause, measured in the remix and built image.** `remixes/euclid.py`
+listed only Euclid and six stock effects. The builder replaces the whole
+FX2 chooser with that list, so Plate, Spring and Dark had no menu entries.
+Euclid's DSP placement did not overwrite their code.
+
+**Fix.** Add all three stock reverbs explicitly to the Euclid remix's FX2
+list. The regression checks their presence independently of that list's
+declaration and compares their DSP code and dispatch against stock in both
+payloads. The generic menu gate also checks descriptor bytes and cursor
+positions. Corrected image: OCTABAM106; hardware confirmation pending.
+
+## Tape Echo BEAT stays fast, glides and clicks (OCTABAM100–102)
+
+**Symptoms (17 Sep 2026, hardware).** Turning TIME in BEAT mostly leaves a
+fast repeat, with crackling. WOW is hard to identify as modulation. The
+per-track buffer change fixed the earlier cross-channel leak.
+
+**Sync cause, reproduced under the DSP emulator.** After `asr #$14,a,a`,
+TIME's band number is in A1 but A0 still contains the fractional remainder.
+`cmp` compares the whole accumulator: only TIME values 16, 32, 48, etc.
+match their integer band. All other values fall through to 1/64. At
+120 BPM, TIME 64 produced 5,512 samples but TIME 65 and 127 produced 1,378.
+The old test swept exact multiples of 16, so it could not detect this.
+
+**Click source, measured under the DSP emulator.** WOW discarded all
+fractional bits before adding its displacement to the taps. Each whole-sample
+change jumps the playback head. A steady 997 Hz tone, WOW 127, SYNC BEAT,
+TIME 65, HEADS 1 and no feedback produced a peak sine-recurrence residual
+of 0.01586 FS. Applying WOW to the Q15.8 position before interpolating drops
+the residual to about 0.00035 FS, while modulation remains measurable on
+all three heads. This establishes a click source; it does not prove every
+reported hardware crackle is explained.
+
+**Motor cause, reproduced under the DSP emulator.** The same fractional-word
+residue invalidated the minimum-velocity and velocity-settling zero tests.
+Starting the motor 32 samples below or above a 3,675-sample target left the
+worst head 94.75 or 400.625 samples off target after 4,096 blocks. Clearing
+A0 fixed that dead band in image 101, but its stored smoothed velocity still
+had momentum: the position could cross the target before velocity reversed.
+It also applied the motor to BEAT, contradicting the required quantised snap.
+
+**Test defect and transition cause (17 Sep).** The purported live-change test
+alternated two emulator instances through one deliberately shared state block;
+it did not automate one effect through time. A new block-timed parameter file
+exposed the glide and overshoot directly. The first BEAT tap-crossfade then
+passed changes spaced 24 blocks apart but failed a realistic fast sweep four
+blocks apart: restarting a 255-sample two-tap fade produced a 0.0945 FS
+sine-recurrence impulse. A two-tap pair cannot represent the mixture of a
+still-running previous fade.
+
+**Fix.** Discard A0 before TIME/HEADS comparisons and retain fractional WOW
+through tap interpolation. FREE now derives velocity directly from remaining
+error, clamps the final fraction, and has no acceleration state capable of
+overshooting. BEAT bypasses the motor, snaps to the exact division, and
+crossfades old/new taps for 255 samples. Changes arriving during that 5.8 ms
+fade are coalesced to the latest quantised target rather than restarting it.
+Scale the tempo quotient so it does not saturate below about 54 BPM, and reset
+the warm-up tag on init.
+
+The verifier now drives one stateful instance through parameter automation.
+On both payloads it sweeps all 128 TIME values at 30/45/120/240 BPM, checks
+spaced exact snaps, rejects reversal or overshoot in an up/down FREE sweep,
+and crosses BEAT bands every four blocks on a steady tone. The coalesced rapid
+sweep measures a 0.00101 FS peak recurrence residual. Hardware confirmation
+of image 102 falsified the result as a sufficient fix: the same sync/click
+symptoms remained, and the FREE transition sounded like two ramps.
+
+**Image 103 redesign.** Image 102 still had three independent motor positions,
+so a FREE change could produce several Doppler trajectories even though none
+crossed its numerical target. Its BEAT transition also played old and new tap
+sets simultaneously, an emulator-clean mechanism that remained bad on the
+unit. Both structures are removed. FREE now has one master Q15.8 transport;
+heads 2 and 3 are derived from it on every sample and the sweep gate requires
+their ratios to remain exact. BEAT fades wet and feedback to zero over 256
+samples, switches every head to the latest exact division near digital zero,
+then fades back over 256 samples. Edits during the envelope are queued rather
+than reversed. The complete rapid-sweep sequence measures 0.00140 FS under the
+emulator, but hardware confirmation remains pending and is the deciding gate.
+
 ## Audio engine wedged, sequencer alive: the master loop ✅ measured
 
 **Symptom.** The sequencer runs but no audio plays, sample preview is
@@ -43,6 +280,15 @@ transport restart.
 **Cause.** Open. The only configuration that wedged is the one where the
 reverb's output reaches the mix. Next: soak `BusVerb + return` against
 `BusDelay + return` for tens of minutes each.
+
+**Community reproduction variable (18 Sep 2026, not yet reproduced here).**
+One tester reported an immediate *sequencer stall* with BusVerb in an existing
+project, while Sam reported the complete rig stable only in a clean, dedicated
+project because it consumes the available DSP resources. That is not the same
+symptom as the transport-alive audio dropout above, so do not merge the two
+causes without a reproduction. Add both a clean dedicated project and a
+resource-loaded project to the next soak matrix; record transport state and
+the selected effects on every track when either fails.
 
 ## BusDelay silent with its knobs locked: the MODE formatter wrote over the minimum table ✅ measured
 
@@ -552,4 +798,3 @@ different on each track. `stamp-defaults` and `clean` now store SEND (id
 9) with a zero page in every empty FX2 slot; a project of ours has no id-0
 FX2 slot left. Not measured under the port (its fixture had no audio on
 those tracks); the falsifier is a stamped project that still leaks.
-

@@ -1,0 +1,2485 @@
+==============================================================
+Guild: Octahackers
+Channel: OCTATRACK / open-technical-questions
+==============================================================
+
+[28.08.2026 05:57] bamshanks
+Where is the delay? 😛
+
+
+[28.08.2026 12:29] bryant12345
+What happened to the NOISE effect in LO-FI? There are remnants in the code. Is there a noise table hiding somewhere?
+
+
+[28.08.2026 12:30] bamshanks
+Haha yeah looked like an abandoned poc
+
+
+[28.08.2026 12:30] bamshanks
+There were a couple of those hiding in there
+
+
+[28.08.2026 12:31] bamshanks
+There was a whole effect
+
+
+[28.08.2026 12:31] bryant12345
+Is there a list of all of the Tables in Octatrack? I’ve started looking into this, but maybe someone has mapped it out already.
+
+
+[28.08.2026 12:32] bamshanks
+Don’t think so
+
+
+[28.08.2026 12:38] bamshanks
+Would be super useful
+
+
+[28.08.2026 12:41] bryant12345
+I did some work on this and found where the buffer is reserved on the Cloudfire side. Each delay reserves 4 seconds of audio, so that helped me track it down. But I still have a bunch of unanswered questions around it.
+
+
+[28.08.2026 12:42] bamshanks
+You thinking it’s got some reserved ram?
+
+
+[28.08.2026 12:42] bamshanks
+Seems like maybe hidden recording buffers
+
+
+[28.08.2026 12:46] bryant12345
+Yes. Exactly. Each track gets reserved RAM in case you switch it to un-SYNC and crank the time to max.
+
+I’m not sure how much shared code there might be with the recording buffers. I think the delay interpolates in ways the recording buffers don’t.
+
+
+[28.08.2026 12:47] bamshanks
+Yeah ok cool, that aligns with how I was thinking it probably works
+
+
+[28.08.2026 12:47] bamshanks
+Explains, amongst other things, how it’s so robust
+
+
+[28.08.2026 12:48] bamshanks
+They were clever clogs whoever made this stuff
+
+
+[28.08.2026 12:49] bryant12345
+Alien technology. 🙂
+
+
+[28.08.2026 12:49] bamshanks
+Haha exactly how I’ve always described it
+
+
+[28.08.2026 12:50] bamshanks
+Works with my alien brain
+
+
+[28.08.2026 14:51] bryant12345
+One open question I have is what elements in OT work at audio rates and which work at slower rates. I think I know that the sequencer is in 64 sample chunks. But then I was quite surprised to find that the LFOs seem to be updated at the sample rate. I might have misinterpreted that. But if it is true, then that opens up some interesting possibilities.
+
+{Reactions}
+🤔
+
+[28.08.2026 18:47] ribon3000
+i did an investigation in delaying the audio sequencer relative to the midi sequencer, and it looks like frames are 16 samples - that frame interrupt also clocks the sequencer
+
+
+[28.08.2026 19:04] bryant12345
+That’s really interesting! I’m trying to remember where I got the 64 samples number … I think it was when I was working on “clickless” sound-on-sound looping. If it is 16 instead of 64 that would be great!
+
+
+[28.08.2026 19:14] bryant12345
+It could be the case that sample buffers are 64 samples, but the timing of those are precise to 16 samples. I’ll look into it.
+
+
+[28.08.2026 19:14] ribon3000
+gonna have another look later tonight, i can't promise that i haven't mixed something up - i still haven't managed to build a proper mental model of everything yet 🙈
+
+
+[28.08.2026 19:14] bryant12345
+If you did, your head would explode. 🙂
+
+
+[28.08.2026 20:21] ribon3000
+threw fable at it - it says it's 16 samples for sure: 
+
+> Settled: OT control frame = 16 samples = 2756.25 Hz, proven from the firmware two ways: (1) the tempo accumulator is an exact identity — frame = 16/44100 s for every BPM (tempo cancels), and (2) a per-track loop clamps trigger offsets to a 16-sample window. The ColdFire control frame and the DSP's 16-sample audio block are the same period, 1:1 — no divider. The "64" floating around is eDMA NBYTES = 64 bytes of DSP status data per frame, not samples. Native LFOs are computed once per frame on the CPU (2756.25 Hz control rate), not per-sample. Internal grid is 96 PPQN with sub-frame-accurate trigs. (Derived from OS 1.40C MKII static analysis; a scope on the DSP→CPU IRQ line should read 2756.25 Hz if anyone wants belt-and-braces.)
+
+
+extra detail: 
+
+> The sequencer accumulator advances by tempo_raw × 16 per frame (lsll #4 at 0x4000ad46), where tempo is stored as BPM × 24 (clamped [720, 7200] = 30–300 BPM). One MIDI-clock tick costs 2646000 units — and 2646000 = 44100 × 60, i.e. samples per minute. Setting units-accumulated-per-minute equal to units-consumed-per-minute, the tempo cancels entirely and you get frame period = 16/44100 s for every BPM. 
+> There's a per-track loop at 0x4000aef2 starting moveq #16,%d6 that computes each track's next-event distance in samples and clamps it into a 0–16-sample window, writing sub-frame trigger offsets. The frame is literally 16 samples wide, and that's how the OT gets sample-accurate timing within the control frame.
+
+
+[28.08.2026 20:44] bryant12345
+That’s great information!
+
+
+[28.08.2026 20:52] bryant12345
+I dug through the old thread on elektronauts where sezare56 said “64 samples is the minimum playback length, that is sure.”  I’m not clear if that’s a misunderstanding or a limitation he identified for some other reason. 
+
+Architecturally, does this mean the DSP processes in 16 sample chunks? That is counter to what Claude insisted on the other day. But I also recall some of the testing I did failing with larger sample chunks. I hadn’t put it together until now.
+
+
+[28.08.2026 20:56] ribon3000
+so from what i've had fable gather so far the idea is: 
+
+```
+   DSP core                              ColdFire (CPU)
+   ─────────                             ──────────────
+   process 16 samples of audio
+   using the CURRENT parameter frame
+        │
+        │  finished a block ──► raises IRQ  ─────►  frame interrupt (0x4000aad0)
+        │                                             │
+        ▼                                             ├─ swap the parameter double-buffer
+   process the NEXT 16 samples  ◄── reads the ────────┤   (front = DSP reads, back = CPU writes)
+   from the freshly-filled buffer     new frame       ├─ advance the sequencer phase accumulator
+        │                                             ├─ compute this frame's per-track params
+        │                                             │    (base values + LFO + scene + p-lock)
+        ▼                                             └─ DMA them into the DSP's buffer
+      ...repeat, 2756 times per second...
+```
+
+FUN_4000c8a4 is the frame builder 
+FUN_4000c11a -> one modulated value per param per frame (LFO, scene morph, p-lock application)
+FUN_4003f1b4 -> muls.l interpolation for the Crossfader scenes
+
+
+[28.08.2026 21:15] bryant12345
+Great info.
+
+
+[29.08.2026 02:48] bryant12345
+16 sample chunks definitely seems to work with my sound-on-sound looping equation for figuring out clickless loop lengths. That’s awesome.
+
+
+[29.08.2026 02:49] bamshanks
+That would be so sweeet
+
+
+[29.08.2026 02:56] bryant12345
+I have this massive spreadsheet of BPM/RLEN combinations that work for sound-on-sound looping. Right now there are about 2000 combinations that work with a stock Octatrack if you set it up right.
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1543061656110899381/octatrack_clickless_loops.xlsx?ex=6aaf2f27&is=6aaddda7&hm=3fe50a40d57d94b5543dcae5b686690d5ceb39297bf5fd21e45b0149d81e0f71&
+
+
+[29.08.2026 03:07] bamshanks
+Nice
+
+
+[29.08.2026 21:25] bryant12345
+I’m diving into the delay buffer stuff today. I’m hoping to reconcile how it differs from the recording buffer. In particular, I’m interested in the interpolation that the delay does but the recording buffer doesn’t.
+
+
+[29.08.2026 22:20] bryant12345
+Spent a lot of time with my buddy Claude today working through the delay.  I learned a lot.  Feel free to add this to your body of knowledge.
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1543354676349509712/octatrack-delay-architecture.md?ex=6aaf974c&is=6aae45cc&hm=53bbbcce7215d41f4e3925db4a5ef2f36001b96e53567d7469dc83cb353ab599&
+
+{Reactions}
+❤️ (3)
+
+[29.08.2026 22:30] ribon3000
+here's what i was able to gather around the timestretch algo so far before my tokens ran out. still a few bits to investigate, particularly how TSNS works. 
+
+but the timestretch being entirely cpu-side sort of matches how the delay works, interesting.
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1543357176444100748/timestretch.md?ex=6aaf99a1&is=6aae4821&hm=5c902736a6adad08142ec3d8c534a6312a0700886529b08dc6f299070c137f4c&
+
+
+[29.08.2026 23:58] bryant12345
+I'm not sure how helpful the next set of things are going to be.  I was more optimistic about their utility when I started.  🙂
+
+These are all (?) of the tables on the DSP side.
+
+
+[29.08.2026 23:59] bryant12345
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1543379537704779797/x06c00_tail.png?ex=6aaf05b4&is=6aadb434&hm=a3acea61a3a70a5aed84b1f7ec85b0daa8a3f3e3476d0297ac42b4fa77f618cb&
+https://cdn.discordapp.com/attachments/1542740659419488376/1543379538082271282/x00438_segments.png?ex=6aaf05b4&is=6aadb434&hm=d52bf8c2a5a0493b6cb450d7c32f1d6e8e8ef70476fa4239014edcb48fa02812&
+https://cdn.discordapp.com/attachments/1542740659419488376/1543379538447441962/x04840_curvebank.png?ex=6aaf05b4&is=6aadb434&hm=c63426a1f6d06af75c4d80a21124003377e4fa15ed2653f5c0a8ff6729830355&
+https://cdn.discordapp.com/attachments/1542740659419488376/1543379538854158407/table_atlas_deinterleaved.png?ex=6aaf05b4&is=6aadb434&hm=5ad14537c82cd063843b860fe20433e5f0f6f8b0b67a884ba9952a54a4839609&
+https://cdn.discordapp.com/attachments/1542740659419488376/1543379539441221732/table_atlas_overview.png?ex=6aaf05b4&is=6aadb434&hm=a1e87fd071b4ff79dbdd8d82afbcff239b07d7271de0cad8fda7eb855d21771a&
+
+
+[30.08.2026 00:50] bryant12345
+Revised version of the atlas
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1543392403023593593/TABLE_ATLAS.md?ex=6aaf11af&is=6aadc02f&hm=01ef725e3fa84c8e5dfe9566095434f510ea95e229cd7edcea8b30dd4c74cf7b&
+
+
+[30.08.2026 08:37] bamshanks
+Super useful thanks!
+
+
+[30.08.2026 14:06] bryant12345
+Some of the tables are pretty wild. There’s stuff you’d expect (sine, exponential, saw), but then there’s some that I can’t imagine a use for. I think some are typically used in pairs. 
+
+I tried to work out a workflow for recovering the effect algorithms, but couldn’t quite get there. I’ve done this in three ways. The first was just testing the hardware with test signals and knob turning (no code). Worked well, but not always conclusive. Then I did some with poking parameters in memory. Finally, I was optimistic that Claude could “just” recover the algorithms from tables and code. I felt like that went in circles, even for simple things like the EQ.
+
+
+[31.08.2026 01:33] bryant12345
+How feasible is it to expose new MIDI parameters? For example, changing INAB, INCD, and SRC3 sources for the recording buffers with MIDI commands.
+
+
+[31.08.2026 02:28] bamshanks
+Pretty feasible I think, same approach as our tempo-sync stuff (small caves patched into the ColdFire OS). Stock can't do it because the CC handler only accepts CC 16–45, mapped through a five-page table (PLAYBACK/AMP/LFO/FX1/FX2)  - the recorder setup page is a normal descriptor in the same page table, just not one the CC path can express. CCs 62–111 are unused, channel→track routing comes free, and those params feed the ColdFire recording engine (your DMA rings), so none of the DSP publish weirdness applies. One unknown left: the recorder page has its own storage/writer (the generic CC writer doesn't cover it), so it needs one disassembly pass to find that and confirm the engine latches INAB/INCD/SRC3 at rec-trig, then it's a tens-of-bytes cave off the CC handler.
+
+{Reactions}
+👍
+
+[31.08.2026 03:52] bryant12345
+My next deeper dive will be into the recording buffers, so I’ll need to map it all out. I don’t think anyone has done much there yet.
+
+
+[31.08.2026 03:52] bamshanks
+Yeah nice
+
+
+[01.09.2026 04:59] bryant12345
+I spent some time with the recording buffers tonight.  I think I made some headway with my buddy Claude.  Feel free to incorporate into your own knowledge bases.
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1544179848182759525/octatrack-recorder-architecture.md?ex=6aaf4c0d&is=6aadfa8d&hm=8e24e867a9dc7ad144d0b2651c46c91faef20a8aa10fa5c3e591bb1475dc7a2e&
+
+{Reactions}
+❤️ (2)
+
+[02.09.2026 03:39] bamshanks
+Thanks @Bryan T (ukulele owner) 
+
+Nice work again, and thanks. It caught a mislabel on our side too. Went through it against the same image and a few of your open items fell out, here's the short version; the full write-up with the disassembly is in the PR: https://github.com/sambanks/octabam/pull/52
+
+- **The remsl question:** it's a signed divide and the quotient is what's kept. Fed the assembler `divs.l %d2,%d1` and it produced the exact same bytes objdump was labelling `remsl` — the name is just objdump picking one of two mnemonics for the same opcode. So `[0x80001820]` really is the negative reciprocal of the tempo, the reading you'd landed on.
+
+- **Units are samples.** We'd already measured `[0x80001814]` on hardware as BPM×24 (we hang a tempo-sync cave off it). Plug that into your RLEN maths and it comes out as (RLEN+1) × the number of samples in one 16th-note step at 44.1k. So RLEN is steps, lengths are samples, and the 64 floor is 64 samples — four frames.
+
+- **The 992250 table is the FIN/FOUT display ladder itself**, not just fade-shaped: 113 entries, and read as sixteenths of a step it's exactly your `0, 0.063, 0.125 … 64` series. The doubling and the round-and-halve in `0x40005ff0` cancel, so that path is just FOUT converted to samples. One caveat: that only works if the EMAC is in fractional mode, which fits but we haven't read MACSR. Why a pickup arm reads the FOUT slot is still a mystery.
+
+- **Part vs pattern:** you're right that `0x80000003` and `0x100b14cf` are the current part. The writer at `0x40062120` reads it out of the current pattern's record (`[0x80000004]` is the pattern), and the sizes line up neatly: 16 patterns × 0x8ed8 = 0x8ed80, which is exactly where the 0x18b2-stride part records start. We had both labelled "pattern" — fixed.
+
+- **Bit meanings you left open:** from the trig→voice side we have 0x80 = start and 0x10 / 0x8010 / 0xf010 = one-shot / hold / stop / retrig. Our labels, not verified, but same bits.
+
+- The `0x460d17ce` queue's consumer also does RELOAD BANK (opcodes 0x14 and 6), so that's two more of the 46 accounted for.
+
+Still open on both sides: the actual audio write path and where the recorder buffers live.
+
+{Embed}
+https://github.com/sambanks/octabam/pull/52
+Ingest Bryan T's recorder control-path doc; fix part/pattern labels...
+Ingests octatrack-recorder-architecture.md (Bryan T, 2 Sep 2026) as docs/EXTERNAL.md §6.
+Re-verified against our image: descriptor entry 8 (defaults/min/count/labels), the QREC ladder + one-hot cla...
+https://images-ext-1.discordapp.net/external/RS0FiPDh4r5FLm-NIg2X3yMlROvyPbq45pOXMWwEJ58/https/opengraph.githubassets.com/406adc86fa49bc810a559bab2ebbd337672cf7da3c1ec9d21548ee9d76051c32/sambanks/octabam/pull/52
+
+
+[03.09.2026 17:42] bryant12345
+Is the Pickup machine entirely on the Cloudfire side? Does the DSP side ever feed into a Pickup machine?
+
+This is to help understand any structural differences between recording buffers and Pickup machines.
+
+
+[03.09.2026 21:34] bamshanks
+I would guess it’s all coldfire and a recording buffer
+
+
+[03.09.2026 23:14] bryant12345
+That’s my guess, too. I was surprised that that makes it pre-DSP.
+
+
+[03.09.2026 23:15] bamshanks
+Yeah the non dsp stuff feels like the magic that actually makes the octa unique
+
+
+[03.09.2026 23:16] bamshanks
+I'm looking forward to getting my buddies code across from the MD to compare, as it's almost the same hardware minus all the buffers
+
+
+[03.09.2026 23:20] bryant12345
+I had thought the Pickup machine was just a special case of a Flex track and recording buffer pair. But if you set up buffer 1 recording track 1 it records post effects, whereas the Pickup version is pre-effects. Interesting design decision.
+
+
+[03.09.2026 23:21] bamshanks
+Yeah so many little design choices like that, that make it a super "live" device for better or worse
+
+
+[03.09.2026 23:21] bamshanks
+So many happy accidents but also many not so happy
+
+
+[03.09.2026 23:21] bamshanks
+for me anyway 🙂
+
+
+[03.09.2026 23:21] bryant12345
+Yeah … weird alien technology. Lol.
+
+
+[03.09.2026 23:22] bamshanks
+Alien Tech 100%
+
+
+[03.09.2026 23:22] bamshanks
+I hate it in software when people ignore all the norms and reinvent every wheel from scratch. But I love it in the octa 🙂
+
+
+[04.09.2026 13:50] yldopactyly
+to me it always felt like octa wants a mixer to accompany itr
+
+
+[04.09.2026 13:50] yldopactyly
+with a final master aux  out into recording A + B to resample
+
+{Reactions}
+👍
+
+[04.09.2026 16:10] bryant12345
+Another open question: why is the cue out ever so slightly quieter than the main out?
+
+
+[04.09.2026 16:11] kjnilsson
+never noticed that
+
+
+[04.09.2026 16:19] bryant12345
+It is very small, but there.  I had a thread on elektronauts about it: https://www.elektronauts.com/t/cue-slightly-attenuated/241715
+
+{Embed}
+https://www.elektronauts.com/t/cue-slightly-attenuated/241715
+CUE slightly attenuated?
+I was doing an experiment to see if THRU tracks sounded different than normal routing. In doing so I noticed that CUE is very, very slightly attenuated compared to other audio in Octatrack.  When I say slight, I’m talking about like 0.1 dB or something. I figured the CUE would be unattenuated when the CUE send was 127, but it is just slightly ...
+https://images-ext-1.discordapp.net/external/_AggGhWqv5dbklmc4lBsaaawUwzNTeZWhpOHrVsdbHY/https/eu5.dh-cdn.net/uploads/db8181/original/3X/6/5/653ee57cf417d28eee2d69cd6f2aca0dc55d5fd1.png
+
+
+[04.09.2026 16:48] bryant12345
+Another open question: what is known about the LFOs? LFO Designer? Is there possibility to add additional LFOs? Replace existing ones? Initialize the 8 LFO Designer tracks to useful shapes?
+
+
+[04.09.2026 17:05] bukkakeborealis
+Default lfo designer shapes would be cool 👌🏻another cool thing would be pointing desired LFO at another track parameter like Machinedrum
+
+{Reactions}
+👍 (3)
+
+[04.09.2026 17:34] bryant12345
+A challenge I faced with setting some other defaults was that the code is streamlined to set swaths of values at once. I imagine the LFO designer defaults will be similar, but I’ll look into it.
+
+This is also one of those areas where a project manager might be the right tool rather than changing the firmware.
+
+{Reactions}
+👍
+
+[04.09.2026 19:01] zackyoti_98392
+I feel better you noticed that. I thought it was just me
+
+{Reactions}
+👍
+
+[04.09.2026 21:19] bamshanks
+Yeah I’ve got it stamping out projects now, as if you change enough stuff I feel like it’s better to template out a project rather than try and load old ones
+
+
+[04.09.2026 21:53] tenacious_lemur_99636
+It would be great to be able to save user LFO presets. I got tired to draw the same shapes over and over.
+
+{Reactions}
+👍
+
+[04.09.2026 21:55] tenacious_lemur_99636
+I guess you're aware David Ferlays working on an Octatrack Manager, right? https://github.com/davidferlay/octatrack-manager
+
+{Embed}
+https://github.com/davidferlay/octatrack-manager
+GitHub - davidferlay/octatrack-manager: A desktop application for m...
+A desktop application for managing Elektron Octatrack projects, built with Tauri and React - davidferlay/octatrack-manager
+https://images-ext-1.discordapp.net/external/l9lHa6l9zrDRtU6Ags5Y2r7hsNYyU2f0uj9wYMHerjw/https/opengraph.githubassets.com/5c99e6525240c673357916c918f30efa555d423ee28ec3f824607d60d380c4df/davidferlay/octatrack-manager
+
+
+[04.09.2026 22:35] bryant12345
+Yes. I’m definitely keeping an eye on it. When I start thinking about modifying firmware my first question is whether it would make more sense via a project template.
+
+{Reactions}
+👍
+
+[04.09.2026 23:47] bamshanks
+Yeah I saw that but I pretty much already had all the components in my repo for it, plus more.
+
+
+[04.09.2026 23:48] bamshanks
+I’ve had my tooling driving the octa via midi and listening back via the sound card, as well as modifying the cf card
+
+
+[05.09.2026 01:14] bryant12345
+I think as a user my goal will be to have a stable firmware that I never touch and a project manager that I do. That said, I’ve never really embraced project templates, so it isn’t obvious that a project manager is going to buy me a lot.
+
+{Reactions}
+👍🏻
+
+[05.09.2026 05:17] bryant12345
+Some more stuff on the recording buffers.  Honestly, I ended up a bit more confused than when I started.
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1545633934069735467/octatrack-recorder-architecture.md?ex=6aaf5046&is=6aadfec6&hm=ce90f90d7bba6187e69d602129458d3d6cf2f4a36aba5bd034f924cc9d0ab5e1&
+
+
+[05.09.2026 05:19] bamshanks
+Still a lot of useful info
+
+
+[05.09.2026 05:19] bamshanks
+Grist for the mill
+
+
+[05.09.2026 05:31] bryant12345
+Yeah ... I'm just puzzled that my mental model of the recording buffer isn't quite right.  There definitely seems to be a hard truncation in it, which is ... annoying ... for the stuff I hope to do with it.
+
+
+[05.09.2026 05:39] bamshanks
+alien tech will get you every time
+
+
+[05.09.2026 05:44] bryant12345
+My biggest confusion is over the role of 16 samples. I was very confident that this dictated a lot of the bad behavior for sound-on-sound applications. And 16 sneaks in in the hard truncation, but Claude came to a different conclusion about how limiting this is.
+
+
+[05.09.2026 05:48] bamshanks
+I'll have a look as well, when I'm out of page 2 midi hell
+
+
+[05.09.2026 05:49] zackyoti_98392
+Bryan, can you clarify what you were working towards again? Was it trying to figure out if there’s a way to get clickless loops at any bpm? In all honesty, I was having trouble following since the only clicks I’ve ever noticed on my OT have been due to the audio material itself OR clocking from a janky external source. It could just be my setup though? - my OT is driven by a Multiclock, and while I get the usual “pickup machines suck with external clock business”, clicks aren’t a big issue. Do you have a simple test I could run that clearly demonstrates the issue you are working on?
+
+
+[05.09.2026 06:03] bamshanks
+Eyy I've finally got page 2 midi sorted for my harness. Will pivot to your doco and ingest and let you know if I can offer anything
+
+
+[05.09.2026 06:04] bamshanks
+Then dentist 🙁
+
+
+[05.09.2026 12:40] bryant12345
+I do sound-on-sound looping where I leave the recording buffer perpetually recording. Like a long delay line with infinite feedback. That doesn’t work at all BPM/RLEN combinations. At most of the combinations you end up with a click at the loop point. 
+
+I’ve worked out the math that predicts combinations that work. But I’m hopeful that all combinations are possible if I improve the behavior at the loop point. But it looks like there is a jump at the loop point. 
+
+This all stems from my annoyance at the manual insisting that you add FIN at the start of a loop.  That’s fine for a one-shot sample, but stinks for my use.
+
+{Reactions}
+❤️
+
+[05.09.2026 12:45] bamshanks
+Yeah I went through your findings and it seems legit. Not a lost cause though I don’t think
+
+
+[05.09.2026 12:46] bamshanks
+I have a few angles to investigate when I’m back at it. I have a nearly working emulation of the cf card which I think will help try a couple things
+
+
+[05.09.2026 12:47] bamshanks
+Re parts specifically
+
+
+[05.09.2026 12:48] bamshanks
+All very theoretical but I checked your findings and mixed with my current work Claude had some ideas
+
+
+[05.09.2026 12:50] bamshanks
+Can see what your claude thinks about this in the meantime
+
+
+[05.09.2026 12:50] bamshanks
+```
+Recorder doc, sessions 2–4: re-verified and three things back
+
+Everything load-bearing in §14 disassembles byte-identical here: pool init, the (track+2)×14602 rows, the segment builder, the pack loop, clrl %fp@(24) at the loop point, the 16-sample extension, the rounding converter, and your one-andil #-16 negative. Three things from our side:
+
+1. §13.2's DMA channel 0 ISR (0x40004860) is not control-surface polling. It's the ColdFire→DSP audio frame transfer: 7-step state machine at 0x46104d3e, TCD 0xFC045000, DSP host port 0x2000001c, 336-word per-track records per ping. We've been feeding effect parameters through it for months, so this one is measured, not inferred. Your "no recorder-table reference" observation is correct and expected — the mixed frame crosses that port, not a buffer.
+2. The UI tempo mapping is tempo24 = 24·bpm + (23·tenths + 4)/9, truncating (0x4009c7c4). Tenths 0–9 become 24ths 0 3 5 8 10 13 15 18 20 23, so a displayed .5 is +0.5417 BPM and round(BPM×24) is wrong for seven of ten tenths. Your two fractional rows are both .2, where the rules agree, so your table stands. Under this mapping your 5,279 / 2,017 counts reproduce exactly. (I first claimed they didn't; that was my rule being wrong, retracted the same day.)
+3. The 16-sample limit extension is arm-time, not per wrap. 0x40006e2a sits in the arm-calling converter between the length computation and its jsr arm at 0x40006edc, on the same per-track record; the segment builder's wrap path is inline arithmetic and never reaches it. A LOOP=ON buffer armed once sees it once. That closes §14.7 and removes the last way 16 could quantise a loop.
+
+On your 16-sample confusion: I think you're looking at two different 16s. Loop length is not frame-quantised — your own clean rows prove it (88,200, 22,050 and 4,410 are ≡ 8, 2, 10 mod 16). Where 16 plausibly still bites is the relative frame phase of the recorder's read-modify-write and the flex read over the same buffer: there's a 15-sample band of head offsets where every frame returns a new/old mixture, a discontinuity at 2,756 Hz. A sub-sample per-pass rounding error walks the offset into that band. A pass-id simulation (tools/recorder_framephase.py) over your table predicts: zero-error rows clean under either frame order; non-divisible rows seam every frame from pass 2 for about 16/ε passes, then clean; and a strict direction rule. Three of your four clicking rows fit one order, 286.2/2 fits the other, so a single fixed order predicts it clean and your log says it clicks. That's the row to repeat first, plus 198/16 (rounded up, ε = −0.455). Two other cheap discriminators: does the clicking stop after ~16/ε passes; and does a recorded-then-stopped buffer played looped still click. And one question your doc doesn't answer: what exactly is trigged per pass in your patch, a REC trig, a PLAY trig, both, or neither? The mechanism differs for each.
+
+What we're building
+
+We now have your firmware booting under Unicorn (CFV4E core) and, as of today, mounting an emulated CF card and loading a project through the firmware's own storage stack — LOAD PROJECT runs as engine opcode 4 inside the real engine task (your 46-opcode dispatcher), reads project, markers, arrangements and all 16 banks, and the part in RAM matches bank01.work on disk. The aim is to arm a recorder from a loaded part locally and run the write path you traced (0x400068e4 under the per-frame dispatcher 0x4000d2a0) with synthetic input, so the frame-order question above can be settled by watching it rather than guessing. No flash, ~40 s per run.
+```
+
+
+[05.09.2026 12:51] bamshanks
+```
+
+Things from that work you may want:
+
+- Unicorn's CFV4E core lacks bitrev, byterev, ff1 (ColdFire ISA_C) and raises illegal-instruction on them; 437 sites in the image, 219 byterev, dense in the FAT code. objdump can't decode them either — the .short 0x02c0 you hit in §14 is byterev %d0, 0x00c1/0x04c1 are bitrev/ff1 %d1. We shim them.
+- The RTOS boundary for storage was one hook: the PIO handlers only program the task-file registers; the data phase is the ATA ISR at 0x40015304, and the queue primitive 0x4001568c blocks on event wait 0x40000818. Intercepting that wait and doing the transfer there is enough to run the whole FS cold.
+- Engine queue creator is 0x40040b14 (queues 0x460d17ce/ee/ae, 1024-entry rings). RELOAD BANK is opcode 20, argument a bitmask of banks, not an index. LOAD PROJECT is posted by 0x40023c7c(name).
+- The set-name global (0x100f8480) is an absolute path; the firmware's default is "/PRESETS", and the LOG file it writes to the card root is the best oracle for what a load did.
+```
+
+
+[05.09.2026 13:01] bryant12345
+I’ll explore that today. 
+
+I do laugh when Claude asks questions like “what trigs are actually active? Record, play, or what?” All of this behavior I’m working through is the case of perpetually writing/reading the buffer. When Claude forgets a detail like that I know it is heading off into hallucination land and needs to be refocused.
+
+{Reactions}
+💯
+
+[05.09.2026 13:03] michaelknubben
+As someone who's not very experienced with LLM's: Is that a result of it basically sending the entire history of the conversation with every new request? As I understand, that's how they keep context? I can see how that gets less and less workable
+
+
+[05.09.2026 13:06] bryant12345
+It starts choking on really long sessions for that issue.  Having documents that describe key findings gives it facts to start from. Problems arise when you’re testing lots of hypotheses and end up going down poorly-reasoned paths.
+
+{Reactions}
+💯
+
+[05.09.2026 13:11] bamshanks
+Yeah this
+
+
+[05.09.2026 13:12] bamshanks
+It has caching and memories which help but don’t solve it
+
+
+[05.09.2026 14:21] w_winter
+Codex is much much better at dealing with long context (better compaction, and now an alternative to compaction that gpt6 has been posttrained to self-manage) since a few months ago.  Claude code is crap on this dimension by comparison
+
+{Reactions}
+❤️
+
+[05.09.2026 15:15] bryant12345
+Did some more exploring with my morning coffee.  I love that Claude is like "be sure to give this note to Bam"
+
+{Reactions}
+❤️
+
+[05.09.2026 15:44] bryant12345
+Still pushing on this. Learning some things, revising my mental model a bit.
+
+
+[05.09.2026 16:21] bryant12345
+Still working on some stuff .... will re-upload files in a while.
+
+
+[05.09.2026 17:00] bryant12345
+Had something bizarre happen:  Claude decided Bam was wrong, then realized it was blaming Bam for an earlier version of Claude being wrong.  Not sure why I trust these tools quite as much as I do.
+
+{Reactions}
+😁
+
+[05.09.2026 17:18] bryant12345
+OK.  I'm actually stopping for a while.
+
+RECORDER.md would go nicely in your repo.
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1545815368185155584/note-for-bam-session5.md?ex=6aaf507f&is=6aadfeff&hm=37d7d41548cbcc32641b30d034e070e3b959fe5391c65cb771d09e801bf7dfb9&
+https://cdn.discordapp.com/attachments/1542740659419488376/1545815368654655629/RECORDER.md?ex=6aaf507f&is=6aadfeff&hm=77084de4ed55dad65f2a59cd8d512afbd9ba871265128958cdad634e22048fc3&
+
+{Reactions}
+❤️
+
+[05.09.2026 21:56] bamshanks
+Haha yeah I think of them like a pretty smart - but incredibly fast - junior engineer (I am an engineering lead with direct reports to compare to 🙂 ). Often wrong and really confidently so, but very very fast at mechanical tasks and occasionally genius.
+
+
+[05.09.2026 21:58] bamshanks
+And like a junior engineer claude thinks their first thought is the right one.
+
+{Reactions}
+👍
+
+[06.09.2026 12:02] bamshanks
+@Bryan T (ukulele owner) do you have a specific sample that I can A/B on to recreate the clicks you are getting?
+
+
+[06.09.2026 12:02] bamshanks
+I've got the recorders mostly emulated
+
+
+[06.09.2026 14:29] bryant12345
+One trick is that you need audio to go across the loop boundary, so a sample-based approach needs to be longer than the loop. 
+
+There are a bunch of things i do to setup the Octatrack before looping that I’ve found are necessary.
+
+{Reactions}
+❤️
+
+[06.09.2026 14:30] bryant12345
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1546135535175860304/octatrack_sound_on_sound_primer.pdf?ex=6aaf292d&is=6aadd7ad&hm=82b4b233f475c6c251dd48837008e334f318c486be371d157dfdced42f6a8058&
+
+
+[06.09.2026 14:31] bamshanks
+Nice, I'm super close now to having it emulated
+
+
+[06.09.2026 14:31] bryant12345
+The stuff on page 2
+
+{Reactions}
+👍🏻
+
+[06.09.2026 14:34] bryant12345
+One open question actually relates to one of the settings changes I make. I’m pretty sure the AMP VOL at 0 is actually slightly greater than 0. You’ll see that I turn the sample gain down to 0 from 12 dB and then crank AMP VOL to 63. That actually gives unity gain.
+
+
+[06.09.2026 14:35] bamshanks
+interesting
+
+
+[06.09.2026 14:36] bryant12345
+It mattered for sound-on-sound because the loop eventually blows up with a very slight positive gain.
+
+
+[06.09.2026 14:36] bamshanks
+yeah for sure
+
+
+[06.09.2026 14:36] bamshanks
+want it going the other way
+
+
+[06.09.2026 14:37] bryant12345
+I think the mapping of the AMP VOL knob didn’t quite line up at what they label 0. Very close, but not quite.
+
+
+[06.09.2026 14:39] bryant12345
+Ideally, a true 0. But resetting the +12 dB to 0 dB on the AED page for the recording buffer and turning AMP VOL to +63 gets unity gain, so it can do infinite looping if needed.
+
+{Reactions}
+👍🏻
+
+[06.09.2026 14:46] bryant12345
+This spreadsheet has a calculator so you can figure out if a particular combination of BPM, RLEN, and clock multiplier will result in clicks on a stock Octatrack.
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1546139653567160490/octatrack_clickless_loops_2.xlsx?ex=6aaf2d03&is=6aaddb83&hm=a61ecdde0bce87fb8e4bfc10d5f9f1ecfff31820c4bbf6cda88c508297c529b9&
+
+
+[06.09.2026 14:47] bamshanks
+ohhhh nice!
+
+
+[06.09.2026 14:47] bamshanks
+this is gold
+
+
+[06.09.2026 14:49] bryant12345
+BPM=128, RLEN = 4, clock mult = 1 is the default set of values in the spreadsheet that clicks.
+
+
+[06.09.2026 14:51] bamshanks
+yeah this all checks out fantastic
+
+
+[06.09.2026 14:51] bamshanks
+going to bed shortly, as I know it's a "nearly there" for hours situation, but it's nearly there
+
+
+[06.09.2026 14:52] bamshanks
+that info expedited
+
+
+[06.09.2026 14:52] bryant12345
+What time zone are you in ? Lol. I just woke up!
+
+
+[06.09.2026 14:52] bamshanks
+In Melbourne 🙂
+
+
+[06.09.2026 14:53] bryant12345
+Oh wow! Los Angeles here.
+
+
+[06.09.2026 14:53] bamshanks
+Nice.
+
+
+[06.09.2026 14:53] bamshanks
+well everything is pushed to git so you are welcome to check it out, but otherwise I rerckon I will have something tomorrow
+
+{Reactions}
+❤️
+
+[06.09.2026 14:54] bryant12345
+Amazing!
+
+
+[06.09.2026 23:56] .mdee
+have been finding Opus 5 is horribly wrong a lot of the time. i'm supposed to get my team to do full 'agentic engineering' with spec-driven development and think it's going to be a mess. Really have to interrogate it and then watch it backflip 345849 times before it gets something right :\
+
+{Reactions}
+🤣 (2)
+
+[06.09.2026 23:58] bamshanks
+Yeah you gotta treat it like fancy autocomplete
+
+
+[06.09.2026 23:58] bamshanks
+I do full agentic at work and it's great when done well, but a lot of people expect it to do everything for them
+
+
+[06.09.2026 23:58] bamshanks
+including thinking
+
+
+[06.09.2026 23:58] bamshanks
+and it's bad at that
+
+
+[06.09.2026 23:59] bamshanks
+the whole - make a spec and get a good thing out the other side - is a bit of a crock imo
+
+
+[06.09.2026 23:59] .mdee
+yea I haven't written code for ages lol. I've built so many things since early claude.. much slop, some okay and more recently trying to focus on quality but it's so hard to get architecture right.. I look at my anthropic and openai max plans, how many tokens I use trying to get quality output, then my work usage based billing.. ;\
+
+
+[07.09.2026 00:01] .mdee
+I only find conversation  works until you reach an agreement after interrogating it in the main window, delegating to sub-agents to read and write.. even then the sub-agent handover is wrong, or the main context window interprets it incorrectly.. I would love to see the code generated from people running fleets of agents. I'm super skeptical.  They definitely do better if the code is already in a good state, but still drift into slop quickly.  I really don't see how you can just feed input artefacts in and hope for the best
+
+
+[07.09.2026 00:02] bamshanks
+I have several friends making good money cleaning that stuff up
+
+
+[07.09.2026 00:03] .mdee
+I'm trying to clean up my own mess and it's so exhausting. No wonder why people are burning out, at least from what i've seen
+
+
+[07.09.2026 00:03] bamshanks
+yeah totally
+
+
+[07.09.2026 00:03] bamshanks
+It's a tool like any other and if you outsource too much to it you lose control of the output
+
+
+[07.09.2026 00:04] .mdee
+it's such a double edged sword  of.. build something quickly -> dopamine hit versus unmaintainable buggy mess
+
+
+[07.09.2026 00:04] bamshanks
+haha yep
+
+
+[07.09.2026 00:04] bamshanks
+I've been running teams for a while, so it kinda feels pretty natural to just treat it like a bunch of junior engineers
+
+
+[07.09.2026 00:04] bamshanks
+Assume most stuff they do will be wrong and you remain responsible for the output
+
+
+[07.09.2026 00:05] bamshanks
+Some colleagues and peers have gone down the full harness road, with multiple llms checking each others work etc,  and I am not a fan
+
+
+[07.09.2026 00:06] bamshanks
+I get more work done than them and it's a much higher quality and my secret is to just not create a bunch of moving parts and orchestration
+
+
+[07.09.2026 00:06] bamshanks
+like actually watch what it's doing and correct it constantly
+
+
+[07.09.2026 00:07] .mdee
+I just keep having to add deterministic checks in, but then the agent seems to find a way around things.. deps cruiser rules, AST based linting rules to enforce things like encapsulation, ownership boundaries, etc -- but will get odd outputs and code that just looks weird. And no matter how verbose or concise I keep prompting, AGENTS.md etc it either just doesn't follow it, or bends the rules
+
+
+[07.09.2026 00:08] bamshanks
+Yeah making an LLM deterministic is a fools errand imo
+
+
+[07.09.2026 00:09] bamshanks
+The more rules you put into it's context, the more likely it is to ignore
+
+
+[07.09.2026 00:10] bamshanks
+Take this with all the grains of salt, as I seem to be an outlier here, but I prefer to use it almost vanilla with a few mcp for things like atlassian and box and some very basic instructions on workflow
+
+
+[07.09.2026 00:13] bryant12345
+The things I choose to actually implement on my own Octatrack are things I think I actually could have coded myself. 
+
+Some vibe-coded stuff … not so much.
+
+
+[07.09.2026 00:14] bamshanks
+Yeah that's my general approach. Use it as an accelerator
+
+
+[07.09.2026 00:14] bamshanks
+If I don't know what I'm producing it's 100% not going to be anything good
+
+
+[07.09.2026 00:14] bamshanks
+Hard to teach though right now I tell you
+
+{Reactions}
+👍
+
+[07.09.2026 00:15] bamshanks
+Hitting the juniors up on their PRs and having them punch my notes straight into claude and sending it's response back
+
+
+[07.09.2026 00:15] bamshanks
+That's not what we are doing here guys 😅
+
+
+[07.09.2026 00:16] bamshanks
+"But Claude said"
+
+
+[07.09.2026 00:16] bamshanks
+it's a battle
+
+
+[07.09.2026 00:19] bamshanks
+In no world would I have been able to re the firmware though, unless I had about a hundred years
+
+{Reactions}
+💯
+
+[07.09.2026 00:19] bryant12345
+The chances of me learning assembly were near zero.
+
+
+[07.09.2026 00:20] bamshanks
+likewise
+
+
+[07.09.2026 00:20] bamshanks
+I learned c++ for arduino and it was fun
+
+
+[07.09.2026 00:20] bamshanks
+before all this llm stuff
+
+
+[07.09.2026 00:20] bamshanks
+but assembly I don't think so
+
+
+[07.09.2026 00:20] bamshanks
+real keen on learning rust though
+
+
+[07.09.2026 00:21] bryant12345
+I’m genuinely fascinated by it. But … as a starting point for developing a ring modulator … not going to happen.
+
+
+[07.09.2026 00:21] bamshanks
+hahahaha
+
+
+[07.09.2026 00:21] bamshanks
+same
+
+
+[07.09.2026 00:21] bamshanks
+Claude seems to think, and I think I agree, that if we had the source code we would be able to fit less
+
+
+[07.09.2026 00:22] bamshanks
+As we are basically poking stuff in the gaps that the compiler misses in a lot of cases
+
+
+[07.09.2026 00:22] bamshanks
+there is something beautifully deterministic about assembly
+
+
+[07.09.2026 00:22] bamshanks
+zero abstraction
+
+
+[07.09.2026 00:23] bryant12345
+I’m jumping through all of these hoops because I like hardware. A plugin would solve so many of these annoyances … but I like hardware.
+
+
+[07.09.2026 00:23] bamshanks
+oh yeah totally
+
+
+[07.09.2026 00:23] bamshanks
+I'm doing a million hours of computer work so I .... don't have to use a computer for my music 🙂
+
+{Reactions}
+💯 (2)
+
+[07.09.2026 00:23] bryant12345
+Sums it up.
+
+
+[07.09.2026 00:24] bamshanks
+Me and my buddies built a platform for ableton collab
+
+
+[07.09.2026 00:24] bamshanks
+and we are in the final testing phases now
+
+
+[07.09.2026 00:24] bamshanks
+so I'm having to do DAW stuff
+
+
+[07.09.2026 00:24] bamshanks
+HATE it
+
+{Reactions}
+😆
+
+[07.09.2026 00:24] bamshanks
+literally building stuff on the hardware rig and just recording it in
+
+
+[07.09.2026 00:25] bamshanks
+while my other mate does all the fancy ableton racks and stuff
+
+
+[07.09.2026 01:03] anglingar
+No octatrak owner but a software developer tinkering with Elektron boxes here. 
+
+I'm my case Claude provided accessibility to parts of these machines that were hidden from me by knowledge gap. A gap that was not going to get closed.
+
+I'm on a povo Claude account for my personal projects and have a maxed out one at work.
+
+I like way better the codding rhythm the povo account pushes into the agentic flow. You got no tokens for crazy harnesses, you just build a very structured plan, set up the general architecture of the software, the key core patterns and coding principles, then you do a few UI/UX mockups (no BE, just functionality) and after that you tackle one MR at a time in an orderly fashion with periodic reviews and testing sessions. 
+
+I find agents tend to mud the outputs when the context gets overboard and also found that harnesses have the weak point of the reviews and handovers (as soon as the data bandwidth in the whole harness surpasses your review capability you are very deep hallucination hunting). 
+
+If you keep tasks attainable (for human review) then finding bugs or steering the ship is easier. But even with a single agent chiseling around being on top of their output is challenging. I dunno how many times I had to stop an enthusiastic Claude pushing through a todo list to untangle a class that was growing legs and arms, make it check the seams and apply SRP.
+
+The cool thing is that if you follow this, the whole agentic maintenance, suddenly, becomes faster and cheaper as code modularity allows you to put your hands in the cake without unraveling mess. I know this doesn't apply to all software implementations, but in the realm I swim it does.
+
+Anyway, just wanted to say hi. I'm following this project with excitement 🙂 want to see if I finish what I got at hand and do some DN2 firmware mangling myself. 
+
+What do you guys think Elektron will do? I already posted my opinion in elektronauts about the 2 paths they can follow with all this development. 🤘
+
+{Reactions}
+👍
+
+[07.09.2026 01:11] anglingar
+BTW, things I found worth steering the agents away from that might relate to the work you are doing:
+
+* Device based test design: they are very bad at knowing you are a flawed human so their test regime design to extract data or map things that require physical device interaction are fucked up. I really enjoyed optimising this.
+
+* Data readability and interpretation: building tools that are targeting a human to use with AI is challenging if you let them do what they want. The issue is, the AI can tie the knots and see no issues with certain mental jumps, but you can very clearly see how hard it would be for an average human to attain what the chart or data are trying to express. I recommend designing these elements always (even on a paper by hand) and passing them as part of the implementation plan and mockup phase.
+
+
+[07.09.2026 01:11] bamshanks
+Welcome! Just made a new digis channel
+
+{Reactions}
+❤️
+
+[07.09.2026 14:03] buma2855
+I was trying to create my own "special functions" menu for the Octatrack. 
+
+Right now, it sits in the global menu, right below "MIDI", but I would have loved to assign a shortcut to it that's accessible from anywhere. Even better would have been making it context-aware depending on where it's called from, but oh well...
+
+I tried double-clicking "function", which works and does open the global menu and jumps directly to "Octalab", not perfect, but keeping that in mind.
+
+I also thought about pushing the "level" encoder so it opens the menu *on release* if the knob hasn't been turned, but the encoder is too sensitive. There's a good chance the value will change by one or two with just one push, so half the time the menu probably won't open.
+
+There aren't any key combos left available on the stock firmware, right?
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1546491209374244974/2026-09-07_a_14.01.13.png?ex=6aaf22ec&is=6aadd16c&hm=e088cdd7a8cf3c53b6adde85b1631e429956da254ffd09ac4ce34796cdd64529&
+
+
+[07.09.2026 16:14] homeboiflex
+what LLMs/tools are you guys using to do all this? and with what tier subscriptions? Is everyone on Claude, or is there variation where some of you use Qwen and such?
+
+
+[07.09.2026 16:15] homeboiflex
+A FAQ/channel on how a noob can get started would be interesting, to lay out e.g.; 
+Claude with x tier (link)
+Xcode to compile (link)
+
+
+[07.09.2026 16:24] .mdee
+Opus 5 and delegate to Sonnet 5 sub-agents, or GPT-5.6 Sol and delegate to Terra sub-agents.. pi coding agent in both cases. For Anthropic, I use pi-claude-bridge, but it uses tokens quicker because it calls `claude -p` .. Claude Code CLI works, but is super buggy with rendering problems, selects the wrong sub-agent model, etc. I have [this](https://github.com/m-dwyer/dotfiles/tree/master/dot_claude)  in my dotfiles that uses pre and post hooks for the Agent tool to force a specific model.  Overall, I'm finding GPT much better. Opus 5 just spews gibberish a lot of the time, and you have to interrogate it and often it's wrong.
+
+{Reactions}
+💯 🙏
+
+[07.09.2026 16:32] w_winter
+pi is also my main harness and i used to use a diff hack for getting my claude sub oauth to play nicely within pi, too risky and the solutions all have nasty tradeoffs.  i prefer a mux-level solution to this (orca or herdr) to get claude code and pi working together
+
+
+[07.09.2026 16:35] w_winter
+i still havent dug into this elektron firmware work yet, just been an excited spectator so far because of too much other work crowding out my time, but fwiw i've found the openai models from gpt-5.5 onwards to be better reverse engineers than the claude family
+
+i think fable is best for being able to reason holistically where the GPTs get stuck in tunnel-vision too easily, so fable is great as a secondary reviewer role especially to check GPT on overengineering slop into the codebase
+
+
+[07.09.2026 16:37] w_winter
+consequently i use gpt-5.6-sol and gpt-6-astra primarily , especially with the pi-codex-conversion extension to pi that makes pi present to the agent all the exec/code-mode and apply_patch affordances that these models are RL'd so strongly to use more effectively than other tools, and also brings into pi codex's unparalleled compaction behavior
+
+and i have fable called via orca-cli as a reviewer and planner for the work
+
+{Reactions}
+🙏
+
+[07.09.2026 16:43] buma2855
+I'm using the Claude Mac app with Opus 5 in "cowork" mode on a Pro plan, with other GitHub repos (octamax, octabam, octakit...) and various PDFs (Octatrack manual, etc.) in context.
+
+Claude uses the emulator (from Octabam) on "its own little Linux machine" as it calls it. It spits out a .bin and a .syx file whenever a new function is added, and I do the OS upgrade on the Octatrack. Most importantly, it maintains a repo with all the findings, etc.
+
+Probably not the best way haha, I'm a newbie.
+
+___
+
+Edit: I've now switched to Claude Code + MCP Toolkit in Docker for GitHub, and I have Ghidra connected to Claude via MCP. A slightly more serious setup, hopefully!
+
+{Reactions}
+🙏
+
+[07.09.2026 17:02] bryant12345
+I tend to use Claude, but I do it in different ways. Sometimes I’m also in Ghidra, looking at assembly, and puzzling through stuff with Claude’s assistance. Other times everything is within Claude. I’ll upload the Elektron .bin and have it clone octabam to get useful tools. 
+
+I do always build the final .bin on my own computer.
+
+
+[07.09.2026 17:04] bryant12345
+My first explorations were using Claude to write Python scripts to poke particular memory locations. That was a lot of work and back/forth, but I learned a lot.
+
+
+[07.09.2026 17:05] bukkakeborealis
+I use Cursor with Sonnet5 for high effort. Otherwise in auto mode. Octabam in wsl and Ghidra handled by Cursor
+
+
+[07.09.2026 17:08] bryant12345
+I have a “Pro” plan in Claude and sometimes buy additional tokens. Some of the models really burn through tokens, so I try to be careful. 
+
+I’ve also had to train Claude about going too far. I’ve had it go off on quests I didn’t ask for and cone back 12 minutes later with “oops … that wasn’t helpful.”
+
+Whenever Claude suggests it can render an audio file and do its own testing I do not trust it. In my experience it rarely does a useful test or comes to a useful conclusion. It can burn a lot of compute time for garbage results.
+
+{Reactions}
+👍 (2)
+
+[07.09.2026 17:18] buma2855
+ok I'm installing Ghidra with Claude MCP 🙂
+
+It keeps trying to do things its own way and reinvent the wheel, which takes forever. I had to tell it to check what’s already been done, tested, and proven before doing anything else.
+
+
+[07.09.2026 17:21] bryant12345
+Ghidra is … daunting. I found it useful for my own curiosity, but it isn’t something most folks are going to enjoy using. 🙂
+
+
+[07.09.2026 17:22] bryant12345
+But you get to feel like an NSA hacker while playing with it.
+
+{Reactions}
+🙂
+
+[07.09.2026 18:30] buma2855
+At least Claude seems to like it! 
+It's working much faster now, and I don't feel like I'm burning through session time like I used to.
+
+
+[07.09.2026 22:11] bamshanks
+Yeah I’m just using Claude code on a Max plan
+
+
+[07.09.2026 22:42] buma2855
+I've burnt nearly all my weekly tokens (Claude pro plan) making a rookie mistake: using Cowork in the first place, for both RE on the Octa and on the DSI  Prophet 12. Anyway, I think I've got a better setup now with Claude Code, Ghidra and the MCP Toolkit via Docker for Github. 
+
+I wasted a lot of time and resources, probably on things people have already figured out before. Still, it's really fun to display even my own menu in a UI/firmware that hasn't changed in years, so not a big deal!
+
+There isn't much there yet but from now on, I will post my "findings" here: https://github.com/nordseele/octalab-notes (I'm sure these aren't really new, but for my own env it was, I didn't really know where to start...)
+
+I'm keeping the repo with the functions private until everything is tested, but** if we need to direct our findings/researches (and tokens) toward a specific common goal, feel free to let me know.**
+
+Everyone is working on their own side with their own plan. Obviously, we'll end up stepping on each other's toes at some point unless this turns into a modular firmware, but at least the info can be shared.
+
+Thanks a lot for all the work you've all done so far, and thanks for the emulator !
+____
+
+"The goal of Octalab is to add creative functions to the stock firmware: randomness and constrained chance, and the instant capture of a musical idea before it evaporates. The machine handing you a starting point you would not have chosen, in the spirit of Oblique Strategies. No new effects, no new synthesis: three other projects already do that well. Which is why the findings below are about the menu, the filesystem and the sample pool, and not about the audio path."
+
+{Embed}
+https://github.com/nordseele/octalab-notes
+GitHub - nordseele/octalab-notes
+Contribute to nordseele/octalab-notes development by creating an account on GitHub.
+https://images-ext-1.discordapp.net/external/YeouHTcMsNeQfdg6Q2ZMx8KJi2DMR47WtKZGeiGUgU8/https/opengraph.githubassets.com/ea81ba3ef2320a850869242737bbafa5ccfbd5998336a0e0787bcb4e2fe34b4c/nordseele/octalab-notes
+
+{Reactions}
+❤️
+
+[09.09.2026 05:21] hyperstationjr
+I have an Analog RYTM mk1 sitting around; I wonder how 1:1 you could get using it as a controller for the MD emulator?
+
+
+[09.09.2026 08:10] politicpolicy
+Map the midi tracks in ableton. Can't remember how many midi tracks the AR has. You might be able to change the text visuals also on the AR. I am working on changing some of the MD visuals on tracks to match the the monomachine emulation i.e image
+
+
+[09.09.2026 08:11] politicpolicy
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1547127356244627556/image.png?ex=6aaf7921&is=6aae27a1&hm=e09144ea6bed826d048be951bc0dbcdd052a1299d80140ea12ce146bfe7c4173&
+
+
+[09.09.2026 16:43] bryant12345
+Has anyone found the KEY stuff for the arpeggiator? I have … thoughts … on expanding it.
+
+
+[09.09.2026 16:45] maxolydian
+I just expanded the scales to all greek modes + blues and harmonic
+
+
+[09.09.2026 16:45] bamshanks
+I was just pulling up your repo because I thought it was you that had done it 🙂
+
+{Reactions}
+❤️
+
+[09.09.2026 16:48] bryant12345
+Fantastic!
+
+
+[09.09.2026 16:49] bryant12345
+I’ll look in your repo for guidance
+
+
+[09.09.2026 17:02] bamshanks
+@maxolydian I've been working through your latest to see what I can glean and found some potential stuff that may or may not help you. The main ones being that your DDR tail overwrite battle looks like it's the delay rings Bryan has mapped out and the Unicorn bug that has burned us all. 
+
+Sharing notes here in case helpful
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1547260890691411978/octabam-notes-for-octamax.md?ex=6aaf4cbf&is=6aadfb3f&hm=88a2bf842078ca429204e6a69c598f19ea01ed23ca687f4ac6c98bfcd2fb316e&
+
+{Reactions}
+❤️
+
+[09.09.2026 17:20] bamshanks
+Your slice playhead work cracked something i've been stuck on
+
+
+[09.09.2026 17:20] bamshanks
+for my emulator
+
+
+[09.09.2026 17:22] bamshanks
+and potentially Bryan's white whale
+
+{Reactions}
+🐋
+
+[09.09.2026 18:11] maxolydian
+nice
+
+
+[09.09.2026 18:34] bryant12345
+Has anyone explored different curves for the crossfader yet? Insight into how XVOL alters the values? I’m curious if it is a table or some math.
+
+
+[09.09.2026 18:34] bamshanks
+not me
+
+
+[09.09.2026 23:00] hyperstationjr
+I don’t use Ableton and the AR doesn’t have midi tracks.
+
+The goal isn’t for the AR to trigger the MD emulator like it’s a rack instrument or VST - it’s to basically use the AR as a 1:1 hardware controller for the MD and MM emulators, including using menus, submenus, track selection, all of that, which mostly isn’t midi at all.
+
+
+[09.09.2026 23:03] hyperstationjr
+I’d use my Octatrack but it only has 6 knobs plus a level potentiometer. I’m curious if any of the button information from the device could be accessed.
+
+
+[10.09.2026 00:05] bamshanks
+I can’t see how that work
+
+
+[10.09.2026 03:21] hyperstationjr
+I know the MD had a feature called “local off”, which let you reroute the internal sequencer out; i used it to apply midi-based effects and processing before it went back into the MD for creating ratchets and probability-related effects.
+
+Anyway, my hope was that maybe the device sent out some kind of data when the navigational buttons were used, and if that was the case, maybe the Octatrack or RYTM might as well, but it doesn’t seem like it.
+
+
+[10.09.2026 03:39] _anfim
+Yeah none of them let you do that. Fwiw the rytm does send midi out from all of its tracks, it's a very basic note/vel affair though
+
+
+[10.09.2026 03:40] bamshanks
+Yeah not menu clicks
+
+
+[10.09.2026 11:04] yvez_me
+Is there something documented already about things that make the OT crash? Things to avoid?
+
+
+[10.09.2026 20:20] bryant12345
+Mine was not understanding how a memory address was referred to. Hard to give a useful answer other than “don’t do that.” Fortunately, it just froze the unit and it rebooted normally so i could swap out the firmware
+
+
+[10.09.2026 22:50] buma2855
+I'd expect the usual C/C++ failure modes: invalid memory access, out-of-bounds indexes, buffer overflows, corrupted state, bad pointers, etc. That said, the project has been studied enough by now that crashes should be pretty uncommon if a new agent (or human expert!) properly reads through the existing repos and research first. The existing work has already uncovered quite a few of the dangerous areas and assumptions. While my first experimental binary did trigger an exception, it never happened again thanks to the Octabam emulator and some methodology adjustements. Fortunately, the OT bootloader allows you to transfer a SysEx in recovery mode in case of emergency 😉
+
+
+[12.09.2026 01:08] sezare56_40656
+Considering the amount of excellent features and bug corrections done here, could we imagine a kind of interface, eventually a check list,  that would allow to choose all these shared modes optionally and modify OG firmware with that ?
+
+
+[12.09.2026 01:19] bryant12345
+That’s the dream!
+
+{Reactions}
+👆
+
+[12.09.2026 01:22] bryant12345
+I think a lot of us are like, “i want some of what he did, some of what she did, some of what I did, a lot of what the aliens did, …”
+
+{Reactions}
+❤️ (4)
+
+[12.09.2026 01:29] zackyoti_98392
+A unified interface would certainly be awesome. It’s challenging though - some modifications step on others’ toes code-wise. The parts bug I worked on for you @Sezare56 might interact weirdly with Octakit, for example. Lots of unknowns.
+
+{Reactions}
+👆
+
+[12.09.2026 01:32] bryant12345
+Hopefully this discord and sharing git repos will help folks sort through those challenges. They are very real.
+
+
+[12.09.2026 01:37] sezare56_40656
+Coding aliens risk to be probably exposed to intergalactic racism…but anyway it seems like OT has been made by aliens…coming back to correct bugs…
+
+
+[12.09.2026 01:42] anglingar
+We got the alien boss around 😉
+
+
+[12.09.2026 01:43] sezare56_40656
+Yes, the chosen mods should be compartmentalized, not interfering each other, or be taking other choices in account ! 🤯
+
+
+[12.09.2026 02:08] pituzinho9269
+I only have midiscenes installed, have the scenes been integrated to other mods? What has been integrated as of now if anything?
+
+
+[12.09.2026 02:09] pituzinho9269
+I'm very curious about the new FX, is that octabam?
+
+
+[12.09.2026 02:35] zackyoti_98392
+You can bet as soon as I have final versions of all my mods locked in as part of a comprehensive build, I’ll be diffing it against midiscenes and octakit to see how well they slot together. Gonna be 🤩
+
+
+[12.09.2026 02:52] bamshanks
+yeah i've been working with Em and BKK to get octakit and midi scenes playing nice. It's all working just waiting on a bug fix before sharing it
+
+{Reactions}
+🔥 (2)
+
+[12.09.2026 02:57] bamshanks
+yeah a few are working on effeccts, but that's been my main focus with octabam. Took a side quest but am finishing that up now to fix some long standing recording bugs for Bryan. With the thought that it will also aid in the build of future buffer related effects and just make my emulator smarter. 
+
+This has been true. Once he confirms I will start sharing some remixes such as octakit + midi scenes. 
+
+Then I'm back to finishing off my effects. Which I now have a new emulation rig for. Which is a lot closer to the device than the harnesses. Meaning the voicing and testing of the busses should be able to happen mostly off device. Was getting frustrating doing long slow hardware testing loops
+
+{Reactions}
+🔥 (3) ❤️
+
+[12.09.2026 02:58] bamshanks
+If anyone has any effects they want to share I would love to include them
+
+
+[12.09.2026 03:08] pituzinho9269
+Thank you guys
+
+
+[12.09.2026 03:11] zackyoti_98392
+@bamshanks do you have control over “the mods” channel? Formatting’s weird, em’s text blurb got disconnected from the GitHub image, midiscenes in between. Just looks confusing. Also Maxolydian imho belongs more in mods section than tools section
+
+
+[12.09.2026 03:30] bamshanks
+no i've not had anything to do with that, have admin'd you now go for it
+
+
+[12.09.2026 06:11] zackyoti_98392
+Nice. I’ll check it when I get a chance
+
+{Reactions}
+👍🏻
+
+[12.09.2026 15:57] homeboiflex
+Is the risk of actually bricking the device basically zero due to how it’s separated? 
+
+And hypothetically if a custom FW was used and then official was installed again could Elektron know?
+
+
+[12.09.2026 16:05] exit_planet_dust
+There’s probably ways you could mess things up irrecoverably. Would have to try hard though.
+
+
+[12.09.2026 16:06] homeboiflex
+instincts telling me to wait, but feeling fomo
+
+
+[12.09.2026 16:06] exit_planet_dust
+There’s no telemetry as far as we know. If you had to send your device back and put stock FW on beforehand, would they know, maybe? Maybe not?
+
+{Reactions}
+👍
+
+[12.09.2026 16:06] exit_planet_dust
+Like if you sent your DT2 back for the screen fault they’re probably not gonna bother checking if you installed unofficial firmware
+
+
+[12.09.2026 16:07] exit_planet_dust
+No harm in waiting a little for things to mature and branches to be merged.
+
+{Reactions}
+👍
+
+[12.09.2026 16:08] bryant12345
+Personally, I'm not going to blindly load vibe coded firmware.  Octabam's built a pretty amazing setup for building and testing stuff before it even gets loaded on the Octatrack.
+
+{Reactions}
+🔥 (2) ❤️ (2)
+
+[12.09.2026 16:08] exit_planet_dust
+Yeah it’s extremely early days
+
+
+[12.09.2026 16:09] exit_planet_dust
+If you rely on your gear to play/work/etc avoid
+
+{Reactions}
+👍
+
+[12.09.2026 16:10] bryant12345
+I started with the tiniest of baby steps to understand the build process, what was changing, etc.  My first firmware was literally two lines of code changed ... then I got a bit carried away. 🙂
+
+{Reactions}
+👍
+
+[12.09.2026 16:31] homeboiflex
+I'd kinda hit a wall with OT, it's so nice to be dawless but i'd pushed it to its limits, and this project is giving me hope
+
+
+[12.09.2026 17:20] bryant12345
+How long can labels be?  I have a MODE switch that then displays three labels. 5 character max?  4?
+
+
+[12.09.2026 19:09] pituzinho9269
+I just went right to it, at least the scenes are working tight
+
+
+[12.09.2026 20:22] homeboiflex
+Whata time to be alive
+
+
+[12.09.2026 22:52] mishandchips
+Don't know about the octatrack specifically, but to brick the machinedrum you would have to edit the Boot ROM code which I believe is only writeable via a hardware debug probe. So worst case scenario you just need to flash again..
+
+
+[12.09.2026 23:09] mishandchips
+The boot animation is also in the Boot ROM code, so It means redesigning the startup animation (which I would be really excited to play with) is probably a silly idea 😅
+
+
+[13.09.2026 04:23] bryant12345
+Is there a way to dynamically restrict effects on the Octatrack so we don’t overtax the DSP? Right now octabam calculates worst case scenario - like what if a user wanted 4 (or 8) copies of an effect. But what if we instead managed the load so you couldn’t add the marginal effect to a Part that pushed over the DSP limit? Just a thought …
+
+
+[13.09.2026 04:24] bamshanks
+yeah I thought about it but selfishly didn't want to go through figuring that out, so I just pressure test using every combo
+
+
+[13.09.2026 04:26] bryant12345
+I was going through it today. The odds of someone wanting 8 copies of my LOFI2 are pretty low, but had to be considered. Planted the seed that managing it during running might be preferable.
+
+
+[13.09.2026 04:33] bamshanks
+yeah would be awesome, too hard basket for me though
+
+
+[13.09.2026 04:57] exit_planet_dust
+Hard limiting is in the spirit of the gear - stability at all costs.
+
+{Reactions}
+❤️
+
+[13.09.2026 05:05] bamshanks
+yeah that's kinda what I didn't wanna mess with as well
+
+
+[13.09.2026 05:06] bamshanks
+feels like a rabbit hole that might lead to unwanted side effects
+
+
+[13.09.2026 05:06] bamshanks
+but if not it could be a great way to eek more out of it
+
+
+[13.09.2026 05:18] mishandchips
+I’m investigating if there’s a way to allow a dsp to recover after an overload on the md. In the same spirit as the two general fix. If it works it might mean you can push hard limits further than you would otherwise.
+
+{Reactions}
+👍
+
+[13.09.2026 09:57] politicpolicy
+On the emulator - first try
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1548603511925768212/IMG_3300.mov?ex=6aaf91e8&is=6aae4068&hm=d6d4ba0f03d35e3ed5e7ac3259ca50af3c3b7059566c616880bd0c5a81082e93&
+
+{Reactions}
+❤️ (3)
+
+[13.09.2026 10:12] mishandchips
+Nice! Did you work out how to get it onto the MD safely?
+
+
+[13.09.2026 10:53] politicpolicy
+Not yet. 5th attempt to midi transfer  a machine based firmware, grrrh. Didn’t include the splash screen. No problems upgrading to ems new firmware - which is awesome with the track lengths, micro timing, conditionals.
+
+{Reactions}
+❤️ (2) 👀
+
+[13.09.2026 11:26] falken202
+you got track lengths & conditionals working natively on MD?
+
+
+[13.09.2026 11:28] bamshanks
+@devilfish707 fyi
+
+{Reactions}
+❤️
+
+[13.09.2026 11:29] devilfish707
+Superb thanks!
+
+
+[13.09.2026 11:29] bamshanks
+It's not the list I would have chosen but it's interesting
+
+
+[13.09.2026 11:50] politicpolicy
+Not me,  ha, i don’t have the skills. https://junes.website/goodies
+
+{Reactions}
+❤️
+
+[13.09.2026 11:57] falken202
+woah nice work Em. I didn't know they worked on MD firmware too 🙂
+
+
+[14.09.2026 17:20] bryant12345
+Are there many open questions about the Octatrack’s architecture or codebase remaining?
+
+
+[14.09.2026 18:04] kjnilsson
+I've been poking at the arranger a bit, not sure if there is much new stuff in here:
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1549088389763043419/ARRANGER.md?ex=6aaf5b3c&is=6aae09bc&hm=d605dd2da9543933fb13810ac878b732a6bb5b8b1fcdc6c075a7e55b6ab0b1c5&
+
+{Reactions}
+❤️
+
+[14.09.2026 18:09] kjnilsson
+Claude doesn;t think trying to do "midi machines" is a good idea
+
+
+[14.09.2026 18:11] bryant12345
+On the UI side - is there a way to “grey out” a control that isn’t used in a particular mode. As an example, Q does nothing in the Equalizer when using high or low shelf modes. Would be better to hide or grey out the knob. 
+
+I’m facing a similar challenge with my new effect.
+
+{Reactions}
+💯
+
+[14.09.2026 18:15] kjnilsson
+for some reason my work in the arranger caused some greying out which I didnt expect
+
+
+[14.09.2026 18:15] kjnilsson
+I could see what that was all about
+
+
+[14.09.2026 18:17] bryant12345
+I’m trying to remember if I’ve seen the screen do that in other places.
+
+
+[14.09.2026 19:30] zackyoti_98392
+Oh yeah - this is a great idea!
+
+
+[15.09.2026 10:02] .mdee
+tonverk is encrypted, but i wonder if it's worth writing data to the SD card and fuzzing it somehow 😂
+
+
+[15.09.2026 10:03] .mdee
+maybe i shoulfd just turn it on and actually make music with it instead..
+
+{Reactions}
+😁 (2)
+
+[16.09.2026 03:14] bryant12345
+I did a bit of digging on the UI stuff I didn't understand.  Attached is a doc that describes things and corrects some stuff in the octabam's repo.
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1549589236276002876/enable-nibbles.md?ex=6aaf336f&is=6aade1ef&hm=4f76985112113352733a362222631f1fc9fa35174b9f55839dc58f490c89ab2a&
+
+{Reactions}
+❤️
+
+[16.09.2026 03:30] bamshanks
+This is super useful!
+
+Especially for my mod dpth / time in my new effects.
+
+ingested and merged now thanks mate
+
+
+[16.09.2026 03:50] bryant12345
+I didn’t see any evidence for being able to grey out knobs that aren’t used. The other option is to make them vanish, which might be ok … though I’m setting stuff up with a switch on page 2 that would make a knob vanish on page 1. Not the most intuitive.
+
+
+[16.09.2026 03:51] bamshanks
+yeah I had some issues with that, when I blanked them it left the circles 🙂
+
+
+[16.09.2026 03:51] bamshanks
+Ended up going another way, so didn't dig too deep, but it would be useful
+
+
+[16.09.2026 03:51] bamshanks
+especially with my multi-effect mode approach
+
+
+[16.09.2026 08:30] bamshanks
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1549668792378859590/image.png?ex=6aaf7d87&is=6aae2c07&hm=f2a7e6544093948ad787b5cb9996dc364514256bf0d15f2d195d62f0f7d152c9&
+
+
+[16.09.2026 08:30] bamshanks
+Linked knobs thanks @Bryan T (ukulele owner) !
+
+
+[16.09.2026 08:30] bamshanks
+legend
+
+
+[16.09.2026 08:47] bamshanks
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1549673122070790154/image.png?ex=6aaf818f&is=6aae300f&hm=5492f689a8dcbd89b3d11c6c0dad435b932f26c85f954ceed612629d3c238fb2&
+
+
+[16.09.2026 08:51] bamshanks
+Optional empty knobs on different modes not fully blank but better than nothin
+
+
+[16.09.2026 08:51] bamshanks
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1549674167308390400/image.png?ex=6aaf8289&is=6aae3109&hm=ae79783a0e91d0ff1dd9ff46ea1d65e8e940a6a2ed415c330cc9fcec0d86e75a&
+https://cdn.discordapp.com/attachments/1542740659419488376/1549674167702519888/image.png?ex=6aaf8289&is=6aae3109&hm=6c8536e1fa243e6cd2e60ffa2233003476186dca673f4c191d34d8fba04c3d86&
+
+
+[16.09.2026 12:56] bryant12345
+Fantastic!
+
+
+[16.09.2026 13:34] anglingar
+Does anyone know where does LFO parameters live in the octatrack, when the project is not still saved?
+
+It is a wild reach to think that architectures will transfer but...
+
+
+[16.09.2026 13:36] bamshanks
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1549745849792208926/octatrack-lfo-params-in-ram.md?ex=6aaf1c8b&is=6aadcb0b&hm=5d219efd43d5ab6130fd3835229306ec501b90df0b3cc6b8ecd7f292f2cc3c24&
+
+
+[16.09.2026 13:37] bamshanks
+According to Claude based on our findings
+
+{Reactions}
+❤️
+
+[16.09.2026 13:38] kjnilsson
+RE: graying out perhaps there is something useful in here
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1549746238935801896/PANEL_DRAW.md?ex=6aaf1ce8&is=6aadcb68&hm=e83e7ed03636eef73a83a2e0b164ac61a3def883358bf949b369154848375714&
+
+{Reactions}
+❤️ (2)
+
+[16.09.2026 13:51] anglingar
+Thanks guys I fed the beast well with it 🙂
+
+{Reactions}
+👍🏻
+
+[16.09.2026 13:52] bamshanks
+Makes me think we could probably do the checkerboard, but I’ll leave that for Bryan 😛
+
+
+[16.09.2026 13:53] anglingar
+Playing checkers on the OT? xD
+
+
+[16.09.2026 13:53] kjnilsson
+yeah, the fact it happens on REM rows in the arranger is probably just an accident
+
+{Reactions}
+😁
+
+[16.09.2026 13:53] bryant12345
+What’s funny is that I was looking for the checkerboard in my hunting.
+
+
+[16.09.2026 13:54] kjnilsson
+would be quite useful for my arp modes as some controls on the arp page just arent used
+
+
+[16.09.2026 13:55] bamshanks
+The —- are enough of an indicator for me to be happy but if you figure it out fully it would be nice 😀
+
+
+[16.09.2026 13:56] bryant12345
+Visually, the “—-“ is a quicker signal to my brain, so I’ll probably use that anyway.
+
+
+[16.09.2026 13:56] bamshanks
+Yeah adding that and the linkers made all my stuff click in my brain
+
+
+[16.09.2026 13:57] bamshanks
+And 1/4, 1/8 type indicators at those positions
+
+
+[16.09.2026 13:57] bamshanks
+Starting to feel proper
+
+
+[16.09.2026 13:57] bamshanks
+Been shaving cycles to kill the last few clicks and pops and think (for the hundredth time) I’m there
+
+
+[16.09.2026 13:58] bryant12345
+Are clicks/pops sometimes from trying to use too many cycles?
+
+
+[16.09.2026 13:59] bamshanks
+Yeah can be
+
+
+[16.09.2026 13:59] bamshanks
+When you are pushing it
+
+
+[16.09.2026 13:59] bamshanks
+But can also be routing when you are trying to do crazy things like aux busses
+
+
+[16.09.2026 13:59] bamshanks
+Been a journey
+
+
+[16.09.2026 14:06] bamshanks
+I can emulate the coldfire and the dsp with  multitrack routing with master bus locally on the emulator . But you get it on the device and there are still plenty of issues
+
+
+[16.09.2026 14:07] bamshanks
+The dream is to have it close to 1:1 but I think there is a limit to that and might have been naive on that front
+
+
+[16.09.2026 14:07] bamshanks
+But still super useful
+
+{Reactions}
+👍
+
+[16.09.2026 14:08] .reliktfarn
+@bamshanks Did you use the work of the usual suspects dsp56300 emulator?
+
+
+[16.09.2026 14:10] bamshanks
+Yeah I copied from gearmulator with reckless abandon 🙂
+
+
+[16.09.2026 14:11] .reliktfarn
+There‘s so many repos and a lot of people seemingly working on this. Which is currently the most extensive?
+
+
+[16.09.2026 14:11] bamshanks
+Couldn't use their Coldfire though
+
+
+[16.09.2026 14:11] plentynights
+Hi everyone has anyone tried USB audio?
+
+
+[16.09.2026 14:11] bamshanks
+We've all been copying back and forward, so I would think they are reasonably inline
+
+
+[16.09.2026 14:11] bamshanks
+Seems like a hardware thing that would be impossible I would think
+
+
+[16.09.2026 14:12] plentynights
+I have a build working
+
+
+[16.09.2026 14:12] plentynights
+About a month ago
+
+{Reactions}
+✊
+
+[16.09.2026 14:12] bamshanks
+You have it sending Audio over USB?
+
+
+[16.09.2026 14:12] plentynights
+Yes it wasn’t easy and I used Ghidra to decompile most of the 1.4C
+
+
+[16.09.2026 14:12] plentynights
+Firmware
+
+
+[16.09.2026 14:13] bamshanks
+Holy shit, got some code?
+
+
+[16.09.2026 14:13] bamshanks
+Used this for the Coldfire https://github.com/joelanders/mc68k-md-mm
+
+{Embed}
+https://github.com/joelanders/mc68k-md-mm
+GitHub - joelanders/mc68k-md-mm: Motorola MC68331 emulator written ...
+Motorola MC68331 emulator written in C++. Contribute to joelanders/mc68k-md-mm development by creating an account on GitHub.
+
+
+[16.09.2026 14:13] plentynights
+I could probably release a patch but there’s still issues with it intermittently dropping  out
+
+
+[16.09.2026 14:13] plentynights
+It’s only on track 8 too for now
+
+
+[16.09.2026 14:13] plentynights
+If u configure it as master
+
+
+[16.09.2026 14:13] bamshanks
+I always do 🙂
+
+
+[16.09.2026 14:14] bamshanks
+I'm just surprised the hardware even does it
+
+
+[16.09.2026 14:14] plentynights
+I didn’t even think of using QEMU for emu btw
+
+
+[16.09.2026 14:14] plentynights
+Was trying to make my own emulator from scratch lol
+
+{Reactions}
+😁
+
+[16.09.2026 14:14] bamshanks
+Ah yeah I stumbled onto that from unicorn
+
+
+[16.09.2026 14:15] plentynights
+The USB PHY is actually very capable and the coldfire supports USB fully
+
+
+[16.09.2026 14:15] bamshanks
+Holy shit
+
+
+[16.09.2026 14:15] .reliktfarn
+Did anyone already develop a screen / Ui emulation?
+
+
+[16.09.2026 14:15] plentynights
+Up to 7 endpoints I believe
+
+
+[16.09.2026 14:15] .reliktfarn
+And maybe a way to measure cpu / dsp load?
+
+
+[16.09.2026 14:15] bamshanks
+not so far as I know, but I don't think it would be hard
+
+
+[16.09.2026 14:15] bamshanks
+em did it for the digis pretty quick, but she's a bit of a guru
+
+
+[16.09.2026 14:16] bamshanks
+I wish
+
+
+[16.09.2026 14:16] bamshanks
+It's less cpu load and more cycles afaik
+
+
+[16.09.2026 14:16] bamshanks
+how many things you can do each click
+
+
+[16.09.2026 14:16] .reliktfarn
+Are we delegating work here is or is everyone just working on their own?
+
+
+[16.09.2026 14:17] bamshanks
+everyone is following their own dreams 🙂
+
+
+[16.09.2026 14:18] plentynights
+font asset
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1549756302501224558/lcd_font.png?ex=6aaf2647&is=6aadd4c7&hm=f98f5d5eca321065f2b8a7588605a89b424e552a46a828f0985cff75b8a9fb9b&
+
+
+[16.09.2026 14:18] plentynights
+wow that's tiny
+
+
+[16.09.2026 14:18] bryant12345
+My goal with this channel was that we’d ask/answer technical questions - not delegation, but resource sharing. Share the love. 🙂
+
+
+[16.09.2026 14:18] bamshanks
+yeah same
+
+
+[16.09.2026 14:19] .reliktfarn
+Ok, will be happy to contribute my findings
+
+{Reactions}
+❤️
+
+[16.09.2026 14:19] bamshanks
+awesome
+
+
+[16.09.2026 14:19] bamshanks
+so interested in the usb side of things and whatever else you've found if you've gone that deep
+
+
+[16.09.2026 14:20] plentynights
+This is the USB PHY IC on board, also have a copy of the MCF54455 Reference Manual
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1549756860071149648/image.png?ex=6aaf26cc&is=6aadd54c&hm=69843066ff6061128923fc2ad8013cfe32070ff1871430c50701d73391c0b6ed&
+
+
+[16.09.2026 14:20] bryant12345
+I’d heard for so long that USB audio wasn’t possible that I’m really excited now!
+
+
+[16.09.2026 14:20] plentynights
+I've gone pretty deep just getting those last pesky bugs out lol
+
+
+[16.09.2026 14:22] plentynights
+full 8 track USB audio is really hard as the data itself isn't accessible unless recording is armed, which I still haven't digged into (the recorder side)
+
+
+[16.09.2026 14:22] plentynights
+but stereo CD quality on track 8 as master is a good compromise I think for now
+
+
+[16.09.2026 14:22] plentynights
+let me grab my octa and boot it to show some proof
+
+
+[16.09.2026 14:22] bryant12345
+There are some docs in octabam’s repo about the recording buffers.
+
+
+[16.09.2026 14:24] plentynights
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1549757862350299177/image.png?ex=6aaf27bb&is=6aadd63b&hm=7fc1a6984f4da5cd5a42aba548c381f35d2b5425894ab90a7a0c89249b5de3b8&
+https://cdn.discordapp.com/attachments/1542740659419488376/1549757862887297140/image.png?ex=6aaf27bb&is=6aadd63b&hm=250244974dfa1af98ea015e5f6138a53cae065b66c29cc5c8554ed93c4a1fbd9&
+
+
+[16.09.2026 14:25] .reliktfarn
+wow
+
+
+[16.09.2026 14:25] bukkakeborealis
+Amazing!
+
+
+[16.09.2026 14:25] bamshanks
+Same
+
+
+[16.09.2026 14:28] plentynights
+I mostly used MiMo V2.5 which is ancient by todays standard
+
+
+[16.09.2026 14:28] plentynights
+in terms of LLM model
+
+
+[16.09.2026 14:28] plentynights
+Might try again with the new deepseek 4.1 which looks very promising
+
+
+[16.09.2026 14:29] plentynights
+I have a custom agent harness for most of the tasks like RE via Ghidra etc
+
+
+[16.09.2026 14:29] plentynights
+I think the best thing for the community is going to be the Emulator as it's really time consuming flashing firmware via MIDI Sysex lol
+
+
+[16.09.2026 14:33] bryant12345
+You don’t make a .bin?
+
+
+[16.09.2026 14:33] .reliktfarn
+How about making the OT compatible with the new outbox 8?
+
+{Reactions}
+👍
+
+[16.09.2026 14:33] plentynights
+It's not at all polished enough still full of dropped connection issues
+
+
+[16.09.2026 14:34] plentynights
+Audio is working but for around 10 sec then it disconnects
+
+{Reactions}
+👍
+
+[16.09.2026 14:35] bryant12345
+I loaded new firmware with .syx once … so slow! Being able to make a .bin made me so happy.
+
+
+[16.09.2026 14:36] plentynights
+Outbox is an audio/cv/midi interface no?
+
+
+[16.09.2026 14:36] bukkakeborealis
+So with audio in ABCD it could be a 4in soundcard 😅
+
+
+[16.09.2026 14:37] anglingar
+Check out section 8 on latest DT2 or DN2 firmware.
+
+
+[16.09.2026 14:38] plentynights
+Anyone also tried messing around with the RGB ?
+
+
+[16.09.2026 14:38] plentynights
+chart (made by LLM)
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1549761437763764254/image.png?ex=6aaf2b0f&is=6aadd98f&hm=860823ca91f3ee62acc00b3564728b666e0bf9cb76e85257b707b7f43928623a&
+
+
+[16.09.2026 14:40] bryant12345
+Getting MAIN and CUE over USB would be huge for me.
+
+{Reactions}
+💯
+
+[16.09.2026 14:42] plentynights
+I'll be working on it some more this week but no promises
+
+
+[16.09.2026 15:14] exit_planet_dust
+my investigation led me to believe that to maintain isochronous data flow for usb audio would put unreasonable demands on the cpu
+
+
+[16.09.2026 15:14] exit_planet_dust
+I might give it another look now with the usb chip data sheet
+
+
+[16.09.2026 15:21] exit_planet_dust
+I get free gemini via work and they told us we weren't using enough so :awesome:
+
+{Reactions}
+😁
+
+[16.09.2026 15:28] exit_planet_dust
+stereo audio seems pretty feasible
+
+
+[16.09.2026 15:33] exit_planet_dust
+disconnecting from your mac entirely as if you unplugged? or just audio dropping out
+
+
+[16.09.2026 15:35] exit_planet_dust
+wireshark log would be useful
+
+
+[16.09.2026 15:36] plentynights
+Sounds like a good excuse hahaha
+
+
+[16.09.2026 15:36] plentynights
+Can’t remember as this was a month ago but I believe it’s driver side the not the whole octa
+
+
+[16.09.2026 15:37] plentynights
+I’ll try to get my github clean this week so I can hopefully invite others to contribute as well
+
+
+[16.09.2026 15:38] plentynights
+Right now the patches I was working on were USB audio and USB midi mainly
+
+
+[16.09.2026 15:39] plentynights
+Thankfully the coldfire has it all built in
+
+
+[16.09.2026 15:39] plentynights
+Which really makes me wonder why the octa never got overbridge
+
+
+[16.09.2026 15:42] exit_planet_dust
+resources... there's some key architecture differences
+
+
+[16.09.2026 15:43] plentynights
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1549777687319679007/MCF54455RM.pdf?ex=6aaf3a32&is=6aade8b2&hm=c8d82a4f7f859d7bf11d38939cb668395b6da4d75c2bdfb79824d3423d5cc5d1&
+
+
+[16.09.2026 15:43] exit_planet_dust
+the coldfire in the dt1/dn1 et al has a 64 channel eDMA controller vs 16 channels on the octa. The digi usb controller can pull directly from SDRAM and not involve the CPU at all.
+
+
+[16.09.2026 15:44] plentynights
+ahh that's smart
+
+
+[16.09.2026 15:44] plentynights
+
+
+{Attachments}
+https://cdn.discordapp.com/attachments/1542740659419488376/1549778037820751893/image.png?ex=6aaf3a85&is=6aade905&hm=21a4304f49a9a592ca71fe9644caa261d59b8c0e33c0f7bac3f3d31b51226949&
+
+
+[16.09.2026 15:45] exit_planet_dust
+whereas on octa, everything touching sdram is on 1 shared bus
+
+
+[16.09.2026 15:46] exit_planet_dust
+so my thinking is uac1 stereo audio out (and maybe in) plus class compliant midi is possible
+
+
+[16.09.2026 15:46] plentynights
+uac2 actually ;)
+
+
+[16.09.2026 15:46] plentynights
+uac1 is not possible on a FS USB
+
+
+[16.09.2026 15:46] exit_planet_dust
+8 tracks and/or OB would be too taxing
+
+
+[16.09.2026 15:46] plentynights
+it's what they call a frankenstein USB audio device lol
+
+
+[16.09.2026 15:47] plentynights
+unsupported on mac
+
+
+[16.09.2026 15:47] plentynights
+yea 8 tracks is probably impossible unless there is a very significant community effort
+
+
+[16.09.2026 15:47] plentynights
+even then ur pushing a lot of data
+
+
+[16.09.2026 15:47] plentynights
+USB-MIDI is actually built in just not toggled on
+
+
+[16.09.2026 15:47] plentynights
+for some reason (??)
+
+
+[16.09.2026 15:48] exit_planet_dust
+UAC1 on FS is the standard? Or is this a weird mac thing.
+
+
+[16.09.2026 15:48] exit_planet_dust
+UAC2 is HS, iirc
+
+
+[16.09.2026 15:48] plentynights
+sorry I mean HS
+
+
+[16.09.2026 15:48] plentynights
+yes
+
+
+[16.09.2026 15:48] plentynights
+the PHY is HS
+
+
+[16.09.2026 15:49] plentynights
+can I pm u?
+
+
+[16.09.2026 15:50] exit_planet_dust
+keep it in here, then everybody benefits 🙂
+
+
+[16.09.2026 15:50] exit_planet_dust
+also, it's about bedtime in the APAC region 😄
+
+
+[16.09.2026 15:50] plentynights
+okay, best to go to bed then haha
+
+
+[16.09.2026 15:51] plentynights
+hopefully with how fast LLM progress we will soon be able to really unlock the octa
+
+
+[16.09.2026 15:51] exit_planet_dust
+I think it would be best targeting UAC1 on the octa
+
+
+[16.09.2026 15:52] exit_planet_dust
+I'm not sure it could manage UAC2
+
+
+[16.09.2026 15:52] plentynights
+I'll share the code I have by end of week but I have it running in UAC2 already
+
+
+[16.09.2026 15:53] plentynights
+tried UAC1 and wasn't really working nice with my mac
+
+
+[16.09.2026 15:54] exit_planet_dust
+I would think if you're getting a hardware disconnect after 10 seconds it's cos it's failed the OS driver health check
+
+
+[16.09.2026 15:54] plentynights
+I get sound too
+
+
+[16.09.2026 15:54] plentynights
+just intermittently
+
+
+[16.09.2026 15:54] plentynights
+I have recorded parts of a octa project it's just too unstable right now
+
+
+[16.09.2026 15:54] exit_planet_dust
+but yeah, wireshark log will confirm it
+
+
+[16.09.2026 15:54] plentynights
+why wireshark? I used console which is the macos logger
+
+
+[16.09.2026 15:55] exit_planet_dust
+will that show URBs
+
+
+[16.09.2026 15:56] plentynights
+I think that's Linux only the usb driver on mac is kinda annoyingly restricted for dev
+
+
+[16.09.2026 15:56] plentynights
+I have a x240 thinkpad laying around tho
+
+
+[16.09.2026 15:56] plentynights
+running mint
+
+
+[16.09.2026 15:56] exit_planet_dust
+USBPcap then on windows
+
+
+[16.09.2026 15:57] exit_planet_dust
+and see if there's unresponded get_cur / set_cur
+
+
+[16.09.2026 15:59] exit_planet_dust
+this is assumption based off your 10 second disconnect
+
+
+[16.09.2026 15:59] plentynights
+Thanks for the tips
+
+
+[16.09.2026 16:00] plentynights
+@hillbilly do u have any ideas on porting the firmware to C?
+
+
+[16.09.2026 16:01] plentynights
+what is your current workflow for poking around in the firmware
+
+
+[16.09.2026 16:01] exit_planet_dust
+no I'm not a strong coder by any means, I'm more of an electronics person
+
+
+[16.09.2026 16:02] bryant12345
+Octabam has a bunch of tools in his repo.
+
+
+[16.09.2026 16:02] plentynights
+I'm aware of his repo but for more in depth mods we need to have a more general understanding of the system
+
+
+[16.09.2026 16:03] plentynights
+I think getting the bootloader is a reasonable first target
+
+
+[16.09.2026 16:03] plentynights
+I think I have most of it mapped and commented in Ghidra
+
+
+[16.09.2026 16:05] bryant12345
+Have you seen octamax’s repo, too?
+
+
+[16.09.2026 16:06] bryant12345
+Between those two I’ve been able to make headway on the things I’m curious about. But there are lots of open questions.
+
+
+[16.09.2026 16:07] plentynights
+what are the main ones?
+
+
+[16.09.2026 16:07] plentynights
+I've checked both now
+
+
+[16.09.2026 16:08] plentynights
+I think octamax was the first repo I've seen actually
+
+
+[16.09.2026 20:50] plentynights
+@BuMa have you inspected the companion MCU?
+
+
+[16.09.2026 21:03] buma2855
+no I have not
+
+
+[16.09.2026 21:14] plentynights
+going to try to dump it's firmware & get a map of buttons
+
+
+[16.09.2026 21:16] plentynights
+@Goffbaby wassup
+
+
+[16.09.2026 22:33] goffbaby
+bro i was about to ask u that exact question when i dm'ed u last night...
+
+
+[17.09.2026 14:03] sdkboi
+do we know how to enter "demo mode" on OT?
+I don't own an OT myself but am looking at the code that accesses the embedded "demo mode" gfx
+
+
+[17.09.2026 17:02] bryant12345
+I think you press “yes” while powering on the OT with no compact flash installed. Something like that.
+
+{Reactions}
+💡
+
+[17.09.2026 22:44] .thomyork
+Anyone trying to make an octatrack plug in (like the mm and md).
+Maybe kind of weird, but I would really love one 🦫
+
+{Reactions}
+🔥
+
+[17.09.2026 22:46] plentynights
+multiple people are working on emulators
+
+
+[17.09.2026 22:46] plentynights
+not yet finished enough to have a VST plugin though
+
+
+[17.09.2026 22:47] .thomyork
+Perfect! Will keep my eyes open 🙏
+
+
+[17.09.2026 22:52] bamshanks
+That's not where I'm going with my emu, I don't see any value in it personally, but people are welcome to use my code if they want to pursue that.
+
+{Reactions}
+🔥 💯
+
+[17.09.2026 22:54] bryant12345
+I’m a hardware guy. I already made a plugin that did what I wanted the Octatrack to do … now I’m trying to get the Octatrack to do that. 😂
+
+{Reactions}
+😂 (3) 🤣 (2)
+
+[17.09.2026 22:54] bamshanks
+Haha yeah I use the Octa because I don't want to be on the computer : )
+
+
+[17.09.2026 22:56] bamshanks
+ironic considering how much time this whole endeavour has had me on the computer 🙂
+
+{Reactions}
+😂 (7)
+
+[17.09.2026 22:56] .thomyork
+And I would love to use my octa whenever and wherever I am 🤣
+
+
+[17.09.2026 22:56] .reliktfarn
+Any progress on the (UI) emulators? My tape echo and vintage verb emulations sound great but still have some quirks / bugs I have to fix. Would be great to not have to flash cycle each time to check. The headless emulation works, but still differs from the actual hardware.
+
+
+[17.09.2026 22:57] .reliktfarn
+@bamshanks Also finally did a PR for the repitch algorithm btw
+
+
+[17.09.2026 22:57] bamshanks
+oh yeah nice, i'll take a look
+
+
+[17.09.2026 23:03] bamshanks
+not sure if anyone was working on that
+
+
+[17.09.2026 23:20] plentynights
+still actively working on it
+
+{Reactions}
+❤️ (2)
+
+[17.09.2026 23:26] bamshanks
+Awesome PR!
+
+Popped a few comments on
+
+
+[18.09.2026 00:04] zackyoti_98392
+How is the repitch different than the stock rate control? Genuinely curious
+
+
+[18.09.2026 02:39] homeboiflex
+Rate makes it go out of sync 🙂
+
+
+[18.09.2026 02:50] bryant12345
+Can someone point me to an example where you added a third page to the menu options?
+
+
+[18.09.2026 03:31] bryant12345
+I swear someone had done that …
+
+
+[18.09.2026 03:54] bamshanks
+I added a page under control but have since removed. Not sure how helpful that would be
+
+
+[18.09.2026 03:58] bryant12345
+I’m thinking about a third page on the LFOs…
+
+
+[18.09.2026 03:58] bamshanks
+Yeah if we could add extras to those it would be useful
+
+
+[18.09.2026 03:59] bryant12345
+I’m not sure what is feasible. But I want slew controls.
+
+
+[18.09.2026 04:01] bryant12345
+I’d also like to add some more unipolar options, but that is probably better done with tables.
+
+
+[18.09.2026 04:12] bamshanks
+Yeah I had a quick look when I was doing effects initially and ruled it out, but many things have happened since
+
+
+[18.09.2026 04:12] bamshanks
+And putting it in control menu was janky in practice so I ditched that approach
+
+
+[18.09.2026 05:21] zackyoti_98392
+Ah, got it. So duration of the sample doesn’t change, it just gets pitched up/down
+
+
+[18.09.2026 06:21] homeboiflex
+As you change tempo, yes! Classic old school sampler way
+
+
+[18.09.2026 06:21] homeboiflex
+so glad you want slewwww
+
+
+[18.09.2026 07:06] .reliktfarn
+Repitch controls the internal playback rate automatically to match the samples BPM to the projects‘. Loops sound better that way because they won‘t get piped through a timestretch algorithm.
+
+{Reactions}
+👍
+
+==============================================================
+Exported 505 message(s)
+==============================================================

@@ -105,10 +105,11 @@ int main(int _argc, char** _argv)
 	bool frameTimer = false;	// O9b: keep the free-running 16-sample frame timer with --dsp (default: the DSP's bank word is the frame edge)
 	std::string pokeAfterLoad;	// O9c: "addr=byte;addr=byte" written after the load, before the frames (drive an apply the load skips)
 	std::string pokeEarly;		// the same, written before --call (the current-track byte 0x80000000 an editor call reads)
-	std::string callSpec;		// "addr[,arg,...]": a firmware routine called AS MAIN after the load (a menu action the port has no panel for -- Part Reload, 14 Sep 2026)
+	std::string callSpec;		// "addr[,arg,...]": a firmware routine called AS MAIN after the load (a menu action the port has no panel for -- Part Reload, 14 Sep 2026); several calls separated by ';' (with --call-at, one frame each)
 	int callAt = -1;			// with --sequencer: make that call this many frames AFTER the transport start instead (a panel edit while playing: the transport start re-applies the part over the live lane, so an edit made before it is gone)
 	uint64_t fastEvery = 1;		// --fast N: timers/interrupts/gates every N instructions (rtos.h setFast); not bit-identical to 1
 	std::string livePath;		// a FIFO (or file) of panel events, read while the RTOS runs: "key <code> down|up", "enc <n> <delta>", "pot <0..255>", "midi <hex>...", "quit" -- tools/emu/lcd_view.py --panel writes it
+	std::vector<int> callAts;	// --call-at "f1,f2,...": the frame of each ';'-separated call (a preview started, then stopped)
 	std::string midiFile;		// with --sequencer: MIDI IN bytes onto UART0, one event per line: "<frames after the transport start> <hex byte>..." (e.g. "20 B0 28 7F" = CC 40 to 127 on channel 1) or "pre <hex byte>..." before the transport start ("pre C0 10" = program change 16 while stopped)
 	int mainLevel = -1;			// O9b: post sys command 4 (SET MAIN LEVEL) with this level after the load; -1 = don't (the emulated load never does, and every voice then renders at gain zero)
 	std::string lcd;			// the panel's 1-bpp plane (0x46c7e0ea, 1024 B) to FILE whenever it has changed, at most once per 2M instructions; tools/emu/lcd_view.py draws it
@@ -181,7 +182,13 @@ int main(int _argc, char** _argv)
 		else if(a == "--poke" && i + 1 < _argc)		pokeAfterLoad = _argv[++i];
 		else if(a == "--poke-early" && i + 1 < _argc)	pokeEarly = _argv[++i];
 		else if(a == "--call" && i + 1 < _argc)		callSpec = _argv[++i];
-		else if(a == "--call-at" && i + 1 < _argc)	callAt = std::atoi(_argv[++i]);
+		else if(a == "--call-at" && i + 1 < _argc)
+		{
+			std::stringstream ss(_argv[++i]);
+			for(std::string f; std::getline(ss, f, ',');)
+				callAts.push_back(std::atoi(f.c_str()));
+			callAt = callAts.empty() ? -1 : callAts.front();
+		}
 		else if(a == "--midi" && i + 1 < _argc)		midiFile = _argv[++i];
 		else if(a == "--live" && i + 1 < _argc)		livePath = _argv[++i];
 		else if(a == "--fast" && i + 1 < _argc)		fastEvery = std::strtoull(_argv[++i], nullptr, 0);
@@ -420,13 +427,18 @@ int main(int _argc, char** _argv)
 			const auto wa = static_cast<uint32_t>(std::strtoul(watchRead.c_str(), nullptr, 0));
 			const auto wl = comma == std::string::npos ? 4u
 				: static_cast<uint32_t>(std::strtoul(watchRead.c_str() + comma + 1, nullptr, 0));
+			// The first 64 reads, then each reading PC the first time it
+			// reads (a per-frame reader otherwise fills the list alone).
 			auto* const n = new int(0);
-			m.addReadWatch(wa, wa + wl - 1, [n](const uint32_t _addr, const uint8_t _size, const uint32_t _val, const uint32_t _pc)
+			auto* const pcs = new std::map<uint32_t, int>();
+			m.addReadWatch(wa, wa + wl - 1, [n, pcs](const uint32_t _addr, const uint8_t _size, const uint32_t _val, const uint32_t _pc)
 			{
-				if(*n < 64)
-					std::printf("   read%u 0x%08x -> 0x%0*x at pc 0x%08x\n", _size, _addr, _size * 2, _val, _pc);
+				const bool fresh = ++(*pcs)[_pc] == 1;
+				if(*n < 64 || (fresh && pcs->size() <= 256))
+					std::printf("   read%u 0x%08x -> 0x%0*x at pc 0x%08x%s\n", _size, _addr, _size * 2, _val, _pc,
+						*n < 64 ? "" : " (new pc)");
 				else if(*n == 64)
-					std::printf("   ... (more reads not listed)\n");
+					std::printf("   ... (more reads listed only from a new pc)\n");
 				++*n;
 			});
 			std::printf("watch-read : %#x..%#x\n", wa, wa + wl - 1);
@@ -640,15 +652,21 @@ int main(int _argc, char** _argv)
 				}
 			};
 			pokeBytes(pokeEarly, "before the call");
-			const auto doCall = [&]()
+			std::vector<std::string> callSpecs;
+			{
+				std::stringstream ss(callSpec);
+				for(std::string c; std::getline(ss, c, ';');)
+					if(!c.empty()) callSpecs.push_back(c);
+			}
+			const auto doCall = [&](const std::string& spec)
 			{
 				std::vector<uint32_t> args;
 				size_t q = 0;
 				uint32_t target = 0;
-				while(q <= callSpec.size())
+				while(q <= spec.size())
 				{
-					auto e = callSpec.find(',', q); if(e == std::string::npos) e = callSpec.size();
-					const auto v = static_cast<uint32_t>(std::strtoul(callSpec.substr(q, e - q).c_str(), nullptr, 0));
+					auto e = spec.find(',', q); if(e == std::string::npos) e = spec.size();
+					const auto v = static_cast<uint32_t>(std::strtoul(spec.substr(q, e - q).c_str(), nullptr, 0));
 					if(q == 0) target = v; else args.push_back(v);
 					q = e + 1;
 				}
@@ -664,7 +682,8 @@ int main(int _argc, char** _argv)
 						m.getD0(), m.getA7(), sp0);	// the address is in why() (PPC has moved on to the exception vector)
 			};
 			if(!callSpec.empty() && callAt < 0)
-				doCall();
+				for(const auto& c : callSpecs)
+					doCall(c);
 
 			// -- live input: the panel link and MIDI IN from a FIFO ------------
 			// The poll runs every 256 stepped or skipped instructions and reads
@@ -869,13 +888,21 @@ int main(int _argc, char** _argv)
 				// Timed actions while the sequencer runs -- a panel edit
 				// (--call-at) or MIDI IN bytes (--midi): the frame engine
 				// keeps going underneath them, as on the unit.
-				struct Action { uint64_t frame; bool call; std::vector<uint8_t> bytes; };
+				struct Action { uint64_t frame; bool call; std::vector<uint8_t> bytes; std::string spec; };
 				std::vector<Action> actions;
 				if(!callSpec.empty() && callAt >= 0)
-					actions.push_back({static_cast<uint64_t>(callAt), true, {}});
+				{
+					if(callAts.size() != callSpecs.size())
+					{
+						std::fprintf(stderr, "--call has %zu call(s) and --call-at %zu frame(s)\n", callSpecs.size(), callAts.size());
+						return 1;
+					}
+					for(size_t k = 0; k < callSpecs.size(); ++k)
+						actions.push_back({static_cast<uint64_t>(callAts[k]), true, {}, callSpecs[k]});
+				}
 				for(const auto& ev : midiEvents)
 					if(!ev.pre)
-						actions.push_back({ev.frame, false, ev.bytes});
+						actions.push_back({ev.frame, false, ev.bytes, {}});
 				std::stable_sort(actions.begin(), actions.end(), [](const Action& x, const Action& y) { return x.frame < y.frame; });
 				for(const auto& act : actions)
 				{
@@ -885,9 +912,9 @@ int main(int _argc, char** _argv)
 					{
 						if(rtos.runToMainSpin() == ot::Rtos::Stop::Gate)
 						{
-							std::printf("call-at    : frame %d (%llu since the transport start)\n",
-								callAt, static_cast<unsigned long long>(rtos.frameCount() - frame0));
-							doCall();
+							std::printf("call-at    : frame %llu (%llu since the transport start)\n",
+								static_cast<unsigned long long>(act.frame), static_cast<unsigned long long>(rtos.frameCount() - frame0));
+							doCall(act.spec);
 						}
 						else
 							std::printf("call-at    : main never spun -- %s\n", rtos.why().c_str());
@@ -1027,7 +1054,7 @@ int main(int _argc, char** _argv)
 		if(!serialOut.empty())
 		{
 			for(const auto& [suffix, tx] : {std::make_pair("a", &rtos.serialTxA()),
-				std::make_pair("b", &rtos.serialTxB())})
+				std::make_pair("b", &rtos.serialTxB()), std::make_pair("midi", &rtos.midiTx())})
 			{
 				std::ofstream o(serialOut + "." + suffix, std::ios::binary);
 				o.write(reinterpret_cast<const char*>(tx->data()), static_cast<std::streamsize>(tx->size()));

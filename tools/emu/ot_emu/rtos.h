@@ -414,6 +414,7 @@ namespace ot
 		const std::vector<Ack>& acks() const { return m_acks; }
 		size_t seeded() const { return m_seeded; }
 		size_t serialSent() const { return m_uart64.tx().size() + m_uart68.tx().size(); }
+		const std::vector<uint8_t>& midiTx() const { return m_uart60.tx(); }
 		const std::vector<uint8_t>& serialTxA() const { return m_uart64.tx(); }
 		const std::vector<uint8_t>& serialTxB() const { return m_uart68.tx(); }
 		size_t serialA() const { return m_uart64.tx().size(); }

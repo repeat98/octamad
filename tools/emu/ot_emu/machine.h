@@ -28,11 +28,12 @@
 //   * the PLL at 0xfc0c4000 must read (reg >> 24) * 12 MHz == 264 MHz or the
 //     firmware halts at 0x4000fa8c -- so the top byte is 22
 //
-// ⚠️ WHAT IS KNOWN MISSING, and why it is fine for O1: the vendored Musashi
-// implements ColdFire V2 (MCF5206E, ISA_A) and this chip is V4e. Every
-// `mvs`/`mvz`/`mov3q`/`byterev`/`ff1` and the whole EMAC are absent, so the
-// boot will stop at the first one. That is the point: the illegal-instruction
-// report below names the opcode and the PC, which is a work list, not a bug.
+// HISTORICAL O1 LIMIT (now closed): the vendored Musashi implements ColdFire
+// V2 (MCF5206E, ISA_A) while this chip is V4e. The port originally stopped at
+// the first missing V4e instruction and used the illegal-instruction report as
+// its work list. `v4e.cpp` now supplies the instructions the firmware reaches,
+// including `mvs`/`mvz`/`mov3q`, `bitrev`/`byterev`/`ff1` and the fractional
+// EMAC. Keep this note as provenance, not as a statement of the current limit.
 #pragma once
 
 #include <array>

@@ -98,6 +98,12 @@
 //     -ctx lo,hi,exit       override the detected setup routine / dispatcher
 //                           exit (hex) -- applies to core 0; -ctxB to core 1
 //     -share lo,hi          the shared window (hex, default 30000,40000)
+//     -dumpcore N           the core whose memory -dumpy / -peeky / -peekx read
+//                           after the run (default 0)
+//     -sched b:i:s=v,...    at block b (decimal) set instance i's param slot
+//                           s to v before its calls -- a knob move mid-render
+//                           (params are re-applied every call, so the move
+//                           lands on the DSP the way the panel's does)
 //     -init a[,b..]         entry points, hex, one per instance. A single value
 //     -proc a[,b..]         runs the SAME effect on every instance (the original
 //                           behaviour); a LIST runs a different effect per
@@ -118,6 +124,9 @@
 //     -params a,b,...       parameter values 0..127 (default 64); 6 fills page 1,
 //                           8 also covers the page-2 slots. Repeat the option to
 //                           give successive instances different values.
+//     -paramfile FILE       automate instance 0 per block. Each non-comment line
+//                           is block,p0,p1,... (8 or 12 values); omitted blocks
+//                           retain the last values. Events must be ordered.
 //     -split N[,M..]        a=0 sub-block call of N frames, then a=1 for the rest.
 //                           A LIST gives each instance its OWN split, which is what
 //                           hardware does -- tracks trig independently.
@@ -158,6 +167,11 @@ using namespace dsp56k;
 
 namespace {
 
+struct ParamEvent {
+    int block = 0;
+    std::vector<int> values;
+};
+
 class AllowAll : public IMemoryValidator {
 public:
     bool memValidateAccess(EMemArea, TWord, bool) const override { return true; }
@@ -178,6 +192,7 @@ struct Args {
     unsigned inmask = ~0u;                     // which instances get the input
     bool stereo = false;                       // -in is interleaved L,R
     std::vector<std::vector<int>> pv;          // one parameter set per instance
+    std::vector<ParamEvent> paramEvents;       // block automation for instance 0
     std::string allocProc = "perinst";
     bool guard = false; TWord guardWords = 0x3800;
     std::vector<TWord> peekY, peekX;
@@ -186,6 +201,9 @@ struct Args {
     int trackInst = 0;                     // -trackinst: which instance -track samples
     std::string trackOut;
     std::vector<std::pair<TWord, TWord>> pokeY;
+    struct Sched { int block, inst, slot, val; };
+    std::vector<Sched> sched;               // -sched, in order
+    int dumpCore = 0;                       // -dumpcore: whose memory -dumpy/-peeky/-peekx read
     double tempo = 0;                      // -tempo BPM: publish tempo24 at r6+$13 like the frame builder
     long skew = 0; bool interleave = false;
     std::string meterFile;
@@ -522,6 +540,32 @@ int main(int argc, char** argv) {
             }
             a.pv.push_back(pv);
         }
+        else if (k == "-paramfile") {
+            const std::string path = v();
+            std::ifstream f(path);
+            if (!f.is_open()) { std::cerr << "cannot open parameter automation " << path << "\n"; return 1; }
+            std::string line;
+            int last = -1;
+            while (std::getline(f, line)) {
+                const size_t hash = line.find('#');
+                if (hash != std::string::npos) line.resize(hash);
+                if (line.find_first_not_of(" \t\r\n") == std::string::npos) continue;
+                auto row = parseList(&line[0]);
+                if (row.size() < 2 || row[0] < last) {
+                    std::cerr << "bad parameter automation row: " << line << "\n";
+                    return 1;
+                }
+                ParamEvent e;
+                e.block = row[0];
+                e.values.assign(row.begin() + 1, row.end());
+                if (e.values.size() < 8 || e.values.size() > 12) {
+                    std::cerr << "parameter automation needs 8 or 12 values: " << line << "\n";
+                    return 1;
+                }
+                a.paramEvents.push_back(e);
+                last = e.block;
+            }
+        }
         else if (k == "-guard") {
             a.guard = true;
             if (i + 1 < argc && argv[i + 1][0] != '-')
@@ -546,6 +590,15 @@ int main(int argc, char** argv) {
             a.dumpyHi = strtoul(strtok(nullptr, ","), nullptr, 16);
             a.dumpyFile = strtok(nullptr, ",");
         }
+        else if (k == "-dumpcore") a.dumpCore = atoi(argv[++i]);
+        else if (k == "-sched") {
+            std::string t(argv[++i]);
+            for (char* p = strtok(&t[0], ","); p; p = strtok(nullptr, ",")) {
+                Args::Sched sc{};
+                if (std::sscanf(p, "%d:%d:%d=%d", &sc.block, &sc.inst, &sc.slot, &sc.val) == 4)
+                    a.sched.push_back(sc);
+            }
+        }
         else if (k == "-pokey") {
             std::string t(argv[++i]);
             for (char* p = strtok(&t[0], ","); p; p = strtok(nullptr, ",")) {
@@ -563,7 +616,7 @@ int main(int argc, char** argv) {
         std::cerr << "usage: dsp_host -mem <file> -init <hex> -proc <hex> [-params a,b,..]\n"
                      "                [-memB <file>] [-core a,b] [-skew N] [-meter FILE]\n"
                      "                [-inst N] [-alloc a,b] [-r7 a,b] [-allocproc MODE] [-guard]\n"
-                     "                [-frames N] [-blocks N] [-in raw[,raw..]] [-out raw] [-trace N]\n";
+                     "                [-frames N] [-blocks N] [-in raw[,raw..]] [-out raw] [-paramfile FILE] [-trace N]\n";
         return 2;
     }
     if (a.inst < 1) a.inst = 1;
@@ -1157,7 +1210,19 @@ int main(int argc, char** argv) {
         return true;
     };
 
+    size_t nextParamEvent = 0;
     for (int b = 0; b < a.blocks; ++b) {
+        // -sched: this block's knob moves (beginCall re-applies I.pv)
+        for (auto& sc : a.sched)
+            if (sc.block == b && sc.inst >= 0 && sc.inst < a.inst && sc.slot >= 0 && sc.slot < 12) {
+                if (static_cast<size_t>(sc.slot) >= inst[sc.inst].pv.size()) inst[sc.inst].pv.resize(sc.slot + 1, 0);
+                inst[sc.inst].pv[sc.slot] = sc.val;
+            }
+        while (nextParamEvent < a.paramEvents.size() &&
+               a.paramEvents[nextParamEvent].block == b) {
+            inst[0].pv = a.paramEvents[nextParamEvent].values;
+            ++nextParamEvent;
+        }
         // fill every instance's block: impulse on the first frame unless an
         // input file is given. Without per-instance files all instances see
         // the same audio.
@@ -1274,10 +1339,11 @@ int main(int argc, char** argv) {
                     R.sr.var & 0xffffff, R.omr.var & 0xffffff, R.sp.var & 0xffffff,
                     R.la.var & 0xffffff, R.lc.var & 0xffffff);
     }
+    Memory& dmem = *cores[(a.dumpCore >= 0 && a.dumpCore < ncores) ? a.dumpCore : 0]->mem;
     if (!a.dumpyFile.empty() && a.dumpyFile[0] == '@') {   // @file = X space
         std::ofstream df(a.dumpyFile.substr(1), std::ios::binary);
         for (TWord ad = a.dumpyLo; ad < a.dumpyHi; ++ad) {
-            uint32_t w = mem.get(MemArea_X, ad);
+            uint32_t w = dmem.get(MemArea_X, ad);
             df.write(reinterpret_cast<const char*>(&w), 4);
         }
         std::printf("dumped X 0x%05x..0x%05x\n", a.dumpyLo, a.dumpyHi);
@@ -1285,7 +1351,7 @@ int main(int argc, char** argv) {
     else if (!a.dumpyFile.empty()) {
         std::ofstream df(a.dumpyFile, std::ios::binary);
         for (TWord ad = a.dumpyLo; ad < a.dumpyHi; ++ad) {
-            uint32_t w = mem.get(MemArea_Y, ad);
+            uint32_t w = dmem.get(MemArea_Y, ad);
             df.write(reinterpret_cast<const char*>(&w), 4);
         }
         std::printf("dumped Y 0x%05x..0x%05x -> %s\n", a.dumpyLo, a.dumpyHi, a.dumpyFile.c_str());
@@ -1293,12 +1359,12 @@ int main(int argc, char** argv) {
     if (!a.peekY.empty()) {
         std::printf("peek Y memory after the run:\n");
         for (TWord ad : a.peekY)
-            std::printf("   Y:0x%05x = 0x%06x\n", ad, mem.get(MemArea_Y, ad));
+            std::printf("   Y:0x%05x = 0x%06x\n", ad, dmem.get(MemArea_Y, ad));
     }
     if (!a.peekX.empty()) {
         std::printf("peek X memory after the run:\n");
         for (TWord ad : a.peekX)
-            std::printf("   X:0x%05x = 0x%06x\n", ad, mem.get(MemArea_X, ad));
+            std::printf("   X:0x%05x = 0x%06x\n", ad, dmem.get(MemArea_X, ad));
     }
 
     std::printf("ran %d blocks x %d frames on %d instance(s), %d core(s)%s\n", a.blocks, a.frames,

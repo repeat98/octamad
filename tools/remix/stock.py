@@ -27,7 +27,7 @@ running its code from a dump of the stock image's payload A
 (tools/remix/audition.py) with `-alloc 1`, so an effect that takes an
 instance buffer gets Y:0x4000 as the hardware gives track 1. DELAY cannot
 render: its DSP dispatch is stock's null stub; the Echo Freeze delay runs
-on the ColdFire (DMA over SDRAM rings, docs/firmware/EXTERNAL.md).
+on the ColdFire (DMA over SDRAM rings, docs/firmware/COLDFIRE_DELAY.md).
 
   DELAY (0x08)   works from its row as on a stock unit, costs the DSP
                  nothing, no local render.
@@ -434,7 +434,7 @@ BY_KEY = {m.key: m for m in MODULES}
 # On the stock image that is DJ EQ alone (36 sites per payload, all
 # `x:(r5+$xxx0),reg` reads of curve bases, 0 as a destination; measured
 # over tools/build/dsp_disasm_all.py's output), which is why
-# EXTERNAL.md's "LO-FI AMPH table" label for the record is not repeated
+# TABLES.md's "LO-FI AMPH table" label for the record is not repeated
 # here -- LO-FI's code carries no address into it.
 #
 # ⚠️ STATIC SCAN, NOT A READ-WATCH. A reader that reaches the record through

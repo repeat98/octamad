@@ -1,0 +1,5 @@
+# TIME moves in CLEAN (T1 = BusDelay), the trig-split instrument, 21 Sep 2026:
+# a trig splits the block into two dispatcher calls, and a glide that ran on
+# both restarted the ramp at the trig. 8,000 frames; each move glides ~1 s.
+1000  BT1 29 5A   # CC 41 TIME 90
+4000  BT1 29 14   # TIME 20

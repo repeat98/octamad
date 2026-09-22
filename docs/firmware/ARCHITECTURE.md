@@ -88,7 +88,8 @@ DMA, `0xCA` WRITE DMA, `0xE0` STANDBY. A driver vtable (`FUN_40015e28`)
 with hardware variant detection from an IDENTIFY descriptor. Task-file
 registers at `0x9000_00xx`: data `a0`, seccount `a8`, LBA `ac/b0/b4`,
 device `b8` (`|0xE0` = LBA), command `bc`, status `d8` (BSY/DRDY/DRQ). ATA
-host control in the MBAR `0xFC04_51xx`.
+host control in the MBAR `0xFC04_51xx`. Above it: the filesystem vtable,
+the slot loader and the card's files, `STORAGE.md`.
 
 ## 6. Audio engine and sequencer ✓
 
@@ -109,7 +110,7 @@ sequencer trig
  → FUN_40005178 writes a voice mailbox: quantised actions are staged at
    0x800018be/de and moved into the immediate array 0x46c7e9fa by the
    per-tick comparator at 0x4000b308 when their quantise class fires
-   (EXTERNAL.md §6)
+   (RECORDER.md)
    → FUN_4000c8a4 (the frame builder, control rate): consumes mailboxes,
      updates 8 voices, assembles a parameter frame in a double buffer in
      shared RAM 0x80000000 (ping-pong 0x800000e0)

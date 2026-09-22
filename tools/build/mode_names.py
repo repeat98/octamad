@@ -199,7 +199,7 @@ def with_selfname(renames: dict[int, dict[int, bytes]], slot: int,
     select's cave writes its own name field with the value's word before
     printing it: the knob reads TAPE / TUBE / INFL, CLEAN / GRAIN / REVRS.
     Merged over a MODE's neighbour renames. Applied to the module's
-    `mode_slot` only (15 Sep 2026, image 26: on SIZE / FRZE / SHFT / RATE
+    `mode_slot` only (15 Sep 2026, image 26: on SIZE / SHFT / RATE
     the word alone did not say what the knob was; those keep their names
     and the tick widget flashes the word)."""
     out = {m: dict(v) for m, v in renames.items()}
@@ -208,7 +208,8 @@ def with_selfname(renames: dict[int, dict[int, bytes]], slot: int,
     return out
 
 
-def complete(mod) -> dict[int, dict[int, bytes]]:
+def complete(mod, selector: int | None = None,
+             views=None) -> dict[int, dict[int, bytes]]:
     """Every mode's FULL rename set for the slots ANY of its views touches.
 
     A sparse table would leave a name behind: land on GRAIN (MDEP -> SCAT),
@@ -216,13 +217,15 @@ def complete(mod) -> dict[int, dict[int, bytes]]:
     said otherwise. So each mode restores the Param's own name for every slot
     any view renames.
     """
-    touched = sorted({sl for v in mod.mode_views for sl in v.names})
+    selector = mod.mode_slot if selector is None else selector
+    views = mod.mode_views if views is None else views
+    touched = sorted({sl for v in views for sl in v.names})
     if not touched:
         return {}
     out = {}
-    n = mod.params[mod.mode_slot].count or len(mod.mode_views)
+    n = mod.params[selector].count or len(views)
     for m in range(n):
-        v = mod.view_for(m)
+        v = next((candidate for candidate in views if candidate.mode == m), None)
         out[m] = {sl: (v.names.get(sl) if v else None) or mod.params[sl].name
                   for sl in touched}
     return out

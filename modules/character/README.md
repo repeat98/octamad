@@ -1,13 +1,12 @@
 # CHARACTER
 
-The station that dirties or tightens a track, and the bus return, on stock
-LO-FI's id 0x1c. FX1 only: an FX2 instance runs as a dry pass
+The station that dirties or tightens a track, on stock LO-FI's id 0x1c. FX1 only: an FX2 instance runs as a dry pass
 (`Claims(fx1_only=True)`, `verify_character.py`); the FX2 chooser hides the
 row.
 
-| page 1 | DRV · FOLD · TXTR · COMP · RET · MIX |
+| page 1 | DRV · FOLD · TXTR · COMP · TONE · MIX |
 |---|---|
-| page 2 | SAT (TAPE TUBE INFL) · TONE · WDTH · — · — · — |
+| page 2 | SAT (TAPE TUBE INFL) · WDTH · — · — · — · — |
 
 Chain, fixed: fold → saturate → tilt → compress → width → mix.
 
@@ -29,15 +28,15 @@ Chain, fixed: fold → saturate → tilt → compress → width → mix.
   the master by position, COMP (fast) on every other track. One feedforward
   detector on the mono key, the gain applied to both channels.
 - **WDTH** — mid/side: 64 untouched, 0 mono, 127 double sides.
-- **RET** — the bus return, live on the master only (T8, dispatch position 3
-  on payload A): the last live stage's wet (the reverb's if it runs, else
-  the delay's; stereo, four deep, two buffers back) enters at the front of
-  the chain, so glue, saturation, width and tone treat dry plus wet
-  together, and while RET is up the station stamps both hosts quiet. Inert
-  on every other track.
+- Page-1 slot 4 is TONE again (20 Sep 2026). It was RET, the bus return
+  level, from 13 to 20 Sep 2026: on T8 by dispatch position the last live
+  engine's wet entered at the front of the chain and the hosts were stamped
+  quiet. The return was degraded on the unit and clean under the port
+  (`docs/remixer/FAILURE_MODES.md`) and went; each engine prints its wet
+  on its own host. WDTH moved up to page-2 slot 7.
 
 Defaults are a bit-exact passthrough (DRV 0, FOLD 0, TONE 64, COMP 0, MIX
-127, WDTH 64, RET 0): a part that stored LO-FI runs this. A part's stored
+127, WDTH 64): a part that stored LO-FI runs this. A part's stored
 bytes are stock LO-FI's until `ot_project.py stamp-defaults` writes ours.
 
 ## Measured
@@ -47,10 +46,13 @@ bytes are stock LO-FI's until `ot_project.py stamp-defaults` writes ours.
   and bounded at DRV=127; FOLD folds a monotonic ramp; COMP reduces the loud
   signal 6.1 dB more than the quiet one and is exactly unity at 0; WDTH 0 is
   mono and 64 exact; an FX2 instance is a bit-exact dry pass.
-- COMP at 127 (thr 0.03, invR 0.1, 8 ms / 100 ms): quiet +3.4 dB, loud
-  −6.2 dB, release 86 ms. GLUE (0.03, 0.35, 10 ms / 400 ms): +2.6 / −2.4 dB.
-- Cost: 877 words (payload A), 934 (B). The pricer's worst case is four of
-  these beside the delay: 3,567 cycles against 3,120 usable, inside the
+- COMP is AC1's console law (`docs/effects/MASTER.md`): attack 0.5 ms,
+  release 63 ms (K = 4); GLUE on the master 0.5 / 500 ms (K = 3). The
+  threshold/ratio numbers that stood here (thr 0.03, invR 0.1, 8/100 ms)
+  were the retired law's.
+- Cost: 975 words on each payload (1,138 / 1,195 with the return, 20 Sep
+  2026); 623 cycles/sample static worst case. The pricer's worst core is
+  four of these beside the reverb: 3,657 against 3,120 usable, inside the
   counter's error margin; the hardware burn sweep settles it.
 - `verify_menu`, `verify_replaces` (it took LO-FI's FX1 page) and
   `verify_labels` (the select prints its words on the emulated firmware)
@@ -58,4 +60,4 @@ bytes are stock LO-FI's until `ot_project.py stamp-defaults` writes ours.
 
 On Sam's unit since flash 4; the return confirmed on flash 7; the master
 shape (Character everywhere, RET by position, wet in front) flashed 13 Sep
-2026 as image 96.
+2026 as image 96; the return removed 20 Sep 2026.

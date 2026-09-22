@@ -38,6 +38,7 @@ from remix.state import fx1_hazard  # noqa: E402
 from remix import stock as stock_mod  # noqa: E402
 import label_fmt  # noqa: E402
 import mode_names  # noqa: E402
+import wide_dial  # noqa: E402
 from remix import ledger  # noqa: E402
 
 OUT = pathlib.Path("out/mainos_bus.bin")
@@ -458,11 +459,11 @@ STOCK_DELAY_P = 0x400d4ace          # DELAY's E (0x400d4a96) + 0x38
 
 # ---- DEV repro hooks for outsider modules ----------------------------------
 # The three core sources have their override arms written out at the top of
-# main() (MODE, DMODE, DFRZAT and the rest). A module that arrives later needs
+# main() (MODE, DMODE, DNOTE and the rest). A module that arrives later needs
 # the same kind of lever without another special case in the placement loop,
 # so it declares a marker in its source and a rule here.
 #
-# ⚠️ EVERY HOOK HERE IS DEV-ONLY, for the reason DFRZAT is: the counter word
+# ⚠️ EVERY HOOK HERE IS DEV-ONLY: the counter word
 # lives at Y:0x37FFE in payload A's owned half of the shared window (init-
 # zeroed, above the bus scratch at 0x360d2), which is free ground in a DEV
 # layout and is NOT a promise about any shipping one.
@@ -600,7 +601,12 @@ def main():
                 wr32(clone_P + 0x0fa + idx * 4, 0)
             for step_slot in STEPPED_SLOTS[name]:
                 wr32(clone_P + 0x0ca + step_slot * 4, 0x4003c718)
-                wr32(clone_P + 0x0fa + step_slot * 4, 0x40047254)
+                # CHORUS.TAPS' tick widget has five positions hard-coded and
+                # draws nothing above value 4. Wider selects use the plain
+                # dial (B=0) while their A formatter still prints each label.
+                _count = _MODS[name].params[step_slot].count
+                wr32(clone_P + 0x0fa + step_slot * 4,
+                     0x40047254 if _count is not None and _count <= 5 else 0)
             # ...and P+0x12a MUST BE ZERO for a stepped control. Surveyed all
             # 20 stepped params in stock FX2 (count < 128): every single one
             # has 0x12a = 0, no exceptions. MODE sits in slot 7 and inherited
@@ -800,6 +806,9 @@ def main():
     _exports = {}                   # GLOBAL symbols of every unit linked so
                                     # far -> the --defsym set later units
                                     # resolve their cross-unit references from
+    # Every clone's descriptor address, for a cave that writes into its own
+    # module's descriptor (Character's ret_fmt.s did, 20 Sep 2026; no user now).
+    _exports.update({"CLONE_" + re.sub(r"\W", "_", _k): _a for _k, _a in clone_addr.items()})
 
     def _link(src, at, cpu, work, sections=(), defsyms=(), incdir=None):
         """Assemble `src` and link it at `at`; return (bytes, symbols,
@@ -1301,10 +1310,10 @@ def main():
             # stops calling BusDelay's grain scatter "MDEP" (tools/
             # mode_names.py). Everything else keeps the plain label cave.
             _mod = _MODS[name]
-            _ren = (mode_names.complete(_mod)
-                    if _i == _mod.mode_slot and _mod.mode_views else {})
+            _views = _mod.name_views_for(_i)
+            _ren = (mode_names.complete(_mod, _i, _views) if _views else {})
             # Only the MODE select names itself (15 Sep 2026, image 26): a
-            # select whose word is not self-explaining (SIZE, FRZE, SHFT,
+            # select whose word is not self-explaining (SIZE, SHFT,
             # RATE) keeps its name, the tick widget flashing the word.
             if _i == _mod.mode_slot:
                 _ren = mode_names.with_selfname(_ren, _i, _p.labels)
@@ -1349,7 +1358,51 @@ def main():
               f"({_lbl_top - max(_cave_top, cave_end)} B)"
               + (f"; {sum(1 for x in _lbl if x[3] >= OVERFLOW_RUN and x[3] < OVERFLOW_RUN_END)} "
                  f"overflowed into 0x{OVERFLOW_RUN:08x}.. (next free 0x{_ovf_top:08x})"
-                 if _ovf_top > OVERFLOW_RUN else ""))
+                  if _ovf_top > OVERFLOW_RUN else ""))
+    # A labelled select wider than CHORUS.TAPS' five-position widget falls
+    # back to the plain dial, whose raw 0..127 indexing otherwise uses only
+    # part of the arc. Install ONE schema-driven hook for every such slot in
+    # the remix. The generated table keys on formatter addresses, so another
+    # module opts in with Formatter.WIDE_STEPPED rather than claiming this
+    # shared stock detour or coupling itself to an existing module.
+    _wide = []
+    for _n, _i, _nm, _a, _sz, _labels, _rn in _lbl:
+        _p = _MODS[_n].params[_i]
+        if _i in _MODS[_n].wide_stepped_slots:
+            _wide.append((_a, _p.count - 1, _n, _i, _nm))
+    if _wide:
+        _owners = [(m.key, d.symbol) for m in _SEL for d in m.detours
+                   if d.site == wide_dial.SITE]
+        if _owners:
+            sys.exit(f"wide stepped formatter needs shared dial site "
+                     f"0x{wide_dial.SITE:08x}, already claimed by {_owners}")
+        _src = pathlib.Path("out/generated/wide_dial.s")
+        _src.parent.mkdir(parents=True, exist_ok=True)
+        _src.write_text(wide_dial.source([(a, maximum) for a, maximum, *_ in _wide]))
+        _at = (_lbl_top + 3) & ~3
+        _wb, _wsyms, _ = _link(_src, _at, "5475", "out/linked/wide_dial")
+        _in = _at + len(_wb) <= cave_limit
+        if not _in:
+            _at = (_ovf_top + 3) & ~3
+            _wb, _wsyms, _ = _link(_src, _at, "5475", "out/linked/wide_dial")
+        if _at + len(_wb) > (cave_limit if _in else OVERFLOW_RUN_END):
+            sys.exit(f"wide dial hook ({len(_wb)} B) does not fit")
+        if any(img[_at - BASE:_at - BASE + len(_wb)]):
+            sys.exit(f"wide dial hook at 0x{_at:08x} is not free")
+        _got = bytes(img[wide_dial.SITE - BASE:
+                         wide_dial.SITE - BASE + len(wide_dial.STOCK)])
+        if _got != wide_dial.STOCK:
+            sys.exit(f"wide dial site 0x{wide_dial.SITE:08x} is not stock "
+                     f"({_got.hex()})")
+        img[_at - BASE:_at - BASE + len(_wb)] = _wb
+        img[wide_dial.SITE - BASE:wide_dial.SITE - BASE + 6] = \
+            b"\x4e\xf9" + _wsyms["wide_dial_hook"].to_bytes(4, "big")
+        if _in:
+            _lbl_top = _at + len(_wb)
+        else:
+            _ovf_top = (_at + len(_wb) + 3) & ~3
+        print(f"  shared wide dial: {len(_wb)} B at 0x{_at:08x}, "
+              + ", ".join(f"{n} p{i} {nm}" for _, _, n, i, nm in _wide))
     # ==== 1d. FX1 ROWS, for modules that asked for one =====================
     # THE OTHER HALF OF "BOTH SLOTS". The DSP dispatch is ONE table indexed by
     # the raw id and shared by the menus, so a module's CODE already runs from
@@ -1592,7 +1645,7 @@ def main():
         # The overrides below splice into the delay's source. Asking for one
         # in a remix that has no delay is a mistake worth naming, not a
         # traceback.
-        _dset = [v for v in ("DMODE", "DINT", "DFRZ", "DNOTE", "DFRZAT")
+        _dset = [v for v in ("DMODE", "DINT", "DNOTE")
                  if os.environ.get(v) is not None]
         if _dset:
             sys.exit(f"{'/'.join(_dset)} set, but remix {REMIX.name!r} "
@@ -1622,8 +1675,8 @@ def main():
     elif reverb_src is not None:
         print("  shimmer IN (default) -- NOSHIM=1 to excise")
     if RIG_BURN and send_src is not None:
-        _anchor = ("        clr     a\n"
-                   "        move    a,x:(r7+$67)             ; default: offset 0 (first call)\n")
+        _anchor = ("        move    r0,a\n"
+                   "        asr     #$1,a,a                 ; words -> frames\n")
         if send_src.count(_anchor) != 1:
             sys.exit(f"RIG BURN: the SEND anchor appears {send_src.count(_anchor)} "
                      f"times in {ASM_SRC['SEND']}, expected exactly 1 -- re-cut it")
@@ -1719,9 +1772,8 @@ mkgo:""",
             # already saved and nothing else is live, which is what makes the
             # register state trivially known there.
             ("dsp/burn_block1.inc",
-             "        move    a,x:(r7+$14)            ; call flag: $010000 = the a=1 call\n"
-             "                                        ; (the dispatcher's #$1 is left-\n"
-             "                                        ; aligned), 0 = the split sub-call\n"),
+             "        move    a,x:(r7+$14)            ; the dispatcher's call flag, stashed\n"
+             "                                        ; (0 = the a=0 sub-block, $010000 = a=1)\n"),
             # block 2 goes after the LO filter's own comment, forcing p3's
             # coefficient to its documented exact bypass so sweeping the burn
             # knob cannot change the timbre.
@@ -1729,7 +1781,7 @@ mkgo:""",
             # before it: injected before, the real coefficient overwrites the
             # forced bypass on the next line and the burn knob keeps filtering.
             ("dsp/burn_block2.inc",
-             "        move    a,x:(r7+$40)            ; LO coefficient\n"),
+             "        move    a,x:(r7+$40)\n"),          # the glided store (20 Sep 2026)
         ]
         for inc, anchor in _anchors:
             if reverb_src.count(anchor) != 1:
@@ -1789,25 +1841,11 @@ mkgo:""",
             "        move    #>%d,a" % int(dint_env))
         print(f"  *** DINT OVERRIDE: BusDelay PITCH interval forced to {int(dint_env)} ***")
 
-    # DFRZ=n forces BusDelay's FREEZE select (0 = running, nonzero = hold),
-    # same mechanism and reason as DMODE/DINT: slot 11 is a companion LOW-byte
-    # field (r6+$e) and dsp_host's -params cannot drive it.
-    dfrz_env = os.environ.get("DFRZ")
-    if dfrz_env is not None:
-        if delay_src.count("; DFRZ_OVERRIDE") != 1:
-            sys.exit("DFRZ=n set but the DELAY source has no single "
-                     "; DFRZ_OVERRIDE marker -- a pre-stage-3 delay_server.asm "
-                     "cannot take a freeze override")
-        delay_src = delay_src.replace(
-            "; DFRZ_OVERRIDE",
-            "        move    #>%d,a" % int(dfrz_env))
-        print(f"  *** DFRZ OVERRIDE: BusDelay FREEZE forced to {int(dfrz_env)} ***")
-
     # DNOTE=n forces the MIDI-note word the ColdFire cave publishes at r6+$9
     # (0 = no note ever; 72..96 = the OT's chromatic range, 84 = unison).
     # dsp_host has no cave, so this is the only local way to hear note ->
     # interval (branch midi). Same immediate-substitution
-    # mechanism as DMODE/DINT/DFRZ; the marker follows the asr, so the
+    # mechanism as DMODE/DINT; the marker follows the asr, so the
     # plain value (DINT's precedent).
     dnote_env = os.environ.get("DNOTE")
     if dnote_env is not None:
@@ -1817,32 +1855,6 @@ mkgo:""",
         delay_src = delay_src.replace(
             "; DNOTE_OVERRIDE", "        move    #>%d,a" % int(dnote_env))
         print(f"  *** DNOTE OVERRIDE: BusDelay MIDI note word forced to {int(dnote_env)} ***")
-
-    dfrzat_env = os.environ.get("DFRZAT")
-    if dfrzat_env is not None:
-        if dfrz_env is not None:
-            sys.exit("DFRZ and DFRZAT are mutually exclusive -- one freeze "
-                     "override at a time")
-        if os.environ.get("DEV") is None:
-            sys.exit("DFRZAT=n is a DEV-only repro hook (its counter word "
-                     "lives in payload A's shared-window half and its words "
-                     "do not fit the shipping payload B region) -- set DEV=1")
-        if delay_src.count("; DFRZ_OVERRIDE") != 1:
-            sys.exit("DFRZAT=n set but the DELAY source has no single "
-                     "; DFRZ_OVERRIDE marker")
-        delay_src = delay_src.replace(
-            "; DFRZ_OVERRIDE",
-            "        move    y:>$37ffe,a\n"
-            "        add     #>1,a\n"
-            "        move    a,y:>$37ffe\n"
-            "        move    #>%d,x0\n"
-            "        sub     x0,a\n"
-            "        move    #>0,x0\n"
-            "        tmi     x0,a\n"
-            "        move    #>1,x0\n"
-            "        tpl     x0,a" % int(dfrzat_env))
-        print(f"  *** DFRZAT OVERRIDE: BusDelay freezes after "
-              f"{int(dfrzat_env)} post-warm blocks ***")
 
     # ---- XBUS=1: move the bus scratch into the SHARED window ---------------
     if os.environ.get("XBUS") == "1":
@@ -2140,74 +2152,88 @@ mkgo:""",
                     + src[j:])
 
         def _rotinit(src, name, slot):
-            """Seed the tracked rotation at init. PAYLOAD B ONLY."""
+            """Seed the client's block label at init. PAYLOAD B ONLY."""
             if "; ROTINIT" not in src:
                 return src
             as_b = (tag == "B") or (DEV and name == "DELAY SERVER")
             if not as_b:
+                # first occurrence only: the delay's rebase note begins a
+                # line with the marker's text
                 return src.replace("; ROTINIT",
-                                   f";  (payload {tag} recomputes every block: "
-                                   f"nothing to seed)", 1)
+                                   f";  (payload {tag} reads the shared word "
+                                   f"every block: nothing to seed)", 1)
             body = "\n".join([
                 "        move    r7,a                ; ROTINIT (payload B)",
                 "        move    #>$6200,x0",
                 "        cmp     x0,a",
-                "        blt     seedskip            ; implausible r7: seed nothing",
+                "        blt     seedskip            ; an FX1 slot: seed nothing",
                 f"        move    y:>${_rot:x},a",
-                "        and     #>$30,a",
+                "        and     #>$70,a",
                 f"        move    a,x:(r7+${slot:02x})",
                 "seedskip:"])
             return src.replace("; ROTINIT", body, 1)
 
+        def _marker_once(src, name, marker):
+            if src.count(marker) != 1:
+                sys.exit(f"{name}: the {marker.strip()} marker must appear exactly "
+                         f"once (found {src.count(marker)}; a comment that spells "
+                         f"it counts)")
+
         def _rotlatch(src, name, slot):
             if "; ROTLATCH" not in src:
                 return src
+            _marker_once(src, name, "; ROTLATCH")
             # DEV places the delay in payload A but it behaves as payload B in
             # every other respect (its gate compares equal, so it never
             # housekeeps) -- so it takes payload B's body wherever it sits.
             as_b = (tag == "B") or (DEV and name == "DELAY SERVER")
             if as_b:
-                _latch = _rot + 0xc6
+                # Core 1 cannot read the flip's phase, so a client never
+                # labels a block from the shared word: it COUNTS its own
+                # blocks from a seed read at init (ROTINIT) and only checks
+                # the count against the rotation R. A difference of one
+                # either way is kept (the seed was read before or after a
+                # flip; a block is in flight); two or more means the client
+                # lost blocks or holds boot garbage, and it snaps to R. A
+                # count cannot flap with the phase, and a label one off in
+                # either direction is what the eight buffers absorb
+                # (send_client.asm's map). 22 Sep 2026; before it the core
+                # tracked R and advanced at position 0, and a lead of one
+                # was kept as the pre-flip phase for ever (images 40-47).
                 body = "\n".join([
-                    "        move    x:(r7+$67),a        ; ROTLATCH: payload B, ONE tracker per core",
+                    "        move    x:(r7+$67),a        ; ROTLATCH: payload B, this client's own count",
                     "        tst     a",
                     "        bne     rotdone             ; not the block's first call",
-                    "        move    r7,a",
-                    "        move    #>$6200,x0",
-                    "        cmp     x0,a                ; position 0's FX2 (the rig's delay host)",
-                    "        bne     rotchk              ; advances the core's tracker once a frame",
-                    f"        move    y:>${_latch:x},a",
-                    "        add     #>$10,a             ; T' = T + one step",
-                    "        and     #>$30,a",
-                    "        move    a1,x0",
-                    "        move    x0,a                ; A2-clean",
-                    f"        move    a,y:>${_latch:x}",
-                    "rotchk:",
-                    f"        move    y:>${_latch:x},a",
-                    "        move    a,x1                ; x1 = T, the core's tracked rotation",
-                    f"        move    y:>${_rot:x},a         ; R, the shared word (pre- or post-flip)",
-                    "        and     #>$30,a",
-                    "        move    a1,x0",
-                    "        move    x0,a                ; x0 = R",
-                    "        cmp     x1,a",
-                    "        beq     rotuse              ; T == R: aligned, use T",
-                    "        add     #>$10,a",
-                    "        and     #>$30,a",
-                    "        move    a1,y0               ; y0 = R + one step",
-                    "        move    x1,a",
+                    f"        move    x:(r7+${slot:02x}),a       ; last block's label",
+                    "        add     #>$10,a             ; + one block",
+                    "        and     #>$70,a",
+                    "        move    a1,x1",
+                    "        move    x1,a                ; A2-clean: x1 = L",
+                    f"        move    y:>${_rot:x},b         ; R, the shared rotation, pre- or post-flip",
+                    "        and     #>$70,b",
+                    "        move    b1,x0               ; x0 = R",
+                    "        sub     x0,a",
+                    "        and     #>$70,a             ; d = L - R mod 8",
+                    "        move    a1,y0",
+                    "        move    y0,a",
+                    "        tst     a",
+                    "        beq     rotkeep             ; d = 0: aligned",
+                    "        move    #>$10,y0",
                     "        cmp     y0,a",
-                    "        beq     rotuse              ; T == R+1: a pre-flip read, keep T",
-                    "        move    x0,a                ; anything else: T is stale, snap to R",
-                    f"        move    a,y:>${_latch:x}",
-                    "rotuse:",
-                    f"        move    y:>${_latch:x},a",
+                    "        beq     rotkeep             ; d = +1: R read before its flip, or a lead of one",
+                    "        move    #>$70,y0",
+                    "        cmp     y0,a",
+                    "        beq     rotkeep             ; d = -1: seeded before a flip, or a lag of one",
+                    "        move    x0,x1               ; anything else: snap to R",
+                    "rotkeep:",
+                    "        move    x1,a",
                     f"        move    a,x:(r7+${slot:02x})",
                     "rotdone:",
                     f"        move    x:(r7+${slot:02x}),a"])
             else:
                 body = "\n".join([
                     f"        move    y:>${_rot:x},a       ; ROTLATCH: payload A is in",
-                    "        and     #>$30,a             ; lockstep with the flip, so",
+                    "        and     #>$70,a             ; lockstep with the flip, so",
                     f"        move    a,x:(r7+${slot:02x})       ; the shared word is stable"])
             out = src.replace("; ROTLATCH", body, 1)
             # Guard the trap above: under XBUS no bare $9xx may survive, in the

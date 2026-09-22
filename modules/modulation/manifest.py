@@ -137,11 +137,11 @@ MODULE = Module(
         ModeView(mode=2,                        # FLNG
                  names={2: b"MANL"},
                  defaults={0: 8, 1: 59, 2: 27, 3: 19, 5: 127, 7: 127, 8: 0}),   # RATE 8 = 0.12 Hz (Sam, 16 Sep: 14 too fast)
-        ModeView(mode=3,                        # COMB
-                 names={3: b"DCAY", 2: b"PTCH"},
+        ModeView(mode=3,                        # COMB: no LFO (RATE DPTH WDTH `---`)
+                 names={0: b"---", 1: b"---", 3: b"DCAY", 2: b"PTCH", 7: b"BRIT", 8: b"---"},   # TONE = the FIR's brightness
                  defaults={0: 0, 1: 0, 2: 64, 3: 82, 5: 64, 7: 100, 8: 0}),   # FDBK 82: rt60 ~ 1 s
         ModeView(mode=4,                        # PHSR (last: dropping it
-                 names={2: b"STGS"},            # would move no other mode)
+                 names={2: b"STGS", 7: b"---"},  # would move no other mode); no line filter: TONE `---`
                  defaults={0: 28, 1: 121, 2: 127, 3: 64, 5: 64, 7: 127, 8: 64}),
     ),
     dsp=DspSection(

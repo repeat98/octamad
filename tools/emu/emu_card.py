@@ -328,7 +328,7 @@ R_DATA, R_FEAT, R_COUNT, R_LBA0, R_LBA1, R_LBA2, R_DEV, R_CMD, R_ALT = (
     0xa0, 0xa4, 0xa8, 0xac, 0xb0, 0xb4, 0xb8, 0xbc, 0xd8)
 ST_DRDY, ST_DSC, ST_DRQ = 0x40, 0x10, 0x08
 
-# firmware bookkeeping (docs/firmware/EXTERNAL.md §6 / this file's header)
+# firmware bookkeeping (docs/firmware/RECORDER.md / this file's header)
 FW_INFLIGHT, FW_COUNT, FW_CMD, FW_BUF, FW_EVENT = (
     0x46c8c58a, 0x46c8c592, 0x46c8c593, 0x46c8c594, 0x46c8c598)
 FW_IDENT_BUF, FW_LOCK, FW_ERR = 0x460bac18, 0x460bae18, 0x46c85fe6
@@ -355,8 +355,8 @@ FW_PROJECT_NAME = 0x100f8378      # current PROJECT folder name (0x104 bytes)
 FW_SET_PROJECT_EXISTS = 0x400255ec  # () -> nonzero if SET/PROJECT exists on the card
 FW_POST_LOAD_PROJECT = 0x40023c7c   # (name*) -> posts engine command 4 (load project)
 FW_POST_RELOAD_BANK = 0x40022778  # (bank) -> posts engine command 20 (RELOADING BANK)
-FW_CUR_BANK = 0x80000002          # current bank byte (ARCHITECTURE.md / EXTERNAL.md §6)
-FW_ENGINE_QUEUE = 0x460d17ce      # the engine task's command queue (Bryan T, EXTERNAL.md §6)
+FW_CUR_BANK = 0x80000002          # current bank byte (ARCHITECTURE.md / RECORDER.md)
+FW_ENGINE_QUEUE = 0x460d17ce      # the engine task's command queue (Bryan T, RECORDER.md)
 FW_QUEUE_RECV = 0x40000d00        # (queue) -> message pointer (blocks when empty)
 FW_ENGINE_LOOP = 0x4008484e       # engine task loop head; every handler jumps back here
 FW_ENGINE_TABLE = 0x40084870      # 46 x s16 offsets from the table base

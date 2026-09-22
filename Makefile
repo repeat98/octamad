@@ -1,5 +1,5 @@
-# octabam — a remixer for the Elektron Octatrack's OS: modules (the
-# community's and our own) composed into one image from your own 1.40C.
+# octabam — a remixer for the Elektron Octatrack's OS: modules, each
+# credited to its author, composed into one image from your own 1.40C.
 #
 # Every target here is a command that was previously an incantation to
 # remember. The env-var flags are real and load-bearing; see `make help`.
@@ -122,7 +122,7 @@ emu-cf: ## Build and run the headless ColdFire machine (tools/emu/ot_emu) -- boo
 	./out/emu/ot_emu --image $(if $(IMAGE),$(IMAGE),out/raw/section_3_MAIN_OS.bin)
 
 .PHONY: verify-onebus
-verify-onebus: ## THE ONE AUX BUS on both cores: chain, last-live-stage return, MIX passthrough, T8 refusal, no station sends (~2 min)
+verify-onebus: ## THE ONE AUX BUS on both cores: chain, each host's print, WET passthrough, T8 refusal, no station sends (~2 min)
 	python3 tools/verify/verify_onebus.py
 
 .PHONY: verify-midi
@@ -180,7 +180,7 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	@if [ -x .venv/bin/python3 ]; then \
 	  .venv/bin/python3 tools/verify/verify_labels.py $(REMIX) && \
 	  .venv/bin/python3 tools/verify/verify_modenames.py $(REMIX) && \
-	  .venv/bin/python3 tools/verify/verify_ccpage2.py && \
+	  REMIX=$(REMIX) BUILD=$(BUILD) .venv/bin/python3 tools/verify/verify_ccpage2.py && \
 	  .venv/bin/python3 tools/verify/verify_hidden.py $(REMIX); \
 	else echo "  [SKIP] labels / mode names / cc page-2 / hidden engines: no .venv (make emu-setup)"; fi
 	python3 tools/verify/verify_grains.py $(REMIX)
@@ -193,6 +193,9 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	python3 tools/verify/verify_modulation.py
 	python3 tools/verify/verify_nimbus.py
 	python3 tools/verify/verify_hello.py
+	@# The isolated DSP gates build their own remixes over mainos_bus.bin.
+	@# Restore the selected image before inspecting its chooser tables.
+	$(MAKE) bus REMIX=$(REMIX)
 	REMIX=$(REMIX) python3 tools/verify/verify_menu.py
 	python3 tools/verify/verify_burn.py $(REMIX)
 	python3 tools/verify/verify_twocore.py
@@ -200,6 +203,13 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	python3 tools/verify/verify_tempo.py $(REMIX)
 	@# FORCE FILENAME BPM: its two hooks executed under the ColdFire port.
 	python3 tools/verify/verify_fnbpm.py
+	@# REPITCH: its hooks through the firmware's own code, its page drawings,
+	@# and with OT_PROJECT a live tempo change under the port (SKIPs parts it
+	@# cannot run; a remix without REPITCH is a one-line pass).
+	python3 tools/verify/verify_repitch.py $(REMIX)
+	@# EUCLID: native control laws, executed ColdFire hooks, both DSP payloads,
+	@# panel dial rendering and (with OT_PROJECT) full playback under the port.
+	$(PY) tools/verify/verify_euclid.py $(REMIX)
 	@# A real project on the built image under the ColdFire port (ids, page-2
 	@# delivery, chain audio, the main out); SKIPs without OT_PROJECT (above).
 	python3 tools/verify/verify_set.py $(REMIX)

@@ -122,4 +122,4 @@ per tick = 220.5 samples = 13.8 audio frames. PIT1 `0xfc084000` (PCSR
   sequencer is clocked by the DSP frame, so a DSP stall freezes the
   sequencer on trig 1.
 - `0x80000003` / `0x100b14cf` = current part; `[0x80000004]` = current
-  pattern (`EXTERNAL.md` §6).
+  pattern (`RECORDER.md`).

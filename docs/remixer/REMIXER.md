@@ -138,7 +138,7 @@ The resource line under the doc:
 | a listed stock effect | `727 words, already placed` |
 | one given up (off both menus) | `594 words — off both menus, so they are yours to place into` |
 | DELAY | `no DSP words — it runs on the ColdFire side` |
-| one of ours | `2,411 of 2,724 words` |
+| a module with DSP code | `2,411 of 2,724 words` |
 
 Stock rows are not in the cycles figure (only FILTER's is measured, 192 per
 instance); the row says `14 stock rows not counted`.
@@ -204,7 +204,7 @@ under `modules/`).
 ## Theming
 
 `REMIXER_THEME` picks any built-in Textual theme (default `ansi-dark`;
-`WORKBENCH_THEME` still honoured). Colours: aqua = one of ours, plain =
+`WORKBENCH_THEME` still honoured). Colours: aqua = a module, plain =
 the box's own; green fits, ochre is a trade or caution, red blocks; a
 knob's level is a warm ramp by where the value sits in its range; the
 source wav muted blue; the fallback soft purple; the panel frame grey.

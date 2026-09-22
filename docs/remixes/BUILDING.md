@@ -29,7 +29,7 @@ cd octabam
 make setup
 ```
 
-`--recurse-submodules` fetches the community authors' repositories
+`--recurse-submodules` fetches the module authors' repositories
 (`modules/octakit/upstream`, `modules/midi-scenes/upstream`) at the pinned
 commits. If you cloned without it: `git submodule update --init`.
 

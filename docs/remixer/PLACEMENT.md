@@ -22,7 +22,7 @@ Zero runs inside the OS image (`0x400c0000..0x400d8000` scanned for runs
 ≥ 64 B). The region above `0x400d8000` reads zero but is the PROJECT
 subsystem's RAM and is refused: octalab put a menu table in the 15 KB zero
 run at `0x401087e4` and the unit raised `VEC:03` in the menu draw loop
-(`docs/firmware/EXTERNAL.md` §9.3).
+(octalab, 13 Sep 2026).
 
 ```
 0x400c45b0..0x400c4702     338 B
@@ -49,7 +49,7 @@ at exit, the write watch folding the uncached alias.
 | `0x45d0dde0..0x46025de0` | Octakit's window ("reserved recorder pages"). Stock's engine zero-fills exactly this extent at project load, twice; her post-clear relocation re-depacks from a stage the OS never touches | measured |
 | `0x46025de0..0x4763d580` | zero-filled at boot by the loop after the boot detour (`0x40000518`); the base of stock's object pool (`pool_init(0x46025de0)` at `0x4002000e`): globals and heap. Not free | static |
 | `0x47500a10` | an 8,704 B sector bounce buffer just below the rings (`0x4f500a10 − (offset & 511)` at `0x40091f94`) | static |
-| `0x47502c10..0x47fc7410` | the stock delay rings, 10.8 MB: eight rings of 1,411,200 B (wrap `cmpil #1411200` at `0x4000359e`) at a stride of 1,411,328 (`addil #1411328` at `0x40003386`; 128 B, one 16-sample frame, of pad); the boot memset at `0x40002fb4` (`lea 0x4f502c10`, 705,664 × 16 B) ends at `0x47fc7410`; the delay frame routine's four `#0x4f502c10` adds. Stock never names `0x47502c10`; every reference is through the alias. Cleared ~38 M instructions after the boot detour returns; live audio memory after that. Not free | static + port + Bryan T's write-up (`docs/firmware/EXTERNAL.md` §1) + mxldyn's hardware. An earlier "8.8 MB free at 0x47700000" was a watch on cached addresses blind to the clear through the alias: retracted |
+| `0x47502c10..0x47fc7410` | the stock delay rings, 10.8 MB: eight rings of 1,411,200 B (wrap `cmpil #1411200` at `0x4000359e`) at a stride of 1,411,328 (`addil #1411328` at `0x40003386`; 128 B, one 16-sample frame, of pad); the boot memset at `0x40002fb4` (`lea 0x4f502c10`, 705,664 × 16 B) ends at `0x47fc7410`; the delay frame routine's four `#0x4f502c10` adds. Stock never names `0x47502c10`; every reference is through the alias. Cleared ~38 M instructions after the boot detour returns; live audio memory after that. Not free | static + port + Bryan T's write-up (`docs/firmware/COLDFIRE_DELAY.md`) + mxldyn's hardware. An earlier "8.8 MB free at 0x47700000" was a watch on cached addresses blind to the clear through the alias: retracted |
 | `0x47fc7410..0x47fe0000` | 101,360 B between the end of the rings and the 128 KiB Octakit keeps below the reset stack. Octakit's boot-time stage (72,959 B) at the bottom. Not clean: stock's engine task names four buffers inside it through the alias (`0x4ffc7610`, `0x4ffc9010` sector bounce buffers; `0x4ffcb220`, `0x4ffce230` two arrays of 769 × 16 B descriptors), and with static samples in the project the port fills `0x47fc8fe4..0x47fcd9e4` (18,944 B, 37 sectors, the PIO sector loop `0x40015472..0x4001548e`) at project load, inside her stage from `+0x1bd4`. Nothing seen above `0x47fcd9e4`; no literal names anything above `0x47fd1240` | measured on the port's PIO path; a DMA-capable card and play-time streaming unexercised. Em (12 Sep 2026): the stage is needed on boot only, so the fills after boot are a non-issue for Octakit; whether her wrapper's re-hash at project load (`0x40013304`) tolerates a clobbered stage is unconfirmed |
 | `0x46000000..0x47502c10` | ~21 MB outside both big clears | unmeasured; stock's sample pool may live there. Measure with samples loaded and the recorder running before placing anything |
 
@@ -75,6 +75,18 @@ never written). The rings are known from the CPU's own memset.
 (Sizes as of her ec70dda; ot-26914's runtime is 154,718 B.)
 
 ## The platform reserve
+
+Hardware: an image built at origin `9a49f21` (loader at `0x4010fdf0`,
+boot site `0x4000050c`, the 10 MiB reserve at `0x40a955e0`, FX2 chooser
+rebuilt with 15 rows at `0x400d7bbc`) ran on nordseele's Octatrack MKI on
+11 Sep 2026 as octalab: the first hardware run of the DRAM platform, on
+the model we cannot test. ❌ Retracted on that run: `FLASHPLAN.md`'s
+"MEMORY reports ~75 MB" — the MEMORY page still shows 85.5 MB total while
+the Flex list reads FREE MEM 71.4 MB; the page count `0x390a` appears at
+18 sites and which one the page reads is unpinned. Their standalone cave
+`0x400d64e0..0x400d7bf5` straddles the FX2 chooser's NONE row at
+`0x400d6b00`; as a module they claim `LAB_MENU`, 402 B at
+`0x400d64e0..0x400d6671`.
 
 octabam's runtime and stage live in 1,707 pages (10,487,808 B) taken off
 the bottom of the audio page arena, `0x40a955e0..0x41495de0`

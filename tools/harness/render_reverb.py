@@ -42,7 +42,7 @@ CACHE = ROOT / "out/render"          # engine-keyed render artifacts, see engine
 # the fingerprint, which is the exact bug this guards against.
 BUILD_ENV = ("RVSRC", "MODE", "WIDTH", "NOSHIM", "XBUS", "SPEC", "DEV", "BURN",
              "PROBE", "XPROBE", "XBUS_BASE", "DELAYPROBE",
-             "DLSRC", "MARKER", "DMODE", "DINT", "DFRZ", "DFRZAT", "TPROBE",
+             "DLSRC", "MARKER", "DMODE", "DINT", "TPROBE",
              "REMIX", "NOTEMPO", "TEMPOCAVE", "HKB", "DNOTE")
 
 

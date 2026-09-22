@@ -2,7 +2,7 @@
 
 A remix is a named selection of modules; `make image REMIX=<name>` builds it into a card-flashable image from your own OS 1.40C. [BUILDING.md](BUILDING.md) is the step-by-step guide. `make modules` prints the same index from the registry.
 
-## The community mods
+## The remixes
 
 | remix | contains | on hardware |
 |---|---|---|
@@ -14,11 +14,7 @@ A remix is a named selection of modules; `make image REMIX=<name>` builds it int
 | [`octakit`](octakit.md) | Octakit alone | in `ok-ms` |
 | [`lofi-amf-fix`](lofi-amf-fix.md) | the LO-FI AMF fix alone | no |
 | [`recfix`](recfix.md) | the recorder loop click fix, stock effects | ✅ 12 Sep 2026 with the bus (OCTABAM83) |
-
-## octabam's effects
-
-| remix | contains | on hardware |
-|---|---|---|
+| [`repitch`](repitch.md) | REPITCH in the TSTR selector, stock effects | ✅ 16 Sep 2026 (OCTABAM81, repeat98's MKII) |
 | [`bamsep26`](bamsep26.md) | the rig: BusVerb + BusDelay + three stations + stock delay | ✅ Sam's unit |
 | [`bus`](bus.md) | BusVerb + BusDelay + Send + tempo sync | ✅ (earlier names) |
 | [`mutables`](mutables.md) | WarpFold, Ripple, Rungs, Streamz, BodeShift | no |

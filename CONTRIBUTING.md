@@ -18,8 +18,8 @@ ten bytes the installer overwrites with its `jsr` and the cave replays; the
 build refuses an image that does not hold them, which is the check that
 keeps a cave off the wrong OS. Those opcodes (four sites, 30 bytes in all,
 across `tempo-sync`, `recorder-spacing`, `flex-seekbind*`) are an
-instruction, not a firmware, and the community modules carry theirs the
-same way. Keep a hook to whole instructions and the minimum span; data
+instruction, not a firmware, and every ColdFire module carries its own
+the same way. Keep a hook to whole instructions and the minimum span; data
 tables, routines and anything longer than the displaced instructions come
 from the user's image at build time.
 
@@ -53,8 +53,8 @@ units (GNU-as, symbols, no absolute addresses of its own) reached by
 `Detour`s that name those symbols, plus `Poke`s and `TableGrow`s for the
 OS-image edits — each asserted against stock before anything is written.
 `dram=True` is the default place for code: a 10 MB reserve carved off the
-unit's sample/recorder pool, placed by the build, the way the community's
-own DRAM mods live (`docs/remixer/PLACEMENT.md`). The ~8 KB of free ROM
+unit's sample/recorder pool, placed by the build, the way midisc and
+Octakit live (`docs/remixer/PLACEMENT.md`). The ~8 KB of free ROM
 inside the OS image is for what must be ROM-resident, and it is shared
 with everyone. A module that keeps its own DRAM (a `Runtime`) declares
 the pages it takes with `ArenaReserve`, and the build composes everyone's.
@@ -64,7 +64,7 @@ report. Renaming a key, or rewording a report line, is a breaking change.
 
 ## The oracle rule
 
-**A port is done when the author's build and ours agree byte for byte.**
+**A port is done when the author's build and this repo's build agree byte for byte.**
 The form depends on the module:
 
 | the module carries | the oracle |
@@ -81,8 +81,8 @@ its output as the oracle.
 
 ## Building from an author's repository
 
-The preferred shape for a community mod, because the author keeps
-developing where they are:
+The preferred shape for a module that has a repository of its own,
+because the author keeps developing where they are:
 
 - The repo is a git submodule at `modules/<name>/upstream`, **pinned to a
   commit**; a branch is named in `.gitmodules` when the port lives on one.
@@ -91,7 +91,7 @@ developing where they are:
   goes to the author as a PR (or, with their agreement, to a fork branch
   that will become one — midi-scenes's `octabam-gas` is the pattern). A
   bump is a commit here that moves the pin, with the oracle still holding.
-- The author's repo stays under its own terms. Nothing of theirs is
+- The author's repo stays under its own terms. Nothing from it is
   vendored or relicensed; octabam's MIT covers octabam.
 - What makes a repo easy to build from: GNU-as sources (or a recipe the
   build can drive), symbols rather than absolute addresses for anything

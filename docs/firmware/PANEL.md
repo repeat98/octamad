@@ -136,11 +136,26 @@ whose handler `0x4009228c` parses:
 Key events go through `0x40000c3c(queue 0x460d17ae, event)` — 8-byte
 records `{code, 0, pressed, 0, ticks}` in the ring at `0x46c9026c` — to
 the UI task, which reaches `FUN_4005578c(code, edge)` for a page key and
-the key layers `0x46c7d8de + code·0x18` (`EXTERNAL.md`). Measured under
+the key layers `0x46c7d8de + code·0x18`. Keymaps are layers (octalab,
+MKI, 13 Sep 2026 ✅): `0x40031494(map)` / `0x4003146c(map)` register /
+remove a 20-byte map `{next, keys, encoders, 0, marker}`; rebuild
+(`FUN_4003125c`) into keys `0x46c7d8de + code·0x18` and encoders
+`0x46c7dede + enc·0x14`; last registered wins; −1 lets the layer below
+through; a null encoder handler swallows the turn. The image's keymaps:
+`0x400bfbf6` (59 records, no `0x1c`; 🟡 MKI) and `0x400c01f4` (62, `0x1c` =
+MAIN MENU; 🟡 MKII); record `+0 code, +2 press, +6 release, +0xa, +0xe
+sub-map, +0x12, +0x16`. Double press: `0x400c0aac` last keycode,
+`0x460d5de0` ticks (display loop `0x40052204`, reset `0x40033e20`), window
+14 ticks. LEVEL press `0x3e` special-cased at `0x4004ecfc`. Popups: yes/no
+`0x4006d57c(title, n, lines[], 3, handler)`; scrolling list
+`0x4006d94c(count, sel, arg3, labels[], handlers[])` / close `0x4006d754`
+/ refresh `0x4006d784`; labels pointer `0x460e5e2c`. Grid recording
+`0x460d1736 != 0`; audio editor `0x4006de34(type, slot)` + `0x4006e160()`.
+Measured under
 the port: `0x24 0x08` (row 4 bit 3 = `0x23`) switched the page kind to 2
 and the plane redrew as AMP.
 
-Key codes (EXTERNAL.md's list, plus the probe of 18 Sep 2026 under the
+Key codes (octalab's list, plus the probe of 18 Sep 2026 under the
 port, each code alone in a fresh session): trigs `0x00..0x0f`, tracks
 `0x10..0x17`, MAIN MENU (MKII) `0x1c`, DOWN `0x20`, RIGHT `0x21`, page keys
 `0x22..0x26` (SRC, AMP, LFO, FX1, FX2), PLAY `0x28`, REC `0x29`, STOP

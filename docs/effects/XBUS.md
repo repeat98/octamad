@@ -1,4 +1,4 @@
-# The cross-core bus: one aux, delay into reverb, return on T8
+# The cross-core bus: one aux, delay into reverb, each wet on its host
 
 The architecture record for the bus. The development logs, `XBUS_LOG.md`
 (the cross-core race) and `BUS.md` (the per-bank two-bus design this
@@ -9,8 +9,9 @@ replaced, and the one-aux build of 7 Sep 2026), are in git history under
 ## The shape
 
 ```
-every track ──SEND──▶ [aux accumulator] ──▶ BusDelay (T1 FX2) ──chain──▶ BusVerb (T5 FX2) ──▶ RET on T8 (Character)
-  (SEND's one knob; the hosts' too)         stage 1, WET                 stage 2, WET          one level
+every track ──SEND──▶ [aux accumulator] ──▶ BusDelay (T1 FX2) ──chain──▶ BusVerb (T5 FX2)
+  (SEND's one knob; the hosts' too)         stage 1: T1 prints           stage 2: T5 prints
+                                            dry + wet × WET              dry + wet × WET
 
 CORE 0 (payload A)  tracks 5–8   BusVerb   Y:0x4000–0xBFFF (private) + Y:0x30000–0x37FFF (shared lo) = 65,536 words = 1.49 s
 CORE 1 (payload B)  tracks 1–4   BusDelay  Y:0x4000–0xBFFF (private) + Y:0x38000–0x3FFFF (shared hi) = 65,536 words = 1.49 s
@@ -27,8 +28,9 @@ CORE 1 (payload B)  tracks 1–4   BusDelay  Y:0x4000–0xBFFF (private) + Y:0x3
   stock allocator's slot table (`X:0x255`, both payloads of the raw image)
   already hands the low half to core 0 and the high half to core 1
   (`docs/firmware/DSP.md` §7).
-- Total bus latency is 2 blocks: 32 samples on hardware, 30 in the
-  harness's 15-frame blocks (`docs/history/TESTPASS.md`).
+- Total bus latency is 3 blocks since 22 Sep 2026: 48 samples on hardware,
+  45 in the harness's 15-frame blocks (2 blocks from 17 Aug to 21 Sep;
+  `docs/history/TESTPASS.md`).
 
 ## The one aux bus (7 Sep 2026; ✅ flash 7, 9 Sep 2026)
 
@@ -36,45 +38,42 @@ CORE 1 (payload B)  tracks 1–4   BusDelay  Y:0x4000–0xBFFF (private) + Y:0x3
   at slot 0 as well (the host's own dry into the same accumulator, same
   headroom, count and auto-gain). Stations carry no sends; a part that
   stored 127 in a former send slot sends nothing.
-- The chain: each stage stamps a shared word every block it runs (after
-  its warm-up): the delay `Y:0x9c3` (read by the reverb) and `Y:0x9c5` (read
-  by the return), the reverb `Y:0x9c4`; clear-on-read, one writer one
-  reader, three blocks of grace. The delay's stage output goes mono at
+- The chain: the delay stamps `Y:0x9c3` every block it runs (after its
+  warm-up); the reverb reads it, clear-on-read, one writer one reader,
+  three blocks of grace. The delay's stage output goes mono at
   unity into the chain buffer `Y:0x901..0x940` (four rotations × 16 words,
   stored, never cleared). While the delay is live the reverb reads the
   chain buffer with bus gain 1/8 (the loop's `asl #3` lands the sample
   untouched); otherwise the aux accumulator with the 1/√N auto-gain.
   Delay only, reverb only, both, or neither all work.
-- WET on each engine (slot 5): `out = in + wet × WET`, `in` the stage's
-  chain input passing at unity — a pedal on the send: the send reaches the
-  master through both stages and each WET adds its effect. Delay WET 0 = a
-  clean reverb send with the delay in the chain (sample-exact against a
-  reverb-only run two blocks later); reverb WET 0 = the delay's output at
-  the return, the reverb taking nothing out. Until 15 Sep 2026 each stage
+- WET on each engine (slot 5). The delay's stage output into the chain is
+  `in + wet × WET`, `in` the aux passing at unity, so the reverb hears the
+  sends and the repeats; delay WET 0 = a clean reverb send with the delay in
+  the chain (sample-exact against a reverb-only run three blocks later). Each
+  host prints `wet × WET` under its own dry: T1 (the delay host) the
+  repeats, T5 (the reverb host) the tail. Until 15 Sep 2026 each stage
   crossfaded (`in × (1 − MIX) + wet × MIX`), so the reverb's MIX faded the
-  delay out and both at 0 returned the dry send alone. Each stage publishes
-  its output stereo, four deep (`0x9da` reverb, `0xa5a` delay); the host
-  prints `wet × WET` under its dry, or nothing while a return is live.
-- One return, on track 8: Character's `RET` (page-1 slot 4) returns the
-  last live stage's output (the reverb's if it runs, else the delay's, else
-  silence), added before the chain, and stamps both hosts quiet while it is
-  up. Pinned to dispatch position 3 on payload A (`r7 $6700/$6800`); a
-  Character anywhere else, T4 included, returns nothing. The core is read
-  off the dispatch table (BusVerb's entry is real on A and the SEND alias on
-  B, `X:$21c` vs `X:$21e`); a remix without BusVerb has no return.
-- The send is refused on track 8: `SEND` at core 0's position 3 contributes
-  and registers nothing (the master loop that silenced the unit on 6 Sep
-  2026, `FAILURE_MODES.md`). Payload B's position 3 (T4) sends normally; the
-  payload is told apart by SEND's `$30000` base literal, rewritten to
-  `$38000` on B (`YBase.XBUS`).
-- ✅ Flash 7 (tag OCTABAM21): the return reaches T8; the hosts go quiet
-  while RET is up and print their own wet again within 3 blocks of RET → 0;
-  the send is refused on T8; a T4 station returns nothing; delay-only falls
-  through to the delay's output. ✅ Port O12: the send → delay → return path
-  bit-identical to `dsp_host` at a 36-sample offset.
-- Return balance on material (7 Sep, `out/rig/oneaux/`): drum loop −25.1 dB
-  rms with the reverb at MIX 0 and −26.8 at MIX 127; pad −31.4 / −32.8; no
-  makeup. (The "wet ~25 dB under the repeats" reading from the 438 Hz gate
+  delay out.
+- Where the wet comes out, 20 Sep 2026: on the hosts, and nowhere else.
+  From 7 to 20 Sep 2026 each stage also published its output stereo, four
+  deep (`0x9da` reverb, `0xa5a` delay), Character's `RET` on track 8 (by
+  dispatch position, payload A position 3, `r7 $6a00`) returned the last
+  live stage's output and stamped both hosts quiet (`0x9d8/0x9d9`). ✅
+  Flash 7 (OCTABAM21) measured all of that on the unit; on image 35 the
+  return was "less rich / bit-crushed" on the unit and clean under the port
+  (`FAILURE_MODES.md`), and the mechanism went. The hosts add the wet in
+  place after their own send tap, so a host never sends its own wet.
+- The send is refused on track 8: `SEND` at core 0's position 3 (`r7
+  $6b00` on payload A) contributes and registers nothing. T8 is the
+  master: with MASTER TRACK on its input is the mix, the hosts' wet
+  included, and a send from it would put that wet back into the bus (the
+  master loop that silenced the unit on 6 Sep 2026, `FAILURE_MODES.md`).
+  Payload B's position 3 (T4) sends normally; the payload is told apart by
+  SEND's `$30000` base literal, rewritten to `$38000` on B (`YBase.XBUS`).
+- Return balance on material (7 Sep, `out/rig/oneaux/`, the MIX-crossfade
+  stage of the time; WET adds since 15 Sep 2026 and the wet is ×2 since 16
+  Sep): drum loop −25.1 dB rms with the reverb at MIX 0 and −26.8 at MIX
+  127; pad −31.4 / −32.8; no makeup. (The "wet ~25 dB under the repeats" reading from the 438 Hz gate
   tone was retracted the same day.)
 
 Slots (stamp every project before play, `tools/hw/ot_project.py
@@ -84,11 +83,19 @@ touches only the ids a station replaced):
 | | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | SEND | SEND | | | | | | | | | | | |
-| BusVerb | SEND | TIME | MOD | SIZE | TONE | WET | MODE | SHMR | DIFF | SHFT | GATE | RATE |
-| BusDelay | SEND | TIME | FDBK | TONE | PING | WET | MODE | MDEP | MRAT | SIZE | PTCH | FRZE |
-| Character | DRV | FOLD | TXTR | COMP | RET | TONE | MIX | SAT | — | — | WDTH | — |
+| BusVerb | SEND | TIME | SIZE | SHMR | SHFT | WET | MODE | TONE | DIFF | GATE | — | — |
+| BusDelay | SEND | TIME | FDBK | TONE | PING | WET | MODE | SCAT | DENS | SIZE | PTCH | WOW |
+| Character | DRV | FOLD | TXTR | COMP | TONE | MIX | SAT | WDTH | — | — | — | — |
 
 ## What a send is
+
+A block with a trig on the track is dispatched as two calls: a=0 for the
+frames before the trig (`r0 = 0`, `n7 = split`) and a=1 for the rest
+(`r0 = 2 x split`, `n7 = 16 - split`); an unsplit block is one a=1 call
+at `r0 = 0`. Every bus participant takes its frame offset from `r0`
+(21 Sep 2026); until then the first call stashed a flag and the split in
+its block for the second, which is the suspected cause of the trig-host
+wash (`docs/remixer/FAILURE_MODES.md`).
 
 A track on SEND runs a client that, each block, adds its level-scaled
 audio into the current write accumulator and registers in the client
@@ -96,29 +103,33 @@ count. Servers consume the summed previous block. Under the two-bus layout
 (until 7 Sep 2026) the client had two knobs, `x:(r6+0)` →DELAY and
 `x:(r6+1)` →REVERB; driving the wrong one renders silence.
 
-## The accumulators: four rotating buffers
+## The accumulators: eight rotating buffers (22 Sep 2026; four from 17 Aug)
 
-Each bus keeps four accumulator buffers, rotated once per block, read two
-buffers back from the write:
+The bus keeps eight accumulator buffers and eight chain buffers, rotated
+once per block; a server reads three buffers back from the write, and the
+housekeeper clears the buffer two on from the one it flips to:
 
-- Two buffers cannot be made safe at any clear time: the only clearable
-  buffer is the one transitioning read→write, which is the flip a skewed
-  reader on the other core may still be inside.
-- Four because the count is a power of two: rotation `+16 & $30`, read
-  offset `+32 & $30`, no compare, no clamp; the mask sanitises boot garbage.
-- Read-two-back puts an idle block on each side of the reader, so either
-  core may lead or lag by up to a block; it costs the second block of
-  latency.
+- A buffer is written at block n, read at n+3, cleared at n+6. A client
+  whose label is one off in either direction writes n±1: never the buffer
+  being cleared (n+2), never one being read (n−3..n−1); a reader one off
+  reads n−4..n−2, never one being written. The margin is a whole block on
+  each side, so no cross-core phase can tear a buffer.
+- Eight because the count is a power of two: rotation `+16 & $70`, read
+  offset `+80 & $70` (five on == three back), clear target `+32 & $70`; the
+  mask sanitises boot garbage.
+- Read-three-back costs a third block of latency (48 samples, 1.1 ms;
+  the chain adds three more through a live delay).
 - Both directions ride the same rotation (core 1 reading core 0's clears;
   core 1 writing into core 0's accumulator).
 
 Bus scratch, `Y:0x900..` in core 0's half of the shared window
-(`modules/send/send_client.asm` is the map): `0x900` rotation, `0x901..0x940`
-chain buffer, `0x941` BusVerb host's SEND field, `0x961..0x9a0` aux
-accumulator, `0x9c1/0x9c2` role locks, `0x9c3..0x9c5` liveness stamps,
-`0x9c7..0x9ca` aux send count per buffer. Role locks make the first
-instance of a server the only one: a second instance returns as a
-passthrough, so a server's cycle cost is charged once per bank.
+(`modules/send/send_client.asm` is the map): `0x900` rotation,
+`0x901..0x980` aux accumulator, `0x981` BusVerb host's SEND field,
+`0x9c1/0x9c2` role locks, `0x9c3` the delay's liveness stamp,
+`0x9c7..0x9ce` aux send count per buffer, `0x9d8..0xa57`
+the chain buffer. Role locks make the first instance of a server the only
+one: a second instance returns as a passthrough, so a server's cycle cost
+is charged once per bank.
 
 ## Housekeeping and the rotation
 
@@ -126,14 +137,64 @@ Housekeeping (flip the rotation, clear buffers) is gated to payload A;
 every bus participant carries the block, and an election makes the
 first-dispatched core-0 instance (position 0 = track 5) run it.
 
-- Clients never read the shared rotation word directly: each core tracks
-  it privately, advancing once per block (✅ 9 Sep 2026: per instance
-  until then; the port showed core 1's fourth client on the wrong buffer
-  every frame; now one tracker per core, `build_bus.py` ROTLATCH).
-- The tracked rotation is seeded at `init` and is not self-healing:
-  unseeded, a client booting one step out of phase writes the buffer being
-  cleared (metallic on every core-1 sender after every power cycle).
-- The housekeeper clears the buffer that will be written next block.
+- Core 0's clients read the rotation after their own housekeeper flipped
+  it. Core 1's clients never label a block from it: each counts its own
+  blocks from a seed read at init and, once a block, checks the count
+  against the rotation R (`build_bus.py` ROTLATCH, 22 Sep 2026). A
+  difference of one either way is kept (the seed was read before or after
+  a flip); two or more means lost blocks or boot garbage, and the count
+  snaps to R. A count cannot flap with the flip's phase, and a label one
+  off in either direction is inside the eight buffers' margin. 9 Sep to
+  21 Sep 2026 one tracker per core followed R, advancing at position 0
+  and keeping `T == R + 1` as the pre-flip phase, which could not tell a
+  genuine lead of one from it; images 40–47's washes were that lead. A
+  label from two shared words (the rotation and a word every core-0
+  client stores at the end of its proc) was tried first on 22 Sep 2026:
+  the pair reads the same before a block's flip and after its last
+  client, so a late reader labels one ahead; the port's two-core gate
+  showed it (four layouts differing from the one-core control).
+- The housekeeper clears the buffer two on from the one it flips to.
+
+## An FX1 slot is not a client (21 Sep 2026)
+
+Id 0 is aliased to SEND and the FX1 chooser's NONE is id 0, so SEND's proc
+runs on every FX1 slot with no effect, at that slot's r7. ✅ Measured under
+the port on Sam's project (bank 1, T1/T5/T6/T8 FX1 = NONE; `--dsp-pcwatch`
+on the tracker's store): core 1 ran the SEND client eight times a frame,
+at 0x6100 0x6200 0x6400 0x6500 0x6700 0x6800 0x6a00 0x6b00 in that order
+— the FX1 slots are 0x6100/0x6400/0x6700/0x6a00, the FX2 slots
+0x6200/0x6500/0x6800/0x6b00 (three r7 bumps per track). Two consequences,
+both on images up to 47:
+
+- The FX1 call registered and sent from whatever byte its page held: the
+  bleed into the bus with every SEND at 0 (image 46, on the unit). The
+  stamper had been zeroing id-0 slots to hide it since 16 Sep 2026.
+- On core 1 the 0x6100 call ran the tracker's compare BEFORE position 0's
+  advance. With the flip landing before that call, it snapped T to R, the
+  0x6200 call then advanced to R + 1, and every later check read
+  `T == R + 1` as the legitimate pre-flip phase: one step ahead for good,
+  which is the buffer core 0 clears. The port never shows it: its flip
+  lands late in core 1's frame (between 0x6800 and 0x6a00 in every frame
+  watched), so 0x6100 always compared equal. On the unit the stamp probe
+  (image 47, a marker tone whenever a client's last stamp was gone) sounded
+  on every block of plain play: 🟡 the lead of one is measured; that the
+  0x6100 call is its cause is inferred from the order above and the flip
+  phase, which nothing local can see. What would falsify it: image 48 (the
+  gate below) still washing on a THRU host past position 0 with a trig on
+  every step, or still bleeding with every SEND at 0.
+
+Since image 48 SEND returns at once on an FX1 r7 (four compares at proc
+entry, before any state is touched): no registration, no write, no
+tracker call. Image 48 still needed position 0's FX2 to be a client for
+the core's advance; image 49's per-client count (above) needs no
+advance and no position, so T1's FX2 may be anything.
+
+Images 44–46 carried a self-check instead (a stamp per client per buffer,
+a hold flag, position 0 skipping one advance): 44 and 45 wedged on the
+first play (a never-run displaced Y store, then an unmasked slot read into
+a wild Y address), 46 played with static and the wash. With the lead
+permanent, the hold fired every frame and fought the snap. Removed in 48;
+the tracker body is image 43's.
 
 ## Auto-gain
 
@@ -147,8 +208,9 @@ capture E: three senders, two 10–15 dB quieter, dropped the wet 4.8 dB
 against 1/N's predicted −9.5). The "1 through 7 senders render identically"
 measurement fed the same tone to every sender, the one case where 1/N and
 1/√N agree. Registration is gated on the send knob: a client that
-registers and contributes nothing dilutes every real sender by N/(N+1)
-(−6 dB with one sender). Every writer registers, the cross-core one
+registers and contributes nothing dilutes every real sender by
+√(N/(N+1)): −3.0 dB with one sender (the −6.02 dB measured on 17 Aug 2026
+was under 1/N). Every writer registers, the cross-core one
 included.
 
 ## The three cross-core defects
@@ -189,13 +251,13 @@ were added after the delay's IN decode was deleted by a splice with 17/17
 still passing), the three carriers of the housekeeping block, the election,
 1–7 senders per bus, both cross-sends, split blocks, compared bit-for-bit
 against a stamp (`SAVE=1` first). `tools/verify/verify_onebus.py` (in `make
-check`) runs the chain on both cores: the return is the reverb's output and
-both hosts are silent under it; delay-only falls through; neither engine
-returns silence; delay WET 0 == no delay two blocks later, sample-exact;
-reverb WET 0 returns the aux itself; both at WET 0 return the aux through
-both stages; delay WET 127 + reverb WET 0 returns the delay-only return; a
-SEND on core-0 position 3 at SEND 127
-changes nothing and the mirror position on core 1 does; a station with
+check`) runs the chain on both cores: T5 prints the reverb (stereo) and T1
+the delay; the reverb hears the delay; delay WET 0 == no delay three blocks
+later, sample-exact; a host at WET 0 prints only its dry; T1's print is
+bit-identical with the reverb at WET 0, WET 127 or absent; a SEND at
+core-0 position 3 (T8) at SEND 127 changes neither host and the mirror
+position on core 1 does; a Character with slot 4 stored 127 (RET in a
+pre-20-Sep part) prints nothing and changes neither host; a station with
 stored send bytes contributes nothing; the chain is identical under four
 instruction-level skews. `make verify-twocore`: SEND, delay and series hops
 on their real cores == the DEV hatch.

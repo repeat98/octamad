@@ -96,11 +96,11 @@ MODULE = Module(
         _BLANK, _BLANK, _BLANK, _BLANK, _BLANK,
     ),
     # FREQ is always where, RES always the flavour; a mode labels RES for
-    # what it is there. ISO's defaults land by stamp (a live re-default on
-    # MODE would need a ColdFire half).
+    # what it is there. ISO's defaults land by stamp and, with MODE DEFAULTS
+    # in the remix, on a panel MODE turn.
     mode_slot=6,
     mode_views=(ModeView(mode=3, names={0: b"LOW", 1: b"COLR"}, defaults={0: 127, 1: 64}),
-                ModeView(mode=4, names={1: b"SHRP"})),
+                ModeView(mode=4, names={0: b"VOWL", 1: b"SHRP"})),   # FREQ morphs A E I O U
     dsp=DspSection(
         asm="modules/spectrum/spectrum.asm",
         # G2_TABLE is read with p:(r5)+ and interpolated linearly per block.

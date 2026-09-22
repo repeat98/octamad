@@ -4,7 +4,7 @@ The ColdFire ships a set of X and Y data modules to both DSPs at boot:
 lookup tables for waveforms, knob warps and filter coefficients. They are
 resident in every build; any effect can read them.
 
-Provenance: the catalogue is Bryan T's (`docs/firmware/EXTERNAL.md`), read
+Provenance: the catalogue is Bryan T's (30 Aug 2026), read
 from the payload module records with a Q23 signed decode; rows marked ✅
 were re-derived here. Shapes are inferred from that decode (an integer or
 unsigned table has a different shape); stride findings are statistical;
@@ -16,7 +16,7 @@ that span.
 
 The addresses below are payload A's. The X data blocks are not at the same
 addresses in payload B: the curve bank is `X:0x438` in A and `X:0x42b` in
-B, and the Y tables shift by 16 (`EXTERNAL.md` §10). A module is one
+B, and the Y tables shift by 16 ("Payload-relative addresses" below). A module is one
 source assembled into both payloads, so a bare stock-table literal is
 right on tracks 5-8 and wrong on 1-4; declare stock table addresses
 (`DspSection.ptable` for a module's own tables) or read through a
@@ -100,7 +100,9 @@ bits, unexplained).
 ## Use to our modules
 
 A table read costs ~5 instructions and an AGU register; `k²` costs three
-instructions and no register. Measured (`EXTERNAL.md` §4):
+instructions and no register. Measured 31 Aug 2026 against his catalogue
+(correction to it: the curve at `X:0x01bd9` is GN1/GN2, not FRQ1; FRQ
+reads `X:0x015c7` with a ×4 index):
 
 - Knob tapers: the best fit of any of the 32 curves (with reversals and
   inversions) to `k²` or `(1−k)³` is 0.040 RMS.
@@ -141,3 +143,35 @@ sb_sin:                         ; in: a = p    out: a = sin(pi*p)
         move    x:(r1),a
         rts
 ```
+
+## Payload-relative addresses (Bryan T, 14 Sep 2026) ✅
+
+The payloads are linked separately:
+
+| block | payload A | payload B | words | content |
+|---|---|---|---|---|
+| curve bank | `X:0x438` | `X:0x42b` | 6,305 | identical |
+| block below it | `X:0x421` | `X:0x421` | 23 on A, 10 on B | the 13-word cause |
+| `X:0x4840` | same | same | 4,096 | identical |
+| `X:0x6c00` | same | same | 3,730 | identical |
+| Y table | `Y:0x290` | `Y:0x2a0` | 1,024 | identical |
+| Y tables | `Y:0x690` / `0x710` / `0x715` | `Y:0x6a0` / `0x720` / `0x725` | 128 / 5 / 128 | not compared |
+
+Stock code carries a different extension word per payload (EQUALIZER
+`payload_A.asm` `0x000c07` = `0a73ce 0013c7`, `payload_B.asm` `0x0009c7` =
+`0a73ce 0013ba`). A module is one source assembled into both, so a bare
+literal into the curve bank is right on tracks 5–8 and 13 words off on
+1–4; past the end of the relocated table it reads unuploaded memory (his
+LOFI2: knobs 125/126 identically dull, 127 fine). `send_probe`'s
+single-payload render dumps payload A. Our modules' `#>` immediates in
+`0x438..0x1cd8` (156 sites) were read 14 Sep 2026: modulo masks, bus
+scratch (`$901`…`$9da`, placed identically on both cores), a tap length
+(1407), a decay coefficient (`$755`); none reads a stock table.
+`FAILURE_MODES.md` carries the failure mode. His fix (an `xtables` field on
+`DspSection`, immediates rewritten per payload with the delta read from
+the image being built) is in his fork, not landed here. Also argued for:
+a build flag on undeclared absolute X literals in the relocated range; a
+four-character limit on `Formatter.STEPPED` labels (a ten-character label
+threw `VEC:04` at `ADDR 4E007890`); a range check on `lua` displacements
+(seven-bit signed, `dsp_asm` wraps `lua (r7+$40),r1` to `r7-$40`;
+unverified here).

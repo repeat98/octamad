@@ -95,7 +95,7 @@ MODULE = Module(
         # registers every idle host as a client and dilutes the real senders
         # (-6.02 dB with one sender).
         Param(b"SEND", 0, active=True, formatter=_PLAIN,
-              doc="this track's send into the one aux bus (delay, then reverb, back on T8)"),
+              doc="this track's send into the one aux bus (delay, then reverb; the wet on each host)"),
         # ---- page 1 (16 Sep 2026): TIME-SIZE and SHMR-SHFT are drawn as
         # linked pairs; TONE moved to page 2.
         Param(b"TIME", 64, active=True, formatter=_PLAIN,
@@ -110,11 +110,11 @@ MODULE = Module(
         Param(b"SHFT", 0, 4, active=True, formatter=_STEP, link=True,
               labels=("+12", "+19", "+7", "-12"),
               doc="shimmer interval in semitones -- heard once SHMR is up"),
-        # WET: the reverb's level on top of the chain input (the delay's
-        # output while the delay is live, else the aux), which passes through
-        # at unity: out = in + wet*WET. The host prints wet*WET under its dry.
+        # WET: the reverb's level. The tank hears the chain input (the
+        # delay's output while the delay is live, else the aux); the host
+        # prints wet*WET under its own dry.
         Param(b"WET", 127, active=True, formatter=_PLAIN,
-              doc="the reverb's level (127 = the wet at +6 dB); the chain input passes through at unity"),
+              doc="the reverb's level on this host (127 = the wet at +6 dB)"),
         # ---- page 2 ---------------------------------------------------------
         # MODE on slot 6: an even slot is the one the panel's page-2 knob
         # editor writes (docs/firmware/MAINMENU.md 9c-ii); the DSP reads $c's

@@ -59,26 +59,26 @@
 ;   r7+$08..$0a   per-block (2048-tap) temp for lines 4..6
 ;   r7+$4b        per-block (2048-tap) temp for line 7
 ;   r7+$15..$66   per-sample scratch
-;   r7+$68/$69    RETV grace counter / host print gain
 ;   r7+$6a        this call's DELAY ACC write address
 ;   r7+$1e        k_mode, the TIME law's mode constant (per-mode)
 ;
 ; Parameters:
 ;   p0 AUX  -> this host's own dry send into the one aux bus (written to the
-;              AUX accumulator, flagged at y:$941)
+;              AUX accumulator, flagged at y:$981)
 ;   p1 TIME -> feedback, 0.875 .. 0.999
 ;   p2 SHMR (MOD until 15 Sep 2026; the tank modulation is pinned at MOD 30), p3 SIZE
 ;   p4 TONE -> HP and LP on one knob (the HI/LO blocks)
-;   p5 MIX  -> the stage crossfade: out = in*(1-MIX) + wet*MIX
+;   p5 WET  -> the reverb's level: the host prints wet*WET under its dry
 ;   page 2: MODE (slot 6, $c KNOB field), DIFF, SHFT, GATE (slots 7 and
 ;   11 are blank since 15 Sep 2026: SHMR moved to page-1 slot 2, RATE went)
-;   core-private y:$09f1 delay-liveness grace, $09f2 this sample's chain
-;   input (at unity, the passthrough); $09f0 the SEND level for the loop
+;   core-private y:$09f1 delay-liveness grace; $09f0 the SEND level for
+;   the loop
 ;
 ; Every proc() call runs the position-0 rotation-flip-and-clear housekeeping
 ; modules/send/send_client.asm describes, sums the shared REVERB accumulator
-; into its input (one block of latency) and writes its clean mono wet
-; (pre-WIDTH, pre-MIX) to the shared REVERB WET buffer. The body runs on
+; into its input (one block of latency) and prints its wet under the host's
+; dry (20 Sep 2026: the wet leaves through the host and nowhere else; the
+; published stage output and the T8 return went). The body runs on
 ; BOTH dispatcher calls: the a=0 call is the first sub-block, frames
 ; [0,split) at r0=0 with n7=split; only the LFO advance gates on the a flag.
 ; The warm-up (a tagged block counter in r7+$82) zeroes the allocation 128
@@ -88,74 +88,37 @@
 ; LINES = 8, the tank loop bound, is hardcoded: dsp_asm has no equ.
 
 init:
+; the glided coefficients (20 Sep 2026) start from 0: a short fade-in on
+; select instead of a block of whatever the slot held
+        clr     a
+        move    a,x:(r7+$0e)            ; SHMR
+        move    a,x:(r7+$1f)            ; TONE's c
+        move    a,x:(r7+$40)            ; TONE's LO
+        move    a,x:(r7+$6d)            ; DIFF's g
+        move    a,x:(r7+$70)            ; WET
+        move    a,y:>$09f3              ; SIZE's f (the glide state)
         rts
 
 proc:
 ; ---- BOTH calls are audio; the A accumulator says which sub-block --------
-        move    a,x:(r7+$14)            ; call flag: $010000 = the a=1 call
-                                        ; (the dispatcher's #$1 is left-
-                                        ; aligned), 0 = the split sub-call
-; build_bus.py substitutes a host-slot gate at the marker below, for a
-; remix that HIDES this engine (schema.Remix.hidden). A hidden engine is hosted by
-; the project's stamp rather than by the chooser, so it should run on its
-; host track and nowhere else: dispatch is per id and shared by every track,
-; so an old part naming this id on another track would otherwise get a
-; SECOND instance sharing this one's hardcoded Y base. The gate is r7 ==
-; 0x6200, the bank's first FX2 state block (measured, docs/firmware/DSP.md "The
-; allocator's instance model"), which is the same condition the position-0
-; housekeeping election below already uses -- so a guarded instance is never
-; a housekeeper that has gone dry, nor a wet engine that skips the
-; election. (Worded around the phrase build_bus.py censuses for: it
-; greps the SOURCE for the payload-gate marker, comments included, so
-; writing that phrase here reported the plain `bus` image's payload A
-; as gated out -- caught by refhash, and the same family as the
-; base-literal census CLAUDE.md warns about, which refused the build
-; when this very comment first tried to name it.)
-; Inert in a normal build: it is a comment, and local renders (which run at
-; -r7 4, the bank's SECOND slot) are unaffected unless a remix asks for it.
-; HOSTGUARD
-; MARKER_ENTRY
-
-; ---- BUS.md: split-aware frame offset within the shared bus buffers, and
-; the gate for whether THIS track (if it happens to be position 0) may run
-; the rotation flip on THIS call. Identical mechanism to modules/send/send_client.asm
-; -- see its header for the full reasoning -- keyed off the SAME r7+$14
-; call flag this engine already keeps for its own LFO-advance gating, so no
-; new stash of the raw incoming accumulator is needed here.
-        clr     a
-        move    a,x:(r7+$67)            ; default: offset 0 (first call)
-        move    x:(r7+$14),a
-        tst     a
-        bne     bus_a1
-        move    #>$1,a
-        move    a,x:(r7+$65)            ; "a=0 ran this block"
-        move    n7,a
-        and     #>$f,a                  ; same mask on the way in
+        move    a,x:(r7+$14)            ; the dispatcher's call flag, stashed
+                                        ; (0 = the a=0 sub-block, $010000 = a=1)
+; ---- this call's frame offset, from r0 (21 Sep 2026) --------------------
+; The dispatcher passes r0 = 0 on a block's first call and r0 = 2 x split on
+; the a=1 call of a split block (measured under the port: r0 = $e for a trig
+; at frame 7). Until 21 Sep 2026 the offset was reconstructed from a flag
+; and a split the a=0 call stashed in $65/$66 for the matching a=1 call; on
+; the unit a host with a trig on every step (T2 THRU, T3 STATIC) washed with
+; white noise while the port stayed clean, the shape of a stash that does
+; not survive between the two calls: a second call taken for a first one
+; advances position 0's rotation tracker twice in a frame, and the tracker
+; keeps a lead of one for ever (the R25 "metallic" mode). r0 needs no state.
+        move    r0,a
+        asr     #$1,a,a                 ; words -> frames
+        and     #>$f,a                  ; 0..15 by construction; garbage masked
         move    a1,x0
-        move    x0,a
-        move    a,x:(r7+$66)            ; stash split for the matching a=1
-        bra     bus_off_done
-bus_a1:
-; COLD-BOOT SAFETY. These slots hold boot garbage the first time an instance
-; runs, and x:(r7+$67) feeds straight into r1/r2 as a Y pointer below -- an
-; unmasked garbage value there makes the per-sample loop write through a wild
-; address, which hangs the DSP. Reproduced on hardware: selecting SEND on any
-; track from a clean boot froze the unit. Same class as DSP.md's masked-garbage
-; AGU saturation, so the same discipline -- mask AND A2-clean before use.
-        move    x:(r7+$65),a
-        and     #>$ff,a                 ; flag field only
-        move    a1,x0
-        move    x0,a                    ; A2-clean before the compare
-        move    #>$1,x0
-        cmp     x0,a                    ; EXACTLY 1, not merely nonzero --
-        bne     bus_off_done            ; "nonzero" accepts almost any garbage
-        clr     a
-        move    a,x:(r7+$65)            ; consume the flag
-        move    x:(r7+$66),a
-        and     #>$f,a                  ; a split point is 0..15 by
-        move    a1,x0                   ; construction, so this cannot narrow a
-        move    x0,a                    ; legitimate value -- it only makes
-        move    a,x:(r7+$67)            ; garbage harmless
+        move    x0,a                    ; A2-clean
+        move    a,x:(r7+$67)            ; this call's frame offset
 bus_off_done:
 
 ; ---- position-0 housekeeping: flip the shared bus rotation, clear the new
@@ -192,7 +155,7 @@ bus_off_done:
         cmp     x0,a
         beq     bus_dohk                ; position 0: always the housekeeper
         move    y:>$900,a
-        and     #>$30,a
+        and     #>$70,a
         move    a1,x0
         move    x0,a                    ; offset now, A2-clean
         move    x:(r7+$6b),x0
@@ -206,7 +169,7 @@ bus_dohk:                               ; nobody did -- take over this block
 ; No `asl #$4` follows: the value is already scaled.
         move    y:>$900,a
         add     #>$10,a
-        and     #>$30,a
+        and     #>$70,a
         move    a,y:>$900               ; the new CURRENT rotation
 ; ⚠️ CLEAR THE BUFFER WRITTEN **NEXT** BLOCK, NOT THIS ONE.
 ; Clearing the buffer we are about to write races the OTHER core's writers:
@@ -220,11 +183,11 @@ bus_dohk:                               ; nobody did -- take over this block
 ; with four buffers there is an idle slot. The buffer written next block was
 ; last READ a full block ago and will not be WRITTEN for another full block,
 ; so clearing it now has a block of margin on both sides.
-        add     #>$10,a                 ; one further on: the NEXT block's
-        and     #>$30,a                 ; write target, idle right now
+        add     #>$20,a                 ; two on: written two blocks from now,
+        and     #>$70,a                 ; last read three blocks ago
         move    a,x0                    ; bases for the clear AND the count
 
-        move    #>$961,b                ; ONE BUS (6 Sep 2026): the AUX
+        move    #>$901,b                ; ONE BUS (6 Sep 2026): the AUX
         add     x0,b                    ; accumulator, the only one left
         move    b,r2                    ; r2 = AUX ACC[new] base
         move    #>$ffffff,m2
@@ -255,7 +218,7 @@ bus_zclr:
         move    a,y:(r1)                ; AUX count = 0
 bus_seen:
         move    y:>$900,a               ; remember this block's offset so next
-        and     #>$30,a                 ; block we can tell whether anybody
+        and     #>$70,a                 ; block we can tell whether anybody
                                         ; else housekept in between
         move    a1,x0
         move    x0,a
@@ -304,7 +267,7 @@ bus_mine:
 ; The delay stamps y:$9c3 nonzero every block it processes (after its
 ; warm-up); this reads it, clears it (clear-on-read, single writer, single
 ; reader -- the station has its own word, $9c5) and keeps 3 blocks of grace
-; in CORE-PRIVATE y:$09f1 (RETV's shape; r7 is full). While live, this
+; in CORE-PRIVATE y:$09f1 (r7 is full). While live, this
 ; block's input is the delay's output buffer at $901 instead of the aux
 ; accumulator -- see the two Tccs below and the gain override in the
 ; resolve block. So delay-only, reverb-only, both, or neither all work and
@@ -314,77 +277,35 @@ bus_mine:
         bsr     stampgr                 ; b = grace after this block's stamp
         move    b,y:>$09f1
         clr     a                       ; (BEFORE the tst: clr sets the CCR)
-        move    #>$60,x0                ; the distance from the AUX accumulator
-        tst     b                       ; back to the CHAIN buffer ($901 =
-        tne     x0,a                    ; $961 - $60) while the delay is live,
-        move    a,y1                    ; else 0; the read address subtracts it
+        move    #>$d7,x0                ; the distance from the AUX accumulator
+        tst     b                       ; ($901) up to the CHAIN buffer ($9d8)
+        tne     x0,a                    ; while the delay is live,
+        move    a,y1                    ; else 0; the read address adds it
 
         move    y:>$900,a
-        move    a,x1                    ; x1 = write offset (0/16/32/48)
-        add     #>$20,a                    ; two buffers on == two buffers back
-        and     #>$30,a                    ; mod 4
+        move    a,x1                    ; x1 = write offset (0..112)
+        add     #>$50,a                    ; five buffers on == three buffers back
+        and     #>$70,a                    ; mod 8
         move    a,x0                    ; x0 = the read offset
-        move    #>$961,a                ; the AUX accumulator (one bus, 6 Sep
+        move    #>$901,a                ; the AUX accumulator (one bus, 6 Sep
         add     x0,a                    ; 2026)
         move    x:(r7+$67),b            ; this call's split-aware frame offset
         add     b,a                     ; a = AUX ACC read address
-        sub     y1,a                    ; ... or the CHAIN buffer's, same
+        add     y1,a                    ; ... or the CHAIN buffer's, same
                                         ; rotation and frame offset, while
                                         ; the delay is live (y1 from above)
         move    a,x:(r7+$63)            ; this call's read address
-; ---- this call's REVERB WET write address: STEREO, FOUR DEEP (3 Sep 2026) --
-; The wet is READ now -- by a Character station in BUS mode, the return on
-; the master (docs/history/BUS.md "The returns") -- so it carries the same cross-core
-; race the accumulators do and takes the same four-buffer rotation, and it
-; carries L and R (32 words a buffer, interleaved) because the return is what
-; the master hears: a mono M would have thrown the reverb's width away. The
-; buffers sit PAST the old layout end, at $9da (modules/send/send_client.asm
-; has the map); the old two-deep mono words at $941 are dead. The write
-; offset is the accumulators' (x1), doubled for the 32-word stride, and the
-; frame offset (b) is doubled for the same reason.
-        move    x1,a
-        add     x1,a                    ; write offset x2 (0/32/64/96)
-        add     b,a
-        add     b,a                     ; + frame offset x2
-        add     #>$9da,a
-        move    a,x:(r7+$64)            ; this call's OUTPUT write address (L; R at +1)
-
 ; ---- this call's AUX ACC write address: the host's own AUX send (v8 ->DEL) -
 ; Back from its 18 Aug 2026 retirement, for a different reason: the rig puts
 ; the host's OWN send pair on its FX2 page (5 Sep 2026, "real send knobs"),
 ; and a BusVerb host has no station to carry ->DEL. Same address recipe as
 ; SEND's r2: base $961 + write offset (x1, 0/16/32/48) + the split-aware
-; frame offset (b). Both are still live here -- RETV below clobbers b, so
-; this stays ABOVE it. The one free r7 slot ($6a) holds the address; the
+; frame offset (b). The one free r7 slot ($6a) holds the address; the
 ; level is read straight from the knob in the sample loop.
-        move    #>$961,a
+        move    #>$901,a
         add     x1,a
         add     b,a
         move    a,x:(r7+$6a)            ; this call's DELAY ACC write address
-
-; ---- RETV: is a return live on the reverb's wet? (clear-on-read stamp) -----
-; A return station stamps y:$9d8 nonzero every block it returns this bus.
-; The engine reads the stamp, clears it, and prints its wet on the host only
-; while no stamp has arrived for 3 blocks -- so with no return in the rig the
-; reverb still comes out of its host exactly as before (bit-identical: the
-; print gain is 1/2 doubled back in the guard bits), and with one it leaves
-; the host and enters at the master. The 3-block grace covers a stamp lost
-; to the other core's timing; the mask on load covers boot garbage. Every
-; select is a Tcc off the ONE flag-setting op above it, moves between.
-; (7 Sep 2026: the grace arithmetic is the `stampgr` subroutine at the end
-; of this file, shared with the chain-liveness read -- the one-aux rig had
-; to find 17 words in payload A's `bus` region.)
-        move    x:(r7+$68),b            ; blocks of grace left
-        move    #>$9d8,r5               ; the stamp word
-        bsr     stampgr                 ; b = grace after this block's stamp
-        move    b,x:(r7+$68)
-        move    #$40,a                  ; print gain 1/2 (x2 on use = exactly 1)
-        move    #0,x0
-        tst     b
-        tne     x0,a                    ; a return is live: print nothing
-        move    a,x:(r7+$69)            ; this block's host print gain
-
-; ---- (the DELAY ACC write address lived here until) -----------
 
 ; ---- bus auto-gain: resolve 1/sqrt(N) for this block's READ buffer ------
 ; ---- the module's P table: n4 holds its base for the block --
@@ -394,14 +315,14 @@ bus_mine:
                                         ; previous block left", 9 Aug)
 
         move    x1,a
-        add     #>$20,a                    ; read offset = write + 2 buffers
-        and     #>$30,a                    ; mod 4
-        asr     #$4,a,a                 ; -> bare index (0..3)
+        add     #>$50,a                    ; read offset = write + 5 buffers = 3 back
+        and     #>$70,a                    ; mod 8
+        asr     #$4,a,a                 ; -> bare index (0..7)
         add     #>$9c7,a                  ; the AUX count (one bus)
         move    a,r5
         move    #>$1,x0                 ; the "one more client" increment
         clr     b                       ; b = 0 -- BEFORE the tst below
-        move    y:>$941,a               ; our own AUX flag (last block's: the
+        move    y:>$981,a               ; our own AUX flag (last block's: the
                                         ; write below runs after this) -- the
                                         ; host's dry is IN THE ACCUMULATOR now,
                                         ; as a SEND's is, so it counts the same
@@ -436,13 +357,13 @@ bus_mine:
 ; ---- ->DEL: tell the DELAY SERVER this host is a client (v8, 5 Sep 2026) --
 ; NOT the count read-modify-write the 18 Aug send did (19 words, two gates,
 ; and a cross-core RMW on a shared word). The knob field itself goes to
-; y:$941 every block -- one writer, one word, idempotent across a split
+; y:$981 every block -- one writer, one word, idempotent across a split
 ; block -- and the delay's auto-gain resolve counts it as one client while
 ; it is nonzero. An idle host writes 0 and takes no share, so the phantom-
 ; client rule (the -6.02 dB defect of 17 Aug 2026 was THIS registration,
 ; ungated) holds by construction. The delay's warm-up zeroes the word, so a
 ; rig without a reverb never counts boot garbage; with one, the reverb
-; overwrites it every block. Sticky rather than clear-on-read (RETV's
+; overwrites it every block. Sticky rather than clear-on-read (stampgr's
 ; shape) because a stamp lost to the other core's timing would step the
 ; delay's gain for a block; a sticky word cannot be lost.
 ; $941 is the dead REVERB-wet range in SEND's map. ⚠️ NOT $9d3..$9d7: the
@@ -453,7 +374,7 @@ bus_mine:
 ; the sample loop does not multiply by (it multiplies by exactly this word).
         move    x:(r6),a                ; AUX (slot 0), the knob itself: the
                                         ; host's own dry into the ONE aux bus
-        move    a,y:>$941               ; the aux client flag (shared window);
+        move    a,y:>$981               ; the aux client flag (shared window);
                                         ; the delay's resolve counts it, and so
                                         ; does ours above
 ; ... and the sample loop's copy of the level. ⚠️ NOT read from r6 in the
@@ -466,7 +387,7 @@ bus_mine:
 ; rather than the shared window for the in-loop read because R36's
 ; per-block shared-window state was dead on hardware (in-loop reads never
 ; saw the writes; mechanism unknown) -- the flag above is only ever read per
-; block, RETV's proven pattern. Outside the old core-private bus map
+; block, the chain-live stamp's proven pattern. Outside the old core-private bus map
 ; ($900-$a59, live in a non-XBUS build) and the delay's $0901-$090a.
         move    a,y:>$09f0              ; ->DEL level, for the loop
 
@@ -549,12 +470,6 @@ wshclr:
         move    a,x:(r7+$82)
         bra     dry                     ; output stays dry until warm
 warmdone:
-; ---- REVERB LIVE (one-aux rig, 7 Sep 2026): stamp y:$9c4 every block this
-; engine really processes, for the return station's "last live stage" pick.
-; Clear-on-read by the station; not written during the warm-up above, so a
-; warming reverb is not live and the return falls through to the delay.
-        move    r7,x0                   ; any nonzero word (r7 is $6200+)
-        move    x0,y:>$9c4
 ; MARKER_WARM
         move    x:(r7+$31),x0           ; the base again: everything below
                                         ; derives buffers from x0
@@ -718,6 +633,24 @@ mdcpy:
             move    #$4c,y1                 ; v77: SIZE FLOOR RAISED.
             mpy     x0,y1,a
             add     #>$333000,a                  ; 0.125 .. 0.993 ; f = 0.400 .. 0.989, was
+; SIZE GLIDES (20 Sep 2026): f moves 1/64 of the way to the knob per block,
+; so the eight taps step by a sample now and then instead of all jumping
+; on a detent. The state (y:$09f3, zeroed at init) starts AT the target
+; and is clamped to f's own range, so a garbage word cannot fold a tap.
+            move    a,x0                    ; target f
+            move    y:>$09f3,b
+            tst     b
+            teq     x0,b                    ; first block: at the target
+            sub     b,a                     ; target - state (a: the target)
+            asr     #$6,a,a
+            add     b,a
+            move    #>$333000,y0
+            cmp     y0,a
+            tlt     y0,a                    ; floor
+            move    #>$7f0000,y0
+            cmp     y0,a
+            tgt     y0,a                    ; ceiling
+            move    a,y:>$09f3
             move    a,x0                    ; then scaled by MODE's tap scale,
             move    x:(r7+$6f),y1           ; so SIZE moves within a character
             mpy     x0,y1,a                 ; rather than replacing it
@@ -958,21 +891,32 @@ mdcpy:
         move    a,x1                    ; v95: scale by MODE's damping constant
         move    x:(r7+$72),y1           ; before it lands. The scale is <= 1.0,
         mpy     x1,y1,a                 ; so c stays inside its safe range and
-        move    a,x:(r7+$1f)            ; the knob still spans within a mode
+        move    x:(r7+$1f),x0           ; the knob still spans within a mode;
+        sub     x0,a                    ; glided: an eighth of the way per
+        asr     #$3,a,a                 ; block (20 Sep 2026)
+        add     x0,a
+        move    a,x:(r7+$1f)
 
 ; ---- LO: low cut inside the feedback path, on the knob LABELLED HP ($3) --
         move    b,x0                    ; x0 = (TONE-64)<<16, floored
         move    #$08,y1
         mpy     x0,y1,a
-        move    a,x:(r7+$40)            ; LO coefficient
+        move    x:(r7+$40),x0           ; LO coefficient, glided
+        sub     x0,a
+        asr     #$3,a,a
+        add     x0,a
+        move    a,x:(r7+$40)
 
 ; ---- ER level: REMOVED -----------------------------------------
 
 ; ---- WET: the reverb's level on top of the chain input -------------------
-        move    x:(r6+$5),x0
-        move    x0,x:(r7+$70)           ; WET, this block (y:$09f3 held 1-MIX
-                                        ; until 15 Sep 2026: the stage adds,
-                                        ; it no longer crossfades)
+        move    x:(r6+$5),a             ; WET target
+        move    x:(r7+$70),x0
+        sub     x0,a
+        asr     #$3,a,a
+        add     x0,a
+        move    a,x:(r7+$70)            ; WET, glided (y:$09f3 is SIZE's
+                                        ; glide state since 20 Sep 2026)
 
 ; ---- (the ->DEL level decode lived here until; see the note at
 
@@ -1041,7 +985,11 @@ shfst:
         add     x0,a                    ; PLATE overflowed $7fffff at DIFF=127
         move    x:(r7+$3f),x0           ; and g read NEGATIVE; the others sat at
         add     x0,a                    ; 0.88-0.97, where an allpass is a
-        move    a,x:(r7+$6d)            ; g, for every allpass
+        move    x:(r7+$6d),x0           ; g, for every allpass -- glided
+        sub     x0,a
+        asr     #$3,a,a
+        add     x0,a
+        move    a,x:(r7+$6d)
 
 ; ---- RATE: LFO increment, ~0.34 Hz .. ~3 Hz -----------------------------
 ; 8x what it would be per sample, because the LFO is stepped once per block.
@@ -1051,7 +999,11 @@ shfst:
         move    a1,x0                   ; SCALED TO A QUARTER. The raw knob is a
         move    #$60,y1                 ; loop gain on TOP of the tank's own
         mpy     x0,y1,a                 ; feedback, and by ear 25/127 raw (0.20)
-        move    a,x:(r7+$0e)            ; is the sweet spot while 45 at TIME=90
+        move    x:(r7+$0e),x0           ; is the sweet spot while 45 at TIME=90
+        sub     x0,a                    ; (glided per block, 20 Sep 2026)
+        asr     #$3,a,a
+        add     x0,a
+        move    a,x:(r7+$0e)
                                         ; already runs away. A quarter puts that
                                         ; sweet spot near the top of the travel
                                         ; instead of a fifth of the way up.
@@ -1531,9 +1483,6 @@ lfrol:
         mpy     x1,y1,a                 ; (unity after the asl)
         asl     #$3,a,a                 ; undo the writers' 3-bit headroom
         move    a,x:(r7+$1b)            ; the averaged input, feeding the tank
-        move    a,y:>$09f2              ; ... and parked at unity for the
-                                        ; output stage: the chain input passes
-                                        ; ($1b is scratch below; a reloads there)
 
         move    x:(r7+$30),a            ; GCNT
         sub     #>$1,a                  ; GCNT - 1  (sets N)
@@ -2388,35 +2337,20 @@ fbB:
         move    x:(r7+$62),y0           ; GLVL (0..1); y1 still holds wet gain
         mpy     y0,x0,a                 ; signed (y0,x0): wet * gate
         move    a,x0                    ; gated wet L
-; THE STAGE OUTPUT (one-aux rig; add-only 15 Sep 2026): out = in + wet*WET,
-; where `in` is this sample's chain input (the aux, or the delay's output
-; while it is live) parked at loop top at unity: a pedal on the send, the
-; send and the repeats passing through to the master and WET adding the
-; reverb (until 15 Sep 2026 it crossfaded, in*(1-MIX) + wet*MIX, which
-; faded the delay out as the reverb came in). PUBLISHED to the shared
-; buffer the return station reads; the host prints wet*WET under its dry.
-; Both mpys are the audited-signed y0,x0 form.
+; THE HOST PRINT: dry + wet*WET, in place. The chain input (the aux, or
+; the delay's output while it is live) feeds the tank only; the dry the
+; host hears is its own. Until 20 Sep 2026 the stage output in + wet*WET
+; was also published to a shared buffer for the T8 return, and the print
+; was gated off while that return was live. The mpy is the audited-signed
+; y0,x0 form.
         move    x:(r7+$70),y0           ; WET
         mpy     y0,x0,a                 ; wet * WET
         asl     #$1,a,a                 ; x2: WET 127 = +6 dB (Sam, 16 Sep 2026:
                                         ; "reverb is still too quiet"; the
                                         ; stores below limit)
-        move    y:>$09f2,b              ; in, parked at loop top
-        add     a,b                     ; b = stage output L
-        move    x:(r7+$64),r5           ; this call's OUTPUT pointer (L, R)
-        move    a,x0                    ; x0 = wet * WET, what the host prints
-        move    b,y:(r5)+               ; -> shared REVERB OUTPUT, L
-; THE HOST PRINT GAIN: 1/2 doubled back = exactly the wet, or 0
-; while a return station is live on this bus (RETV, per block above).
-        move    x:(r7+$69),y0           ; print gain
-        mpy     y0,x0,a                 ; (audited-signed y0,x0)
-        asl     #$1,a,a
         move    x:(r0),x0               ; dry L, still in place
         add     x0,a                    ; + dry at unity (v5)
         move    a,x:(r0)+               ; L in place -- dry + wet; r0 on to R
-                                        ; dry term and $71 stash stay gone:
-                                        ; unity dry needs neither scaling nor
-                                        ; a stash)
         move    x:(r7+$25),a
         move    x:(r7+$26),x0
         sub     x0,a
@@ -2430,20 +2364,10 @@ fbB:
         move    x:(r7+$70),y0           ; WET
         mpy     y0,x0,a                 ; wet * WET
         asl     #$1,a,a                 ; x2, as on L
-        move    y:>$09f2,b              ; in
-        add     a,b                     ; b = stage output R
-        move    a,x0                    ; x0 = wet * WET
-        move    b,y:(r5)+               ; -> shared REVERB OUTPUT, R (r5 is
-                                        ; still the L write + 1: nothing
-                                        ; between the two touches it)
-        move    x:(r7+$69),y0           ; print gain, as on L
-        mpy     y0,x0,a
-        asl     #$1,a,a
         move    x:(r0),x0               ; dry R, still in place
         add     x0,a                    ; + dry at unity (v5)
         move    a,x:(r0)+               ; R in place -- dry + wet; r0 on to
                                         ; the next frame (n0 is not used)
-        move    r5,x:(r7+$64)           ; WET pointer: one stereo frame on
         move    (r1)+                   ; all four line pointers advance together
         move    (r2)+                   ; and each wraps inside its own line
         move    (r3)+                   ; under m1..m4 = $fff
@@ -2502,8 +2426,8 @@ apbody:
 ; words start as boot garbage), r5 -> the stamp word (m5 is irrelevant for a
 ; plain access). Out: b = the new counter -- 3 if the stamp was set this
 ; block, else the old one minus 1 floored at 0; the stamp is cleared. Used
-; for RETV (the station's "someone is returning") and for the delay's
-; chain-liveness stamp. Clobbers a and x0. Every select is a
+; for the delay's chain-liveness stamp (and for RETV, the T8 return's,
+; until 20 Sep 2026). Clobbers a and x0. Every select is a
 ; Tcc off the ONE flag-setting op above it, moves between.
 stampgr:
         and     #>$3,b                  ; boot garbage masked ...

@@ -73,16 +73,16 @@ BANKS = "ABCDEFGH"
 # The ladder. Each rung: {track: (FX1 (key, knobs) | None, FX2 (key, knobs) | None)}
 # A track not named keeps FX1 NONE and FX2 SEND with AUX 0 (a client that
 # registers nothing). Knob names are the manifest's (a ModeView alias works
-# too, e.g. RET); values beat the mode view's defaults, which beat the
-# manifest's -- ot_project.module_defaults.
+# too); values beat the mode view's defaults, which beat the manifest's --
+# ot_project.module_defaults.
 # ---------------------------------------------------------------------------
-_RIG_AUX = {1: 30, 2: 40, 3: 30, 4: 40, 5: 40, 6: 50, 7: 40}   # the RIG table's sends
-_RET = ("CHARACTER", {"RET": 127})            # RET = slot 4 by position (13 Sep 2026)
-_RET_GLUE = ("CHARACTER", {"RET": 127, "COMP": 40})   # GLUE is by position since 14 Sep 2026 (no CMOD knob)
+_RIG_AUX = {1: 30, 2: 40, 3: 30, 4: 40, 5: 40, 6: 50, 7: 40}   # the RIG table's sends (none on T8)
+_T8 = ("CHARACTER", {})                       # the master's station at its passthrough
+_T8_GLUE = ("CHARACTER", {"COMP": 40})        # GLUE is by position since 14 Sep 2026 (no CMOD knob)
 
 
 def _sends(aux, verb=False, delay=False):
-    """FX2 for tracks 1..7: the engines on their hosts, SEND elsewhere."""
+    """FX2 for tracks 1..7: the engines on their hosts, SEND elsewhere (T8: none)."""
     out = {}
     for t in range(1, 8):
         if t == 1 and delay:
@@ -106,20 +106,20 @@ RUNGS = (
     # bank, name, what it adds, layout
     ("A", "STOCK", "no effect of ours: FX1 NONE, FX2 SEND with AUX 0",
      _rung({}, _sends({}))),
-    ("B", "RETURN", "+ T8 Character RET 127 (nothing to return yet)",
-     _rung({8: _RET}, _sends({}))),
-    ("C", "VERB", "+ BusVerb on T5, the RIG's AUX on every track",
-     _rung({8: _RET}, _sends(_RIG_AUX, verb=True))),
-    ("D", "DELAY", "BusDelay on T1 INSTEAD of the reverb (splits a freeze between engines)",
-     _rung({8: _RET}, _sends(_RIG_AUX, delay=True))),
-    ("E", "CHAIN", "+ both engines: delay on T1 -> reverb on T5 -> return on T8",
-     _rung({8: _RET}, _sends(_RIG_AUX, verb=True, delay=True))),
+    ("B", "MASTER", "+ T8 Character at its passthrough (nothing on the bus yet)",
+     _rung({8: _T8}, _sends({}))),
+    ("C", "VERB", "+ BusVerb on T5, the RIG's SEND on every track: the tail prints on T5",
+     _rung({8: _T8}, _sends(_RIG_AUX, verb=True))),
+    ("D", "DELAY", "BusDelay on T1 INSTEAD of the reverb: the repeats print on T1",
+     _rung({8: _T8}, _sends(_RIG_AUX, delay=True))),
+    ("E", "CHAIN", "+ both engines: delay on T1 -> reverb on T5, each printing on its host",
+     _rung({8: _T8}, _sends(_RIG_AUX, verb=True, delay=True))),
     ("F", "STNPASS", "+ the stations on FX1 at their passthrough defaults (level must equal E)",
-     _rung({**_STATIONS_PASS, 8: _RET}, _sends(_RIG_AUX, verb=True, delay=True))),
+     _rung({**_STATIONS_PASS, 8: _T8}, _sends(_RIG_AUX, verb=True, delay=True))),
     ("G", "RIG", "the RIG table: stations + T8 GLUE comp 40 (= ot_project.RIG)",
-     _rung({**_STATIONS_PASS, 8: _RET_GLUE}, _sends(_RIG_AUX, verb=True, delay=True))),
-    ("H", "RIGDLY", "the RIG with the stock DELAY on T3's FX2 (that track loses its AUX)",
-     _rung({**_STATIONS_PASS, 8: _RET_GLUE},
+     _rung({**_STATIONS_PASS, 8: _T8_GLUE}, _sends(_RIG_AUX, verb=True, delay=True))),
+    ("H", "RIGDLY", "the RIG with the stock DELAY on T3's FX2 (that track loses its SEND)",
+     _rung({**_STATIONS_PASS, 8: _T8_GLUE},
            {**_sends(_RIG_AUX, verb=True, delay=True), 3: ("DELAY", {})})),
 )
 
@@ -584,8 +584,8 @@ def run(args):
             solos = None
             if args.solo and not crashed:
                 # per-track level with the rung's effects: solo each track in
-                # turn (CC 50 on its channel), 8 s each. Soloing T8 leaves the
-                # return alone: the bus wet on its own (only that track's send).
+                # turn (CC 50 on its channel), 8 s each. Soloing T5 / T1
+                # leaves that engine's wet under its host's own audio.
                 solos = {}
                 for t in range(1, 9):
                     clock.cc(t, 50, 127); time.sleep(0.5)
@@ -678,8 +678,7 @@ def stress_script(mods, layout):
         ev.append((t, phase, [m for m in moves if m[1] is not None]))
 
     aux = [(tr, _cc_for(mods, layout, tr, "fx2", "SEND"), 127) for tr in range(1, 8)]
-    ret = (8, _cc_for(mods, layout, 8, "fx1", "RET"), 127)
-    at(30, "sends 127", aux + [ret])
+    at(30, "sends 127", aux)
     # the delay host (T1): FDBK 127 / TONE 0, then TIME sweep
     d = lambda n, v: (1, _cc_for(mods, layout, 1, "fx2", n), v)
     at(20, "delay FDBK 127 TONE 0", [d("FDBK", 127), d("TONE", 0)])
@@ -699,13 +698,11 @@ def stress_script(mods, layout):
         names = _page1_names(mods, spec)
         if not names:
             continue
-        hi = [(tr, _cc_for(mods, layout, tr, "fx1", n), 127) for n in names if n != "RET"]
-        lo = [(tr, _cc_for(mods, layout, tr, "fx1", n), 0) for n in names if n != "RET"]
+        hi = [(tr, _cc_for(mods, layout, tr, "fx1", n), 127) for n in names]
+        lo = [(tr, _cc_for(mods, layout, tr, "fx1", n), 0) for n in names]
         at(8, f"T{tr} {spec[0]} page 1 all 127", hi)
         at(8, f"T{tr} {spec[0]} page 1 all 0", lo)
-    # toggles: the return and the sends slammed
-    for i in range(10):
-        at(0.5, "RET toggle", [(8, ret[1], 127 if i % 2 else 0)])
+    # toggles: the sends slammed
     for i in range(10):
         at(0.5, "AUX toggle", [(tr, cc, 127 if i % 2 else 0) for tr, cc, _ in aux])
     for i in range(6):
@@ -839,7 +836,7 @@ def probe(args):
 def summary(args):
     """The report rows plus the solo table: per-track rms of each rung minus
     rung A's (the same track, the same material -- the rig's contribution to
-    that track's level; T8 solo = the return on its own)."""
+    that track's level; a host's solo = its engine's wet under its own audio)."""
     out = ROOT / "out/hw/ladder" / args.label
     results = json.loads((out / "results.json").read_text())
     print((out / "REPORT.md").read_text())

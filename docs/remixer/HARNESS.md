@@ -180,8 +180,10 @@ BAL 64, LEVEL 108 = −3.0 dB); `--mix T1:VOL=127,BAL=64,LEVEL=100`
 overrides; `--mixer off` is the old harness (`--amp 0.5`, no AMP stage,
 5.9 dB hotter than the unit; every voicing note before 12 Sep 2026
 inherited that). A 0 dBFS stem enters the engine at 0.254 FS at the
-default VOL. Not modelled: the main level, the cue mix, the master track;
-the AMP stage was measured on a THRU and is inferred for FLEX/STATIC.
+default VOL. Not modelled here: the main level, the cue mix, the master
+track — the same `(L/128)²` law, measured on MAIN/CUE by hardware capture
+rather than under the port (`docs/firmware/LEVEL_LAW.md`); the AMP stage
+was measured on a THRU and is inferred for FLEX/STATIC.
 
 **The rig on a real set:** `tools/hw/ot_project.py rigproj SONGSET
 out/set/RIGSONG bamsep26` writes the rig's layout (ids, defaults, mode
@@ -207,9 +209,8 @@ real payload B feeding BusVerb on payload A (the send hop, the delay hop,
 the delay→reverb series hop) render bit-identical to the same layouts on
 one core through the DEV hatch, and under four skews.
 `tools/verify/verify_onebus.py` (in `make check`): the one-aux rig's chain,
-liveness stamps, MIX passthrough, last-live-stage return, track-8 send
-refusal and station silence, senders and delay on payload B, reverb and
-return on payload A.
+its liveness stamp, WET passthrough, each host's print, the track-8 send
+refusal and station silence, senders and delay on payload B, reverb on payload A.
 
 ## port_compare.py
 
@@ -228,7 +229,7 @@ modulator, the delay's LFO) matches in scale and not in residual.
 | stock image, T1 THRU: SEND + EQ flat, tone | T1 chain | −0.001 dB | −121 dB |
 | same | mix (TX0 slot 2 vs `mix.wav` L) | −0.001 dB | −113 dB |
 | the one-aux rig, kick on T2's inputs | T2 chain (SPECTRUM + SEND) | −0.001 dB | −137 dB |
-| same | T8 return (delay → reverb, history) | −0.083 dB | −8 dB |
+| same | T8 return (delay → reverb, history; the return gone 20 Sep 2026) | −0.083 dB | −8 dB |
 | same | mix | −0.001 dB | −90 dB |
 
 A track whose record carries audio but whose chain output is digital zero

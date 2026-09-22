@@ -1,14 +1,12 @@
 ; ---------------------------------------------------------------------------
-; CHARACTER -- fold, texture (Pockey), saturate, tilt, compress, width, return.
+; CHARACTER -- fold, texture (Pockey), saturate, tilt, compress, width.
 ;
 ; Insert contract (modules/ripple/ripple_svf.asm): frames in place at
 ; x:(r0)/x:(r0+n0), knobs from r6, state in this instance's r7 block. The
-; station does not housekeep (an FX1 instance runs before its track's FX2
-; one, so an electing station would double-flip the rotation); it reads the
-; bus only as the return.
+; station never touches the bus (the return it carried on T8 went 20 Sep
+; 2026: each engine prints its wet on its own host).
 ;
 ; ---- the chain, fixed order ----------------------------------------------
-;   x    += RET * wet                                    RET (T8 only)
 ;   f     = fold(x * gain) / gain                       FOLD (held level)
 ;   p     = pockey(f; TXTR)                              TXTR (0 = skip)
 ;   s     = TAPE: TapeHead(f; DRV) | TUBE | INFL          DRV, SAT (held level)
@@ -24,12 +22,12 @@
 ; release, Lv = K * level_s, gr = (Lv^2/2 - 1)^2 + a*Lv clamped at 1 -- a
 ; dip around Lv = 1 whose depth is a = 0.75 - 0.675*COMP/128 -- and a
 ; makeup 1/(1 - 0.3375*COMP/128). GLUE: 0.5 / 500 ms, K = 3. COMP: 0.5 /
-; 50 ms, K = 4. COMP 0 skips the stage, bit-exact.
+; 63 ms, K = 4 (release coefficient $bd0 = 3024/2^23 per sample, tau = 62.9
+; ms; written as 50 ms until 21 Sep 2026). COMP 0 skips the stage, bit-exact.
 ; The detector reads x:(r7+$32), the KEY; the station writes its own input
 ; there.
 ;
 ; ---- r7 slots -------------------------------------------------------------
-;   $14 $65..$69   bus bookkeeping, SEND's layout ($69 = this block's offset)
 ;   $15/$16 L y1/y2, $17/$18 R y1/y2: TapeHead's SVF states (PERSISTENT, /4)
 ;   $29 sat mode (0 TAPE = TapeHead, 1 TUBE = DaTube, 2 INFL = OInflator)  $30 k2  $31 k3mag  $48 d/8 (per block)
 ;   per block:
@@ -37,13 +35,11 @@
 ;   $1d fold trim/2 (1/128)/gq   $24 tilt t/2   $26 comp amount    $27 makeup/4
 ;   $28 the dip's a   $29 sat mode   $2b width side gain
 ;   $2c width mid gain  $2d attack coeff   $2e release coeff
-;   $3e RET return level
 ;   $40 FX2-slot flag (set at init: 1 = this instance is on FX2, dry; per block)
 ;   $41/$42 DC block L x1/y1, $43/$44 R x1/y1 (TUBE; PERSISTENT, zeroed at init; long-form slots)
 ;   $37 d/2  $38 d  $4c (0.5+d)/2  $39 comp/4 (TUBE, per block)   $3a e/2  $3b 1-e (INFL, per block)
 ;   $49 chtube's u/2 park (per sample)
 ;   $4d DRV==0: skip the saturator (per block)
-;   $3c/$3d reverb / delay liveness grace (per block)
 ;   per sample / persistent (all below $40: an r7 displacement past 63
 ;   assembles to the two-word long form):
 ;   $3f tilt lp L (PERSISTENT)   $23 tilt lp R (PERSISTENT)
@@ -51,21 +47,16 @@
 ;   soften L/R (all PERSISTENT); per block $4e skip, $50 freq/2, $51 rez,
 ;   $52 4 rez, $53 1 - rez, $54 q4096, $55..$58 table bases; per sample
 ;   $4f wrap, $59 dry park, $5a 1 - pos, $5b pos, $5c d/2
-;   $1e level_s (PERSISTENT)   $45 master flag (1 = position 3 on A: GLUE, RET)
+;   $1e level_s (PERSISTENT)   $45 master flag (1 = position 3 on A: GLUE)
 ;   $1f gr (per sample)
 ;   $32 key    $33 dry L park   $34 dry R park
 ;   $35 scratch (wet L)          $36 scratch (wet R)
-;   r4 / r5: the REVERB / DELAY wet read pointers (BUS mode), linear, per
-;   block from the rotation -- two buffers back, like every bus read.
 ;
-; ---- the return, by position ---------------------------------------------
-; Slot 4, RET, is the return level: on the master (dispatch position 3 on
-; payload A, track 8) each sample the last live stage's wet -- the reverb's
-; if it runs, else the delay's -- is added at that level BEFORE the chain,
-; and each block the station stamps the bus's liveness word (y:$9d8 /
-; y:$9d9) while RET is up, which tells that engine to stop printing its wet
-; on its own host. Anywhere else RET is inert. SAT is TAPE / TUBE / INFL on
-; every track, T8 included; no knob changes meaning by mode.
+; ---- the master, by position ---------------------------------------------
+; On the master (dispatch position 3 on payload A, track 8) COMP runs the
+; GLUE law; everywhere else the channel law. Slot 4 is unused (the return
+; level until 20 Sep 2026; a stored byte there is never read). SAT is TAPE /
+; TUBE / INFL on every track; no knob changes meaning by mode.
 ;
 ; CYCLES_FORWARD_BRANCHES -- the branches in the sample loop are forward and
 ; skip work, so the word span is the worst-case cycle count
@@ -111,11 +102,9 @@ init:
         move    a,x:(r7+$17)
         move    a,x:(r7+$18)
         move    a,x:(r7+$1e)            ; the compressor's state: AC1 level_s
-        move    a,x:(r7+$3c)            ; the liveness grace, the tilt's two
-        move    a,x:(r7+$3d)            ; low-pass states, the master flag:
-        move    a,x:(r7+$3f)            ; every slot read before written
-        move    a,x:(r7+$23)            ; (14 Sep 2026, verify_dirtystate)
-        move    a,x:(r7+$45)
+        move    a,x:(r7+$3f)            ; the tilt's two low-pass states, the
+        move    a,x:(r7+$23)            ; master flag: every slot read before
+        move    a,x:(r7+$45)            ; written (14 Sep 2026, verify_dirtystate)
         move    a,x:(r7+$19)            ; TXTR's states: held L/R, last L/R,
         move    a,x:(r7+$1a)            ; the hold position, soften L/R
         move    a,x:(r7+$1b)
@@ -132,47 +121,9 @@ proc:
         tst     a
         bne     ch_end
 ; ===========================================================================
-; BUS: split-aware frame offset, verbatim from modules/send/send_client.asm
-; ===========================================================================
-        move    a,x:(r7+$14)
-        clr     a
-        move    a,x:(r7+$67)
-        move    x:(r7+$14),a
-        tst     a
-        bne     ch_a1
-        move    #>$1,a
-        move    a,x:(r7+$65)
-        move    n7,a
-        and     #>$f,a
-        move    a1,x0
-        move    x0,a
-        move    a,x:(r7+$66)
-        bra     ch_offok
-ch_a1:
-        move    x:(r7+$65),a
-        and     #>$ff,a
-        move    a1,x0
-        move    x0,a
-        move    #>$1,x0
-        cmp     x0,a
-        bne     ch_offok
-        clr     a
-        move    a,x:(r7+$65)
-        move    x:(r7+$66),a
-        and     #>$f,a
-        move    a1,x0
-        move    x0,a
-        move    a,x:(r7+$67)
-ch_offok:
-; ---- resolve this block's rotation (per payload) -> r7+$69 -----------------
-; ROTLATCH
-; (the registration went with the sends, 12 Sep 2026; the rotation latch
-; above stays: the returns read the engines' outputs by it)
-
-; ===========================================================================
 ; PER-BLOCK KNOB DECODE
 ; ===========================================================================
-; MIX: page-1 slot 5 since 16 Sep 2026 (TONE took its page-2 slot 6)
+; MIX: page-1 slot 5 since 16 Sep 2026; TONE page-1 slot 4 since 20 Sep
         move    x:(r6+$5),a             ; a knob word: bit 23 clear, a2 = 0
         move    a1,x:(r7+$20)           ; m (a1 straight to memory)
         move    x:(r6+$1),x0            ; the knob word IS FOLD/128 in Q23
@@ -188,9 +139,9 @@ ch_offok:
         move    a0,x0
         move    x0,x:(r7+$1d)           ; fold trim/2
 ; DRV 0 = NO saturation stage at all (13 Sep 2026): every mode's curve is
-; unity only for small signals, and with the return entering BEFORE the
-; chain the master's whole mix would pass through it. A per-block flag ($4d) skips the stage per sample -- a forward
-; skip, the class CYCLES_FORWARD_BRANCHES admits -- so DRV 0 is bit-exact in
+; unity only for small signals. A per-block flag ($4d) skips the stage per
+; sample -- a forward skip, the class CYCLES_FORWARD_BRANCHES admits -- so
+; DRV 0 is bit-exact in
 ; every mode on every track. (The DC blocker / low-pass state is NOT cleared
 ; while skipped -- 9 words the BURN build on payload A did not have; a later
 ; DRV resumes from stale filter history, one small step at most.)
@@ -200,9 +151,8 @@ ch_offok:
         tst     a
         teq     x0,b                    ; DRV == 0 -> skip flag 1
         move    b,x:(r7+$4d)
-        move    x:(r6+$c),a             ; TONE: page-2 slot 7, $c's companion
-        and     #>$7f00,a               ; field (bits 8-15; SAT's select is the knob field)
-        asl     #$8,a,a                 ; TONE << 16
+        move    x:(r6+$4),a             ; TONE: page-1 slot 4 since 20 Sep 2026
+        and     #>$7f0000,a             ; (the return's slot); a knob word, TONE << 16
         sub     #>$400000,a
         move    a,x:(r7+$24)            ; t/2, -0.5 .. +0.49
 ; COMP amount, straight from the knob
@@ -211,7 +161,7 @@ ch_offok:
         move    x:(r7+$45),a
         tst     a
         bne     ch_cglue
-        move    #>$7fffff,x0            ; COMP: K/4 = 1.0 (4x), release 50 ms
+        move    #>$7fffff,x0            ; COMP: K/4 = 1.0 (4x), release 63 ms
         move    x0,x:(r7+$22)
         move    #>$000bd0,x0
         move    x0,x:(r7+$2e)
@@ -252,7 +202,6 @@ ch_cdone:
 ;         (the DC blocker's k = 1, R = 0.999 are chtube's own immediates)
 ;   INFL  $3a = e/2 with e = d            $3b = 1 - e
         clr     a
-        move    a,x:(r7+$3e)            ; return level: 0 until RET is read below
         move    a,x:(r7+$29)            ; sat mode: 0 = TAPE
         move    x:(r6+$c),a             ; SAT, slot 6 = $c's knob field
         and     #>$ff0000,a
@@ -284,21 +233,19 @@ ch_sinfd:
         sub     x0,a
         move    a,x:(r7+$3b)            ; 1 - e (DRV 0 never gets here: the skip)
 ch_sdone:
-; ---- RET: the return level, BY POSITION ---------------------
-        move    x:(r6+$4),x0
-        move    x0,x:(r7+$3e)           ; RET level (slot 4)
-; ... on PAYLOAD A ONLY: the mirror position on core 1 is track 4. An insert
-; carries no per-payload literal (an FX1 module may own no buffers, so the
-; build refuses it a base), so the core is read off the DISPATCH TABLE: in
-; the specialized image BusVerb (id 0x07) is real on payload A and ALIASED
-; TO SEND (id 0x09) on payload B -- X:$215+7 == X:$215+9 there. Under the
-; DEV hatch everything is payload A and the test allows. Consequence: a
-; remix WITHOUT BusVerb has no return anywhere (its id aliases on both
-; cores); the rig always carries it on T5.
+; ---- the master flag, BY POSITION ($45: GLUE) ---------------------------
+; Track 8 is dispatch position 3 on PAYLOAD A; the mirror position on core 1
+; is track 4. An insert carries no per-payload literal (an FX1 module may own
+; no buffers, so the build refuses it a base), so the core is read off the
+; DISPATCH TABLE: in the specialized image BusVerb (id 0x07) is real on
+; payload A and ALIASED TO SEND (id 0x09) on payload B -- X:$215+7 ==
+; X:$215+9 there. Under the DEV hatch everything is payload A and the test
+; allows. A remix WITHOUT BusVerb has no master anywhere (its id aliases on
+; both cores).
         move    x:>$21c,a               ; INIT_TABLE[REVERB SERVER]
         move    x:>$21e,x0              ; INIT_TABLE[SEND]
         cmp     x0,a
-        beq     ch_nopos                ; the alias: payload B, never the return
+        beq     ch_nopos                ; the alias: payload B
         move    r7,a
         and     #>$ff00,a
         move    #>$6a00,x0
@@ -306,8 +253,7 @@ ch_sdone:
         beq     ch_master
 ch_nopos:
         clr     a
-        move    a,x:(r7+$3e)            ; not track 8: no return
-        move    a,x:(r7+$45)            ; ... and the COMP flavour
+        move    a,x:(r7+$45)            ; not track 8: the channel law
         bra     ch_pos3
 ch_master:
         move    #>$1,x0
@@ -432,94 +378,18 @@ ch_pos3:
 ; WDTH -> mid and side gains. 64 = (1, 1); 0 = (1, 0) mono; 127 = (1, ~2).
 ; side gain = WDTH/64, mid stays 1 -- widening only touches the difference,
 ; so a mono source is untouched at every setting.
-        move    x:(r6+$d),a             ; WDTH: page-2 slot 8, $d's knob field (a knob word: bit 23 clear, a2 = 0)
-        and     #>$7f0000,a
+        move    x:(r6+$c),a             ; WDTH: page-2 slot 7 since 20 Sep 2026,
+        and     #>$7f00,a               ; $c's companion field (bits 8-15; SAT's
+        asl     #$8,a,a                 ; select is the knob field) -> WDTH << 16
 ; ⚠️ STORED HALVED. A y1 operand is a FRACTION, and a side gain of WDTH/64
 ; tops out near 2.0, which would wrap the word. The knob's own value IS
 ; WDTH/128, so it is stored as-is and the product is doubled back in the
 ; accumulator's guard bits. 64 -> 0.5 -> x2 = exactly 1.0, i.e. untouched.
         move    a1,x:(r7+$2b)           ; side gain / 2 (a1 straight to memory)
-; ---- the return read pointers, and the liveness stamps -------------------
-; Two buffers back, like every bus read (an idle block each side of the
-; reader on both cores); x2 throughout because the wet buffers are stereo,
-; 32 words each. The delay's page is the reverb's + $80 (spelled as base +
-; offset, so the XBUS relocation of `$9xx` literals catches the base).
-        move    x:(r7+$69),a            ; this block's write offset
-        add     #>$20,a
-        and     #>$30,a                 ; two back, mod 4
-        move    a1,x0
-        move    x0,a                    ; A2-clean after the and
-        add     x0,a                    ; x2
-        move    x:(r7+$67),b            ; split-aware frame offset
-        add     b,a
-        add     b,a                     ; + frame x2
-        add     #>$9da,a
-        move    a,r4                    ; REVERB output [read]
-        add     #>$80,a
-        move    a,r5                    ; DELAY output [read]
-        move    #>$ffffff,m4
-        move    #>$ffffff,m5
-; ---- ONLY THE RETURN READS THE STAMPS --
-        move    x:(r7+$3e),a
-        tst     a
-        beq     ch_ndl                  ; no return level: touch nothing
-; ---- which stage is live? (one-aux rig, 7 Sep 2026) ---------------------
-; Each engine stamps its own word every block it processes (y:$9c4 reverb,
-; y:$9c5 delay); this reads and clears them (single writer, single reader)
-; and keeps 3 blocks of grace each in r7 $3c/$3d -- RETV's shape, for a
-; stamp the other core's timing loses. Reverb live: read its output (r4).
-; Delay live only: read the delay's (r4 := r5). Neither: the level is 0.
-        move    x:(r7+$3c),a            ; reverb grace
-        and     #>$3,a
-        move    a1,x0
-        move    x0,b
-        move    #>$1,x0
-        sub     x0,b
-        move    #$0,x0
-        tmi     x0,b
-        move    y:>$9c4,a
-        move    x0,y:>$9c4              ; clear-on-read
-        move    #>$3,x0
-        tst     a
-        tne     x0,b
-        move    b,x:(r7+$3c)
-        move    x:(r7+$3d),a            ; delay grace
-        and     #>$3,a
-        move    a1,x0
-        move    x0,b
-        move    #>$1,x0
-        sub     x0,b
-        move    #$0,x0
-        tmi     x0,b
-        move    y:>$9c5,a
-        move    x0,y:>$9c5              ; clear-on-read
-        move    #>$3,x0
-        tst     a
-        tne     x0,b
-        move    b,x:(r7+$3d)
-        move    x:(r7+$3c),a
-        tst     a
-        bne     ch_rvlive               ; reverb live: r4 is right already
-        move    x:(r7+$3d),a
-        tst     a
-        beq     ch_nolive
-        move    r5,r4                   ; delay only: return the delay's output
-        bra     ch_rvlive
-ch_nolive:
-        clr     a
-        move    a,x:(r7+$3e)            ; nothing live: return nothing
-ch_rvlive:
-        move    x:(r7+$3e),a            ; RET up: tell BOTH hosts to go quiet
-        tst     a
-        beq     ch_ndl
-        move    #>$1,x0
-        move    x0,y:>$9d8
-        move    x0,y:>$9d9
-ch_ndl:
 ; ---- BYPASS: the defaults are a bit-exact passthrough ---------------------
-; DRV 0, FOLD 0, TXTR 0, TONE 64, COMP 0, MIX 127, WDTH 64, RET 0. Every
-; part that ever chose LO-FI runs this after the flash, so the neutral block
-; does nothing at all.
+; DRV 0, FOLD 0, TXTR 0, TONE 64, COMP 0, MIX 127, WDTH 64. Every part that
+; ever chose LO-FI runs this after the flash, so the neutral block does
+; nothing at all.
         move    x:(r6+$0),a             ; DRV
         tst     a
         bne     ch_live
@@ -530,9 +400,6 @@ ch_ndl:
         tst     a
         bne     ch_live
         move    x:(r7+$24),a            ; the tilt's t/2 (TONE 64 = 0)
-        tst     a
-        bne     ch_live
-        move    x:(r7+$3e),a            ; a return level up needs the loop
         tst     a
         bne     ch_live
         move    x:(r6+$3),a             ; COMP
@@ -552,29 +419,6 @@ ch_live:
         move    #>$ffffff,m5            ; loop); ENC goes into r3 per sample,
         move    #>$ffffff,m3            ; the SAT callees own r3 after that
         do      n7,>ch_end
-; ---- the return FIRST (13 Sep 2026): the bus wet enters before the chain --
-; Skipped per sample when the level is 0 -- a forward skip, the class
-; CYCLES_FORWARD_BRANCHES admits. The wet in x0 goes negative, so the mpy is
-; the audited-signed x0,y1 order; the level is the knob word (val/128, >= 0).
-; (r5, the delay's own read pointer, is still set per block: the delay-only
-; case above returns it through r4. The second tap that read y:(r5)+ at the
-; retired DLY level -- a hard 0 -- went 14 Sep 2026.)
-        move    x:(r7+$3e),a
-        tst     a
-        beq     ch_noret
-        move    x:(r0),a
-        move    y:(r4)+,x0              ; wet L (the last live stage's)
-        move    x:(r7+$3e),y1           ; RET
-        mpy     x0,y1,b
-        add     b,a
-        move    a,x:(r0)
-        move    x:(r0+n0),a
-        move    y:(r4)+,x0              ; wet R
-        move    x:(r7+$3e),y1
-        mpy     x0,y1,b
-        add     b,a
-        move    a,x:(r0+n0)
-ch_noret:
 ; ---- park the dry, and take the key (the mono sum) ------------------------
         move    x:(r0),a
         move    a,x:(r7+$33)
@@ -951,9 +795,6 @@ ch_capd:
         asl     #$1,a,a
         add     b,a
         move    a,x:(r0+n0)
-; (the send taps left with the sends: the stations have had no
-; send since the one-aux rig; the returns below still need the bus)
-; (the return moved to the top of the loop)
         move    (r0)+n0                 ; the frame advance: n0 is 1 for the
         move    (r0)+n0                 ; whole loop, so two steps, no reload
 ch_end:
@@ -962,9 +803,6 @@ ch_end:
 
 ; ===========================================================================
 ; BYPASS: frames untouched -- nothing to do at all (Spectrum's shape)
-; The loop that sat here added the returns at a level it had
-; just tested to be 0: ch_bypass is reached only through the RET test
-; above, so its per-sample gate was always taken and it only walked r0.
 ; ===========================================================================
 ch_bypass:
         rts

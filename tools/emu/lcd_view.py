@@ -84,7 +84,7 @@ def watch(path, on_frame, period=0.05):
 
 # Key codes are the panel controller's: the keymap the firmware installs
 # ([0x46c901dc]) is the identity, so code = row*8 + bit. Names from
-# docs/firmware/EXTERNAL.md (octamax) and the 18 Sep 2026 probe under the
+# docs/firmware/PANEL.md (octalab's list) and the 18 Sep 2026 probe under the
 # port (PLAY/STOP/REC/MIDI...); an unlisted code is drawn by its number.
 KEYS = {
     **{i: f"{i + 1}" for i in range(16)},          # trig keys

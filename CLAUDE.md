@@ -1,8 +1,8 @@
 # Working in this repository
 
 **Read `PLAN.md` first.** It says what octabam is now — a remixer for the
-Octatrack's OS that composes the community's modifications and this
-project's own into one image built from the user's own 1.40C — where that
+Octatrack's OS that composes modules, each credited to its author, into
+one image built from the user's own 1.40C — where that
 stands, what is measured about the ground, and the work order.
 `docs/remixer/PLACEMENT.md` is the architecture record for where code goes.
 
@@ -15,8 +15,8 @@ modules claim the same FX2 id, cave, hook site, detour site, poke, runtime
 write, core-private Y word, or the per-core FX2 buffer region — by name.
 
 **Modules come in kinds, and the traps below say which they belong to.** A
-**ColdFire module** (the community's mods: linked GNU-as units, detours by
-symbol, a runtime in DRAM) never touches the DSP and none of the DSP traps
+**ColdFire module** (linked GNU-as units, detours by symbol, a runtime in
+DRAM: midisc, Octakit, octalab, REPITCH) never touches the DSP and none of the DSP traps
 apply to it; its own traps are in the last section. On the DSP side an
 insert has no bus role, no shared-window claim, sits in both payloads and
 runs on any track; a **server** pays for the rotation, the housekeeping
@@ -167,7 +167,21 @@ Writing *about* either in a comment trips the guard: both happened while
 documenting stage 5/6 (a comment explaining why mode 3's immediate must be
 decimal spelled the hex out; another explaining the override marker spelled
 the marker out). The build refuses, loudly, which is the guard working —
-describe them in prose instead of spelling them.
+describe them in prose instead of spelling them. The same goes for
+`; ROTLATCH` and `; ROTINIT`: the build substitutes a body at the FIRST
+occurrence, and on 21 Sep 2026 a housekeeping comment that said "the
+ROTLATCH check" took the tracker body while the real marker stayed a
+comment -- no client on either payload resolved its write offset, and
+`verify-bus` read it as every server's client count changing.
+`_marker_once` refuses a second occurrence now.
+
+**AN INSTRUCTION FORM THE CHIP HAS NEVER RUN IS NOT PROVEN BY THE PORT.**
+The assembler encodes it, the vendored emulator decodes it the same way, and
+the chip may not: image 44 (21 Sep 2026) wedged on its first block on four
+one-word displaced Y stores (`move a,y:(r3+$1)`), a form with no site in
+either stock payload; the X form has 533. Before using a form, grep it in
+`out/dsp/payload_*.asm` (`tools/build/dsp_disasm_all.py`); no precedent means
+a hardware probe first, or the form everything else uses.
 
 **`SPEC=1` requires `XBUS=1`.** Without it the accumulators stay in core-private
 memory and each half of the tracks can reach only its own core's server — worse
@@ -220,6 +234,38 @@ library (`tools/patches/unicorn_emac_fractional.patch`). The general rule is the
 same as "disassemble what you assemble": when firmware arithmetic comes out
 exactly 2× or ½ off, suspect the INSTRUMENT before inventing a unit, and
 find a site in the firmware whose constants only make sense one way.
+
+**STOCK UNICORN'S MAC-WITH-LOAD DECODE HAS THREE DEFECTS, WHICH IS WHY
+ROUTE A SHIMS IT PER SITE RATHER THAN THE FORM BEING ABSENT.** Found 22 Sep
+2026 by reading markandrus/octemu's independent fix against QEMU 11.1 and
+confirming the identical lines are present, verbatim, in Unicorn 2.1.4's
+own vendored QEMU 5.0.1 `target/m68k/translate.c`. In `DISAS_INSN(mac)`:
+(1) `rx = (ext & 0x8000) ? AREG(ext, 12) : DREG(insn, 12)` reads Rx from
+the OPCODE word instead of the extension word; (2)
+`dual = ((insn & 0x30) != 0 && (ext & 3) != 0)` reads Ry's own register
+field (ext bits 3-0, ANY MAC-with-load) as a dual-accumulate flag, and
+`cfv4e` has no `M68K_FEATURE_CF_EMAC_B`, so this `disas_undef`s an ordinary
+multiply into an illegal-instruction trap whenever Ry's low bits are set;
+(3) the EMAC address MASK register resets to zero instead of CFPRM's
+all-ones, and MAC-with-load ANDs its effective address with it, so every
+load reads address 0 regardless of the real operand. **Fixing (3) in
+`cpu.c`'s `m68k_cpu_reset` does nothing under Unicorn**: `src/uc.c` never
+calls `cc->reset()`, only `uc->reg_reset()` (`unicorn.c`), a separate,
+minimal function that clears `aregs`/`dregs`/`pc` and nothing else — found
+by a `UC_ERR_READ_UNMAPPED` on a `macl ...,%a0@,...` whose `a0` was a
+valid mapped address (the AND with a zeroed mask folded it to 0 first).
+The fix belongs in `unicorn.c`'s `reg_reset`, not `cpu.c` (kept there too,
+for documentation, since a future Unicorn version might wire up the real
+reset path). All three are in `tools/patches/unicorn_emac_fractional.patch`;
+`emu_bringup.emac_selftest` gained cases for them (fails on stock, passes
+fixed). The MAIN OS has zero true dual-accumulate instructions
+(`maaac`/`masac`/`msaac`/`mssac`), so forcing `dual = 0` is unconditionally
+safe for it. **Not yet retired**: `emu_rtos.py`'s `OCTA_MACLOAD_NATIVE=1`
+disables the per-site shim for a differential, but a run with no project
+on the card never executes any of the 435 hooked sites (0 shim calls
+either way) — vacuously identical, not evidence. The shim stays the
+default until a run with `OT_PROJECT=<dir>` confirms native and shimmed
+agree on real firmware traffic.
 
 **MACSR S/U IS BIT 6, AND IN FRACTIONAL MODE IT IS NOT SIGNED/UNSIGNED:
 it selects 16-BIT ROUNDING ON THE ACCUMULATOR READ-OUT.** The ColdFire port
@@ -309,9 +355,10 @@ family as "disassemble what you assemble".
 **IN THE SHIPPING REMIX, payload A's half of the shared window is FULLY
 OWNED** (a remix without the reverb frees it, which is how the insert
 collection has room to stack): BusVerb's
-relocated buffers at `0x30000`/`0x34000`, bus scratch at `0x36000-0x360d2`
-(grew 12 Aug for the DELAY send counts + reciprocal table, and again 17 Aug
-when the accumulators went to FOUR buffers for the cross-core race fix).
+relocated buffers at `0x30000`/`0x34000`, bus scratch at `0x36000-0x36157`
+(grew 12 Aug for the DELAY send counts + reciprocal table, 17 Aug when the
+accumulators went to FOUR buffers for the cross-core race fix, and 22 Sep
+2026 to EIGHT buffers plus the chain at `0x360d8..`).
 There is no free ground in it for delay lines — the DEV build places the
 delay at its shipping base `0x38000` (payload B's half) for exactly this
 reason. A delay based at `0x30000` sweeps the rotation word, all four ACC
@@ -325,7 +372,14 @@ omits the module then aliases the id to SEND and takes the stock effect
 away from FX1 too. Rungs sat on EQUALIZER's `0x0c` and Nimbus on DJ EQ's
 `0x0d` from 29 Aug to 2 Sep 2026, in every local image, unflashed. The
 schema now refuses `STOCK_FX2_IDS`; the stock effects themselves are kept
-in a chooser by listing them in the remix (`tools/remix/stock.py`).
+in a chooser by listing them in the remix (`tools/remix/stock.py`). The
+same table makes FX1's NONE (id 0) run the FALLBACK's code: SEND ran on
+every empty FX1 slot at r7 0x6100/0x6400/0x6700/0x6a00, sent from an
+unseen page byte and, on core 1, compared the rotation tracker before
+position 0's advance — one step ahead for good on the unit (images 40–47,
+21 Sep 2026; `docs/effects/XBUS.md`). A client keys its slot on r7, never
+on X:$213 (stale at proc time), and `dsp_host` places FX2 slots at
+0x6200 + 0x300·pos (`verify_twocore` had 0x200·pos until image 48).
 
 **`dsp_host`'S DEFAULT AUDIO BLOCK (X:0x80) SITS INSIDE THE SCRATCH THE
 STOCK EFFECTS USE.** On hardware the dispatcher passes `r0 = 0`: the audio
@@ -345,7 +399,8 @@ separately: the 6,305-word curve bank is `X:0x438` in A and `X:0x42b` in B
 one source assembled into both, so a bare literal into a stock table is
 correct on tracks 5–8 and mistuned on 1–4, and past the end of the relocated
 table it reads garbage. Bryan T's LOFI2 shipped that way through a week of
-renders and several flashes (13 Sep 2026, `docs/firmware/EXTERNAL.md` §10;
+renders and several flashes (13 Sep 2026, `docs/firmware/TABLES.md`
+"Payload-relative addresses";
 measured here from our own image). `send_probe`'s single-payload render dumps
 payload A. Declare stock table addresses so the build rewrites them per
 payload, or read through a build-supplied base; and audit any stock-table
@@ -467,7 +522,8 @@ detour returns (Bryan's write-up had the ring base as `0x4F502C10` all
 along). Retracted; `machine.h` now folds the alias. The general rule is the
 instrument-blindness one: before trusting a null result, ask what the
 instrument physically cannot see, and check whether a second reading
-(here, EXTERNAL.md) already contradicts it.
+(here, Bryan T's delay write-up, `docs/firmware/COLDFIRE_DELAY.md`) already
+contradicts it.
 
 **THE BOOT VERIFIER BOOTED THE WRONG IMAGE.** `make verify` runs after the
 selftest, which builds every remix in turn and leaves the LAST one at
@@ -545,3 +601,36 @@ COLDFIRE_PORT, VOICING, NOTES, REVERB_LOG, XBUS_LOG, EXTERNAL_INGEST, ...)
 was removed. A citation of the form `docs/history/RTOS_FORK.md §10.16` in a
 comment or a doc is still the provenance of what it sits beside; read it
 with `git show 3ceba41:docs/history/RTOS_FORK.md`.
+
+On 22 Sep 2026 `vendor/dsp56300`'s pin moved from `c051afad` (28 Jul) to
+`8ccdd843` (21 Sep, 144 commits later), prompted by reading
+`markandrus/octemu`'s independent RE and finding upstream had absorbed
+several of our own fixes in that span. `tools/patches/dsp56300.patch`
+dropped the hunks upstream now carries itself (MPYRI/MACRI, the DCOL
+12-bit width, "serve a DMA request raised before the channel was
+enabled", 2D/no-update DMA address modes, the assembler's
+TFR/CMP/CMPM/Tcc JJJ=000 encoding, JIT MPYI sign-extension, CCR overflow
+flags) and kept what is still ours (the AGU pre-decrement fix, the
+one-word displaced move, the DMA dual-counter reload, the host-stepped
+mode, the shared window, the unmapped-register hooks). Gated on: upstream's
+own `dsp56kTestRunner` suite, `scripts/refhash.sh check` against a
+pre-repin baseline (24 cases), `verify-bus`, `verify-spectrum-ident`,
+`verify-twocore`, and `make check` with a real project under the port
+(`verify_set`) -- all bit-identical or passing. Our own AGU fix is still
+an open, uncommented upstream PR (#13, since 8 Sep).
+
+Also 22 Sep 2026: measured whether a same-value `DCR` rewrite ever lands
+while a self-clearing DMA window is still open (octemu's independent
+QEMU fix names this a re-arm, not a no-op, that the vendored emulator was
+silently dropping). Instrumented `DmaChannel::setDCR` in an isolated
+clone, ran a real project 1200 frames under the port: DCR2 (the ESAI
+feed, `0xcc6220`, rewritten every idle-loop pass at `P:0x099`) landed
+with the window open on 1199 of 1200 rewrites. Ported octemu's renewal
+(`m_deRenewed`, in `setDCR`/`finishTransfer`) — but its block-dump
+against the same project, same frame count, is **bit-identical** with or
+without the fix, so it is landed defensively (matches the DMA manual's
+own semantics, costs nothing, `verify-twocore` and every gate stay
+green) rather than as a fix for an observed symptom. Not octemu's other
+DE-renewal hunk (disabling `HostTransmitData` as a request source):
+`ot_emu` drives HDI08 directly, never through a `DmaChannel`, so that
+half doesn't apply here (checked, not inferred).

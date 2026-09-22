@@ -69,9 +69,9 @@ CASES = {
     "DS   send on B -> delay on B":             [("R", 0, R), ("D", 1, D), ("S", 1, S_DEL)],
     "RDS  delay on B -> reverb on A (series)":  [("R", 0, R), ("D", 1, D), ("S", 1, S_DEL)],
     # NOT four instances: on one core the fourth sits at position 3, which is
-    # track 8 on payload A, where the SEND is refused by design (the one-aux
-    # rig) -- so a four-instance one-core control is not the same
-    # layout. tools/verify/verify_onebus.py pins the refusal itself.
+    # track 8 on payload A, where the SEND is refused by design -- so a
+    # four-instance one-core control is not the same layout.
+    # tools/verify/verify_onebus.py pins the refusal itself.
     "SSR  a sender on each core":               [("R", 0, R), ("S", 0, S_VRB), ("S", 1, S_VRB)],
 }
 # which instance's stream each case compares (the server being measured)
@@ -107,7 +107,10 @@ def run(mems, layout, out, skew=None):
     cores, allocs, r7s, inits, procs, inmask = [], [], [], [], [], 0
     for k, (L, c, _) in enumerate(layout):
         p = pos.get(c, 0); pos[c] = p + 1
-        cores.append(str(c)); allocs.append(str(1 + 2 * p)); r7s.append(str(2 + 2 * p))
+        # r7 = 0x6200 + 0x300 * pos for an FX2 slot: three bumps per track
+        # (COLDFIRE_PORT.md O11; rig_render.py). 2 + 2 * p until 21 Sep 2026
+        # put position 1 at 0x6400, an FX1 slot, which SEND now refuses.
+        cores.append(str(c)); allocs.append(str(1 + 2 * p)); r7s.append(str(2 + 3 * p))
         inits.append(f"{ep[c][L][0]:x}"); procs.append(f"{ep[c][L][1]:x}")
         if L == "S":
             inmask |= 1 << k

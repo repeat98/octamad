@@ -814,7 +814,8 @@ namespace ot
 					static_cast<uint32_t>(r.sp.var & 0xff), static_cast<uint32_t>(r.r[2].var & 0xffffff), static_cast<uint32_t>(r.m[2].var & 0xffffff),
 					static_cast<uint32_t>(r.r[1].var & 0xffffff), static_cast<uint32_t>(r.n[1].var & 0xffffff),
 					static_cast<uint32_t>(r.r[7].var & 0xffffff),
-					static_cast<uint32_t>(r.m[7].var & 0xffffff), static_cast<uint32_t>(r.m[0].var & 0xffffff)});
+					static_cast<uint32_t>(r.m[7].var & 0xffffff), static_cast<uint32_t>(r.m[0].var & 0xffffff),
+					static_cast<uint32_t>(r.n[7].var & 0xffffff)});
 			}
 			c.dsp->execInterpreter();
 			c.dsp->doLoopEnd();

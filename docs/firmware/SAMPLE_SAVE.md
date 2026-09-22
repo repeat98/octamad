@@ -61,12 +61,12 @@ long wav_write(void *handle,      sp@(48)   open file object
 | `0x46105408` must be non-zero | `0x40020f1c` | returns `-2` |
 | `slotId` must be `<= 135` | `0x40020f26` (`cmpal #135,%a4`) | returns `-2` |
 
-**135 is `0x87`, the last recorder buffer.** `EXTERNAL.md` §6 records that
+**135 is `0x87`, the last recorder buffer.** `RECORDER.md` records that
 recorder buffers are object ids 128 to 135 in the same arena as the sample
 slots. This writer accepts them. It is not restricted to sample slots.
 
 ✅ The slot's control record is `0x46c922c4 + slotId * 44`, which is the same
-base and stride `EXTERNAL.md` gives for the state arena. Two flag bits in the
+base and stride `RECORDER.md` gives for the state arena. Two flag bits in the
 first word of that record drive the whole format:
 
 | bit | clear | set |

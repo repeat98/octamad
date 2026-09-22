@@ -76,15 +76,20 @@ def main():
         for slot, prm in enumerate(mod.params):
             if not (prm.active and prm.labels):
                 continue
+            views = mod.name_views_for(slot)
             if slot == mod.mode_slot:
-                want = mode_names.complete(mod) if mod.mode_views else {}
+                want = mode_names.complete(mod, slot, views) if views else {}
                 want = mode_names.with_selfname(want, slot, prm.labels)
+            elif views:
+                want = mode_names.complete(mod, slot, views)
             else:
                 # only the MODE select names itself (image 27); every other
-                # labelled select keeps its Param name at every value and
-                # the tick widget flashes the word
-                own = prm.name[:mode_names.NAME_LEN - 1]
-                want = {v: {slot: own} for v in range(len(prm.labels))}
+                # labelled select renames NOTHING at any value (the tick
+                # widget flashes the word). Its own slot's name is whatever
+                # the MODE view last set -- `---` where the mode does not
+                # read it (20 Sep 2026) -- so the check is "unchanged", not
+                # "the Param's own name".
+                want = None
             work.append((key, mod, slot, want))
     for key, mod, slot, want in work:
         desc = clones.get(key)
@@ -103,6 +108,19 @@ def main():
                 out[slot] = raw.split(b"\0")[0].decode("latin1")
             return out
 
+        if want is None:
+            before = names_now()
+            for value in list(range(len(labels))) + [200]:
+                emu._call(uc, fmt, (BUF, value))
+                got = names_now()
+                checked += 1
+                changed = [sl for sl in range(12) if got[sl] != before[sl]]
+                if changed:
+                    fails += 1
+                    print(f"  [FAIL] {key} slot {slot} value {value}: a non-MODE select renamed slots {changed}")
+                else:
+                    print(f"  [PASS] {key} slot {slot} value {value} ({labels[value] if value < len(labels) else 'out of range':<5}) renames nothing")
+            continue
         for value in range(len(labels)):
             emu._call(uc, fmt, (BUF, value))
             got = names_now()

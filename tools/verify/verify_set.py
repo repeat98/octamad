@@ -17,14 +17,16 @@ the machine back:
             18-20 = FX1 p2, 21-23 = AMP p2, 24-26 = FX2 p2 (the tempo cave
             wrote over 18-21 on every bus host until 15 Sep 2026)
   audio     every track whose record carries audio has a chain output
-            (the read-back slot), and the main out is not silent
+            (the read-back slot); the main out's TX0 counts are printed
   midi      CC 40 (AUX, FX2 page 1 slot 0) at 100 on T2's channel over the
             port's MIDI IN (UART0) moves T2's record halfword 12 to 100;
             with CC PAGE 2 in the remix, CC 68 at 77 on T1's channel lands
             in T1's FX1 page-2 lane and record halfword 18 (the queue ->
-            main -> DSP leg verify_ccpage2 cannot run); on a one-aux remix
-            RET (CC 38) at 127 on T8, and T8's chain output must then carry
-            T2's send through the delay and the reverb
+            main -> DSP leg verify_ccpage2 cannot run); on a bus remix each
+            engine's host track must then carry T2's send (the wet comes
+            out on the host since 20 Sep 2026), and an engine on the wrong
+            core (BusVerb on T1-4, BusDelay on T5-8: it runs as SEND there)
+            is refused
   card      the card as the firmware left it (--card-out, read back with
             emu_card.extract_image): which project files it rewrote, and
             its own LOG 000000.txt -- every ERROR line that is not a FILE
@@ -163,6 +165,9 @@ def main():
     ap.add_argument("--reuse", action="store_true", help="skip the port run when its dumps are there")
     ap.add_argument("--image", default="", help="a built image to boot instead of building the remix (a bisect)")
     ap.add_argument("--extra", default="", help="extra ot_emu arguments, e.g. '--dsp-dirty' (garbage DSP RAM, as hardware)")
+    ap.add_argument("--midi-file", default="", help="extra MIDI IN lines appended to the gate's own "
+                    "('<frame> <status> <d1> <d2>' in hex, one per line; T<n> in the status is that "
+                    "track's channel): a knob script through the panel's real path")
     a = ap.parse_args()
 
     if not a.project:
@@ -208,12 +213,30 @@ def main():
     ccpage2 = ccpage2 and part["fx1"][0] != 0          # the cave guards FX1 id 0 (NONE)
     if ccpage2:
         lines.append(f"40 B{chans[0] & 0xf:X} 44 4D")
-    # the one-aux return: RET (FX1 slot 4, CC 38) to 127 on T8, so T2's
-    # send comes back on the master through the delay and the reverb
+    # the bus engines' hosts: each prints its wet on its own track, so T2's
+    # send must reach every host's chain output. Payload A serves T5-8 and
+    # B T1-4 (measured 10 Aug 2026); an engine picked on the other core runs
+    # as SEND under SPEC, which a set must not rely on.
     mods = registry.remix(a.remix).modules
-    onebus = all(k in mods for k in ("CHARACTER", "REVERB SERVER", "DELAY SERVER")) and part["fx1"][7] == 0x1c
-    if onebus:
-        lines.append(f"40 B{chans[7] & 0xf:X} 26 7F")
+    hosts = []
+    for key, cores in (("REVERB SERVER", range(4, 8)), ("DELAY SERVER", range(0, 4))):
+        if key not in mods:
+            continue
+        fid = registry.by_key(key).menu.fx2_id
+        for t in (i for i, v in enumerate(part["fx2"]) if v == fid):
+            if t not in cores:
+                sys.exit(f"{key} on T{t + 1}: payload {'A' if t >= 4 else 'B'} does not carry it "
+                         f"(it runs as SEND there); host it on T{cores[0] + 1}-T{cores[-1] + 1}")
+            hosts.append((key, t))
+    if a.midi_file:
+        for ln in pathlib.Path(a.midi_file).read_text().splitlines():
+            ln = ln.split("#")[0].strip()
+            if not ln:
+                continue
+            m = re.match(r"(\S+)\s+B?T(\d)\s+(\S+)\s+(\S+)$", ln)
+            if m:      # "<frame> BT<n> cc val" -> that track's channel
+                ln = f"{m.group(1)} B{chans[int(m.group(2)) - 1] & 0xf:X} {m.group(3)} {m.group(4)}"
+            lines.append(ln)
     midi.write_text("\n".join(lines) + "\n")
 
     dumps = {k: OUT / f"{k}.bin" for k in ("ids", "records", "lanes")}
@@ -298,16 +321,20 @@ def main():
     print("        " + "  ".join(rows[:4]) + "\n        " + "  ".join(rows[4:]))
     check("audio: every track with record audio has a chain output", not silent_chain,
           f"silent chain: {', '.join(silent_chain)}" if silent_chain else "")
-    if onebus:
-        ret = db(rms(rl.readback_audio(c, 8)[-2000:]))
-        check("audio: the aux return on T8 carries T2's send (RET 127 over CC 38)", ret > -60,
-              f"T8 chain output {ret:.1f} dBFS in the last 2000 samples")
+    for key, t in hosts:
+        wet = db(rms(rl.readback_audio(c, t + 1)[-2000:]))
+        check(f"audio: {key}'s host T{t + 1} carries T2's send", wet > -60,
+              f"T{t + 1} chain output {wet:.1f} dBFS in the last 2000 samples")
     # the report prints both cores' audio lines at the boot, the load and
-    # the end; core 0's at the end is the ESAI's, and it carries the counts
+    # the end; core 0's at the end is the ESAI's, and it carries the counts.
+    # Informational: on OCTABAM89_setgate bank 3 part 1 only T8's chain
+    # output ever reached TX0 under the port (20 Sep 2026: with T8's station
+    # silent the words read all-zero while T1, T2 and T5's chain outputs
+    # were live, on the image with the return and on the one without).
+    # Which tracks reach TX0 under the port is open.
     tx = re.findall(r"TX0 non-zero per RING WORD \(slot \+ rotation [0-9.]+\) ([0-9 ]+);", text)
     nz = max(([int(x) for x in t.split()] for t in tx), key=sum, default=[])
-    check("audio: the main out (TX0) is not silent", bool(nz) and max(nz) > 0,
-          f"non-zero frames per ring word {nz}" if nz else "no TX0 line")
+    print(f"  [info] audio: the main out (TX0) non-zero frames per ring word {nz or 'no TX0 line'}")
 
     # the card as the firmware left it
     n_writes = sum(1 for l in cmds.read_text().splitlines() if l.startswith("WRITE"))

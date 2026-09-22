@@ -47,7 +47,8 @@ limiter.
   the loop reads. Before it did, filter B's frozen HP poles held a stale
   value and put up to a full-scale DC on a station's output, which surfaced
   on hardware as the master compressor collapsing the right channel.
-- Cost: 954 words; 369 cycles/sample.
+- Cost: 1,040 words; 290 cycles/sample (`make check`, 20 Sep 2026; 954 /
+  369 before TAME came and went).
 - `verify_menu`, `verify_replaces`, `verify_labels` pass on the rig.
 
 On Sam's unit since flash 4; the LADR voicing (PR #254) since image 21.

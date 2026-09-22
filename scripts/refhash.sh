@@ -72,8 +72,6 @@ CASES=(
   "delayprobe-stock|XBUS=1 DELAYPROBE=stock"
   "notempo|XBUS=1 SPEC=1 NOTEMPO=1"
   "tempocave-replay|XBUS=1 SPEC=1 TEMPOCAVE=replay"
-  "dfrz|DEV=1 XBUS=1 DFRZ=1"
-  "dfrzat|DEV=1 XBUS=1 DFRZAT=3"
   "dnote|DEV=1 XBUS=1 DNOTE=84"
   "xbusbase|XBUS=1 SPEC=1 XBUS_BASE=35000"
 )

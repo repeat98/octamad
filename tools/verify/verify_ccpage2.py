@@ -17,6 +17,7 @@ UART0 and reads the FX1 page-2 lane and the DSP record back (15 Sep 2026;
 hardware-confirmed on image 96/97 before that).
 """
 import importlib.util
+import os
 import pathlib
 import subprocess
 import sys
@@ -31,6 +32,17 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 CAVE_AT = 0x40300000            # a fresh RWX page, away from the OS image
 STOCK_CC = 0x4000e79c
 MSG_AT = 0x47e00000            # scratch for the 3-byte MIDI message
+FIXTURE_REMIX = "bamsep26"     # carries ccpage2, BusVerb, BusDelay and Character; no DRAM platform
+
+
+def _build(remix):
+    """Build `remix` at out/mainos_bus.bin and return the path."""
+    env = dict(os.environ, REMIX=remix, XBUS="1", SPEC="1")
+    r = subprocess.run([sys.executable, str(ROOT / "tools/build/build_bus.py")],
+                       env=env, capture_output=True, text=True, cwd=ROOT)
+    if r.returncode:
+        sys.exit(f"verify_ccpage2: building {remix} failed:\n{(r.stdout + r.stderr)[-1500:]}")
+    return ROOT / "out/mainos_bus.bin"
 
 AUDIO_CC_IN = 0x80000049
 AUTO_CH = 0x80000047
@@ -119,9 +131,13 @@ def main():
     assert pokes[0] == (0x400d64a0, (0x4000e79c).to_bytes(4, "big"),
                         CAVE_AT.to_bytes(4, "big")), "dispatch poke wrong"
 
-    r = emu.boot("out/mainos_bus.bin")
+    # The checks below read BusVerb's, BusDelay's and Character's descriptor
+    # counts, and the Unicorn boot reaches the RTOS handoff only on an image
+    # without the DRAM platform: build the rig, test it, then put the selected
+    # remix back so the gates after this one read their own image.
+    r = emu.boot(str(_build(FIXTURE_REMIX)))
     uc = r.uc
-    assert r.clean
+    assert r.clean, f"{FIXTURE_REMIX} did not boot to the RTOS handoff: {r.stopped}"
     # the cave also writes the shadow (0x100a5xxx), the part-modified byte
     # (0x100b145e) and the global changed flag (0x100f8598): map those pages
     for b in (CAVE_AT, MSG_AT, 0x100a0000, 0x100b0000, 0x100f0000, 0x460d0000):
@@ -248,6 +264,9 @@ def main():
     print(f"  CC 74 -> stock={reached['stock']}  {'ok' if good else 'FAIL'}")
 
     print("\nALL PASS" if ok else "\nFAILURES ABOVE")
+    selected = os.environ.get("REMIX")
+    if selected and selected != FIXTURE_REMIX:
+        _build(selected)
     return 0 if ok else 1
 
 

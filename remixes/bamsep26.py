@@ -8,17 +8,18 @@ Modulation = CHORUS 0x12) and FX1-only; a station named on FX2 runs dry.
 Each station defaults to a bit-exact passthrough, so a saved part that
 chose the stock effect still plays.
 
-The bus is one aux: AUX -> BusDelay -> BusVerb -> the return (Character
-with RET up on T8). TEMPO SYNC makes BusDelay's TIME read divisions; CC
+The bus is one aux: SEND -> BusDelay -> BusVerb, each engine's wet printed
+on the track that hosts it (20 Sep 2026; until then a return on T8 through
+Character). TEMPO SYNC makes BusDelay's TIME read divisions; CC
 PAGE 2 puts CC 62-67 on the host engine's page-2 slots; MODE DEFAULTS
 re-defaults a mode's knobs when MODE is turned on the panel.
 
 Every other stock effect is harvested: 13 effects, 6,158 words per payload
 in one run; a saved part naming one gets silence (the null stub).
 
-On Sam's unit. Worst core priced 3,567 cycles (four Characters beside the
-delay) against 3,120 usable -- inside the counter's error margin, settled
-by the hardware burn sweep.
+On Sam's unit. Worst core priced 3,657 cycles (four Characters beside the
+reverb, `make cycles`, 20 Sep 2026) against 3,120 usable -- inside the
+counter's error margin, settled by the hardware burn sweep.
 """
 
 from remix.schema import Remix

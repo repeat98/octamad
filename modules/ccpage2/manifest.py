@@ -29,7 +29,7 @@ from remix.schema import CavePatch, Kind, Module
 # Page-2 clamp counts, slots 6..11: selects carry their count, knobs 128.
 # Must match modules/busverb and modules/busdelay.
 VERB_COUNTS = bytes((3, 128, 128, 4, 128, 128))   # MODE, (blank), DIFF, SHFT, GATE, (blank; RATE until 15 Sep 2026)
-DLY_COUNTS = bytes((3, 128, 128, 4, 128, 2))    # MODE, SCAT, DENS, SIZE(select), PTCH, FRZE
+DLY_COUNTS = bytes((3, 128, 128, 4, 128, 128))  # MODE, SCAT, DENS, SIZE(select), PTCH, WOW (FRZE until 20 Sep 2026)
 
 # The CC dispatch vector (status>>4 == 0xB) and its stock target.
 DISPATCH_CC = 0x400d64a0

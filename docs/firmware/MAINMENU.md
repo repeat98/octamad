@@ -32,8 +32,11 @@ Descriptors ship inert; `0x40064c70..0x40064cac` calls `init(&desc+4,
 visible, count)` (`0x4007ec60`) at boot for the root (5 visible), the
 submenus (7) and the demo menus (2), guarded once by `tst.l 0x400cbda0`,
 count read from `+0x00`. A descriptor built in a cave is not in that run
-and must ship with `+0x10` set or its pane draws zero rows (octalab,
-`EXTERNAL.md` §9.2).
+and must ship with `+0x10` set or its pane draws zero rows (octalab, MKI,
+13 Sep 2026; their reading of `+0x08..+0x14` as cursor / absolute
+selection / visible-row count / count re-verified here). Their "eleven
+pages, stride 0x1c" for the 16 × 0x14 menu-state table was dumped under
+both strides here: 0x14 holds (id 12's draw = `0x40068e00`).
 
 Root window descriptors (`0x400cbc34/48/5c/70`) are 20-byte records
 `{0x13, 0x09, 0x01, ptr, ptr}`: the category icon, 19 wide × 9 tall, `ptr`
@@ -114,7 +117,10 @@ Cave placement: the decoded free band `0x400d2000..0x400d8000`
 (`build_bus.SAFE_CAVE_CEIL`). `0x40108800` is inside the image's last
 ~30 KB, zero at rest and OS `.bss` (the PROJECT subsystem's RAM): a cave
 there passed a static zero-check and a no-project boot and faulted on
-[PROJ] (tag 91).
+[PROJ] (tag 91). octalab's fifth MAIN MENU category (MKI ✅ 7 Sep 2026)
+added: a null-action row is a heading the cursor skips; a row inside a
+pane cannot descend (`+0x10` read on the root only); the descriptor must
+ship initialised. `RANDOMIZE PAGE` = `0x4005b9c0`, via `0x400bab22`.
 
 ## 6. Opening a parameter page from a handler ✅
 

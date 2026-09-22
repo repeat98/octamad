@@ -280,7 +280,7 @@ the same body. Steps, all measured:
 3. `0x40027e00` / `0x40027e30` (project-dirty flags 🟡).
 4. Audio track (`track ≤ 7`): storage address
    - PB page: `Part + 0x8edaa + track*30 + machine*6 + slot` (`0x40054d7e..88`
-     computes `(m<<3) − m*2`; octalab's validator reading agrees, `EXTERNAL.md` §9.2)
+     computes `(m<<3) − m*2`; octalab's validator reading agrees, 13 Sep 2026)
    - others: `Part + 0x8ee9a + track*24 + (flat − 6)` (24 B/track = AMP·LFO·FX1·FX2 × 6)
    plus a shadow copy at `0x100a4ef8`/`0x100a4fe8` + same offset.
 5. Clears a per-track lock bit `0x80001538[t] &= ~(1<<flat)` and byte
@@ -594,8 +594,8 @@ at `0x4000ce60..0x4000ced4`). Frame halfwords are `knob<<8 | companion`
 | scene bytes | frame halfwords | page |
 |---|---|---|
 | 0..5 | page-block `0x80000510+ping·0x180+track·0x30`, hw 0..5 | PLAYBACK p1 (byte 1 = STRT, 2 = LEN, 3 = RATE ✅ from the STRT/LEN encoder hooks `0x4003eef0`/`0x4003ec7c` and `FUN_4003f1b4`) |
-| 6..11 | same block, hw 6..11 | 🟡 AMP or LFO p1 |
-| 12..17 | voice record `0x80000110+ping·0x200+track·0x40`, hw 0..5 | 🟡 the remaining one of AMP/LFO |
+| 6..11 | same block, hw 6..11 | LFO p1: the LFO engine reads SPD *i* at word 6+i and DEP *i* at 9+i (✅ objdump, `LFO.md` §2) |
+| 12..17 | voice record `0x80000110+ping·0x200+track·0x40`, hw 0..5 | AMP p1: PMTR 12–17 write there (✅ objdump, `LFO.md` §5) |
 | 18..23 | voice record hw 6..11 | FX1 page 1 (`r6+0..5`) ✅ |
 | 24..29 | voice record hw 12..17 | **FX2 page 1 (`r6+0..5`)** ✅ |
 | 30..31 | — | **skipped**: `addql #4,%a2` at `0x4000cef6` |

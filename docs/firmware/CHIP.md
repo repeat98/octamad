@@ -252,7 +252,7 @@ every map. Switching the map is an untested lever (`XBUS.md`).
 | range | what | evidence |
 |---|---|---|
 | `0x30000-0x30047` (72 words) | stock's per-frame parameter staging, copied X→`Y:0x1b8` and written back every frame | `do #<$48` loops at `P:0x0a4` (read) and `P:0x366` (write) |
-| `0x30000-0x300AA` (171 words) | the DSP host-port loader + ESAI setup, payload A, boot-time (the ESAIs carry audio, 8-slot network mode; `EXTERNAL.md` §2) | module dump |
+| `0x30000-0x300AA` (171 words) | the DSP host-port loader + ESAI setup, payload A, boot-time (the ESAIs carry audio, 8-slot network mode; `DSP.md` §6c) | module dump |
 | `0x31000-0x31031` (50 words) | bootstrap A | `DSP.md` |
 | `0x32000-0x32039` (58 words) | bootstrap B | `DSP.md` |
 | `0x38000-0x38012` (19 words) | payload B's entry stub, `jsr`s into `0x30082`/`0x3008a` (stock cross-core code sharing) | module dump |

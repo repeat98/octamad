@@ -52,7 +52,7 @@ ones — the DSP toolchain itself is plain CMake). It builds:
 | tool | from | what it is |
 |---|---|---|
 | `dsp_asm` | `vendor/dsp56300` | the DSP56300 assembler. It mis-encodes some instructions silently (`CLAUDE.md`'s trap list). `tools/patches/dsp56300.patch` adds the chip's one-word displaced move (displacement −64..63, data-ALU register); a word or cycle figure recorded before 14 Sep 2026 counts such a move as 2 |
-| `dsp_host` | `tools/harness/dsp_host/` (staged into `vendor/dsp56300` and built there) | this project's emulator harness: runs assembled effects on the dsp56300 emulator core. `docs/remixer/HARNESS.md` |
+| `dsp_host` | `tools/harness/dsp_host/` (staged into `vendor/dsp56300` and built there) | the emulator harness written here: runs assembled effects on the dsp56300 emulator core. `docs/remixer/HARNESS.md` |
 | `emu_bringup.py` | `tools/emu/` | Tier-0 ColdFire bring-up: boots the MAIN OS image on Unicorn's CFV4E core to the RTOS handoff (the remixer's emulator view). Needs `unicorn`: `make emu-setup` (uv, the `emu` extra). `docs/remixer/EMU.md` |
 | `ot_emu` | `tools/emu/ot_emu/` (`make emu-cf`) | the headless C++ port of the machine: boots the built image, loads a project from a staged card, runs the sequencer and both DSP cores. `docs/remixer/EMU.md`, `docs/history/COLDFIRE_PORT.md` |
 | `ot_spec` | `tools/hw/ot_spec.py` | one JSON spec over a project's parts and patterns: `apply` (FX ids by module name, every knob by name, machine type, part names; per pattern track: length, scale, trigs, locks on every page by knob name — PLAYBACK, LFO, AMP, FX1, FX2 — with `clear`; the lock-trig mask follows), `report` (the same shape back), `diff` (two projects, field by field); checksum + read-back on `.work` and `.strd` |
@@ -94,6 +94,31 @@ Two instruction sets, two toolchains:
 | `tools/build/dsp_reach.py` | DSP | control-flow reachability sweep from the real entry points (dispatch tables, vectors, bootstraps) |
 | `scripts/disasm.sh` (`make disasm`) | ColdFire | radare2 on the decompressed MAIN OS with the right arch and base (m68k BE @ `0x40000400`); `emac` uses objdump, the only decoder that reads the ColdFire V4e extensions |
 
+### Disassembling the ColdFire ✅ (Bryan T, 30 Aug 2026; re-read here)
+
+`objdump -m m68k:5407` mangles EMAC regions; `m68k:547x` / `m68k:cfv4e`
+(the same decoder) is required. radare2's m68k backend cannot decode
+`mvs`/`mvz`/`mov3q`/EMAC and, assuming 2-byte opcodes, reads each
+extension word as an instruction: 6,757 undecodable instructions below
+`0x40098000`, 4,543 of them longer than two bytes (`mvz` 4,539, `mvs`
+1,834, EMAC 791; EMAC clusters: `0x40001000` 48, `0x40003000` 62,
+`0x40004000` 50, `0x40007000` 98, `0x4000c000–d000` 47). At `0x40003664`:
+
+| | first four instructions |
+|---|---|
+| `m68k:547x` | `msacl %d0,%a1,%acc2` · `msacl %d0,%a2,%acc3` · `macl %d2,%a1,%a5@+,%a1,%acc0` · `msacl %d5,%a1,%a0@+,%a1,%acc0` |
+| `m68k:5407` | `msacl %d0,%a1` · `.short 0xa4c0` · `btst %d4,%a0@` · `macl %d2,%a1,%a5@+,%a1` |
+| radare2 | `invalid` · `btst.l d4,(a0)` · `invalid` · `btst.l d4,(a0)` |
+
+`scripts/disasm.sh emac <addr> [bytes]` uses `m68k-elf-objdump -m
+m68k:cfv4e`. All 90 ColdFire addresses our docs cited in
+`0x40000400`–`0x4000dfff` were re-read with `cfv4e` (30 Aug 2026); no
+conclusion changed (the four r2-unreadable sites: `0x4000b786` `mov3ql
+#-1,%a1@+`, `0x4000c24a` `mvsb %a3@(0,%d1:l),%d0`, `0x40003664`/`0x40003900`
+EMAC). The menu and descriptor work was Ghidra; the MIDI work was objdump
+`cfv4e`. The Unicorn bring-up needs the CFV4E model for the same reason:
+the default m68k core does not decode this CPU.
+
 ## 4. Building firmware
 
 `tools/build/build_bus.py` is the builder (`make bus` = `XBUS=1 SPEC=1`).
@@ -107,7 +132,7 @@ the selected effects, places them into each payload's donor region in
 priority order, wires the dispatch tables, patches the ColdFire-side menu
 descriptors, installs caves, detours and the DRAM platform, and
 census-checks itself. It is driven by env flags (`DEV`, `NOSHIM`, `MODE`,
-`DFRZAT`, `TPROBE`, …; grep `environ` in the file); the render cache
+`DNOTE`, `TPROBE`, …; grep `environ` in the file); the render cache
 fingerprints every one (`docs/remixer/HARNESS.md`). `make image` repacks
 the result into a card-flashable `.bin` with the build number stamped into
 the OS version string. `docs/remixer/FLASHING.md` before writing to
@@ -123,7 +148,7 @@ Render on the desktop at ~6× real time instead of flashing.
 | `tools/harness/dsp_host` | the emulator harness: boots a payload dump (both payloads, `-memB`, shared window shared), calls effects through the recovered ABI, captures audio, polices memory, meters instructions per block |
 | `tools/harness/rig_render.py` (`make render-rig`) | the whole rig locally: eight tracks on both cores, FX1→FX2 chained per track, ids and knobs from a project part or by name, stems in, per-track + mix wavs and `meter.txt` out |
 | `tools/verify/verify_twocore.py` (`make verify-twocore`, in `make check`) | the two-core gate: the servers on their real cores render bit-identical to the DEV hatch, and under four interleave skews |
-| `tools/verify/verify_onebus.py` (`make verify-onebus`, in `make check`) | the one aux bus on both cores: the chain, the last-live-stage return, MIX passthrough (sample-exact), hosts quiet under a return, the track-8 send refusal, stations without sends, four skews |
+| `tools/verify/verify_onebus.py` (`make verify-onebus`, in `make check`) | the one aux bus on both cores: the chain, each host's print, WET passthrough (sample-exact), the track-8 send refusal, a stored RET byte inert, stations without sends, four skews |
 | `tools/harness/render_reverb.py` (`make reverb IN=..`) | wav → BusVerb → wav, knobs by name, sweeps, wet-only |
 | `tools/harness/send_probe.py` (`make render`, `make render-delay`) | renders a SEND→bus→server path and measures it numerically; `--direct` puts audio through one module on its own track, the way an insert is rendered |
 | `tools/harness/abkit.py`, `station_laws.py`, `pressure.py`, `port_compare.py` | A/B kits for voicing by ear; a station's control laws read off noise; every selectable layout priced and the dearest rendered; the harness against the ColdFire port on one part |

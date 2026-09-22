@@ -209,6 +209,13 @@ def main():
     except ValueError:
         print("  [PASS] a module on a stock FX2 id is refused")
 
+    try:
+        Param(b"SIXSIX")
+        bad += 1
+        print("  [FAIL] a six-character parameter name was accepted without a terminator")
+    except ValueError:
+        print("  [PASS] a six-character parameter name is refused")
+
     # ---- the rig's derivations (tools/remix/rig.py) ---------------------
     # The track model is DERIVED, so hold the derivation to the measured
     # facts: payload A serves TRACKS 5-8, B serves 1-4, an

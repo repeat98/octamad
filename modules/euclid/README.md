@@ -9,15 +9,10 @@ resets phase.
 The `euclid` remix retains the stock Plate, Spring and Dark Reverb rows in
 FX2. Their descriptors, DSP code and dispatch entries stay stock.
 
-The `octapitch-euclid` remix adds the same effect to Octapitch2's REPITCH,
-PREVIEW VOL and FORCE FILENAME BPM improvements. It removes DJ EQ,
-Spring Reverb and Plate Reverb, as requested, and retains every other stock
-effect. Euclid is available in both FX slots; Dark Reverb remains in FX2.
-
 | Page | A | B | C | D | E | F |
 |---|---|---|---|---|---|---|
 | Main | FREQ | RES | DEPTH | DEC / LEN | STEPS | PULSE |
-| Setup | ROT | RATE | TYPE | ATK / EDGE / SLEW | Output mode | MIX |
+| Setup | ROT | RATE | TYPE | ATK / EDGE / SLEW | OUT mode | MIX |
 
 FREQ is the base cutoff for LP/BP/HP/NOTCH and the base gain for AMP. DEPTH is
 bipolar: its center leaves the destination static, positive values increase
@@ -69,11 +64,11 @@ hook publishes the modulated FREQ value after stock scene and LFO processing,
 which otherwise overwrites it. Both PLAY paths call one reset routine and
 restore the condition codes produced by the displaced stock PLAYING store.
 
-Firmware addresses and sequencer-record strides are named and cited against
-`docs/firmware/EXTERNAL.md`. Track scale, length, swing and masks are read
-once per track even when Euclid occupies both FX slots. The ColdFire engine
-derives only the envelope timing used by the active output mode; stopped and
-inactive instances skip it.
+Firmware addresses and sequencer-record strides are named and cited in the
+firmware documentation. Track scale, length, swing and masks are read once
+per track even when Euclid occupies both FX slots. The ColdFire engine derives
+only the envelope timing used by the active output mode; stopped and inactive
+instances skip it.
 
 `filter.asm` contains the stereo two-pole TPT state-variable core and a
 dedicated AMP path. AMP reproduces the original gain arithmetic exactly while

@@ -103,7 +103,7 @@ class Param:
     (docs/firmware/MAINMENU.md 9e); an even slot does not depend on the answer.
     """
 
-    name: bytes | None = None          # 6-byte panel label; b"" blanks it
+    name: bytes | None = None          # <=5 chars in a 6-byte NUL-terminated field; b"" blanks it
     default: int | None = None         # u8 written at P+0x5e+idx
     count: int | None = None           # value count; None leaves the donor's
     active: bool = False               # drawn at all (the enable bitmap)
@@ -126,8 +126,10 @@ class Param:
     def __post_init__(self):
         if self.link and not self.active:
             raise ValueError(f"param {self.name!r}: link on a slot that is not drawn")
-        if self.name is not None and len(self.name) > 6:
-            raise ValueError(f"param name {self.name!r} exceeds 6 bytes")
+        if self.name is not None and len(self.name) > 5:
+            raise ValueError(
+                f"param name {self.name!r} exceeds 5 characters; the panel "
+                f"field is 6 bytes including its NUL terminator")
         if self.labels is not None:
             if self.count is None or len(self.labels) != self.count:
                 raise ValueError(

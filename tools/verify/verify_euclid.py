@@ -414,9 +414,18 @@ def dsp_tests(image):
             p[8] = typ
             rows.append([block, *p])
         switched = render(mem, ep, tone, defaults, f'type_switch_{payload}', rows)
+        # At maximum resonance the settled LP/NOTCH response can reach about
+        # 2x this tone on the ARM64 host. A TYPE edit is safe when its two
+        # 64-block settling windows remain close to the response after they
+        # settle; an absolute ceiling still catches a persistent eruption.
+        transient = (switched[160*16:224*16] + switched[320*16:384*16])
+        settled = (switched[224*16:240*16] + switched[384*16:])
+        transition_peak = max(map(abs, transient))
+        settled_peak = max(map(abs, settled))
         check(f'DSP {payload}: rapid FILTER/AMP/NOTCH changes stay bounded',
-              max(map(abs, switched)) < 400000,
-              f'peak {max(map(abs, switched))}')
+              transition_peak < 450000
+              and transition_peak * 8 <= settled_peak * 9,
+              f'transition {transition_peak}, settled {settled_peak}')
 
         # The denominator must follow the cutoff ramp. Freezing it at the
         # destination caused >20x overshoots on low-level input when closing.
@@ -435,7 +444,7 @@ def dsp_tests(image):
 
 
 
-def playback_test(image, project, crash_trace=False):
+def playback_test(image, project):
     """Boot a copied project and require the modulation to survive stock writes.
 
     The isolated hook test cannot catch an incorrectly placed hook: scene/LFO
@@ -473,20 +482,9 @@ def playback_test(image, project, crash_trace=False):
            '--frames', '4500', '--load-ms', '20000', '--dsp', '--main-level', '64',
            '--audio-out', str(work / 'audio'), '--watch-mem', '0x8000011c,2',
            '--call-at', '2500', '--call', '0x4009c7c4,90,0']
-    if crash_trace:
-        cmd += ['--serial-out', str(work / 'serial')]
     with (work / 'run.log').open('w') as log:
         result = subprocess.run(cmd, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
     log = (work / 'run.log').read_text()
-    if crash_trace:
-        sys.path.insert(0, str(ROOT / 'tools/hw'))
-        from ot_crashlog import Parser
-        events = Parser().feed((work / 'serial.midi').read_bytes())
-        checkpoints = [e for e in events if e['event'] == 'checkpoint']
-        check('Stock MIDI ISR transmits valid diagnostics during full playback',
-              len(checkpoints) >= 2 and not any(e['event'] == 'invalid_trace' for e in events)
-              and any(29 in e['fx_ids'] and e['playing'] for e in checkpoints),
-              f'{len(checkpoints)} checkpoints')
     check('Full firmware plays through a live 120 -> 90 BPM change',
           result.returncode == 0 and 'run ended REACHED' in log and 'returned, d0' in log)
     rows = [(float(m[1]), int(m[2], 16), int(m[3], 16)) for m in re.finditer(
@@ -544,13 +542,9 @@ def main():
     if not a.control_only:
         if a.remix == 'euclid':
             reverb_tests(a.image)
-        elif a.remix in ('octapitch-euclid', 'octapitch-euclid-debug'):
-            reverb_tests(a.image, ('FILTER', 'EQUALIZER', 'PHASER', 'FLANGER',
-                                  'CHORUS', 'SPATIALIZER', 'COMB FILTER',
-                                  'COMPRESSOR', 'LO-FI', 'DELAY', 'DARK REV'))
         firmware_tests(lib, a.image)
         dsp_tests(a.image)
-        playback_test(a.image, a.project, 'CRASH TRACE' in registry.remix(a.remix).modules)
+        playback_test(a.image, a.project)
     print(f'Euclid: {FAILS} failed checks')
     return bool(FAILS)
 

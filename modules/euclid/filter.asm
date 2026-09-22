@@ -1,7 +1,7 @@
 ; Euclid stereo two-pole TPT state-variable filter / amplitude modulator.
 ; The ColdFire control engine publishes the modulated cutoff or gain as FREQ.
 ; No shared buffers. All state is private to r7, in $00..$3f.
-; $20 g2 target, $21 R, $1f c4, $33 inverse denominator
+; $20 g2 target, $21 R, $22 previous TYPE, $1f c4, $33 inverse denominator
 ; $2e running g2, $2f ramp, $34/$35 L states, $36/$37 R states
 ; $23/$24/$25/$26 LP/BP/HP/AMP weights, $28 MIX, $1d dry, $1b wet
 ; Every product uses the audited signed x0,y1 encoding.
@@ -17,6 +17,32 @@ eu_zeroend:
         rts
 
 proc:
+; TYPE, slot 8. AMP keeps value 3 for saved-project compatibility; NOTCH is
+; appended at 4. Invalid saved bytes fall back to LP.
+        move    x:(r6+$d),a
+        and     #>$7f0000,a
+        asr     #$10,a,a
+        move    #>$4,x0
+        cmp     x0,a
+        ble     eu_type_valid
+        clr     a
+eu_type_valid:
+        move    x:(r7+$22),y0           ; previous TYPE
+        move    a1,x:(r7+$22)
+        move    #>$3,x0
+        cmp     x0,a
+        beq     eu_amp_setup
+; The filter did not run while AMP was selected. Clear its four integrators
+; when returning so stale history cannot make the first filtered block click.
+        move    y0,a
+        cmp     x0,a
+        bne     eu_filter_setup
+        clr     a
+        move    a,x:(r7+$34)
+        move    a,x:(r7+$35)
+        move    a,x:(r7+$36)
+        move    a,x:(r7+$37)
+eu_filter_setup:
 ; RES -> R, same law as Spectrum.
         move    x:(r6+$1),x0
         move    #>$4b2350,y1
@@ -65,23 +91,16 @@ proc:
 ; edits even when cutoff is stationary; the sample loop updates it only
 ; while g is actually ramping.
         bsr     eu_denominator
-; TYPE, slot 8: knob field of r6+$d. Only one wet tap is active. AMP uses
-; the modulated FREQ value as gain, pinning the top panel value to unity.
+; Select the wet tap. NOTCH is LP + HP; the existing accumulator saturates
+; the sum safely. AMP branched around the entire SVF above.
         clr     a
         move    a,x:(r7+$23)
         move    a,x:(r7+$24)
         move    a,x:(r7+$25)
-        move    a,x:(r7+$26)
-        move    x:(r6+$d),a
-        and     #>$7f0000,a
-        asr     #$10,a,a
-        move    a1,x0
-        move    x0,a
-        move    #>$3,x0
+        move    x:(r7+$22),a
+        move    #>$4,x0
         cmp     x0,a
-        ble     eu_typeok
-        clr     a
-eu_typeok:
+        beq     eu_notch_taps
         move    r7,r5
         move    #>$23,n5
         move    (r5)+n5
@@ -89,17 +108,11 @@ eu_typeok:
         move    (r5)+n5
         move    #>$7fffff,x0
         move    x0,x:(r5)
-        move    n5,a
-        move    #>$3,x0
-        cmp     x0,a
-        bne     eu_type_done
-        move    x:(r6+$0),a
-        and     #>$7fffff,a
-        move    #>$7f0000,x0
-        cmp     x0,a
+        bra     eu_type_done
+eu_notch_taps:
         move    #>$7fffff,x0
-        teq     x0,a
-        move    a,x:(r7+$26)
+        move    x0,x:(r7+$23)
+        move    x0,x:(r7+$25)
 eu_type_done:
 ; MIX, slot 11: companion field of r6+$e; pin full wet to unity.
         move    x:(r6+$e),a
@@ -265,6 +278,57 @@ eu_den_held:
         move    (r0)+n0
         move    #>$1,n0
 eu_loopend:
+        nop
+        rts
+
+; AMP fast path. It reproduces the old gain and dry/wet arithmetic exactly,
+; but skips coefficient lookup, the reciprocal divide and both stereo SVFs.
+eu_amp_setup:
+        move    x:(r6+$0),a
+        and     #>$7fffff,a
+        move    #>$7f0000,x0
+        cmp     x0,a
+        move    #>$7fffff,x0
+        teq     x0,a
+        move    a,x:(r7+$26)           ; gain
+        move    x:(r6+$e),a
+        and     #>$7f00,a
+        asl     #$8,a,a
+        move    #>$7f0000,x0
+        cmp     x0,a
+        move    #>$7fffff,x0
+        teq     x0,a
+        move    a,x:(r7+$28)           ; MIX
+        move    #>$1,n0
+        do      n7,>eu_amp_loopend
+        move    x:(r0),x0
+        move    x:(r7+$26),y1
+        mpy     x0,y1,a                ; wet = dry * LEVEL
+        move    x0,b
+        sub     b,a
+        asr     #$1,a,a
+        move    a,x0
+        move    x:(r7+$28),y1
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        add     b,a
+        move    a,x:(r0)
+        move    x:(r0+n0),x0
+        move    x:(r7+$26),y1
+        mpy     x0,y1,a
+        move    x0,b
+        sub     b,a
+        asr     #$1,a,a
+        move    a,x0
+        move    x:(r7+$28),y1
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        add     b,a
+        move    a,x:(r0+n0)
+        move    #>$2,n0
+        move    (r0)+n0
+        move    #>$1,n0
+eu_amp_loopend:
         nop
         rts
 

@@ -180,6 +180,7 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	python3 tools/verify/verify_miniverb.py $(REMIX)
 	python3 tools/verify/verify_euclid.py $(REMIX)
 	python3 tools/verify/verify_tapeecho_cpu.py $(REMIX)
+	python3 tools/verify/verify_tapeecho_half.py $(REMIX)
 	$(PY) tools/verify/verify_crashtrace.py $(REMIX)
 	python3 tools/remix/selftest.py
 	python3 tools/verify/verify_slots.py

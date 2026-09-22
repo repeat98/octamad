@@ -15,8 +15,8 @@ static std::vector<uint8_t> read(const char* path) {
 }
 
 int main(int argc, char** argv) {
-    if (argc != 8) {
-        std::fprintf(stderr, "euclid_probe image runtime base state trace mode frames\n");
+    if (argc != 8 && argc != 9) {
+        std::fprintf(stderr, "euclid_probe image runtime base state trace mode frames [moving]\n");
         return 2;
     }
     auto image = read(argv[1]), runtime = read(argv[2]);
@@ -24,6 +24,7 @@ int main(int argc, char** argv) {
     uint32_t state = std::strtoul(argv[4], nullptr, 16);
     unsigned mode = std::strtoul(argv[6], nullptr, 10);
     unsigned frames = std::strtoul(argv[7], nullptr, 10);
+    bool moving = argc == 9;
     ot::Machine m(image);
     for (unsigned i = 0; i < runtime.size(); ++i) m.write8(base + i, runtime[i]);
     auto* cpu = m.getCpuState();
@@ -73,12 +74,20 @@ int main(int argc, char** argv) {
             for (unsigned fx = 0; fx < 2; ++fx) {
                 unsigned h = 32 * track + 6 + 6 * fx, b = 64 * track + 36 + 12 * fx;
                 // Sparse ENV pulses leave room for the full eight-step tail.
-                const unsigned params[] = {40, 48, 100, mode == 0 ? 127u : 48u,
-                                           mode == 0 ? 15u : 7u, mode == 0 ? 1u : 3u};
+                const unsigned params[] = {
+                    moving ? (frame * 17 + track * 9 + fx) & 127u : 40u,
+                    moving ? (frame * 29 + track) & 127u : 48u,
+                    moving ? (frame * 43 + fx) & 127u : 100u,
+                    moving ? (frame * 31 + track) & 127u : mode == 0 ? 127u : 48u,
+                    moving ? (frame * 7 + track) & 63u : mode == 0 ? 15u : 7u,
+                    moving ? (frame * 11 + fx) % 65u : mode == 0 ? 1u : 3u};
                 for (unsigned i = 0; i < 6; ++i) m.write16(rec + 2*(h+i), params[i] << 8);
-                m.write8(rec + b, 0); m.write8(rec + b + 1, 1);
-                m.write8(rec + b + 2, 0); m.write8(rec + b + 3, 0);
-                m.write8(rec + b + 4, mode); m.write8(rec + b + 5, 127);
+                m.write8(rec + b, moving ? (frame * 13 + track) & 63u : 0);
+                m.write8(rec + b + 1, moving ? frame % 5u : 1);
+                m.write8(rec + b + 2, 0);
+                m.write8(rec + b + 3, moving ? (frame * 19 + fx) & 127u : 0);
+                m.write8(rec + b + 4, moving ? frame % 4u : mode);
+                m.write8(rec + b + 5, 127);
                 m.write16(rec + 64*track + 2*(27+fx), 0x1d);
             }
         }
@@ -86,8 +95,8 @@ int main(int argc, char** argv) {
         for (unsigned i = 0; i < 256; ++i) before.push_back(m.read16(rec + 2*i));
         m.write32(0x46104cf0, anchor + frame * 16u * 2880u);
         // Lock the already heard random values after one complete cycle.
-        unsigned output = mode;
-        if (mode == 2 && frame >= 3000) output = 3;
+        unsigned output = moving ? frame % 4u : mode;
+        if (!moving && mode == 2 && frame >= 3000) output = 3;
         for (unsigned track = 0; track < 8; ++track) {
             m.write8(rec + 64*track + 40, output); m.write8(rec + 64*track + 52, output);
             before[32*track+20] = (output << 8) | 127;
@@ -125,7 +134,10 @@ int main(int argc, char** argv) {
     m.write16(rec + 12, 0x1234); m.write16(rec + 24, 0x5678);
     m68k_set_reg(cpu, M68K_REG_D4, 0);
     if (!run(0x4000d562, 0x4000d568)) return 1;
-    if (m.read16(rec + 12) != 0x1234 || m.read16(rec + 24) != 0x5678) return 1;
+    if (m.read16(rec + 12) != 0x1234 || m.read16(rec + 24) != 0x5678) {
+        std::fprintf(stderr, "stock fallback changed Euclid output fields\n");
+        return 1;
+    }
     // The resume PLAY hook must reset phase too, without losing a captured loop.
     std::vector<uint16_t> captured;
     for (unsigned i = 0; i < 64; ++i) captured.push_back(m.read16(state + 2*164 + 24 + 2*i));
@@ -144,9 +156,16 @@ int main(int argc, char** argv) {
     m.write8(rec + 64 + 40, 3);
     if (!run(0x4000d562, 0x4000d568)) return 1;
     // Track 1 was removed above; check a continuously active track's capture.
-    if (m.read32(state + 2*164) != epoch + 1 || m.read32(state + 2*164 + 4) != 12) return 1;
+    if (m.read32(state + 2*164) != epoch + 1
+            || (!moving && m.read32(state + 2*164 + 4) != 12)) {
+        std::fprintf(stderr, "resume hook did not reset phase\n");
+        return 1;
+    }
     for (unsigned i = 0; i < 64; ++i)
-        if (captured[i] != m.read16(state + 2*164 + 24 + 2*i)) return 1;
+        if (captured[i] != m.read16(state + 2*164 + 24 + 2*i)) {
+            std::fprintf(stderr, "resume hook changed captured random value %u\n", i);
+            return 1;
+        }
 
     // Execute the real knob renderer, including its label formatter and
     // Euclid's display hook. Capture its bitmap/text draw calls without

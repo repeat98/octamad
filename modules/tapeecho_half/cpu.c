@@ -1,4 +1,6 @@
-/* CPU Tape Echo: fixed-point, allocation-free. One playback head, fixed
+/* Experimental half-rate Tape Echo: eight wet samples per physical
+ * 16-frame block. All delay, validity, fade and write-position units remain
+ * 44.1 kHz frames; only wet processing runs at 22.05 kHz. Fixed
  * DRIVE=0. FREE has a Q24.8 motor; BEAT snaps with a bounded crossfade.
  * Economy model: two biquads plus a record FIR, block-rate glide, two simple
  * modulation oscillators. No physical-cell or transport-history model.
@@ -6,7 +8,7 @@
  * alias. The stock DMA commits record[] after this function returns. */
 #include "cpu.h"
 #include "cpu_tables.h"
-_Static_assert(sizeof(TapeState) == 200, "cpu_hooks.s allocation: 8 x 200 bytes");
+_Static_assert(sizeof(TapeState) == 260, "hooks.s allocation");
 
 static uint32_t minimum(uint32_t a, uint32_t b) { return a < b ? a : b; }
 static int32_t clip(int32_t a) {
@@ -40,7 +42,7 @@ void te_filter_block(int32_t *, const int32_t *, int32_t *);
 static void filter_block(int32_t *buffer, const int32_t *c, int32_t *z) {
     int32_t x1=z[0], x2=z[1], y1=z[2], y2=z[3], error=z[4];
     const int32_t b0=c[0], b1=c[1], b2=c[2], a1=c[3], a2=c[4];
-    for (unsigned i=0;i<TE_FRAMES;++i) {
+    for (unsigned i=0;i<TE_FRAMES/2;++i) {
     int32_t x=buffer[i];
     if (x > 268435456) x = 268435456;
     if (x < -268435456) x = -268435456;
@@ -105,14 +107,14 @@ uint32_t te_target(const TapeParams *p, uint32_t tempo) {
 
 static int32_t read_head(volatile int32_t *ring, uint32_t write,
                          uint32_t delay, uint32_t valid) {
-    unsigned whole = delay >> 8, frac = delay & 255;
-    /* Exclude all tape recorded by a previously selected effect. This is
-     * also the startup clear: bounded work, no 1.4 MB memset in the ISR. */
-    if (whole + 1u > valid) return 0;
-    unsigned newer = write >= whole ? write - whole : write + TE_RING - whole;
-    unsigned older = newer ? newer - 1 : TE_RING - 1;
-    int32_t a = ring[2u * newer] >> 5, b = ring[2u * older] >> 5;
-    return a + mul31(b - a, (int32_t)(frac << 23));
+    unsigned whole=delay>>8;
+    if(whole+2>valid)return 0;
+    int32_t pos=(int32_t)(write*256u-delay);
+    if(pos<0)pos+=TE_RING*256;
+    unsigned index=((uint32_t)pos>>9)*2;
+    unsigned next=index+2==TE_RING?0:index+2;
+    int32_t a=ring[2*index]>>5,b=ring[2*next]>>5;
+    return a+mul31(b-a,((uint32_t)pos&511u)<<22);
 }
 
 /* Contiguous-head fast path. Use an advancing fractional read position
@@ -133,31 +135,31 @@ static void read_settled(int32_t *restrict out, volatile int32_t *restrict ring,
     int32_t hi=base+15*256-((wobble<end?wobble:end)>>8);
     if (hi<0) { base+=ring_units;lo+=ring_units;hi+=ring_units; }
     else if (lo>=ring_units) { base-=ring_units;lo-=ring_units;hi-=ring_units; }
-    if (lo>=0 && hi<(int32_t)((TE_RING-1)*256)) {
+    if (lo>=0 && hi<(int32_t)((TE_RING-2)*256)) {
 #ifdef __m68k__
-        te_read_linear(out,ring,base,wobble,step);
+        te_read_linear(out,ring,base,wobble,2*step);
 #else
-        for (unsigned i=0;i<TE_FRAMES;++i) {
-            wobble+=step;
-            uint32_t position=(uint32_t)(base-(wobble>>8)), index=position>>8;
-            int32_t a=ring[2*index]>>5,b=ring[2*index+2]>>5;
-            out[i]=a+mul31(b-a,(position&255u)<<23);
-            base+=256;
+        for (unsigned i=0;i<TE_FRAMES/2;++i) {
+            wobble+=2*step;
+            uint32_t position=(uint32_t)(base-(wobble>>8)), index=(position>>9)*2;
+            int32_t a=ring[2*index]>>5,b=ring[2*index+4]>>5;
+            out[i]=a+mul31(b-a,(position&511u)<<22);
+            base+=512;
         }
 #endif
         return;
     }
-    for (unsigned i=0;i<TE_FRAMES;++i) {
-        wobble += step;
+    for (unsigned i=0;i<TE_FRAMES/2;++i) {
+        wobble += 2*step;
         int32_t position=base-(wobble>>8);
         if (position<0) position += TE_RING*256;
         else if (position>=(int32_t)(TE_RING*256)) position -= TE_RING*256;
-        unsigned index=(uint32_t)position >> 8;
-        unsigned next=index+1 == TE_RING ? 0 : index+1;
+        unsigned index=((uint32_t)position >> 9)*2;
+        unsigned next=index+2 == TE_RING ? 0 : index+2;
         int32_t a=ring[2*index]>>5, b=ring[2*next]>>5;
-        int32_t sample=a+mul31(b-a,((uint32_t)position&255u)<<23);
+        int32_t sample=a+mul31(b-a,((uint32_t)position&511u)<<22);
         out[i] = sample;
-        base += 256;
+        base += 512;
     }
 }
 
@@ -171,17 +173,17 @@ static void render_head(int32_t *out, volatile int32_t *ring, uint32_t write,
     int32_t end=offset+16*step;
     int32_t lo=(int32_t)position+((offset<end?offset:end)>>8);
     int32_t hi=(int32_t)position+((offset>end?offset:end)>>8);
-    if (lo>=32*256 && hi<=(int32_t)((TE_RING-2)*256) && ((unsigned)hi>>8)+1<=valid) {
+    if (lo>=32*256 && hi<=(int32_t)((TE_RING-2)*256) && ((unsigned)hi>>8)+2<=valid) {
         read_settled(out,ring,write,position,offset,step);
     } else if (lo<32*256 || ((unsigned)lo>>8)+1<=valid+15) {
-        for (unsigned i=0;i<TE_FRAMES;++i) {
-            offset+=step;
+        for (unsigned i=0;i<TE_FRAMES/2;++i) {
+            offset+=2*step;
             int32_t delay=(int32_t)position+(offset>>8);
             if (delay<32*256) delay=32*256;
             if (delay>(int32_t)((TE_RING-2)*256)) delay=(TE_RING-2)*256;
-            out[i]=read_head(ring,write+i,delay,valid+i);
+            out[i]=read_head(ring,write+2*i,delay,valid+2*i);
         }
-    } else for (unsigned i=0;i<TE_FRAMES;++i) out[i]=0;
+    } else for (unsigned i=0;i<TE_FRAMES/2;++i) out[i]=0;
 }
 
 /* Keep constant gains and the PRNG in registers through the block. Knob
@@ -190,29 +192,17 @@ static void render_head(int32_t *out, volatile int32_t *ring, uint32_t write,
 static __attribute__((noinline)) void record_settled(TapeState *restrict s,
         const int32_t *restrict playback, int32_t *restrict audio,
         int32_t *restrict recording) {
-    const int32_t drive=te_record_gain[0], feedback=s->feedback, makeup=te_makeup[0];
-    const int32_t noise=s->hiss>>16, mix=s->mix;
+    const int32_t drive=te_record_gain[0], feedback=s->feedback;
+    const int32_t noise=s->hiss>>16;
     uint32_t rng=s->rng;
-    for (unsigned i=0;i<TE_FRAMES;++i) {
-        int32_t wet=playback[i], l=audio[2*i]>>5, r=audio[2*i+1]>>5;
+    for (unsigned i=0;i<TE_FRAMES/2;++i) {
+        int32_t wet=playback[i], l=audio[i], r=l;
         rng=rng*1664525u+1013904223u;
         int32_t rec=amplify((l+r)/2,drive)+amplify(wet,feedback)+mul31(noise,(int32_t)rng);
         if (rec>268435456) rec=268435456;
         if (rec<-268435456) rec=-268435456;
         recording[i]=rec;
-        if (!mix) continue;
-        wet=amplify(wet,makeup);
-        int32_t left,right;
-        if (mix==2147483640) {
-            /* Full wet is mono. Drop the old dry-dependent one-Q23-LSB
-             * interpolation quirk, clip once, and duplicate the result. */
-            left=right=clip(wet>>3);
-        } else {
-            left=clip((l+mul31(wet-l,mix))>>3);
-            right=clip((r+mul31(wet-r,mix))>>3);
-        }
-        audio[2*i]=(int32_t)((uint32_t)left<<8);
-        audio[2*i+1]=(int32_t)((uint32_t)right<<8);
+
     }
     s->rng=rng;
 }
@@ -220,12 +210,11 @@ static __attribute__((noinline)) void record_settled(TapeState *restrict s,
 void te_record_block(TapeState *, const int32_t *, int32_t *, int32_t *,
                      int32_t, int32_t, int32_t);
 void te_finish_record(const int32_t *, int32_t *, int32_t *, const int32_t *);
-void te_record_wet_finish(TapeState *, const int32_t *, int32_t *, int32_t *);
 #endif
 
-void te_process(TapeState *restrict s, const TapeParams *restrict p,
+static void te_half_core(TapeState *restrict s, const TapeParams *restrict p,
                 volatile int32_t *restrict ring, uint32_t write,
-                int32_t *restrict audio, int32_t *restrict record) {
+                int32_t *restrict audio, int32_t *restrict record, int32_t *wet_out) {
     if (p->tempo >= 720 && p->tempo <= 7200) s->tempo = p->tempo;
     if (s->tempo < 720 || s->tempo > 7200) s->tempo = 2880;
     uint32_t target = te_target(p, s->tempo);
@@ -289,7 +278,9 @@ void te_process(TapeState *restrict s, const TapeParams *restrict p,
     if (update_corner || update_worn || s->filter_pending) {
         s->filter_pending=0;
         for (unsigned k=0;k<1;++k) for (unsigned j=0;j<5;++j) {
-            int32_t delta=s->active ? (s->filter_targets[k][j]-s->coefficients[k][j])/8
+            /* Half-rate a1 can cross the full signed-32-bit difference
+             * range during BEAT jumps. Widen BEFORE subtracting. */
+            int32_t delta=s->active ? ((int64_t)s->filter_targets[k][j]-s->coefficients[k][j])/8
                                     : s->filter_targets[k][j];
             s->coefficients[k][j]+=delta;
             s->filter_pending |= delta!=0;
@@ -298,9 +289,9 @@ void te_process(TapeState *restrict s, const TapeParams *restrict p,
     }
     s->active = 1;
     /* ~12 ms gain ramps; no gain reset or phase reset at FREE/BEAT changes. */
-    int32_t dm = (mix-s->mix)/512, df = (feedback-s->feedback)/512;
+    int32_t dm = 0, df = 2*((feedback-s->feedback)/512);
     int32_t da = ((int32_t)(age<<16)-s->age)/512, dw = (wow-s->wow)/512;
-    int32_t dn = ((te_hiss[age]<<16)-s->hiss)/512;
+    int32_t dn = 2*(((te_hiss[age]<<16)-s->hiss)/512);
     /* Two cheap oscillators: 0.8 Hz wow, gently randomized ~8..12 Hz
      * flutter. No travel-time integration, speed-dependent oscillator
      * divisions, capstan harmonic or drift oscillator. At WOW=44 this
@@ -346,9 +337,9 @@ void te_process(TapeState *restrict s, const TapeParams *restrict p,
         /* Reuse the later record scratch; there is no third audio array. */
         render_head(recording,ring,write,s->fade_from,s->wobble,wobble_step,s->valid);
         uint32_t blend=(TE_FADE-s->fade_left)<<22;
-        for (unsigned i=0;i<TE_FRAMES;++i) {
+        for (unsigned i=0;i<TE_FRAMES/2;++i) {
             playback[i]=recording[i]+mul31(playback[i]-recording[i],(int32_t)blend);
-            blend+=1u<<22;
+            blend+=1u<<23;
         }
         s->fade_left-=TE_FRAMES;
     }
@@ -358,19 +349,14 @@ void te_process(TapeState *restrict s, const TapeParams *restrict p,
     filter_block(playback,te_fixed[1],s->filters[1]);
     filter_block(playback,s->coefficients[0],s->filters[2]);
 #ifdef __m68k__
-    if (s->mix==2147483640 && !(dm|df|dn)) {
-        te_record_wet_finish(s,playback,audio,record);
-    } else {
-        te_record_block(s,playback,audio,recording,dm,df,dn);
-        te_finish_record(recording,record,s->filters[0],te_curve);
-    }
+    te_record_block(s,playback,audio,recording,dm,df,dn);
 #else
     if (!(dm|df|dn)) record_settled(s,playback,audio,recording);
-    else for (unsigned i=0;i<TE_FRAMES;++i) {
+    else for (unsigned i=0;i<TE_FRAMES/2;++i) {
         s->mix += dm; s->feedback += df;
         s->hiss += dn;
         int32_t wet=playback[i];
-        int32_t l = audio[2*i] >> 5, r = audio[2*i+1] >> 5;
+        int32_t l = audio[i], r = l;
         int32_t hiss = mul31(s->hiss >> 16,(int32_t)hiss_random(s));
         recording[i] = amplify((l+r)/2,te_record_gain[0]) + amplify(wet,s->feedback) + hiss;
         /* Only the input to the record chain can exceed the filter bound.
@@ -378,19 +364,17 @@ void te_process(TapeState *restrict s, const TapeParams *restrict p,
          * filter clamps its output. Hoist the input clamp out of the kernels. */
         if (recording[i]>268435456) recording[i]=268435456;
         if (recording[i]<-268435456) recording[i]=-268435456;
-        wet = amplify(wet,te_makeup[0]);
-        if (s->mix) {
-            int32_t left = clip((l + mul31(wet - l, s->mix)) >> 3);
-            int32_t right = clip((r + mul31(wet - r, s->mix)) >> 3);
-            audio[2*i] = (int32_t)((uint32_t)left << 8);
-            audio[2*i+1] = (int32_t)((uint32_t)right << 8);
-        }
+
     }
+#endif
     /* [1,6,1]/8 record FIR: unity DC gain, no multiplies, no recursive
      * state/limit cycles. The combined playback table compensates its
      * different top-end slope; the tape curve itself is unchanged. */
+#ifdef __m68k__
+    te_finish_record(recording,record,s->filters[0],te_curve);
+#else
     int32_t x1=s->filters[0][0], x2=s->filters[0][1];
-    for (unsigned i=0;i<TE_FRAMES;++i) {
+    for (unsigned i=0;i<TE_FRAMES/2;++i) {
         int32_t x=recording[i];
         int32_t shaped=x1+((x-2*x1+x2)>>3);
         x2=x1; x1=x;
@@ -399,11 +383,77 @@ void te_process(TapeState *restrict s, const TapeParams *restrict p,
     }
     s->filters[0][0]=x1; s->filters[0][1]=x2;
 #endif
+    for (unsigned i=0;i<8;++i) wet_out[i]=amplify(playback[i],te_makeup[0]);
     s->age += 16*da; s->wow += 16*dw;
     /* Exact dry must not leave a tiny ramp residual forever. */
     if (!mix && s->mix < 512) s->mix = 0;
     if (!wow && s->wow < 512) s->wow = 0;
     s->valid = minimum(s->valid + TE_FRAMES, TE_RING - 1);
+}
+
+
+/* Experimental 22.05 kHz wet engine. 11-tap half-band conversion:
+ * [3,0,-25,0,150,256,150,0,-25,0,3]/512. Unity DC;
+ * reconstruction doubles the taps and evaluates its two polyphases.
+ * All converter arithmetic uses Q6.26, with room for FIR overshoot. */
+static int32_t halfband(int32_t a, int32_t b, int32_t c) {
+#ifdef __m68k__
+    int32_t out;
+    const int32_t ca=3<<22, cb=-25*(1<<22), cc=150<<22;
+    __asm__ volatile("mac.l %1,%2,%%acc0\n\tmac.l %3,%4,%%acc0\n\tmac.l %5,%6,%%acc0\n\tmovclr.l %%acc0,%0"
+        : "=d"(out) : "d"(a),"d"(ca),"d"(b),"d"(cb),"d"(c),"d"(cc));
+    return out;
+#else
+    return (int32_t)(((((int64_t)a*3)>>1)+((-(int64_t)b*25)>>1)+(((int64_t)c*150)>>1))>>8);
+#endif
+}
+#ifdef __m68k__
+int32_t te_half_output(int32_t *, const int32_t *, const int32_t *, int32_t *, int32_t, int32_t);
+#endif
+void te_process(TapeState *s, const TapeParams *p, volatile int32_t *ring,
+                uint32_t write, int32_t *audio, int32_t *record) {
+    int32_t input[26], half_audio[8], half_record[16], wet[13];
+    int32_t start_mix=s->active?s->mix:gain(p->mix);
+    for(unsigned i=0;i<10;++i) input[i]=s->active?s->input_history[i]:0;
+    for(unsigned i=0;i<5;++i) wet[i]=s->active?s->wet_history[i]:0;
+    for(unsigned i=0;i<16;++i)
+        input[10+i]=((audio[2*i]>>5)+(audio[2*i+1]>>5))/2;
+    for(unsigned i=0;i<8;++i) {
+        const int32_t *x=input+2*i;
+        int32_t v=halfband(x[0]+x[10],x[2]+x[8],x[4]+x[6])+(x[5]>>1);
+        /* The core's public audio representation is Q1.31. */
+        if(v>67108863)v=67108863;
+        if(v<-67108864)v=-67108864;
+        half_audio[i]=v;
+    }
+    te_half_core(s,p,ring,write,half_audio,half_record,wet+5);
+    for(unsigned i=0;i<10;++i)s->input_history[i]=input[16+i];
+    for(unsigned i=0;i<5;++i)s->wet_history[i]=wet[8+i];
+    int32_t mix=start_mix, dm=(gain(p->mix)-mix)/512;
+#ifdef __m68k__
+    mix=te_half_output(audio,wet,half_record,record,dm,mix);
+#else
+    for(unsigned i=0;i<8;++i) {
+        /* Ring sample pairs hold one half-rate value. The head advances
+         * two physical frames/sample, retaining stock DMA and ring size. */
+        int32_t r=half_record[2*i];
+        record[4*i]=record[4*i+1]=record[4*i+2]=record[4*i+3]=r;
+        const int32_t *x=wet+i;
+        int32_t even=2*halfband(x[0]+x[5],x[1]+x[4],x[2]+x[3]);
+        int32_t odd=x[3];
+        for(unsigned j=0;j<2;++j) {
+            mix+=dm;
+            if(!mix)continue;
+            int32_t w=j?odd:even;
+            for(unsigned c=0;c<2;++c) {
+                unsigned k=4*i+2*j+c;
+                int32_t dry=audio[k]>>5;
+                audio[k]=(int32_t)((uint32_t)clip((dry+mul31(w-dry,mix))>>3)<<8);
+            }
+        }
+    }
+#endif
+    s->mix=(!gain(p->mix)&&mix<512)?0:mix;
 }
 
 #ifndef TE_HOST

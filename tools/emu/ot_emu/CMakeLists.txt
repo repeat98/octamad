@@ -90,3 +90,9 @@ add_executable(ot_tapeecho_cpu_test ../../harness/tapeecho_cpu_probe.cpp
     ../../../modules/tapeecho/cpu.c)
 target_compile_definitions(ot_tapeecho_cpu_test PRIVATE TE_HOST=1)
 target_link_libraries(ot_tapeecho_cpu_test PRIVATE ot_machine)
+
+# Opt-in half-rate experiment; shipping Tape Echo and its oracle are unchanged.
+add_executable(ot_tapeecho_half_test ../../harness/tapeecho_cpu_probe.cpp
+    ../../../modules/tapeecho_half/cpu.c)
+target_compile_definitions(ot_tapeecho_half_test PRIVATE TE_HOST=1 TE_HALF_RATE=1)
+target_link_libraries(ot_tapeecho_half_test PRIVATE ot_machine)

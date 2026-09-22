@@ -67,18 +67,6 @@ uint16_t eu_process(EuState *s, const EuClock *c, const EuParams *p,
     unsigned mode = min_u(p->mode, 3);
     uint32_t period = p->scale << min_u(p->rate, 4);
     if (!period) period = 6;
-    uint32_t duration = (period * EU_QUANTUM) >> 16;
-    uint32_t attack = duration * p->attack * p->attack / 16129u;
-    /* Keep the original short range through one step. The upper half
-     * opens out to eight steps, allowing tails to cross several rests. */
-    uint32_t decay;
-    if (p->decay < 64)
-        decay = duration * (p->decay + 1u) * (p->decay + 1u) / 4096u;
-    else {
-        unsigned tail = p->decay - 63u;
-        decay = duration + duration * 7u * tail * tail / 4096u;
-    }
-    if (!decay) decay = 1;
 
     if (!s->initialized) {
         s->rng = 0x6d2b79f5u ^ (0x9e3779b9u * (identity + 1));
@@ -136,26 +124,43 @@ uint16_t eu_process(EuState *s, const EuClock *c, const EuParams *p,
         }
     }
 
-    uint32_t age = s->age >> 14;
     if (!running || !k) {
         /* Stop and zero pulses settle to the base filter. The random table
          * survives stops and restarts; LOOP therefore remains repeatable. */
         s->active = 0;
         s->level = 0;
-    } else if (s->active && mode == 0) {
-        if (age < attack) s->level = interpolate(s->origin, EU_MAX, age, attack);
-        else {
-            unsigned ramp = interpolate(EU_MAX, 0, age - attack, decay);
-            s->level = ramp * ramp / EU_MAX; /* curved, finite decay */
+    } else if (s->active) {
+        /* Derive only the timing this output mode consumes. These divisions
+         * used to run for every instance on every frame: RAND/LOOP paid for
+         * ENV decay, and an inactive or stopped effect paid for all of it. */
+        uint32_t duration = (period * EU_QUANTUM) >> 16;
+        uint32_t attack = duration * p->attack * p->attack / 16129u;
+        uint32_t age = s->age >> 14;
+        if (mode == 0) {
+            /* Keep the original short range through one step. The upper half
+             * opens out to eight steps, allowing tails to cross rests. */
+            uint32_t decay;
+            if (p->decay < 64)
+                decay = duration * (p->decay + 1u) * (p->decay + 1u) / 4096u;
+            else {
+                unsigned tail = p->decay - 63u;
+                decay = duration + duration * 7u * tail * tail / 4096u;
+            }
+            if (!decay) decay = 1;
+            if (age < attack) s->level = interpolate(s->origin, EU_MAX, age, attack);
+            else {
+                unsigned ramp = interpolate(EU_MAX, 0, age - attack, decay);
+                s->level = ramp * ramp / EU_MAX; /* curved, finite decay */
+            }
+        } else if (mode == 1) {
+            uint32_t length = duration * (p->decay + 1u) / 128u;
+            if (!length) length = 1;
+            uint32_t edge = min_u(attack, length / 2);
+            s->level = age < length ? interpolate(0, EU_MAX, age, edge)
+                                  : interpolate(EU_MAX, 0, age - length, edge);
+        } else {
+            s->level = interpolate(s->origin, s->target, age, attack);
         }
-    } else if (s->active && mode == 1) {
-        uint32_t length = duration * (p->decay + 1u) / 128u;
-        if (!length) length = 1;
-        uint32_t edge = min_u(attack, length / 2);
-        s->level = age < length ? interpolate(0, EU_MAX, age, edge)
-                              : interpolate(EU_MAX, 0, age - length, edge);
-    } else if (s->active && mode >= 2) {
-        s->level = interpolate(s->origin, s->target, age, attack);
     }
     int32_t depth = (int32_t)p->depth - 16384;
     int32_t cutoff = p->freq + depth * (int32_t)s->level / 16384;

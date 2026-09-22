@@ -2,7 +2,8 @@
 import math
 
 from remix.schema import (BusRole, Detour, DspSection, Formatter, Harness,
-                          Kind, Linked, MenuEntry, ModeView, Module, Param, YBase)
+                          Kind, Linked, MenuEntry, ModeView, Module, NameSelect,
+                          Param, YBase)
 
 P, S, W, B = (Formatter.PLAIN, Formatter.STEPPED,
               Formatter.WIDE_STEPPED, Formatter.BIPOLAR)
@@ -27,8 +28,8 @@ MODULE = Module(
               doc="Shift rhythm and captured values right, modulo STEPS"),
         Param(b"RATE", 1, 5, True, S, labels=("1/32", "1/16", "1/8", "1/4", "1/2"),
               doc="Division relative to the track speed; 1/16 = one track step"),
-        Param(b"TYPE", 0, 4, True, S, labels=("LP", "BP", "HP", "AMP"),
-              doc="Two-pole filter response, or amplitude modulation"),
+        Param(b"TYPE", 0, 5, True, S, labels=("LP", "BP", "HP", "AMP", "NOTCH"),
+              doc="Two-pole low/high/band/notch filter response, or amplitude modulation"),
         Param(b"ATTACK", 0, 128, True, P, doc="Attack / gate edge / random slew, 0..one step"),
         Param(b"OUTPUT", 0, 4, True, S, labels=("ENV", "GATE", "RAND", "LOOP"),
               doc="Pulse envelope, timed gate, random sample-and-hold, captured random"),
@@ -40,6 +41,15 @@ MODULE = Module(
         ModeView(1, names={3: b"LEN", 9: b"EDGE"}),
         ModeView(2, names={3: b"--", 9: b"SLEW"}),
         ModeView(3, names={3: b"--", 9: b"SLEW"}),
+    ),
+    name_selects=(
+        NameSelect(8, (
+            ModeView(0, names={0: b"FREQ", 1: b"RES", 2: b"DEPTH"}),
+            ModeView(1, names={0: b"FREQ", 1: b"RES", 2: b"DEPTH"}),
+            ModeView(2, names={0: b"FREQ", 1: b"RES", 2: b"DEPTH"}),
+            ModeView(3, names={0: b"LEVEL", 1: b"--", 2: b"AMT"}),
+            ModeView(4, names={0: b"FREQ", 1: b"RES", 2: b"DEPTH"}),
+        )),
     ),
     dsp=DspSection(asm="modules/euclid/filter.asm", priority=16,
                    bus_role=BusRole.NONE, ybase=YBase.NEVER, ptable=G2),

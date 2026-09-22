@@ -4,6 +4,142 @@
 engine. **Not a hardware capture or a real-time certification.** This pass
 brings the CPU voice closer to Galaxy without moving it back to the DSP.
 
+## One-page restoration and parameter spikes (21 Sep 2026)
+
+The six experimental page-2 controls were removed after hardware reports of
+poor UI responsiveness and ineffective SLEW. This restores the saved optimized
+one-page engine exactly: fixed 0.8 Hz wow rate, original flutter, two-sample
+per-block FREE slew, AGE-linked hiss, fixed 106 Hz low cut, no freeze, and the
+original 200-byte state. The detail page is disabled again.
+
+The parameter-stress gate remains. With eight Tape Echo instances, full
+synthetic history and MIX=90, it applies synchronized endpoint reversals every
+1, 16 and 64 blocks and profiles the actual worst block:
+
+| Case | p95 | p99 | Peak instructions/block |
+| --- | ---: | ---: | ---: |
+| Settled | 25,570 | 25,580 | 25,604 |
+| TIME | 25,907 | 25,981 | 26,045 |
+| FDBK | 26,544 | 26,562 | 26,575 |
+| WOW | 25,568 | 25,588 | 25,602 |
+| AGE | 26,816 | 26,830 | 26,848 |
+| SYNC | 31,180 | 31,284 | 31,458 |
+| MIX | 26,578 | 26,593 | 26,599 |
+| All page-1 controls, FREE | 27,030 | 27,071 | 27,091 |
+| All page-1 controls, BEAT | 32,275 | 32,345 | 32,466 |
+
+The earlier two-page combined-control peak was 35,614 after optimization
+(36,424 before it). Removing page 2 lowers that case to 32,466. Counts exclude
+cache, DMA and bus stalls and do not certify hardware responsiveness.
+
+## Bit-exact kernel optimization (21 Sep 2026)
+
+This pass preserves the existing economy voice, control timing, tables and
+native C oracle. Filter kernels consume the old input history before
+replacing it, removing two register copies per sample without changing
+individual EMAC product truncation or the bounded sum. Settled recording
+extracts the hiss gain once per block, preserving the original full-precision
+state word. FIR history registers exchange roles between samples. Small
+unrolled groups reduce loop comparisons/branches: four samples per filter
+iteration and two per recording, FIR/curve and head-reader iteration.
+
+Same full stock eight-track routine, 1500 warm-up + 1000 measured blocks;
+means below count executed instructions, not hardware cycles:
+
+| Configuration | Before | After | Reduction |
+| --- | ---: | ---: | ---: |
+| Original stock DELAY x8 | 7,628 | 7,628 | 0% |
+| Patched stock DELAY x8 | 7,892 | 7,892 | 0% |
+| Tape x1 WOW=44 + stock x7 | 10,231 | 10,040 | 1.9% |
+| Tape x8 settled WOW=44 | 26,620 | 25,092 | 5.7% |
+| Tape x8 moving FREE TIME | 26,934 | 25,406 | 5.7% |
+| Tape x8 changing BEAT TIME | 28,344 | 26,789 | 5.5% |
+| Tape x8 all controls moving | 32,165 | 30,929 | 3.8% |
+| Tape x8 all controls moving, full synthetic history | 33,105 | 31,836 | 3.8% |
+
+The settled eight-instance ratio falls from 3.49x to 3.29x original stock.
+The no-WOW per-instance increment over patched stock falls from 2,286 to
+2,095 instructions (8.4%). Full-history stress peaks at 32,233, down from
+33,505. The profiled two-instance kernels fall from 1408 to 1248 (filter),
+1980 to 1854 (record), 1084 to 1020 (FIR/curve), and 920 to 888 (reader).
+
+The Tape Echo verifier passes unchanged: native voice/control gates,
+compiled ColdFire/native output and state identity under eight-track
+control sweeps and history wrap, kernel clamps/carry/ABI/guards, uncached
+read counts, and stock DELAY audio/ring identity. No quality tolerance is
+relaxed. Assembled code/tables grow by 1152 bytes (167282 to 168434);
+instance state, tables, rings and DSP processing are unchanged. Additional
+code may affect instruction-cache behavior, so these instruction savings
+still require hardware timing; they do not resolve the reported freezes.
+
+### Fused full-wet record path (21 Sep 2026)
+
+The settled full-wet (`MIX=127`) path now constructs the feedback record,
+applies the record FIR and tape curve, stages the stereo DMA record, and
+writes the mono wet output in one assembly pass. This removes the temporary
+record-buffer round trip, one kernel prologue/epilogue, and repeated constant
+loads. The two former kernels cost about 1,413 instructions per instance;
+the fused kernel costs 1,135. Record, feedback, filtering, saturation, hiss,
+and control state remain fixed-point identical.
+
+The only intentional audio change is at exactly `MIX=127`: the wet sample is
+clipped once and copied to both channels. The former interpolation retained a
+dry-dependent error of at most one Q23 output LSB. Other MIX values continue
+through the original stereo interpolation path.
+
+| Configuration | Before fusion | Fused | Change |
+| --- | ---: | ---: | ---: |
+| Tape x1 WOW=44 + stock x7 | 10,040 | 9,781 | -2.6% |
+| Tape x8 settled WOW=44 | 25,092 | 23,018 | -8.3% |
+| Tape x8 moving FREE TIME | 25,406 | 23,336 | -8.1% |
+| Tape x8 changing BEAT TIME | 26,789 | 24,724 | -7.7% |
+| Tape x8 moving FREE, MIX=90 | 25,670 | 25,872 | +0.8% |
+| Tape x8 all controls moving | 30,929 | 31,131 | +0.7% |
+| Tape x8 all controls moving, full history | 31,836 | 32,038 | +0.6% |
+
+The small non-full-wet increase is the dispatch and changed compiler register
+allocation. The full-wet saving is much larger, and the stress peak
+remains below the pre-optimization result. Relative to the original 26,620
+settled measurement, both optimization passes together save 13.5%. The
+assembled image grows another 620 bytes, from 168,434 to 169,054.
+
+### Per-function profiles
+
+The ColdFire benchmark now profiles 64 complete blocks for each important
+scenario, rather than attributing one block from the two-instance moving-TIME
+fixture. It reports instructions per full eight-track block, per active Tape
+instance, and as a share of the complete routine. Symbol attribution is
+exclusive: `te_process` excludes time spent in its assembly callees.
+
+| Function | Settled MIX=127 | Settled MIX=0 | Full-history/all-controls |
+| --- | ---: | ---: | ---: |
+| `te_record_wet_finish` | 1,135 / Tape | — | — |
+| `te_record_block` | — | 516 / Tape | 1,075 / Tape |
+| `te_filter_block` (both biquads) | 624 | 624 | 624 |
+| `te_finish_record` (FIR + curve) | — | 494 | 494 |
+| `te_read_linear` | 444 | 444 | 878 |
+| `te_process` exclusive control work | 298 | 309 | 502 |
+| `render_head` wrapper | 59 | 59 | 118 |
+| `te_cpu_frame` | 96 | 96 | 96 |
+| `te_cpu_hook` | 10 | 10 | 10 |
+
+The pre-fusion profile established the optimization order. At settled
+MIX=127, record/mix plus FIR/saturation cost 1,413 instructions per instance.
+MIX=0 showed that about 403 of `te_record_block`'s former 919 instructions
+were output mixing; record construction itself costs about 516. The retained
+fusion reduces the combined default path to 1,135. General MIX=90 remains on
+the separate kernels at 952 + 494. Under all-control stress, gain ramps add
+work and active BEAT fades nearly double the reader. The fixed filters and
+FIR/curve do not grow with automation.
+
+Two character-changing trials were rejected after measurement. A parabolic
+soft clip passed the voice gates but saved only about 1.1% overall. A fitted
+one-pole playback high-pass saved only about 0.3% once it retained clamps and
+fraction behavior, while changing the low-frequency noise floor. Neither is
+kept in the generated engine. The retained fused path instead attacks the
+measured record/FIR cost without reducing sample rate or changing either
+playback filter.
+
 ## Eight-instance candidate (OCTACLID5, 20 Sep 2026)
 
 OCTACLID4 now freezes while editing the sixth instance (owner report).

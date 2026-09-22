@@ -258,6 +258,12 @@ def firmware_tests(lib, image, frames=10000):
             got = values[:2] + [s.triggers for s in states[:2]] + values[2:] + [s.triggers for s in states[2:]]
             if got != row[1:]: first_diff = (frame, got, row[1:]); break
         check(f'ColdFire mode {mode}: exact match to native control for both FX slots on tracks 1 and 8', first_diff is None, str(first_diff or f'{frames} frames'))
+    trace = OUT / 'cf_moving.csv'
+    result = run(['out/emu/ot_euclid_test', image, 'out/platform/runtime.raw',
+                  f'{json.loads((ROOT / "out/platform/layout.json").read_text())["base"]:x}',
+                  f'{symbols["eu_states"]:x}', trace, 0, frames, 'moving'])
+    check('ColdFire all controls moving on 16 instances remains bounded',
+          'PASS:' in result, result.strip())
 
 
 def reverb_tests(image, keys=('PLATE REV', 'SPRING REV', 'DARK REV')):
@@ -305,15 +311,21 @@ def dsp_tests(image):
     count = 16000
     defaults = [p.default or 0 for p in mod.params]
 
-    def render(mem, ep, signal, values, label, automation=None):
+    def render(mem, ep, signal, values, label, automation=None, meter=False):
         src, dst = OUT / 'input.raw', OUT / f'{label}.raw'
         src.write_bytes(struct.pack(f'<{len(signal)}i', *signal))
         args = dsp_host_command(host, mem, ep[0], ep[1], src, dst, values,
                                 len(signal) // 16, guard=True,
                                 schedules=automation or ())
-        run(args)
+        report = run(args)
         data = dst.read_bytes()
-        return struct.unpack(f'<{len(data)//4}i', data)[::2]
+        audio = struct.unpack(f'<{len(data)//4}i', data)[::2]
+        if not meter:
+            return audio
+        match = re.search(r'core 0 meter: max (\d+).*?mean (\d+)', report)
+        if not match:
+            raise RuntimeError(f'missing DSP meter in {label}: {report[-1000:]}')
+        return audio, tuple(map(int, match.groups()))
 
     def rms(x): return math.sqrt(sum(a*a for a in x) / len(x))
 
@@ -367,6 +379,44 @@ def dsp_tests(image):
         residual = max(map(abs, amp))
         check(f'DSP {payload}: AMP at zero level and full MIX is silent',
               residual <= 2, f'{residual} LSB residual')
+
+        # AMP has its own arithmetic-identical gain path and must no longer
+        # execute the coefficient lookup, divide or stereo SVFs.
+        p = defaults.copy(); p[8] = 3
+        _, amp_meter = render(mem, ep, ramp, p, f'amp_meter_{payload}', meter=True)
+        p[8] = 0
+        _, lp_meter = render(mem, ep, ramp, p, f'lp_meter_{payload}', meter=True)
+        check(f'DSP {payload}: AMP fast path costs less than 30% of LP',
+              amp_meter[1] * 10 < lp_meter[1] * 3,
+              f'mean {amp_meter[1]} vs {lp_meter[1]} instructions/block')
+
+        # NOTCH reuses the already-computed LP and HP taps. At the selected
+        # frequency it must cut, while retaining the low and high bands.
+        p = defaults.copy(); p[0] = 64; p[1] = 64; p[8] = 4
+        notch_levels = []
+        for f in (100, 30 * math.sqrt(500), 8000):
+            tone = [round(1e6 * math.sin(2*math.pi*f*i/44100)) for i in range(count)]
+            out = render(mem, ep, tone, p, f'notch_{payload}_{round(f)}')
+            notch_levels.append(rms(out[-8000:]))
+        notch_db = 20 * math.log10(max(notch_levels[0], notch_levels[2])
+                                   / max(notch_levels[1], 1))
+        check(f'DSP {payload}: NOTCH rejects its center and retains both sides',
+              notch_db > 8 and min(notch_levels[0], notch_levels[2]) > 300000,
+              f'{notch_db:.1f} dB center rejection, levels {[round(x) for x in notch_levels]}')
+
+        # The AMP shortcut freezes the hidden SVF. Returning to a filter
+        # clears those integrators before processing, so old filter history
+        # cannot erupt when TYPE is edited live.
+        tone = [round(200000 * math.sin(2*math.pi*440*i/44100)) for i in range(count)]
+        p = defaults.copy(); p[0] = 127; p[1] = 127
+        rows = []
+        for block, typ in ((80, 3), (160, 0), (240, 3), (320, 4)):
+            p[8] = typ
+            rows.append([block, *p])
+        switched = render(mem, ep, tone, defaults, f'type_switch_{payload}', rows)
+        check(f'DSP {payload}: rapid FILTER/AMP/NOTCH changes stay bounded',
+              max(map(abs, switched)) < 400000,
+              f'peak {max(map(abs, switched))}')
 
         # The denominator must follow the cutoff ramp. Freezing it at the
         # destination caused >20x overshoots on low-level input when closing.

@@ -17,7 +17,11 @@
 #include "mc68k/Musashi/m68k.h"
 #include "mc68k/cpuState.h"
 extern "C" {
+#ifdef TE_HALF_RATE
+#include "../../modules/tapeecho_half/cpu.h"
+#else
 #include "../../modules/tapeecho/cpu.h"
+#endif
 }
 #include "../../modules/tapeecho/cpu_tables.h"
 static std::vector<uint8_t> read(const char *p) {
@@ -25,13 +29,14 @@ static std::vector<uint8_t> read(const char *p) {
     return {std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>()};
 }
 static constexpr uint32_t stack = 0x47100000, endpc = 0x47200000;
-static bool profiling=false;
-static std::map<uint32_t,unsigned> profile;
+static std::map<uint32_t,uint64_t>* activeProfile=nullptr;
+static std::vector<uint32_t>* activeTrace=nullptr;
 static unsigned run(ot::Machine& m, uint32_t pc, uint32_t until, unsigned max = 100000) {
     m68k_set_reg(m.getCpuState(), M68K_REG_PC, pc);
     unsigned n = 0;
     while (m.pc() != until && n++ < max) {
-        if(profiling)++profile[m.pc()];
+        if(activeProfile)++(*activeProfile)[m.pc()];
+        if(activeTrace)activeTrace->push_back(m.pc());
         if (!m.step()) break;
     }
     if (m.pc() != until) {
@@ -75,6 +80,7 @@ static void formatter_tests(ot::Machine& m) {
 // Exercise the shipped assembly independently of normal audio levels:
 // both filter clamps, fractional carry, callee-saved registers, and head
 // reads at either end of the contiguous ring region.
+#ifndef TE_HALF_RATE
 static void kernel_tests(ot::Machine& m) {
     std::ifstream symbols("out/tapeecho-cpu/profile-symbols.txt");
     uint32_t filter=0,reader=0,recorder=0,finish=0,curve=0,address; char type; std::string name,line;
@@ -152,8 +158,12 @@ static void kernel_tests(ot::Machine& m) {
             expectedRecord[j]=std::clamp(value,-268435456,268435456);
             wet=8*mul(wet,te_makeup[0]);
             if(s.mix) {
-                left=uint32_t(clip((l+mul(wet-l,s.mix))>>3))<<8;
-                right=uint32_t(clip((r+mul(wet-r,s.mix))>>3))<<8;
+                if(s.mix==2147483640) {
+                    left=right=uint32_t(clip(wet>>3))<<8;
+                } else {
+                    left=uint32_t(clip((l+mul(wet-l,s.mix))>>3))<<8;
+                    right=uint32_t(clip((r+mul(wet-r,s.mix))>>3))<<8;
+                }
             }
             expectedAudio[2*j]=left;expectedAudio[2*j+1]=right;
         }
@@ -216,6 +226,7 @@ static void kernel_tests(ot::Machine& m) {
     std::puts("  [PASS] assembly kernels: 1024 filter blocks (both clamps/carry), 512 boundary reader blocks, callee-saved registers");
     std::puts("  [PASS] reader data-load counts match overlap reuse: settled block reads 17 uncached words instead of 32");
 }
+#endif
 // The boot-only Machine deliberately has no peripheral models. Attach the
 // production descriptor/completion model plus a synchronous RAM DMA mover.
 // This proves addresses/order/bytes, NOT cache coherency or bus timing.
@@ -237,9 +248,9 @@ static void dma_model(ot::Machine& m, ot::Edma& dma) {
         for(unsigned i=0;i<size;++i) m.write8(dst+i,b[i]);
     });
 }
-static void benchmark(const std::vector<uint8_t>& image,const std::vector<uint8_t>& raw,uint32_t base,uint32_t state) {
+static void benchmark(const std::vector<uint8_t>& image,const std::vector<uint8_t>& raw,uint32_t base,uint32_t state,bool stress=false) {
     struct Case { const char* name; unsigned tapes,mode,wow; bool patched; };
-    const Case cases[]={
+    std::vector<Case> cases={
         {"stock DELAY x8 (original firmware)",0,0,0,false},
         {"stock DELAY x8 (patched firmware)",0,0,0,true},
         {"Tape x1, head 1, WOW=0 + stock x7",1,0,0,true},
@@ -251,26 +262,84 @@ static void benchmark(const std::vector<uint8_t>& image,const std::vector<uint8_
         {"Tape x3, changing BEAT TIME, WOW=44 + stock x5",3,2,44,true},
         {"Tape x8, head 1, WOW=0",8,0,0,true},
         {"Tape x8, head 1, WOW=44",8,0,44,true},
+        {"Tape x8, settled MIX=0, WOW=44",8,7,44,true},
         {"Tape x8, moving FREE TIME, WOW=44",8,1,44,true},
         {"Tape x8, changing BEAT TIME, WOW=44",8,2,44,true},
         {"Tape x8, moving FREE TIME, MIX=90",8,3,44,true},
         {"Tape x8, all controls moving, FREE/BEAT/tempo",8,4,127,true},
         {"Tape x8, all controls moving, full synthetic history",8,5,127,true},
     };
+    // Synchronized edits deliberately align work across tracks. Full history
+    // avoids the cheap not-yet-recorded path. MIX=90 is the shipped default.
+    const char* controlNames[]={"TIME", "FDBK", "WOW", "AGE", "SYNC", "MIX"};
+    std::vector<std::string> stressNames;
+    stressNames.reserve(20);
+    if(stress) {
+        cases.resize(2);
+        stressNames.emplace_back("Tape x8, settled MIX=90, full history");
+        cases.push_back({stressNames.back().c_str(),8,99,44,true});
+        for(unsigned i=0;i<6;++i) {
+            stressNames.emplace_back(std::string("Tape x8, endpoint reversals: ")+controlNames[i]);
+            cases.push_back({stressNames.back().c_str(),8,100+i,44,true});
+        }
+        stressNames.emplace_back("Tape x8, all controls endpoint reversals, FREE");
+        cases.push_back({stressNames.back().c_str(),8,106,44,true});
+        stressNames.emplace_back("Tape x8, all controls endpoint reversals, BEAT");
+        cases.push_back({stressNames.back().c_str(),8,107,44,true});
+    }
+    std::ifstream symbols(std::getenv("TE_PROFILE_SYMBOLS") ? std::getenv("TE_PROFILE_SYMBOLS") :
+#ifdef TE_HALF_RATE
+        "out/tapeecho-half/profile-symbols.txt"
+#else
+        "out/tapeecho-cpu/profile-symbols.txt"
+#endif
+    );
+    std::map<uint32_t,std::string> names; std::string line;
+    while(std::getline(symbols,line)) {
+        std::istringstream fields(line);uint32_t address;char type;std::string name;
+        if(fields>>std::hex>>address>>type>>name && (type=='t'||type=='T')) names[address]=name;
+    }
+    auto reportProfile=[&](const Case& test, unsigned blocks,
+                           const std::map<uint32_t,uint64_t>& samples) {
+        std::map<std::string,uint64_t> totals;
+        for(auto [pc,count]:samples) {
+            auto next=names.upper_bound(pc);
+            std::string name="stock routine/buffering";
+            if(pc>=base && pc<base+raw.size() && next!=names.begin())name=std::prev(next)->second;
+            totals[name]+=count;
+        }
+        std::vector<std::pair<std::string,uint64_t>> ordered(totals.begin(),totals.end());
+        std::sort(ordered.begin(),ordered.end(),[](const auto& a,const auto& b){return a.second>b.second;});
+        uint64_t total=0;for(const auto& item:ordered)total+=item.second;
+        for(const auto& [name,count]:ordered) {
+            double perBlock=double(count)/blocks;
+            double perTape=test.tapes?perBlock/test.tapes:0;
+            std::printf("  [PROFILE] %s: %-26s %7.1f/block, %6.1f/Tape, %5.1f%% full routine\n",
+                        test.name,name.c_str(),perBlock,perTape,100.*count/total);
+        }
+    };
+    const unsigned stateStride=std::getenv("TE_STATE_STRIDE") ? std::strtoul(std::getenv("TE_STATE_STRIDE"),nullptr,0) : sizeof(TapeState);
     double baseline=0;
     for(const auto& test:cases) {
         ot::Machine m(test.patched?image:read("out/raw/section_3_MAIN_OS.bin"));
         ot::Edma dma;dma_model(m,dma);
         if(test.patched)load(m,raw,base);
         init(m);
-        unsigned peak=0,minimum=~0u,loadingPeak=0;unsigned long long total=0;
+        unsigned peak=0,minimum=~0u,loadingPeak=0,peakFrame=0;
+        std::vector<unsigned> costs;
+        std::vector<uint32_t> trace,peakTrace;
+        trace.reserve(50000);unsigned long long total=0;
         constexpr unsigned warmup=1500,measured=1000;
+        constexpr unsigned profileBlocks=64;
+        const bool detailed=test.tapes==1 || (test.tapes==8 &&
+            ((test.mode==0 && test.wow==44) || test.mode>=1));
+        std::map<uint32_t,uint64_t> detailedProfile;
         for(unsigned frame=0;frame<warmup+measured;++frame) {
-            if(test.mode==5 && frame==warmup) {
+            if((test.mode==5 || test.mode>=99) && frame==warmup) {
                 // Eliminate startup's history-not-yet-recorded shortcuts.
                 // This is a synthetic stress fixture, not a natural render.
                 for(unsigned t=0;t<8;++t) {
-                    m.write32(state+t*sizeof(TapeState)+offsetof(TapeState,valid),TE_RING-1);
+                    m.write32(state+t*stateStride+offsetof(TapeState,valid),TE_RING-1);
                     for(unsigned n=0;n<TE_RING;++n) {
                         int32_t v=std::sin(n*.17+t)*0x40000000;
                         m.write32(0x4f502c10+t*TE_STRIDE+n*8,v);
@@ -280,7 +349,8 @@ static void benchmark(const std::vector<uint8_t>& image,const std::vector<uint8_
             }
             unsigned slot=frame&3,audioSlot=frame&1;
             m.write32(0x800000e0,audioSlot);m.write32(0x80004804,slot);
-            m.write32(0x8000181c,test.mode>=4 ? (30+(frame/32)%271)*24 : 2880);
+            const bool allControls=test.mode==4 || test.mode==5;
+            m.write32(0x8000181c,allControls ? (30+(frame/32)%271)*24 : 2880);
             for(unsigned t=0;t<8;++t) {
                 // Load instances successively, including a third onto
                 // already-running tape tracks (the reported failure).
@@ -289,27 +359,46 @@ static void benchmark(const std::vector<uint8_t>& image,const std::vector<uint8_
                 for(unsigned i=0;i<8;++i)m.write8(setup+i,0);
                 m.write8(setup+7,tape?0x15:8);m.write8(0x80000eb4+audioSlot*8+t,1);
                 const unsigned stockValues[]={60,64,127,0,127,127};
-                const unsigned time=test.mode ? (frame/8+t*17)%128 : 60;
-                const unsigned tapeValues[]={time,
-                    test.mode>=4 ? (frame/7+t*19)%128 : 64,
-                    test.mode>=4 ? (frame/11+t*23)%128 : test.wow,
-                    test.mode>=4 ? (frame/9+t*29)%128 : 64,
-                    test.mode>=4 ? (frame/41)%2 : test.mode==2?1u:0u,
-                    test.mode>=4 ? (frame/13+t*31)%128 : test.mode==3?90u:127u};
+                const unsigned time=test.mode && test.mode!=7 ? (frame/8+t*17)%128 : 60;
+                unsigned tapeValues[]={time,
+                    allControls ? (frame/7+t*19)%128 : 64,
+                    allControls ? (frame/11+t*23)%128 : test.wow,
+                    allControls ? (frame/9+t*29)%128 : 64,
+                    allControls ? (frame/41)%2 : test.mode==2?1u:0u,
+                    allControls ? (frame/13+t*31)%128 : test.mode==3?90u:test.mode==7?0u:127u};
+                // Alternating endpoint jumps: every block, every 16 blocks,
+                // then every 64 blocks to cover immediate and settling work.
+                const unsigned period=frame<warmup?16:(frame-warmup<256?1:frame-warmup<512?16:64);
+                const unsigned extreme=((frame/period)&1)?127:0;
+                if(test.mode>=99) {
+                    tapeValues[0]=60; tapeValues[5]=90;
+                    if(test.mode>=100 && test.mode<106)
+                        tapeValues[test.mode-100]=test.mode==104?extreme/127:extreme;
+                    if(test.mode==108) tapeValues[0]=extreme;
+                    if(test.mode>=106) {
+                        for(unsigned i=0;i<6;++i)tapeValues[i]=extreme;
+                        tapeValues[4]=test.mode==107; // BEAT forces head crossfades.
+                    }
+                }
                 for(unsigned i=0;i<6;++i)m.write16(knobs+2*i,(tape?tapeValues[i]:stockValues[i])<<8);
-                if(tape){m.write8(setup,51);m.write8(setup+1,64);}
-                else m.write8(setup+2,127);
+                if(!tape)m.write8(setup+2,127);
                 for(unsigned i=0;i<32;++i) {
                     int32_t sample=std::sin((frame*16+i/2)*.0627+t+(i&1)*.7)*0x20000000;
                     m.write32(0x80003190+audioSlot*1024+t*128+4*i,sample);
                 }
             }
             m68k_set_reg(m.getCpuState(),M68K_REG_SP,stack);m.write32(stack,endpc);
-            profiling=test.tapes==2 && test.mode==1 && frame==warmup;
+            activeProfile=!stress && detailed && frame>=warmup && frame<warmup+profileBlocks
+                ? &detailedProfile : nullptr;
+            trace.clear();
+            activeTrace=stress && frame>=warmup ? &trace : nullptr;
             unsigned instructions=run(m,0x400031a0,endpc,250000);
-            profiling=false;
+            activeTrace=nullptr;
+            activeProfile=nullptr;
             if(frame%128==0 && frame/128<test.tapes)loadingPeak=std::max(loadingPeak,instructions);
             if(frame>=warmup) {
+                costs.push_back(instructions);
+                if(instructions>peak) { peakFrame=frame-warmup; peakTrace=trace; }
                 total+=instructions;peak=std::max(peak,instructions);minimum=std::min(minimum,instructions);
             }
         }
@@ -318,6 +407,27 @@ static void benchmark(const std::vector<uint8_t>& image,const std::vector<uint8_
         std::printf("  [BENCH] %s: mean %.1f, min %u, peak %u instructions/full 8-track 16-sample routine; %.3fx stock\n",
                     test.name,mean,minimum,peak,mean/baseline);
         if(test.tapes)std::printf("  [LOAD] %s: peak %u instructions on an instance-selection frame\n",test.name,loadingPeak);
+        if(detailed && !stress)reportProfile(test,profileBlocks,detailedProfile);
+        if(stress) {
+            std::sort(costs.begin(),costs.end());
+            std::printf("  [SPIKE] %s: p95 %u, p99 %u, peak %u at measured block %u; peak/mean %.3f\n",
+                test.name,costs[949],costs[989],peak,peakFrame,peak/mean);
+            std::map<uint32_t,uint64_t> worst;
+            for(auto pc:peakTrace)++worst[pc];
+            std::puts("  [PEAK PROFILE] Executed functions on this case's worst measured block:");
+            reportProfile(test,1,worst);
+        }
+        // Per-scenario regression ceilings, not a hardware deadline. The
+        // 36k combined BEAT ceiling rejects the pre-compaction 36,424 peak.
+        // Keep cheaper individual controls under their own limits as well.
+        if(stress && test.mode>=99) {
+            constexpr unsigned limits[]={26000,26500,27000,26000,27300,31900,
+                27000,27500,33000};
+            if(peak>=limits[test.mode-99]) {
+                std::fprintf(stderr,"Parameter spike regression: %s peak %u >= %u\n",
+                    test.name,peak,limits[test.mode-99]);std::exit(1);
+            }
+        }
         // Fixed OCTACLID3 reference: 27,582 instructions for this complete
         // moving-TIME routine. Require >30% savings, not just a new number.
         if(test.tapes==3 && test.mode==1 && mean>=19300) {
@@ -325,34 +435,20 @@ static void benchmark(const std::vector<uint8_t>& image,const std::vector<uint8_
         }
         // Instruction regression ceilings, NOT available CPU cycles. Keep
         // the full-history/all-controls path bounded as well as TIME-only.
-        if(test.tapes==8 && peak >= (test.mode>=4 ? 35000u : 30000u)) {
+        if(!stress && test.tapes==8 && peak >= (test.mode>=4 ? 35000u : 30000u)) {
             std::fprintf(stderr,"Eight-instance instruction regression budget exceeded\n");std::exit(1);
         }
         std::fflush(stdout);
     }
-    std::ifstream symbols("out/tapeecho-cpu/profile-symbols.txt");
-    std::map<uint32_t,std::string> names; std::string line;
-    while(std::getline(symbols,line)) {
-        std::istringstream fields(line);uint32_t address;char type;std::string name;
-        if(fields>>std::hex>>address>>type>>name && (type=='t'||type=='T')) names[address]=name;
-    }
-    std::map<std::string,unsigned> totals;
-    for(auto [pc,count]:profile) {
-        auto next=names.upper_bound(pc);
-        std::string name="stock routine/buffering";
-        if(pc>=base && pc<base+raw.size() && next!=names.begin())name=std::prev(next)->second;
-        totals[name]+=count;
-    }
-    for(auto [name,count]:totals) std::printf("  [PROFILE] two moving Tape + six stock: %s %u instructions\n",name.c_str(),count);
     std::puts("  [BENCH] Same 44.1kHz/16-sample routine and modelled DMA; 1500 warm-up + 1000 measured blocks, stereo tone, active wet/feedback. Host wall time, DSP cost, cache misses and DMA/bus stalls excluded; NOT hardware CPU percent.");
 }
 int main(int argc, char **argv) {
-    if (argc != 5 && argc != 6) { std::fprintf(stderr, "probe IMAGE RUNTIME BASE STATE [--benchmark]\n"); return 2; }
+    if (argc != 5 && argc != 6) { std::fprintf(stderr, "probe IMAGE RUNTIME BASE STATE [--benchmark|--stress]\n"); return 2; }
     auto image = read(argv[1]), raw = read(argv[2]);
     uint32_t base = std::strtoul(argv[3], nullptr, 16), state = std::strtoul(argv[4], nullptr, 16);
     if(argc==6) {
-        if(std::strcmp(argv[5],"--benchmark"))return 2;
-        benchmark(image,raw,base,state);return 0;
+        if(std::strcmp(argv[5],"--benchmark") && std::strcmp(argv[5],"--stress"))return 2;
+        benchmark(image,raw,base,state,!std::strcmp(argv[5],"--stress"));return 0;
     }
     ot::Machine m(image); ot::Edma dma; dma_model(m,dma); load(m, raw, base); init(m);
     // The real reset must clear previously used state, not merely boot zeros.
@@ -361,7 +457,9 @@ int main(int argc, char **argv) {
     for (unsigned i = 0; i < 8*sizeof(TapeState); ++i) if (m.read8(state+i)) return 1;
     std::puts("  [PASS] stock delay reset clears every CPU Tape Echo state byte");
     formatter_tests(m);
+#ifndef TE_HALF_RATE
     kernel_tests(m);
+#endif
 
     // Set stock's saved-frame locals exactly as its preceding code does.
     // Start near the physical ring end, so this also crosses the wrap seam.
@@ -402,10 +500,14 @@ int main(int argc, char **argv) {
             p.age=(frame/8+t*13)%128;
             p.lane=t;
             unsigned values[] = {p.time,p.feedback,p.wow,p.age,p.sync,p.mix};
-            for (unsigned i=0;i<6;++i) m.write16(knobs+2*i, values[i]<<8);
-            // Obsolete setup DRIVE/AGE bytes vary deliberately: the audio
-            // engine must use page-1 AGE and ignore the old detail page.
-            m.write8(setup,frame%128); m.write8(setup+1,(frame+64)%128); m.write8(setup+7,0x15);
+            // Execute the stock producer-to-consumer copy for the six page-1
+            // words. Both frame buffers and all four queue slots are covered.
+            const uint32_t frameRecord=0x80000110+(frame&1)*512+t*64;
+            for(unsigned i=0;i<6;++i)m.write16(frameRecord+24+2*i,values[i]<<8);
+            m.write16(frameRecord+56,0x15);
+            m.write32(0x800000e0,frame&1);m.write32(0x80004800,slot);
+            m.write8(0x8000184b,0);
+            run(m,0x4000d0ea,0x4000d15a);
             m.write8(0x80000eb4+t,1); m.write32(0x8000181c,p.tempo);
             m.write32(stack+72,knobs); m.write32(stack+76,setup); m.write32(stack+92,setup);
             m.write32(stack+96,audio); m.write32(stack+108,0x80000eb4+t);
@@ -416,6 +518,11 @@ int main(int argc, char **argv) {
             for (unsigned i=0;i<32;++i) {
                 // Channel-asymmetric signed audio, including sub-24-bit dry data.
                 in[i] = int32_t(std::sin((frame*16+i/2)*0.1417+t)*0x20000000) + (i&1 ? 12345 : -6789);
+#ifdef TE_HALF_RATE
+                // Exercise converter overshoot/clamps with full-range input,
+                // independently of the lower-level benchmark tone.
+                if(frame>=2100)in[i]=uint32_t(frame*1664525u+i*1013904223u+t*69069u);
+#endif
                 out[i] = in[i]; m.write32(audio+4*i,in[i]);
             }
             te_process(&states[t], &p, rings[t].data(), write, out, rec);
@@ -442,7 +549,7 @@ int main(int argc, char **argv) {
         }
         write += 16; if (write == TE_RING) write = 0;
     }
-    std::printf("  [PASS] all 8 CPU instances match native arithmetic bit-for-bit (%u blocks; TIME/AGE sweeps, FREE/BEAT, tempo, wow, feedback, ring wrap, obsolete setup bytes ignored)\n",frames);
+    std::printf("  [PASS] all 8 CPU instances match native arithmetic bit-for-bit (%u blocks; TIME/AGE sweeps, FREE/BEAT, tempo, wow, feedback, stock page-1 staging, ring wrap)\n",frames);
     std::printf("  [METER] peak %u instructions/16-sample track callback (not hardware cycles)\n",peak);
     // A regression budget, NOT a real-time CPU certification. Hardware
     // timing still includes the rest of the OS, cache and memory stalls.

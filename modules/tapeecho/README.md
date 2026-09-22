@@ -142,6 +142,17 @@ recording and streaming. Emulator instruction counts are not hardware cycles.
 ## Local gates and audition
 
 `python3 tools/verify/verify_tapeecho.py` now runs `verify_tapeecho_cpu.py`.
+It also measures parameter-edit spikes with full synthetic tape history and
+all eight tracks active. Endpoint reversals run every 1, 16 and 64 blocks for
+TIME, FDBK, WOW, AGE, SYNC and MIX, plus all six controls together in FREE
+and BEAT. The gate records mean, p95, p99, the maximum, and the actual worst
+block's function profile, with a separate peak ceiling for every case.
+
+The restored one-page engine peaks at 27,091 instructions/block for all
+controls reversing in FREE and 32,466 in BEAT. Settled MIX=90 with full
+history peaks at 25,604. These are executed-instruction counts, not hardware
+cycles, and hardware UI responsiveness remains unverified.
+
 It rebuilds the remix, checks generated-source drift, and runs:
 
 * every TIME value at six tempos, plus actual long-delay impulses, bounded BEAT settling and monotonic FREE slew;

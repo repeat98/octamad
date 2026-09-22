@@ -15,16 +15,16 @@ _PLAIN = Formatter.PLAIN
 _STEP = Formatter.STEPPED
 
 MODULE = Module(
-    name="tapeecho",
-    key="TAPE ECHO",
+    name="tapeecho_half",
+    key="TAPE ECHO HALF",
     kind=Kind.HYBRID,
-    doc="Economy CPU tape echo: two biquads, simple FREE slew, snapped BEAT TIME and page-1 AGE.",
+    doc="Experimental 22.05 kHz wet Tape Echo; full-rate dry/mix, separate A/B candidate.",
     menu=MenuEntry(
         fx2_id=0x15,
         replaces="SPRING REV",
         donor_desc=0x400d5726,        # SPRING REV: all twelve descriptor slots
         abbr=b"TAPE",
-        fullname=b"Tape Echo",
+        fullname=b"Tape Half",
         build_tag=False,
     ),
     params=(
@@ -34,7 +34,7 @@ MODULE = Module(
         Param(b"FDBK", 64, active=True, formatter=_PLAIN,
               doc="repeat intensity; the upper range safely self-oscillates from tape noise"),
         Param(b"WOW", 25, active=True, formatter=_PLAIN,
-              doc="0.8 Hz wow plus irregular flutter; about 8 cents at 44, 22 cents at 127"),
+              doc="lightweight 0.8 Hz wow plus irregular flutter; about 8 cents RMS at 44/127"),
         Param(b"AGE", 64, 128, active=True, formatter=_PLAIN,
               doc="repeat bandwidth, flutter and noise; fresh at 0, worn at 127"),
         Param(b"SYNC", 0, 2, active=True, formatter=_STEP,
@@ -68,15 +68,15 @@ MODULE = Module(
             "5400312f31362e00312f3800312f345400312f382e00312f3400312f342e"
             "00256400"),
         source="modules/tapeecho/time_fmt.s",
-        registers_formatter=FormatterReg(module="TAPE ECHO", slot=0),
+        registers_formatter=FormatterReg(module="TAPE ECHO HALF", slot=0),
     ),),
     # Platform objects use the common ISA-B ELF tag; generate_cpu.py also
     # assembles for the real 54454 and checks that both text streams match.
-    linked=(Linked("tapeecho", "modules/tapeecho/cpu.s", cpu="5475", dram=True),),
+    linked=(Linked("tapeecho_half", "modules/tapeecho_half/cpu.s", cpu="5475", dram=True),),
     detours=(Detour(0x40002f44, bytes.fromhex("4feffff048d7003c"),
-                   "tapeecho", "te_cpu_reset", "reset CPU Tape Echo with stock delay rings", pad_to=8),
+                   "tapeecho_half", "te_cpu_reset", "reset CPU Tape Echo with stock delay rings", pad_to=8),
              Detour(0x4000361a, bytes.fromhex("2a6f005c2039800000e8"),
-                   "tapeecho", "te_cpu_hook", "CPU Tape Echo in the stock track-delay path",
+                   "tapeecho_half", "te_cpu_hook", "CPU Tape Echo in the stock track-delay path",
                    pad_to=10),),
-    harness=Harness(layout_char="6", is_server=False),
+    harness=Harness(layout_char="8", is_server=False),
 )

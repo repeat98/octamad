@@ -1313,8 +1313,8 @@ def main():
             # stops calling BusDelay's grain scatter "MDEP" (tools/
             # mode_names.py). Everything else keeps the plain label cave.
             _mod = _MODS[name]
-            _ren = (mode_names.complete(_mod)
-                    if _i == _mod.mode_slot and _mod.mode_views else {})
+            _views = _mod.name_views_for(_i)
+            _ren = (mode_names.complete(_mod, _i, _views) if _views else {})
             # Only the MODE select names itself (15 Sep 2026, image 26): a
             # select whose word is not self-explaining (SIZE, SHFT,
             # RATE) keeps its name, the tick widget flashing the word.

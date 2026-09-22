@@ -210,6 +210,10 @@ def main():
                 f'{layout["base"]:x}',f'{syms["te_states"]:x}','--benchmark'])
     (OUT/'benchmark.log').write_text(result)
     print('\n'.join(line for line in result.splitlines() if any(tag in line for tag in ('[BENCH]','[PROFILE]','[LOAD]'))),flush=True)
+    result=run(['out/emu/ot_tapeecho_cpu_test','out/mainos_bus.bin','out/platform/runtime.raw',
+                f'{layout["base"]:x}',f'{syms["te_states"]:x}','--stress'])
+    (OUT/'parameter-spikes.log').write_text(result)
+    print('\n'.join(line for line in result.splitlines() if '[SPIKE]' in line),flush=True)
     print(f'\n{FAILS} failure(s)' if FAILS else '\nOK: CPU Tape Echo gates passed; hardware timing/listening still required')
     return int(bool(FAILS))
 

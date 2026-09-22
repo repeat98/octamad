@@ -165,6 +165,7 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	@# (the boot-verifier trap, CLAUDE.md): a module started from a garbage
 	@# instance block must be silent on silence -- the unit's RAM is not zeroed.
 	python3 tools/verify/verify_dirtystate.py $(REMIX)
+	$(PY) tools/verify/verify_tapeecho_cpu.py $(REMIX)
 	python3 tools/remix/selftest.py
 	python3 tools/verify/verify_slots.py
 	python3 tools/verify/verify_initregs.py $(REMIX)

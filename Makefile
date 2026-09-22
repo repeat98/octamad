@@ -151,6 +151,18 @@ reverb: ## Render a wav through BusVerb: make reverb IN=loop.wav [ARGS='-p MIX=8
 cycles: ## Cycle cost per effect against the measured per-core budget
 	python3 tools/build/cycle_count.py
 
+.PHONY: benchmark-reverbs
+benchmark-reverbs: ## Stock spring/plate/dark vs Mini Verb: eight instances, all controls, all trigger splits
+	python3 tools/harness/benchmark_reverbs.py --verify $(REVERBARGS)
+
+.PHONY: verify-miniverb
+verify-miniverb: ## Mini Verb: both cores, isolation, dirty memory, buffer guards and audio gates
+	python3 tools/verify/verify_miniverb.py
+
+.PHONY: compare-vintageverb
+compare-vintageverb: ## macOS: render installed VintageVerb default vs Mini Verb (run verify-miniverb first)
+	python3 tools/harness/compare_vintageverb.py
+
 .PHONY: stock-labels
 stock-labels: ## Re-ask the emulated firmware what every stock select prints -> tools/remix/stock_labels.json
 	$(PY) tools/build/stock_labels.py
@@ -166,6 +178,7 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	@# instance block must be silent on silence -- the unit's RAM is not zeroed.
 	python3 tools/verify/verify_dirtystate.py $(REMIX)
 	$(PY) tools/verify/verify_tapeecho_cpu.py $(REMIX)
+	python3 tools/verify/verify_miniverb.py $(REMIX)
 	python3 tools/remix/selftest.py
 	python3 tools/verify/verify_slots.py
 	python3 tools/verify/verify_initregs.py $(REMIX)

@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Benchmark stock mono rendering against the four-voice polyphony prototype.
+"""Benchmark stock mono playback against the selectable four-voice POLY machine.
 
-The fixture puts one looping FLEX sample on all eight audio tracks, with
-TSTR OFF and a step-1 trig. The same card image runs under stock 1.40C and
-the built polyphony-proto image. Results are ColdFire instructions per
-16-sample frame; they are instruction counts, not hardware cycle counts.
+Both fixtures put one looping sample on all eight audio tracks with TSTR OFF
+and trigs on steps 1-4.  The stock run stores FLEX (type 1); the patched run
+stores POLY (type 5).  By the fourth trig, POLY must have preserved three old
+states per track while the stock primary carries the newest trigger.
+
+Results are ColdFire instructions per 16-sample firmware frame.  They are
+instruction counts, not hardware cycle/deadline measurements.
 """
 
 import argparse
@@ -26,16 +29,17 @@ EMU = ROOT / "out/emu/ot_emu"
 STOCK = ROOT / "out/raw/section_3_MAIN_OS.bin"
 VOICE = 0x800049D8
 VOICE_SIZE = 168
+POSITION_OFF = 68
 SETUP_OFF, VALUES_OFF, TRACK_STRIDE = 0x1E3, 0x033, 30
 
 
-def all_tracks(project: pathlib.Path) -> None:
-    """Extend verify_repitch's T1 FLEX fixture to all eight audio tracks."""
+def configure_tracks(project: pathlib.Path, machine: int) -> None:
+    """Put the selected sample machine and four early trigs on all tracks."""
     def mut(data):
         for part in range(otp.NPARTS_ALL):
             base = otp.PART_BASE + part * otp.PART_STRIDE
             for track in range(8):
-                data[base + otp.MTYPE_OFF + track] = 1              # FLEX
+                data[base + otp.MTYPE_OFF + track] = machine
                 data[base + 0x2D3 + track * 5 + 1] = 0             # slot 1
                 setup = base + SETUP_OFF + track * TRACK_STRIDE + 6
                 data[setup + fixture.LOOP_SLOT] = 1
@@ -44,7 +48,11 @@ def all_tracks(project: pathlib.Path) -> None:
                 data[values + fixture.PTCH_SLOT] = 64               # neutral
                 data[values + fixture.RATE_SLOT] = 127              # forward
         for track in range(8):
-            data[otp.trac_off(0, track) + 7] |= 1                   # A01 step 1
+            tr = otp.trac_off(0, track)
+            data[tr:tr + 64] = bytes(64)                           # clear all masks
+            data[tr + 7] = 0x0F                                   # only A01-A04
+            data[tr + 0x59:tr + 0x59 + 64 * 32] = bytes([0xFF]) * (64 * 32)
+            data[tr + 0x890:tr + 0x910] = bytes(0x80)              # no retrig/conditions
     otp._bank_write(project, 1, mut, guard=False)
 
 
@@ -56,13 +64,30 @@ def symbol(elf: pathlib.Path, name: str) -> int:
     return int(match.group(1), 16)
 
 
-def run(label, image, card, frames, work, primed_at=None):
+def stage_fixture(source, work, label, machine, wav):
+    project = work / f"project-{label}"
+    fixture.build_project(source, project, 0, 0, 120.0, 64, 127, "flex")
+    configure_tracks(project, machine)
+    card = work / f"{label}.card.img"
+    tree = work / f"tree-{label}"
+    if tree.exists():
+        shutil.rmtree(tree)
+    stage = [sys.executable, str(ROOT / "tools/emu/ot_emu/stage_card.py"),
+             str(project), "OCTABAM", "POLYBENCH", "--tree", str(tree),
+             "--out", str(card), "--audio", f"{wav}:{fixture.SAMPLE_REL}"]
+    subprocess.run(stage, cwd=ROOT, check=True)
+    return card
+
+
+def run(label, image, card, frames, work, extra_at=None, next_at=None):
     voice_dump = work / f"{label}-voices.bin"
     dumps = f"{VOICE:#x},{VOICE_SIZE * 8}={voice_dump}"
-    primed_dump = None
-    if primed_at is not None:
-        primed_dump = work / f"{label}-primed.bin"
-        dumps += f";{primed_at:#x},8={primed_dump}"
+    extra_dump = next_dump = None
+    if extra_at is not None:
+        extra_dump = work / f"{label}-extra-voices.bin"
+        next_dump = work / f"{label}-next.bin"
+        dumps += f";{extra_at:#x},{VOICE_SIZE * 24}={extra_dump}"
+        dumps += f";{next_at:#x},8={next_dump}"
     cmd = [str(EMU), "--image", str(image), "--card", str(card),
            "--set", "OCTABAM", "--project", "POLYBENCH", "--sequencer",
            "--internal-clock", "--frames", str(frames), "--load-ms", "20000",
@@ -80,82 +105,68 @@ def run(label, image, card, frames, work, primed_at=None):
     if not audio_match:
         raise SystemExit(f"benchmark_polyphony: no audio output summary in {log}")
     voices = voice_dump.read_bytes()
-    active = sum(voices[i * VOICE_SIZE] != 0 for i in range(8))
-    primed = sum(v != 0 for v in primed_dump.read_bytes()) if primed_dump else None
-    return {"instructions": int(match.group(1)), "per_frame": float(match.group(2)),
-            "active_tracks": active, "primed_tracks": primed,
+    info = {"instructions": int(match.group(1)), "per_frame": float(match.group(2)),
+            "active_primary": sum(voices[i * VOICE_SIZE] != 0 for i in range(8)),
             "audio": str(pathlib.Path(audio_match.group(1)).relative_to(ROOT)),
-            "transport_start": int(audio_match.group(2)), "log": str(log.relative_to(ROOT))}
-
-
-def compare_audio(mono, four, frames):
-    """Compare transport-aligned audio, allowing the port's per-lane ring
-    phase to differ by at most two samples between separately booted runs."""
-    a = fixture.read_wav24(ROOT / mono["audio"])
-    b = fixture.read_wav24(ROOT / four["audio"])
-    count = frames * 16
-    rows = []
-    for slot, (left, right) in enumerate(zip(a, b)):
-        source = left[mono["transport_start"]:mono["transport_start"] + count]
-        candidates = []
-        for shift in (0, -1, 1, -2, 2):
-            start = four["transport_start"] + shift
-            target = right[start:start + count]
-            diffs = [abs(x - y) for x, y in zip(source, target)]
-            candidates.append((max(diffs, default=0), sum(d != 0 for d in diffs), shift))
-        maximum, different, shift = min(candidates)
-        rows.append({"slot": slot, "poly_shift_samples": shift,
-                     "max_abs_difference": maximum, "different_samples": different})
-    return rows
+            "transport_start": int(audio_match.group(2)),
+            "log": str(log.relative_to(ROOT))}
+    if extra_dump:
+        extra = extra_dump.read_bytes()
+        info["active_extra"] = sum(extra[i * VOICE_SIZE] != 0 for i in range(24))
+        info["next_slots"] = list(next_dump.read_bytes())
+        diversity = []
+        for track in range(8):
+            positions = [int.from_bytes(voices[track * VOICE_SIZE + POSITION_OFF:
+                                               track * VOICE_SIZE + POSITION_OFF + 4], "big")]
+            for slot in range(3):
+                base = (track * 3 + slot) * VOICE_SIZE + POSITION_OFF
+                positions.append(int.from_bytes(extra[base:base + 4], "big"))
+            diversity.append(len(set(positions)))
+        info["distinct_positions_per_track"] = diversity
+    return info
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project", required=True, help="source Octatrack project directory")
-    parser.add_argument("--image", default="out/mainos_bus.bin", help="built polyphony image")
-    parser.add_argument("--frames", type=int, default=1200)
+    parser.add_argument("--image", default="out/mainos_bus.bin", help="built POLY image")
+    parser.add_argument("--frames", type=int, default=1400)
     parser.add_argument("--work", default="out/polyphony-benchmark")
     args = parser.parse_args()
     work = pathlib.Path(args.work).resolve()
     work.mkdir(parents=True, exist_ok=True)
-    project = work / "project"
     wav = work / "POLY_440_120.wav"
     fixture.make_loop(wav)
-    fixture.build_project(pathlib.Path(args.project).expanduser().resolve(), project,
-                          0, 0, 120.0, 64, 127, "flex")
-    all_tracks(project)
-    card = work / "card.img"
-    tree = work / "tree"
-    if tree.exists():
-        shutil.rmtree(tree)
-    stage = [sys.executable, str(ROOT / "tools/emu/ot_emu/stage_card.py"),
-             str(project), "OCTABAM", "POLYBENCH", "--tree", str(tree),
-             "--out", str(card), "--audio", f"{wav}:{fixture.SAMPLE_REL}"]
-    subprocess.run(stage, cwd=ROOT, check=True)
+    source = pathlib.Path(args.project).expanduser().resolve()
+    mono_card = stage_fixture(source, work, "mono", 1, wav)
+    poly_card = stage_fixture(source, work, "poly", 5, wav)
 
     poly = pathlib.Path(args.image).resolve()
     if not EMU.is_file() or not STOCK.is_file() or not poly.is_file():
-        raise SystemExit("benchmark_polyphony: build the emulator, raw OS, and polyphony image first")
+        raise SystemExit("benchmark_polyphony: build the emulator, raw OS, and POLY image first")
     runtime_elf = ROOT / "out/platform/runtime/runtime.elf"
-    primed_at = symbol(runtime_elf, "poly_primed")
-    mono = run("mono", STOCK, card, args.frames, work)
-    four = run("four-voice", poly, card, args.frames, work, primed_at)
-    if mono["active_tracks"] != 8 or four["active_tracks"] != 8 or four["primed_tracks"] != 8:
-        raise SystemExit(f"benchmark_polyphony: fixture did not sustain eight tracks: mono={mono}, poly={four}")
-    audio = compare_audio(mono, four, args.frames)
-    if any(row["max_abs_difference"] for row in audio):
-        raise SystemExit(f"benchmark_polyphony: four-voice average differs from mono audio: {audio}")
+    extra_at = symbol(runtime_elf, "poly_extra_voices")
+    next_at = symbol(runtime_elf, "poly_next")
+    mono = run("mono", STOCK, mono_card, args.frames, work)
+    four = run("four-voice", poly, poly_card, args.frames, work, extra_at, next_at)
+    if mono["active_primary"] != 8 or four["active_primary"] != 8:
+        raise SystemExit(f"benchmark_polyphony: primary voices not sustained: mono={mono}, poly={four}")
+    if four["active_extra"] != 24 or any(n != 0 for n in four["next_slots"]):
+        raise SystemExit(f"benchmark_polyphony: allocator did not retain 3 voices/track: {four}")
+    if any(n < 4 for n in four["distinct_positions_per_track"]):
+        raise SystemExit(f"benchmark_polyphony: voice positions did not diverge: {four}")
+
     delta = four["per_frame"] - mono["per_frame"]
     ratio = four["per_frame"] / mono["per_frame"]
-    result = {"frames": args.frames, "frame_samples": 16, "mono": mono,
-              "four_voice": four, "delta_per_frame": delta, "ratio": ratio,
-              "audio_comparison": audio,
+    result = {"frames": args.frames, "frame_samples": 16, "trig_steps": [1, 2, 3, 4],
+              "mono": mono, "four_voice": four, "delta_per_frame": delta,
+              "ratio": ratio,
               "interpretation": "ColdFire instruction count; not hardware cycles"}
     (work / "result.json").write_text(json.dumps(result, indent=2) + "\n")
     print(f"mono       {mono['per_frame']:.0f} instructions / 16-sample frame")
     print(f"four-voice {four['per_frame']:.0f} instructions / 16-sample frame")
-    print(f"delta      {delta:+.0f} ({ratio:.2f}x mono); 8/8 tracks active and primed")
-    print("audio      exact after per-lane port ring alignment (shift at most 2 samples)")
+    print(f"delta      {delta:+.0f} ({ratio:.2f}x mono)")
+    print("allocator  8 primary + 24 extension voices active; four distinct positions/track")
     print(f"result     {work / 'result.json'}")
 
 

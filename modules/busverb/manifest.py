@@ -46,8 +46,7 @@ _MODE_ROWS = {
     # 0.523; interleave 0.71875.
     "ROOM":  (0x400000, 0x7e8000, 0x3DD800, 0x34E800, 0x2D3800, 0x26A800,
               0x4CCCCD, 0x100000, 0x7A0000, 0x7fffff, 0x430000, 0x5c0000),
-    # PLATE: k_mode 0.4 (set against VintageVerb plate's decay rate at
-    # TIME~32); taps 3528/3283/3056/2845; tap scale 0.5625; damping 0.78;
+    # PLATE: k_mode 0.4; taps 3528/3283/3056/2845; tap scale 0.5625; damping 0.78;
     # high-cut 0.68, the bright one; interleave 0.765625.
     "PLATE": (0x333333, 0x7e8000, 0x372000, 0x334C00, 0x2FC000, 0x2C7400,
               0x480000, 0x100000, 0x640000, 0x7fffff, 0x570000, 0x620000),
@@ -129,7 +128,7 @@ MODULE = Module(
         # Slot 7 = $c's companion field (bits 8-15).
         Param(b"TONE", 64, 128, active=True, formatter=_PLAIN,
               doc="tail tone: below 64 darkens (high cut), above 64 thins (low cut); 64 = flat"),
-        # DIFF 80: the VintageVerb match point bracketed at ~80-90.
+        # DIFF 80: the smooth-wash match point bracketed at ~80-90.
         Param(b"DIFF", 80, 128, active=True, formatter=_PLAIN,
               doc="diffusion -- low = discrete repeats, high = smooth wash"),
         # GATE on slot 9 ($d's companion field): page 2 fills from the top left

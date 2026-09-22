@@ -48,7 +48,7 @@ character into one fixed voicing.
 
 The effect owns `Y:0x4000..Y:0xBFFF`, the core-private FX2 buffer. Put it in a
 dedicated remix; it is incompatible with any other buffer-owning FX2 effect
-on the same core, including Vintage Verb.
+on the same core.
 
 ## Local gates and audition
 

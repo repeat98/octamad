@@ -72,8 +72,8 @@ MODULE = Module(
         gate_label=None,
     ),
     # One instance owns the sole core-private FX2 delay line.  It cannot
-    # coexist on a core with BusVerb, BusDelay, Nimbus, Vintage Verb or a
-    # buffer-writing stock FX2 effect.
+    # coexist on a core with BusVerb, BusDelay, Nimbus or a buffer-writing
+    # stock FX2 effect.
     claims=Claims(owns_fx2_buffers=True),
-    harness=Harness(layout_char="T", is_server=False),
+    harness=Harness(layout_char="X", is_server=False),
 )

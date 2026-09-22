@@ -1,5 +1,5 @@
 ; ---------------------------------------------------------------------------
-; CHARACTER -- fold, texture (Pockey), saturate, tilt, compress, width.
+; CHARACTER -- fold, saturate, tilt, compress, width.
 ;
 ; Insert contract (modules/ripple/ripple_svf.asm): frames in place at
 ; x:(r0)/x:(r0+n0), knobs from r6, state in this instance's r7 block. The
@@ -8,7 +8,6 @@
 ;
 ; ---- the chain, fixed order ----------------------------------------------
 ;   f     = fold(x * gain) / gain                       FOLD (held level)
-;   p     = pockey(f; TXTR)                              TXTR (0 = skip)
 ;   s     = TAPE: TapeHead(f; DRV) | TUBE | INFL          DRV, SAT (held level)
 ;   t     = tilt(s; TONE)                                TONE (64 = flat)
 ;   c     = t * gain(env)                                COMP (GLUE on the master)
@@ -43,10 +42,8 @@
 ;   per sample / persistent (all below $40: an r7 displacement past 63
 ;   assembles to the two-word long form):
 ;   $3f tilt lp L (PERSISTENT)   $23 tilt lp R (PERSISTENT)
-;   TXTR (Pockey): $19/$1a held L/R, $1b/$1c last L/R, $25 pos/2, $46/$47
-;   soften L/R (all PERSISTENT); per block $4e skip, $50 freq/2, $51 rez,
-;   $52 4 rez, $53 1 - rez, $54 q4096, $55..$58 table bases; per sample
-;   $4f wrap, $59 dry park, $5a 1 - pos, $5b pos, $5c d/2
+;   $19..$1c, $25, $46/$47, $4e..$58, $5a..$5c free since 22 Sep 2026 (TXTR,
+;   Airwindows Pockey, removed: WDTH took its page-1 slot)
 ;   $1e level_s (PERSISTENT)   $45 master flag (1 = position 3 on A: GLUE)
 ;   $1f gr (per sample)
 ;   $32 key    $33 dry L park   $34 dry R park
@@ -105,13 +102,6 @@ init:
         move    a,x:(r7+$3f)            ; the tilt's two low-pass states, the
         move    a,x:(r7+$23)            ; master flag: every slot read before
         move    a,x:(r7+$45)            ; written (14 Sep 2026, verify_dirtystate)
-        move    a,x:(r7+$19)            ; TXTR's states: held L/R, last L/R,
-        move    a,x:(r7+$1a)            ; the hold position, soften L/R
-        move    a,x:(r7+$1b)
-        move    a,x:(r7+$1c)
-        move    a,x:(r7+$25)
-        move    a,x:(r7+$46)
-        move    a,x:(r7+$47)
         move    #>$7fffff,x0
         move    x0,x:(r7+$1f)           ; gr = unity
         rts
@@ -327,76 +317,25 @@ ch_pos3:
         mpy     x0,y1,a
         asl     #$1,a,a
         move    a,x:(r7+$31)            ; k3mag (< 0.98)
-; ---- TXTR: Airwindows Pockey (Chris Johnson, MIT, 2022) -------
-        move    x:(r6+$2),a             ; t
-        clr     b                       ; b = 0 BEFORE the tst (the flag trap)
-        move    #>$1,x0
-        tst     a
-        teq     x0,b
-        move    b,x:(r7+$4e)            ; 1 = TXTR 0: skip
-        move    a,x1                    ; t
-        move    #>$7fffff,a
-        sub     x1,a                    ; 1 - t
-        move    a,x0
-        move    a,y1
-        mpy     x0,y1,a                 ; (1-t)^2
-        move    a,y1
-        mpy     x0,y1,a                 ; (1-t)^3
-        move    a,x0
-        move    #>$226f31,y1            ; (0.618 - 0.08)/2
-        mpy     x0,y1,a
-        add     #>$051eb8,a             ; + 0.08/2
-        move    a,x:(r7+$50)            ; freq/2
-        move    x1,x0
-        move    #>$4f1bbd,y1            ; 0.618
-        mpy     x0,y1,a                 ; 0.618 t
-        move    a,x0
-        move    a,y1
-        mpy     x0,y1,a
-        move    a,y1
-        mpy     x0,y1,a                 ; (0.618 t)^3
-        add     #>$000800,a             ; + 2^-12
-        move    a,x:(r7+$51)            ; rez, 2^-12 .. 0.2364
-        move    a,x0
-        asl     #$2,a,a
-        move    a,x:(r7+$52)            ; 4 rez (< 0.95)
-        move    #>$7fffff,a
-        sub     x0,a
-        move    a,x:(r7+$53)            ; 1 - rez
-        move    #>$000800,a             ; 2^-12 (a clean load: a0 = 0)
-        andi    #$fe,ccr
-        rep     #$18
-        div     x0,a                    ; 2^-12 / rez, <= 1 (= 1 only at t = 0, skipped)
-        move    a0,x0
-        move    x0,x:(r7+$54)           ; q4096
-        move    #>51,n1
-        lua     (r1)+n1,r3              ; ENC (r1/r2 are TUBE's own table
-        move    r3,x:(r7+$57)           ; registers in the loop: hands off)
-        move    #>257,n3
-        lua     (r3)+n3,r5              ; DEC
-        move    r5,x:(r7+$55)
 ; WDTH -> mid and side gains. 64 = (1, 1); 0 = (1, 0) mono; 127 = (1, ~2).
 ; side gain = WDTH/64, mid stays 1 -- widening only touches the difference,
 ; so a mono source is untouched at every setting.
-        move    x:(r6+$c),a             ; WDTH: page-2 slot 7 since 20 Sep 2026,
-        and     #>$7f00,a               ; $c's companion field (bits 8-15; SAT's
-        asl     #$8,a,a                 ; select is the knob field) -> WDTH << 16
+        move    x:(r6+$2),a             ; WDTH: page-1 slot 2 since 22 Sep 2026
+                                        ; (TXTR's, removed; page-2 slot 7 from
+                                        ; 20 to 22 Sep 2026) -> WDTH << 16
 ; ⚠️ STORED HALVED. A y1 operand is a FRACTION, and a side gain of WDTH/64
 ; tops out near 2.0, which would wrap the word. The knob's own value IS
 ; WDTH/128, so it is stored as-is and the product is doubled back in the
 ; accumulator's guard bits. 64 -> 0.5 -> x2 = exactly 1.0, i.e. untouched.
         move    a1,x:(r7+$2b)           ; side gain / 2 (a1 straight to memory)
 ; ---- BYPASS: the defaults are a bit-exact passthrough ---------------------
-; DRV 0, FOLD 0, TXTR 0, TONE 64, COMP 0, MIX 127, WDTH 64. Every part that
+; DRV 0, FOLD 0, TONE 64, COMP 0, MIX 127, WDTH 64. Every part that
 ; ever chose LO-FI runs this after the flash, so the neutral block does
 ; nothing at all.
         move    x:(r6+$0),a             ; DRV
         tst     a
         bne     ch_live
         move    x:(r6+$1),a             ; FOLD
-        tst     a
-        bne     ch_live
-        move    x:(r6+$2),a             ; TXTR
         tst     a
         bne     ch_live
         move    x:(r7+$24),a            ; the tilt's t/2 (TONE 64 = 0)
@@ -415,9 +354,7 @@ ch_live:
 ; THE SAMPLE LOOP
 ; ===========================================================================
         move    #$1,n0                  ; (short immediate, stock's own form)
-        move    x:(r7+$55),r5           ; TXTR's DEC table (r5 is free in the
-        move    #>$ffffff,m5            ; loop); ENC goes into r3 per sample,
-        move    #>$ffffff,m3            ; the SAT callees own r3 after that
+        move    #>$ffffff,m3            ; the SAT callees own r3
         do      n7,>ch_end
 ; ---- park the dry, and take the key (the mono sum) ------------------------
         move    x:(r0),a
@@ -462,145 +399,6 @@ ch_live:
         mpy     x0,y1,a
         asl     #$1,a,a
         move    a,x:(r7+$36)            ; wet R
-; ---- TXTR: Airwindows Pockey (MIT, 2022), both channels -------------------
-; mu-law encode -> quantise to rez -> x (1 - rez) -> decode (chtxc, on the
-; magnitude; the sign comes back by Tcc), then the hold (a crossfade of the
-; previous DRY sample and this coded one at the fractional hold instant,
-; shared position) and the slew smoother (strength = jump x rate, <= 0.5).
-        move    x:(r7+$4e),a
-        tst     a
-        bne     ch_notx
-        move    x:(r7+$57),r3           ; ENC
-        move    x:(r7+$25),a            ; pos/2
-        move    x:(r7+$50),x0           ; freq/2
-        add     x0,a
-        move    a,y0                    ; the unwrapped position (< 1)
-        clr     b                       ; wrap flag 0 BEFORE the sub (the flag trap)
-        move    #>$1,x1
-        move    #>$400000,x0            ; 0.5 (= a position of 1)
-        sub     x0,a                    ; a = pos - 1 ...
-        tlt     y0,a                    ; ... unless that is negative: no wrap
-        tge     x1,b                    ; wrapped -> flag 1 (the same sub's flags)
-        move    a,x:(r7+$25)
-        move    b,x:(r7+$4f)
-        asl     #$1,a,a                 ; pos (< 0.62)
-        move    a,x:(r7+$5b)
-        neg     a
-        add     #>$7fffff,a
-        move    a,x:(r7+$5a)            ; 1 - pos
-; --- L ---
-        move    x:(r7+$35),a
-        move    a,x:(r7+$59)            ; the dry (Pockey's input)
-        abs     a
-        bsr     chtxc                   ; a = dec(quant(enc(|x|)))
-        move    a,x0
-        neg     a
-        move    x:(r7+$59),b
-        tst     b
-        tpl     x0,a                    ; the sign back
-; the hold, branch-free (cycle_count.py wants a straight loop): the wrap
-; path is computed every sample and selected by the flag with Tcc.
-        move    a,x0                    ; coded
-        move    x:(r7+$5a),y1           ; 1 - pos
-        mpy     x0,y1,a
-        move    x:(r7+$1b),x0           ; last L (the previous dry)
-        move    x:(r7+$5b),y1           ; pos
-        mpy     x0,y1,b
-        add     b,a                     ; heldN = last pos + coded (1 - pos)
-        move    a,x1
-        move    x:(r7+$19),x0           ; held
-        mpy     x0,y1,b                 ; held pos
-        move    x1,x0
-        move    x:(r7+$5a),y1
-        mpy     x0,y1,a                 ; heldN (1 - pos)
-        add     b,a                     ; outW (if wrapped)
-        move    a,y0                    ; outW
-        move    x:(r7+$19),x0           ; held (old)
-        move    x:(r7+$4f),a
-        tst     a                       ; the wrap flag; two Tcc read it
-        move    x0,b                    ; held' = held ...
-        tne     x1,b                    ; ... or heldN when wrapped
-        move    b,x:(r7+$19)
-        move    x0,a                    ; out = held ...
-        tne     y0,a                    ; ... or outW when wrapped
-        move    a,x1                    ; out, for soften
-        move    x:(r7+$46),b            ; soften L
-        sub     b,a                     ; d = out - soften
-        asr     #$1,a,a
-        move    a,x:(r7+$5c)            ; d/2 (|d| <= 2)
-        abs     a
-        move    a,x0                    ; |d|/2
-        move    x:(r7+$50),y1           ; freq/2
-        mpy     x0,y1,a
-        asl     #$2,a,a                 ; |d| freq
-        move    #>$400000,x0
-        cmp     x0,a
-        tgt     x0,a                    ; s = min(0.5, |d| freq)
-        move    a,y1
-        move    x:(r7+$5c),x0
-        mpy     x0,y1,a                 ; s d/2
-        asl     #$1,a,a
-        add     b,a                     ; y = soften + s d
-        move    a,x:(r7+$35)
-        move    x1,x:(r7+$46)           ; soften = out
-        move    x:(r7+$59),x0
-        move    x0,x:(r7+$1b)           ; last = the dry
-; --- R ---
-        move    x:(r7+$36),a
-        move    a,x:(r7+$59)
-        abs     a
-        bsr     chtxc
-        move    a,x0
-        neg     a
-        move    x:(r7+$59),b
-        tst     b
-        tpl     x0,a
-        move    a,x0
-        move    x:(r7+$5a),y1
-        mpy     x0,y1,a
-        move    x:(r7+$1c),x0           ; last R
-        move    x:(r7+$5b),y1
-        mpy     x0,y1,b
-        add     b,a
-        move    a,x1
-        move    x:(r7+$1a),x0           ; held R
-        mpy     x0,y1,b
-        move    x1,x0
-        move    x:(r7+$5a),y1
-        mpy     x0,y1,a
-        add     b,a
-        move    a,y0
-        move    x:(r7+$1a),x0
-        move    x:(r7+$4f),a
-        tst     a
-        move    x0,b
-        tne     x1,b
-        move    b,x:(r7+$1a)
-        move    x0,a
-        tne     y0,a
-        move    a,x1
-        move    x:(r7+$47),b            ; soften R
-        sub     b,a
-        asr     #$1,a,a
-        move    a,x:(r7+$5c)
-        abs     a
-        move    a,x0
-        move    x:(r7+$50),y1
-        mpy     x0,y1,a
-        asl     #$2,a,a
-        move    #>$400000,x0
-        cmp     x0,a
-        tgt     x0,a
-        move    a,y1
-        move    x:(r7+$5c),x0
-        mpy     x0,y1,a
-        asl     #$1,a,a
-        add     b,a
-        move    a,x:(r7+$36)
-        move    x1,x:(r7+$47)
-        move    x:(r7+$59),x0
-        move    x0,x:(r7+$1c)
-ch_notx:
 ; ---- SATURATE: the character. TAPE is
 ; TapeHead, TUBE is DaTube, INFL is OInflator: one straight-line callee per
 ; mode per channel (a = the sample in, b = out; the caller's store is the
@@ -917,61 +715,6 @@ chinfl:
         mac     x0,y1,a                 ; + (1 - e)*x2 = y
         asl     #$1,a,a                 ; out = 2y
         move    a,b
-        rts
-
-; ---------------------------------------------------------------------------
-; chtxc -- Pockey's codec on a MAGNITUDE: a = |x| in, a = out.
-; mu-law encode by the 257-point ENC table (r3 = t, idx = the top 8 bits,
-; frac = the 15 under them, the second point through (r3)+ and back),
-; quantise to rez in that domain -- the reference rounds UP: ceil(y/rez) rez
-; = floor(y q4096 + 2^-12 - lsb) on the 2^-12 grid, back by 4 rez x 1024,
-; exact multiples and zero unchanged -- scale by 1 - rez, decode by the DEC
-; table (r5). STRAIGHT-LINE. Clobbers x0, x1, y0, y1, b, n3, n5.
-chtxc:
-        move    a,x1                    ; u
-        asr     #$f,a,a                 ; idx = u >> 15  (0..255)
-        move    a1,n3
-        move    x1,a
-        and     #>$7fff,a               ; (a2 = 0: u >= 0)
-        asl     #$8,a,a                 ; frac
-        move    a,x0
-        move    p:(r3+n3),y0            ; t[i]
-        move    (r3)+
-        move    p:(r3+n3),b             ; t[i+1]
-        move    (r3)-
-        move    y0,a
-        sub     a,b
-        move    b,y1
-        mpy     x0,y1,a
-        add     y0,a                    ; y = enc(u)
-        move    a,x0
-        move    x:(r7+$54),y1           ; q4096
-        mpy     x0,y1,a
-        add     #>$0007ff,a             ; ceil on the grid (a multiple stays)
-        and     #>$fff800,a
-        move    a,x0
-        move    x:(r7+$52),y1           ; 4 rez
-        mpy     x0,y1,a
-        asl     #$a,a,a                 ; n rez
-        move    a,x0
-        move    x:(r7+$53),y1           ; 1 - rez
-        mpy     x0,y1,a
-        move    a,x1
-        asr     #$f,a,a
-        move    a1,n5
-        move    x1,a
-        and     #>$7fff,a
-        asl     #$8,a,a
-        move    a,x0
-        move    p:(r5+n5),y0
-        move    (r5)+
-        move    p:(r5+n5),b
-        move    (r5)-
-        move    y0,a
-        sub     a,b
-        move    b,y1
-        mpy     x0,y1,a
-        add     y0,a                    ; dec(...)
         rts
 
 ; chtape -- TapeHead per channel (JClones_TapeHead.jsfx, MIT;).

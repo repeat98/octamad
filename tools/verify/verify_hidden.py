@@ -268,7 +268,9 @@ def main():
             # turning whichever slot the engine is on, and "runs" means the
             # sent tone comes out of the engine as wet.
             sinit, sproc = send_probe.entry_points(mem, send_probe.SERVER_ID["S"])
-            other = 4 if r7 == 2 else 2
+            # 5 = 0x6500, position 1's FX2: 0x6400 is an FX1 slot, where SEND
+            # returns at once since image 48 and nobody housekeeps
+            other = 5 if r7 == 2 else 2
             out = scratch / f"out_{r7}.raw"
             vals = [(p.default or 0) & 0x7f for p in mods[key].params]
             kmap = {(p.name or b"").decode("latin1"): i
@@ -307,11 +309,11 @@ def main():
             if key == "DELAY SERVER" and "TIME" in _names:
                 wet["TIME"] = 0
             host = render(key, 2, **wet)
-            away = render(key, 4, **wet)
+            away = render(key, 5, **wet)
             if host is None or away is None:
                 check(f"{key}: rendered at both slots", False, "dsp_host failed")
                 continue
-            check(f"{key} at r7=0x6400 is a BIT-EXACT dry pass",
+            check(f"{key} at r7=0x6500 is a BIT-EXACT dry pass",
                   away == samples,
                   f"{sum(1 for a, b in zip(away, samples) if a != b)} sample(s) differ")
             if host == samples and not wet:

@@ -11,12 +11,14 @@ record for where code goes; `docs/remixes/` describes each remix;
 - **On hardware.** The rig (`bamsep26`) on Sam's MKII, image 43
   (`OCTABAM43`, 21 Sep 2026: the split block's frame offset from r0; a
   sample host with a trig every step clean; the rest of the changes since
-  38 not yet heard). Images 44–47 were probes. Image 49 built, unflashed:
-  SEND returns on an FX1 slot (the measured cause behind the THRU-host
-  wash and the bleed with every SEND at 0), and the bus no longer needs
-  the cores to agree on the flip's phase: eight buffers, a server reads
-  three back, a core-1 client counts its own blocks
-  (`docs/effects/XBUS.md`). Bus latency 48 samples. `ok-ms` (Octakit + MIDI SCENES on the stock effects) on
+  38 not yet heard). Images 44–47 and 50 were probes; 50 is on the unit
+  and on a fresh project every configuration tested clean. Image 51
+  built: the engines locked to T1 and T5 (`Remix.locked`) and out of
+  the chooser, a new project born hosted (RIG HOSTS), the stock DELAY
+  row out, Character's TXTR removed with WDTH in its slot; image
+  49's bus needs no cross-core phase (eight buffers, read three back, a
+  per-client block count; `docs/effects/XBUS.md`), bus latency 48
+  samples. Sam's road test on a fresh project is next. `ok-ms` (Octakit + MIDI SCENES on the stock effects) on
   midisc's author's unit as OKMS2. octalab (nordseele) is a DRAM module of
   this remixer and has run on an MKI since 11 Sep 2026.
 - **Built and gated, unflashed:** every other remix; main is image 43.

@@ -142,7 +142,7 @@ def fmt(combo):
 # short-circuit a stage) go to their maximum so nothing is skipped.
 DEAR = {
     # (the knob sets follow the manifests of 16 Sep 2026; rig_render refuses a name it does not know)
-    "CHARACTER": {"DRV": 127, "FOLD": 127, "TXTR": 127, "COMP": 127, "MIX": 127, "WDTH": 127, "SAT": 0},
+    "CHARACTER": {"DRV": 127, "FOLD": 127, "COMP": 127, "MIX": 127, "WDTH": 127, "SAT": 0},
     "SPECTRUM": {"RES": 127, "MODE": 4, "ENV": 127, "LDP": 127},
     "MODULATION": {"MIX": 127, "FDBK": 127, "DPTH": 127, "MODE": 4, "LOFI": 127},   # MODE 4 = PHSR, the dearest loop
     "DELAY SERVER": {"SEND": 100, "FDBK": 100, "MODE": 1, "SCAT": 127, "DENS": 127, "WET": 127, "WOW": 0},

@@ -193,6 +193,11 @@ init:
         rts
 
 proc:
+; ---- HOSTGUARD: a remix that hides or locks this engine has the build put
+; its host-slot test here (r7 == 0x6200, this core's position 0: T1 on
+; core 1, T5 on core 0); elsewhere the call returns before touching any
+; state, an exact dry pass. A comment in every other remix.
+; HOSTGUARD
 ; ---- BOTH calls are audio -------------------------------------------------
 ; Same dispatcher shape as every other effect in this project -- see
 ; dsp/reverb89.asm's proc: comment for the full mechanism. Everything below

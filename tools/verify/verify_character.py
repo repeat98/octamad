@@ -12,7 +12,6 @@ Gates:
                  and near unity small-signal (trimmed)
   TONE        -> a tilt in every mode: 0 dark < 64 flat (bit-exact) < 127 bright
   FOLD        -> a full-scale ramp folds back; unity on a small signal
-  TXTR        -> tracks the Pockey transcription (mean error, level); 0 bit-exact
   COMP/GLUE   -> AC1's dip: deeper with COMP, unity at COMP 0 (skipped), the
                  makeup; GLUE on the master BY POSITION (r7 = $6a00): its
                  release is slower than the insert's COMP
@@ -223,23 +222,6 @@ check("FOLD=127 folds a monotonic ramp (it changes direction many times)",
       turns > 4, f"{turns} direction changes")
 _f = rms_db(render(tone(438, amp=0.01), FOLD=127)[0]) - rms_db(tone(438, amp=0.01))
 check("FOLD=127 is unity on a -40 dBFS tone (the trim: nothing folds, nothing turns up)", abs(_f) < 0.5, f"{_f:+.2f} dB")
-
-# ---- 7. TXTR is Airwindows Pockey (MIT, 2022): the port against the transcription
-# modules/character/pockey_ref.py, both sliders at TXTR/128. Per-sample max
-# error is not the measure -- the hold's wrap instant can differ by one sample
-# when the float position ties at exactly 1.0 -- the mean error and the level are.
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "modules/character"))
-import pockey_ref as _PR
-_tx_src = tone(438, amp=0.25)
-for _t in (8, 32, 64, 127):
-    _L, _ = render(_tx_src, TXTR=_t)
-    _ref = _PR.Pockey(_t / 128, _t / 128); _rL, _ = _ref.process([v / 8388607 for v in _tx_src], [v / 8388607 for v in _tx_src])
-    _me = sum(abs(_L[i] / 8388607 - _rL[i]) for i in range(200, N)) / (N - 200)
-    _lv = rms_db(_L) - 20 * math.log10(math.sqrt(sum(v * v for v in _rL[N // 2:]) / (N - N // 2)))
-    check(f"TXTR {_t} tracks Pockey (mean |err| < 0.03, level within 0.5 dB)", _me < 0.03 and abs(_lv) < 0.5,
-          f"mean |err| {_me:.4f}, level {_lv:+.2f} dB")
-_L, _ = render(_tx_src, TXTR=0)
-check("TXTR 0 is a bit-exact skip", _L == _tx_src, "")
 
 # ---- 8. the compressor is AC1's dip (JClones) -----------------
 # gr = (Lv^2/2 - 1)^2 + a*Lv, <= 1: a dip around Lv = 1 (level 0.25 FS at

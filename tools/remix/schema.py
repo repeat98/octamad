@@ -1087,6 +1087,13 @@ class Remix:
     # that itself, the way modules/modulation does with its allocator slot.
     hidden: tuple[str, ...] = ()
     named: tuple[str, ...] = ()
+    # LOCKED TO THE HOST SLOT (22 Sep 2026): a listed module runs only at
+    # r7 == 0x6200, its core's position 0 (T1 on core 1, T5 on core 0), and
+    # is an exact dry pass anywhere else -- the HOSTGUARD body hidden
+    # engines already take, applied to a module that stays in the chooser.
+    # Sam, 22 Sep 2026: the bus hosts on T1 and T5 as planned, every other
+    # FX2 a SEND; a known working combination over a free one.
+    locked: tuple[str, ...] = ()
 
     @property
     def blanked(self) -> tuple[str, ...]:
@@ -1123,6 +1130,9 @@ class Remix:
             raise ValueError(
                 f"remix {self.name!r}: fallback {self.fallback!r} is not in "
                 f"the remix, so ids aliased to it would dispatch nowhere")
+        bad = [k for k in self.locked if k not in self.modules]
+        if bad:
+            raise ValueError(f"remix {self.name!r}: locked={bad} are not in the remix")
         bad = [k for k in self.named if k not in self.hidden]
         if bad:
             raise ValueError(

@@ -4,7 +4,7 @@ The station that dirties or tightens a track, on stock LO-FI's id 0x1c. FX1 only
 (`Claims(fx1_only=True)`, `verify_character.py`); the FX2 chooser hides the
 row.
 
-| page 1 | DRV · FOLD · TXTR · COMP · TONE · MIX |
+| page 1 | DRV · FOLD · WDTH · COMP · TONE · MIX |
 |---|---|
 | page 2 | SAT (TAPE TUBE INFL) · WDTH · — · — · — · — |
 
@@ -12,10 +12,6 @@ Chain, fixed: fold → saturate → tilt → compress → width → mix.
 
 - **FOLD** — WarpFold's wavefolder, 1 → 48× into the fold at a held level;
   first fold on a pad at ~24.
-- **TXTR** — Airwindows Pockey (Chris Johnson, MIT): mu-law encode, a
-  continuous quantiser in that domain, decode, an interpolated
-  sample-and-hold and a slew smoother; one knob moves both sliders. The
-  codec is two 257-point P tables (`pockey_ref.py` is the float reference).
 - **SAT / DRV** — three JClones (MIT) characters, re-derived here. TAPE =
   TapeHead: a state-variable split at TONE, the low and band parts through
   a cubic smoothstep, the top clean; drive 0.8× → 8× from a 17-word P table.

@@ -15,7 +15,7 @@ T1..T7  ──(AMP VOL, BAL)──▶ FX1 station ──▶ FX2 = SEND, one SEND
 T1 FX2 = DELAY SERVER: T1 prints dry + repeats ─ chain ─▶ T5 FX2 = REVERB SERVER: T5 prints dry + tail
                                                                                  │
 T8 (MASTER TRACK on)  ◀──────────────────────────────────────────────────────────┘
-   FX1 = CHARACTER:  FOLD ▶ TXTR ▶ SAT ▶ TONE ▶ COMP (GLUE by position) ▶ WDTH ▶ MIX
+   FX1 = CHARACTER:  FOLD ▶ SAT ▶ TONE ▶ COMP (GLUE by position) ▶ WDTH ▶ MIX
    FX2 = nothing (the SEND is refused on T8: its input is the mix)
 ```
 
@@ -60,7 +60,9 @@ layout feeds the new layout its old bytes.
 
 ## Character on the master, knob by knob
 
-Page 1: DRV, FOLD, TXTR, COMP, TONE, MIX. Page 2: SAT, WDTH, —, —, —, —
+Page 1: DRV, FOLD, WDTH, COMP, TONE, MIX. Page 2: SAT, —, —, —, —, — (22 Sep
+2026: TXTR removed after a squeal on the unit when it was touched on the
+master, unreproduced on the harness; WDTH took its slot)
 (16 Sep 2026: MIX bottom right, SAT top left; page-1 slot 4 was RET from
 13 to 20 Sep 2026 and is TONE again).
 The chain runs in the fixed order drawn above, distortion before dynamics.
@@ -71,10 +73,6 @@ by 127, by ear).
   TAPE (JClones TapeHead), TUBE (DaTube) or INFL (OInflator). ✅ TAPE's
   drive law voiced live: unity plus a gentle lift ("drv sounds great").
 - **FOLD** — WarpFold's wavefolder, 1× to 48× into the fold at a held level.
-- **TXTR** — Airwindows Pockey, the 12-bit sampler texture: 0 off, up moves
-  its bit-depth and rate sliders together, 12-bit µ-law and a 27 kHz hold
-  at the bottom of the travel, 2 bits and 3.5 kHz at the top. 🟡 proven
-  against the transcription, unheard.
 - **TONE** — a tilt after the saturator in every mode, drawn −64..+63: 0
   flat and bit-exact, + bright, − dark: +3.5 dB above / −6 dB below the
   1.2 kHz pivot at 127, the mirror at 0 (the tilt's own law).

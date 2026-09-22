@@ -18,7 +18,15 @@ CORE 1 (payload B)  tracks 1–4   BusDelay  Y:0x4000–0xBFFF (private) + Y:0x3
 ```
 
 - ✅ Payload A / core 0 serves tracks 5–8, payload B / core 1 tracks 1–4
-  (marker flash, 10 Aug 2026). Host the reverb on track 5, the delay on 1–4.
+  (marker flash, 10 Aug 2026). Since 22 Sep 2026 (`Remix.locked`, image
+  51) each engine runs on its core's position 0 only — the reverb on T5,
+  the delay on T1 — and is an exact dry pass on any other track (the
+  HOSTGUARD body at proc entry: `r7 == 0x6200`); `stamp-defaults` warns
+  about an engine anywhere else. Image 52 takes both engines out of the
+  FX2 chooser (SEND is its only row) and RIG HOSTS gives every new
+  project T1 = BusDelay, T5 = BusVerb from the part-defaults initialiser.
+  Until 22 Sep 2026 the reverb ran on any of T5–8 and the delay on any
+  of T1–4.
 - Under `SPEC=1` each server exists in one payload and can only be hosted
   on its own core's bank; any track can send into it. The absent server's
   dispatch id is aliased to the SEND client on the other payload, so a
@@ -85,7 +93,7 @@ touches only the ids a station replaced):
 | SEND | SEND | | | | | | | | | | | |
 | BusVerb | SEND | TIME | SIZE | SHMR | SHFT | WET | MODE | TONE | DIFF | GATE | — | — |
 | BusDelay | SEND | TIME | FDBK | TONE | PING | WET | MODE | SCAT | DENS | SIZE | PTCH | WOW |
-| Character | DRV | FOLD | TXTR | COMP | TONE | MIX | SAT | WDTH | — | — | — | — |
+| Character | DRV | FOLD | WDTH | COMP | TONE | MIX | SAT | — | — | — | — | — |
 
 ## What a send is
 

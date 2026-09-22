@@ -4,6 +4,7 @@
     python3 tools/hw/ot_project.py report PROJECT_DIR
     python3 tools/hw/ot_project.py set-gain PROJECT_DIR SLOT DB      # e.g. 12 -3.5
     python3 tools/hw/ot_project.py apply PROJECT_DIR PLAN.json       # {"12": -3.5, ...}
+    python3 tools/hw/ot_project.py host PROJECT_DIR [REMIX]            # the locked rig: T1 BusDelay, T5 BusVerb, T8 stock DELAY, the rest SEND, then defaults
     python3 tools/hw/ot_project.py stamp-defaults PROJECT_DIR REMIX [--all] [--keep-mode]
         # replaced ids only (the stations); --all = every module of ours
         # including the engines (after a slot re-layout); --keep-mode keeps
@@ -518,6 +519,10 @@ def wrong_core(pdir):
                     lo, hi = PAYLOAD_TRACKS[hit[1]][0] + 1, PAYLOAD_TRACKS[hit[1]][-1] + 1
                     out.append(f"{bank.name} part {p + 1} T{t + 1}: {hit[0]} runs as SEND "
                                f"there (payload {hit[1]} = T{lo}-T{hi})")
+                elif hit is not None and t != PAYLOAD_TRACKS[hit[1]][0]:
+                    # locked to the host slot (schema.Remix.locked, 22 Sep 2026)
+                    out.append(f"{bank.name} part {p + 1} T{t + 1}: {hit[0]} is a dry pass "
+                               f"there (locked to T{PAYLOAD_TRACKS[hit[1]][0] + 1})")
     return out
 
 
@@ -632,6 +637,18 @@ def set_fx(pdir, which_slot, track, which, page=None, page2=None, guard=True):
     label = mod.key if mod is not None else f"id 0x{fx_id:02x}"
     print(f"T{t+1} {which_slot.upper()} = {label} (0x{fx_id:02x}) in {NPARTS_ALL} parts x {banks} bank(s)"
           + (f", page 1 {list(page)}" if page else "") + (f", page 2 {list(page2)}" if page2 else ""))
+
+
+def host_rig(pdir, remix_name="bamsep26", guard=True):
+    """The locked rig's FX2 assignment in every part of every bank: T1 =
+    DELAY SERVER, T5 = REVERB SERVER, T8 = the stock DELAY, every other
+    track SEND; then the
+    engines' and stations' defaults (stamp-defaults --all --keep-mode). The
+    engines have no chooser row since image 52 (22 Sep 2026), so this is
+    how a project comes to host them."""
+    for t in range(1, NTRACKS + 1):
+        set_fx(pdir, "fx2", t, {1: "DELAY SERVER", 5: "REVERB SERVER", 8: "DELAY"}.get(t, "SEND"), guard=guard)
+    stamp_defaults(pdir, remix_name, replaced_only=False, guard=guard, keep_mode=True)
 
 
 def stamp_slot(pdir, which, slot, value=None, guard=True, tracks=None):
@@ -1049,6 +1066,9 @@ if __name__ == "__main__":
     elif cmd == "lfo": lfo_report(pdir)                                      # every live LFO, per part
     elif cmd == "lfo-clear":                                                # <project> <track> <lfo> | <project> all
         lfo_clear(pdir, sys.argv[3], sys.argv[4] if len(sys.argv) > 4 else 0, guard=False)
+    elif cmd == "host":                                                     # <project> [remix]: T1 BusDelay, T5 BusVerb, the rest SEND, then defaults
+        host_rig(pdir, sys.argv[3] if len(sys.argv) > 3 and not sys.argv[3].startswith("--") else "bamsep26",
+                 guard="--no-guard" not in sys.argv)
     elif cmd == "stamp-defaults":
         args = sys.argv[4:]
         stamp_defaults(pdir, sys.argv[3], replaced_only="--all" not in args,

@@ -2341,7 +2341,10 @@ mkgo:""",
         # gate anything: SEND is hidden in a remix whose FX2 pages are all
         # blank, and it still has to run on every track -- a fresh track IS
         # a send, and it does the bus housekeeping.
-        for _k in HIDDEN:
+        # A LOCKED module (schema.Remix.locked, 22 Sep 2026) takes the same
+        # body while staying in the chooser: it runs on its host slot and
+        # is a dry pass elsewhere.
+        for _k in list(HIDDEN) + [k for k in REMIX.locked if k not in HIDDEN]:
             if _k not in _texts or "; HOSTGUARD\n" not in _texts[_k]:
                 continue
             if _texts[_k].count("; HOSTGUARD\n") != 1:
@@ -2355,7 +2358,8 @@ mkgo:""",
 hostquit:
         rts
 """
-            print(f"  HOSTGUARD: {_k} runs on r7=0x6200 only, dry elsewhere")
+            print(f"  HOSTGUARD: {_k} runs on r7=0x6200 only, dry elsewhere"
+                  + (" (locked)" if _k in REMIX.locked else ""))
 
         plan = tuple(
             (m.key, _prep(_ybase(m, _texts[m.key]), m.key, m.dsp.r7_latch_slot))

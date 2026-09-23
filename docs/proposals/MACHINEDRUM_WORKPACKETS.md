@@ -54,7 +54,7 @@ Statuses:
 | WP-A5 The stereo mix | blocked | | | | | decision D1 |
 | WP-A6 The cycle report at OT addresses | blocked | `machinedrum` | `cab97a3` | 2026-09-24 | `machinedrum_reports/WP-A6.md` | eleven fetch runs measured; c40_16 reproduces `rc=139`, and D1/WP-A5 mix cost is still missing | |
 | WP-B1 Module and remix skeleton | review | `machinedrum` | `f383ecc` | 2026-09-24 | `machinedrum_reports/WP-B1.md` | manifest/remix compose and build; shared-window claims await B2 integration, all results pending user sign-off | |
-| WP-B2 Build-time extraction | todo | | | | | |
+| WP-B2 Build-time extraction | claimed | `machinedrum` | `1c842c1` | 2026-09-24 | | auditing extraction pins and safe build-time wiring; no extracted bytes in Git | |
 | WP-B3 The dispatcher hook | todo | | | | | |
 | WP-B4 The fixed trigger path | todo | | | | | |
 | WP-B5 Gates and the M1 image | todo | | | | | the user flashes |

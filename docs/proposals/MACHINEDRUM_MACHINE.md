@@ -1486,6 +1486,33 @@ disassembles the result back and refuses mis-encodings and label prefixes.
   until the user selects D1 and WP-A5 supplies the mix measurement.
 - All A6 measurements are **pending the user's sign-off** on A2 and D1.
 
+### WP-B1 module and remix skeleton (24 September 2026)
+
+- ✅ `modules/machinedrum/manifest.py` is discoverable as the `MACHINEDRUM`
+  `CF_PATCH` skeleton. Its plain `RESOURCE_CLAIMS` are derived from
+  `layout.py`: payload A's `P:0x1000–0x1aa4` PLATE/SPRING/DARK donor span and
+  the contiguous shared allocations `0x30000–0x40000` for sine, code/tables,
+  the six-voice P-I range, and the driver.
+- ✅ `remixes/machinedrum.py` omits BusVerb, BusDelay, SEND and TEMPO SYNC,
+  keeps the non-reverb stock inserts plus DELAY, and uses the safe no-bus
+  `NONE` fallback. `make modules` lists the module and remix, and
+  `make bus REMIX=machinedrum` completes its registry, placement, and
+  collision path.
+- 🟡 The current generic ledger does not arbitrate physical shared-window
+  ranges, so these are declarations for B2 to consume, not yet a proof that
+  the native image owns those ranges. The current build consequently leaves
+  the donor words as stock and reports `used 0`; no native DSP bytes are
+  claimed until the user's build-time extraction is wired in WP-B2.
+- 🟡 `make remix REMIX=machinedrum` cannot run in this non-terminal session;
+  the target exits with `the remixer needs a terminal`. The non-interactive
+  `make modules`/`make bus` checks passed. A control `make check REMIX=bus`
+  reached its existing DSP dirtystate gate but all 24 renders failed at
+  `dsp_host`'s `MmuHelper: shm_open failed, err 1`, including with the
+  interpreter environment override; this is an environment/JIT limitation,
+  not a B1 build collision.
+- All B1 declarations and the resulting no-bus remix are **pending the user's
+  sign-off** and remain a skeleton until B2 supplies the extracted DSP.
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and

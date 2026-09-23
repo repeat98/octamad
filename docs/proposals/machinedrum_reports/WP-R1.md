@@ -1,7 +1,7 @@
 # WP-R1 E12 sample delivery: report
 
 - **Status:** review
-- **Branch and commit:** `machinedrum` @ `PENDING`
+- **Branch and commit:** `machinedrum` @ `cdc9540`
 - **Date:** 2026-09-24
 - **Agent:** Codex
 

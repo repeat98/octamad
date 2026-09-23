@@ -615,14 +615,52 @@ What this means for the OT (*inferred*, from the numbers above):
   DSP), the mixing cost without the master effects, and the ColdFire→DSP
   command protocol.
 
+### The ColdFire→voice-DSP interface (23 September 2026)
+
+This comes from the same profiler: its `trace=<id>` scenario and
+`tools/patches/gearmulator-md-hosttrace.patch`. For TRX-BD and GND-SN on
+track 1 it logs every host-port word through an assign, a trig, encoder A
++10 and a second trig.
+
+- ✅ Every packet to the voice DSP is host command vector `0x12` followed by
+  data words.
+- ✅ An idle voice gets `1 0 0 <addr>`, where `addr` = `0x840 + 0x40·voice`.
+  The ColdFire cycles through the 16 voices at about 1,800 packets a second.
+- ✅ A voice with news gets a record: `<n> <trig> <params…> … <addr>`. Its
+  length depends on the engine: TRX-BD sends 16 words with `n` = 13;
+  GND-SN sends 7 with `n` = 4. The trigger flag appears on the trig packet
+  only (TRX-BD `0x11`, GND-SN `0x02`). The ColdFire resends the record
+  about 114 times a second while the voice sounds.
+- ✅ Values arrive mapped for the DSP. Ten detents of encoder A move TRX-BD
+  word 4 from `b54` to `c29` in uneven steps (PTCH as a frequency-like
+  word), and GND-SN word 2 from `bd50` to `10b60`. Other words stayed
+  constant in this test.
+- ✅ The voice DSP's writable footprint across a scenario is 300–370 words:
+  `X:700–7ff` (256), `Y:20–3f`, a 32-word block near `Y:801`, and a few
+  scattered words. Tables it only reads are not seen by a write diff.
+- ✅ The mixer gets its own stream: vectors `0x12` (10, 11, 12, 13 or 22
+  words) and `0x10` (1–3 words), about 10,000 packets a second. Not
+  decoded.
+- *Inferred*: the ColdFire does all control-rate work: knob→DSP mapping,
+  and plausibly envelopes and LFOs. The descriptor's handler pointer (for
+  example TRX-BD `0x20122a`) is where each engine's record is built. A port
+  is therefore two halves:
+  1. the voice DSP code, in the shared window;
+  2. the MD's per-engine ColdFire handlers, run on the OT's ColdFire as a
+     DRAM runtime. Both CPUs are ColdFire, but the ISA subset still needs
+     checking.
+
+  The two halves meet in these records, delivered over the OT's host port.
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and
    per-voice state an extracted engine needs.
 2. Split the mixer's constant ~1,850 cycles into master effects and
    mixing.
-3. Decode the ColdFire→DSP command stream for a trigger and a parameter
-   change. The profiler already drives both.
+3. Map every record word per engine: turn each of encoders A–H and read
+   which word moves. Then find the ColdFire handler that builds the
+   record, and check its instructions against the OT's ColdFire.
 4. Map E12 machines to sample offsets, and listen to the block.
 
 ## References

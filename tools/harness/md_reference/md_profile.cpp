@@ -79,6 +79,28 @@ namespace
 
 	dsp56k::DSP* g_dsp[2] = {nullptr, nullptr};		// 0 = mixer (DSP1), 1 = producer (DSP2)
 	Profile g_prof[2];
+	FILE* g_trace = nullptr;						// host-port trace, while a trace scenario runs
+
+	void onHost(uint32_t _dsp, char _kind, uint32_t _value, uint64_t _cycle)
+	{
+		if(g_trace)
+			std::fprintf(g_trace, "%llu %s %c %06x\n", static_cast<unsigned long long>(_cycle),
+				_dsp ? "producer" : "mixer", _kind, _value);
+	}
+
+	// X and Y of one DSP, 0 .. 0x150000 (internal plus the external SRAM the
+	// images load into).
+	constexpr uint32_t g_dataSize = 0x150000;
+	std::vector<uint32_t> snapshot(const dsp56k::DSP& _dsp)
+	{
+		std::vector<uint32_t> v(2 * g_dataSize);
+		for(uint32_t a = 0; a < g_dataSize; ++a)
+		{
+			v[a] = _dsp.memory().get(dsp56k::MemArea_X, a);
+			v[g_dataSize + a] = _dsp.memory().get(dsp56k::MemArea_Y, a);
+		}
+		return v;
+	}
 
 	void onExec(dsp56k::DSP* _dsp)
 	{
@@ -146,6 +168,21 @@ namespace
 				std::exit(1);
 			}
 			hw->sendPanelEvent(p->row, _down ? p->mask : 0);
+		}
+
+		void encoder(md::PanelEncoder _enc, int _steps)
+		{
+			const auto cmd = md::panelEncoderCommand(md::MachineModel::Machinedrum, _enc);
+			if(!cmd)
+			{
+				std::cerr << "no panel mapping for encoder\n";
+				std::exit(1);
+			}
+			for(int i = 0; i < std::abs(_steps); ++i)
+			{
+				hw->sendPanelEvent(*cmd, static_cast<uint8_t>(_steps > 0 ? 0x01 : 0xff));
+				run(441);
+			}
 		}
 
 		void sysex(const std::vector<uint8_t>& _bytes)
@@ -344,6 +381,49 @@ int main(int _argc, char** _argv)
 	for(int a = 3; a < _argc; ++a)
 	{
 		const std::string arg = _argv[a];
+		// "trace=<id>": the host-port traffic of assigning <id> to track 1,
+		// a trig, ten detents of encoder A, a second trig; and the producer's
+		// X/Y words that changed across all of it.
+		if(arg.rfind("trace=", 0) == 0)
+		{
+			const auto id = static_cast<uint8_t>(std::strtol(arg.c_str() + 6, nullptr, 0));
+			char name[32];
+			std::snprintf(name, sizeof(name), "t%02x", id);
+			const auto before = snapshot(*g_dsp[1]);
+			g_trace = std::fopen((outDir + "/" + name + ".host.txt").c_str(), "w");
+			md::g_hostTraceHook = &onHost;
+			auto mark = [&](const char* _m) { std::fprintf(g_trace, "# %s\n", _m); };
+			mark("assign");
+			rig.sysex({0xf0, 0x00, 0x20, 0x3c, 0x02, 0x00, 0x5b, 0x00, id, 0x00, 0xf7});
+			rig.run(22050);
+			mark("trig1");
+			rig.trig(0, true);
+			rig.run(441);
+			rig.trig(0, false);
+			rig.run(22050);
+			mark("encA+10");
+			rig.encoder(md::PanelEncoder::DataEntryA, 10);
+			rig.run(13230);
+			lcd(outDir, std::string(name) + ".encA", rig);
+			mark("trig2");
+			rig.trig(0, true);
+			rig.run(441);
+			rig.trig(0, false);
+			rig.run(22050);
+			mark("end");
+			md::g_hostTraceHook = nullptr;
+			std::fclose(g_trace);
+			g_trace = nullptr;
+			const auto after = snapshot(*g_dsp[1]);
+			FILE* f = std::fopen((outDir + "/" + name + ".mem.txt").c_str(), "w");
+			for(uint32_t i = 0; i < after.size(); ++i)
+				if(after[i] != before[i])
+					std::fprintf(f, "%c %06x %06x %06x\n", i < g_dataSize ? 'X' : 'Y',
+						i % g_dataSize, before[i], after[i]);
+			std::fclose(f);
+			std::cout << name << ": traced\n";
+			continue;
+		}
 		if(arg.rfind("load=", 0) == 0)
 		{
 			std::vector<uint8_t> ids;

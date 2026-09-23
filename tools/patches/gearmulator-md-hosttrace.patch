@@ -1,0 +1,57 @@
+diff --git a/source/elektron/md/mdLib/mddsp.cpp b/source/elektron/md/mdLib/mddsp.cpp
+index 3cc8a7b4..8d2b8026 100644
+--- a/source/elektron/md/mdLib/mddsp.cpp
++++ b/source/elektron/md/mdLib/mddsp.cpp
+@@ -8,6 +8,8 @@
+ 
+ namespace md
+ {
++	THostTraceHook g_hostTraceHook = nullptr;
++
+ 	using dsp56k::TWord;
+ 
+ 	namespace
+@@ -317,6 +319,8 @@ namespace md
+ 		m_hardware.recordInlineHdi08Run(m_index, startCycle, clampStop,
+ 			!hdi08().hasRXData());
+ #endif
++		if(g_hostTraceHook)
++			g_hostTraceHook(m_index, 'W', _word, m_dsp.getCycles());
+ 		hdi08().writeRX(&_word, 1);
+ 		return;
+ 	}
+@@ -342,6 +346,8 @@ namespace md
+ 
+ 	void Dsp::dispatchHostCommandInterrupt(const uint8_t _vba)
+ 	{
++		if(g_hostTraceHook)
++			g_hostTraceHook(m_index, 'C', _vba, m_dsp.getCycles());
+ 		// Under the arbitration config, route the host-command vector through the DSP-side HDI08
+ 		// so it raises HCP and arms the handler hold as it injects (native DSP56303 host-command
+ 		// dispatch). Otherwise fall back to the legacy out-of-band inject (default uitest path).
+@@ -451,6 +457,8 @@ namespace md
+ 		if(m_hdiUC.canReceiveData() && hasTx)
+ 		{
+ 			const auto echo = hdi08().readTX();
++			if(g_hostTraceHook)
++				g_hostTraceHook(m_index, 'R', echo, m_dsp.getCycles());
+ 			m_hdiUC.writeRx(echo);
+ 			m_hardware.notifyHostPumpStateChanged();
+ 			return true;
+diff --git a/source/elektron/md/mdLib/mddsp.h b/source/elektron/md/mdLib/mddsp.h
+index c46ec22b..305c9def 100644
+--- a/source/elektron/md/mdLib/mddsp.h
++++ b/source/elektron/md/mdLib/mddsp.h
+@@ -19,6 +19,12 @@ namespace mc68k
+ 
+ namespace md
+ {
++	// Host-port trace (octamad tools/harness/md_reference): kind 'W' = a host
++	// data word into the DSP, 'C' = a host command vector, 'R' = a DSP word
++	// read back by the ColdFire. _dsp: 0 = mixer (DSP1), 1 = producer (DSP2).
++	using THostTraceHook = void(*)(uint32_t _dsp, char _kind, uint32_t _value, uint64_t _cycle);
++	extern THostTraceHook g_hostTraceHook;
++
+ 	class Hardware;
+ 
+ 	// -------------------------------------------------------------------------

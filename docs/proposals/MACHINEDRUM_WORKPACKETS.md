@@ -48,7 +48,7 @@ Statuses:
 |---|---|---|---|---|---|---|
 | WP-00 Phase 0/1 and the driver in the replay | done | `machinedrum` | `f4a93d8` | 2026-09-23 | `MACHINEDRUM_MACHINE.md` §12 | replay, relocation, hot split, driver steps 1–3 |
 | WP-A1 Core-0 memory ledger | blocked | `machinedrum` | `dea1167` | 2026-09-23 | `machinedrum_reports/WP-A1.md` | four ledgers and write-up done; two heavy slice/recorder fixtures exited -11 before a wordmap, so X `0x2840–0x3fff` remains 🟡 |
-| WP-A2 The layout | todo | | | | | decision gate: user sign-off |
+| WP-A2 The layout | claimed | `machinedrum` | | 2026-09-23 | | drafting concrete core-0 layout and overlap check; user sign-off still required |
 | WP-A3 Layout-driven relocation and driver | todo | | | | | |
 | WP-A4 Boot-time init on the OT | todo | | | | | |
 | WP-A5 The stereo mix | blocked | | | | | decision D1 |

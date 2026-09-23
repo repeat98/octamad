@@ -22,6 +22,65 @@ section 1 decisions and section 12 before starting any packet.
 
 ---
 
+## Status
+
+This table is the single place that says what is done. When you **start**
+a packet, set its row to `claimed`, with your branch and the date, commit
+that alone, and push or merge it, so no one else picks the same packet.
+When you **finish** one, set it to `done` (or `blocked`), with the commit
+and a link to your report. Edit only your own packet's row. Other rows
+change only through a merge.
+
+The report goes in `docs/proposals/machinedrum_reports/<packet>.md`. Copy
+`machinedrum_reports/TEMPLATE.md`; one file per packet, so agents working
+in parallel never edit the same file. New measurements still go into
+`MACHINEDRUM_MACHINE.md` section 12, and the report links to them.
+
+Statuses:
+- `todo`: nobody is on it;
+- `claimed`: someone is working on it;
+- `blocked`: waiting on a packet, a user decision, or the hardware (say
+  which in the Notes);
+- `review`: finished, waiting for the user's decision or sign-off;
+- `done`: its acceptance check passed and the output is in the report.
+
+| Packet | Status | Branch | Commit | Date | Report | Notes |
+|---|---|---|---|---|---|---|
+| WP-00 Phase 0/1 and the driver in the replay | done | `machinedrum-phase0` | `f4a93d8` | 2026-09-23 | `MACHINEDRUM_MACHINE.md` §12 | replay, relocation, hot split, driver steps 1–3 |
+| WP-A1 Core-0 memory ledger | todo | | | | | first packet to hand out |
+| WP-A2 The layout | todo | | | | | decision gate: user sign-off |
+| WP-A3 Layout-driven relocation and driver | todo | | | | | |
+| WP-A4 Boot-time init on the OT | todo | | | | | |
+| WP-A5 The stereo mix | blocked | | | | | decision D1 |
+| WP-A6 The cycle report at OT addresses | todo | | | | | |
+| WP-B1 Module and remix skeleton | todo | | | | | |
+| WP-B2 Build-time extraction | todo | | | | | |
+| WP-B3 The dispatcher hook | todo | | | | | |
+| WP-B4 The fixed trigger path | todo | | | | | |
+| WP-B5 Gates and the M1 image | todo | | | | | the user flashes |
+| WP-C1 The record transport | todo | | | | | |
+| WP-C2 Port the parameter handlers | todo | | | | | |
+| WP-C3 Machine registration | todo | | | | | |
+| WP-C4 Kits and parameters | todo | | | | | |
+| WP-D1 Is the chord free? | todo | | | | | may start now |
+| WP-D2 The sequencer data model | todo | | | | | user sign-off on the spec |
+| WP-D3 The sequencer engine | todo | | | | | |
+| WP-D4 Grid-record view | todo | | | | | |
+| WP-D5 Parameter pages | blocked | | | | | decision D2 |
+| WP-D6 The info box | todo | | | | | |
+| WP-E1 Persistence | todo | | | | | |
+| WP-E2 MIDI | todo | | | | | |
+| WP-E3 Admission | todo | | | | | |
+| WP-E4 Qualification | todo | | | | | hardware |
+| WP-R1 E12 sample delivery | todo | | | | | decision D4 follows it |
+| WP-R2 The TRX-S2 residual | todo | | | | | decides D3 |
+| WP-R3 The interpreter/JIT mismatch | todo | | | | | |
+| WP-R4 The stale toolchain | blocked | | | | | the user reruns `scripts/setup.sh` |
+| WP-R5 The c47_2 anomaly | todo | | | | | |
+| WP-R6 The MD mixer's per-voice section | blocked | | | | | only if D1 = B |
+
+---
+
 ## 0. Rules for every packet
 
 1. **Work in a git worktree** off the branch `machinedrum-phase0` (not
@@ -50,6 +109,10 @@ section 1 decisions and section 12 before starting any packet.
    the same style, and every retraction is propagated.
 7. **Stop and report** when an acceptance check fails for a reason the
    packet does not cover. Do not widen the scope yourself.
+8. **Keep the status honest.** Claim before you start, and finish with
+   the row, the report and the section 12 update in the same commit. A
+   packet left `claimed` for more than a day without a commit is free
+   again: say so in its Notes.
 
 ---
 

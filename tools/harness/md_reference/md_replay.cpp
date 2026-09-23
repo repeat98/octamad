@@ -34,7 +34,10 @@
 #include "dsp56kEmu/memory.h"
 #include "dsp56kEmu/peripherals.h"
 #include "dsp56kEmu/jitconfig.h"
+#include "dsp56kEmu/disasm.h"
+#include "dsp56kEmu/opcodes.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <cstdlib>
@@ -43,6 +46,7 @@
 #include <map>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 using namespace dsp56k;
@@ -58,6 +62,64 @@ namespace
 		uint32_t slot;
 		std::vector<TWord> words;
 	};
+
+	// MD_REPLAY_FETCH=1 (meaningful only in an interpreter build, where the
+	// exec hook sees every instruction): count the program words fetched
+	// from the engine code regions, where the OT would fetch them from the
+	// shared window at one wait state each (AN3653 §2.4). A rep'd
+	// instruction is fetched once, as on the chip; a do loop's body once
+	// per iteration (no instruction cache on the DSP5672x).
+	struct Fetch
+	{
+		const dsp56k::Opcodes opcodes;
+		dsp56k::Disassembler dis{opcodes};
+		std::unordered_map<TWord, TWord> len;
+		uint64_t engineWords = 0, engineInstructions = 0, otherInstructions = 0;
+		std::unordered_map<TWord, uint64_t> perPc;	// MD_REPLAY_FETCH=2: words fetched per address
+	};
+	Fetch* g_fetch = nullptr;
+	bool g_fetchPerPc = false;
+
+	bool inEngineCode(TWord _pc)
+	{
+		return (_pc >= 0x100000 && _pc < 0x148000) || (_pc >= 0x30000 && _pc < 0x40000);
+	}
+
+	// The empty slot's render (P:10008f..10009a): 32 zeros and a busy-wait of
+	// ~3,200 fetches, the MD's pacing; an OT driver does not call it. Its
+	// cycles and fetches are left out.
+	bool inEmptyRender(TWord _pc) { return _pc >= 0x10008f && _pc <= 0x10009a; }
+	uint64_t g_lastCycles = 0, g_emptyCycles = 0;
+	TWord g_lastPc = 0;
+
+	void onExecFetch(DSP* _dsp)
+	{
+		const auto pc = _dsp->getPC().toWord();
+		const uint64_t c = _dsp->getCycles();
+		if(inEmptyRender(g_lastPc))
+			g_emptyCycles += c - g_lastCycles;
+		g_lastCycles = c;
+		g_lastPc = pc;
+		if(inEmptyRender(pc))
+			return;
+		if(!inEngineCode(pc))
+		{
+			++g_fetch->otherInstructions;
+			return;
+		}
+		auto it = g_fetch->len.find(pc);
+		if(it == g_fetch->len.end())
+		{
+			std::string text;
+			const auto& m = _dsp->memory();
+			const auto l = g_fetch->dis.disassemble(text, m.get(MemArea_P, pc), m.get(MemArea_P, pc + 1), 0, 0, pc);
+			it = g_fetch->len.emplace(pc, l ? l : 1).first;
+		}
+		g_fetch->engineWords += it->second;
+		++g_fetch->engineInstructions;
+		if(g_fetchPerPc)
+			g_fetch->perPc[pc] += it->second;
+	}
 
 	std::vector<Entry> readLog(const std::string& _path)
 	{
@@ -320,8 +382,28 @@ int main(int _argc, char** _argv)
 	std::vector<std::vector<uint8_t>> changed;
 	size_t periods = 0;
 	uint32_t lcg = 0x12345;
+	Fetch fetch;
+	if(std::getenv("MD_REPLAY_FETCH"))
+	{
+		g_fetch = &fetch;
+		g_fetchPerPc = std::string(std::getenv("MD_REPLAY_FETCH")) == "2";
+		g_execHook = &onExecFetch;
+	}
+	struct PeriodCost { uint64_t cycles, words, instructions; };
+	std::vector<PeriodCost> periodCosts;
+	uint64_t lastCycles = 0, lastWords = 0, lastIns = 0;
 	auto atPeriod = [&]()
 	{
+		if(g_fetch)
+		{
+			const uint64_t c = dsp.getCycles() - g_emptyCycles;
+			const uint64_t ins = fetch.engineInstructions + fetch.otherInstructions;
+			if(periods)
+				periodCosts.push_back({c - lastCycles, fetch.engineWords - lastWords, ins - lastIns});
+			lastCycles = c;
+			lastWords = fetch.engineWords;
+			lastIns = ins;
+		}
 		if(footprint)
 		{
 			if(lastSeen.empty())
@@ -503,6 +585,63 @@ int main(int _argc, char** _argv)
 				a = e;
 			}
 			std::printf("footprint %c: %zu words changed between periods:%s\n", c, total, runs.c_str());
+		}
+	}
+
+	if(g_fetch && !periodCosts.empty())
+	{
+		// Per sample, over the worst 10 ms (14 periods of 32 samples), as
+		// md_profile's peakWorkPerSample; the replay skips every I/O wait, so
+		// its cycles are all work.
+		const size_t w = 14;
+		double peakCycles = 0, wordsAtPeak = 0, peakWords = 0, sumCycles = 0, sumWords = 0;
+		for(size_t i = 0; i + w <= periodCosts.size(); ++i)
+		{
+			double c = 0, wd = 0;
+			for(size_t k = i; k < i + w; ++k)
+			{
+				c += periodCosts[k].cycles;
+				wd += periodCosts[k].words;
+			}
+			c /= 32.0 * w;
+			wd /= 32.0 * w;
+			if(c > peakCycles) { peakCycles = c; wordsAtPeak = wd; }
+			peakWords = std::max(peakWords, wd);
+		}
+		for(const auto& p : periodCosts) { sumCycles += p.cycles; sumWords += p.words; }
+		const double n = 32.0 * periodCosts.size();
+		std::printf("fetch: %zu periods; per sample: mean %.1f cycles, %.1f engine words fetched; "
+			"worst 10 ms %.1f cycles with %.1f words fetched (most words in any 10 ms: %.1f)\n",
+			periodCosts.size(), sumCycles / n, sumWords / n, peakCycles, wordsAtPeak, peakWords);
+		if(g_fetchPerPc)
+		{
+			std::vector<std::pair<uint64_t, TWord>> top;
+			for(const auto& [pc, w] : fetch.perPc)
+				top.emplace_back(w, pc);
+			std::sort(top.rbegin(), top.rend());
+			for(size_t k = 0; k < top.size() && k < 12; ++k)
+				std::printf("fetch pc %06x: %llu words\n", top[k].second, static_cast<unsigned long long>(top[k].first));
+			// How much of the fetch traffic the hottest instructions carry, by
+			// the program words they occupy (what private P would have to hold).
+			uint64_t all = 0, acc = 0, words = 0;
+			for(const auto& t : top)
+				all += t.first;
+			size_t mark = 0;
+			const uint64_t marks[] = {256, 512, 1024, 2048, 2724, 4096};
+			for(const auto& [w, pc] : top)
+			{
+				acc += w;
+				words += fetch.len[pc];
+				while(mark < 6 && words >= marks[mark])
+					std::printf("fetch hottest %llu words carry %.1f%%\n", static_cast<unsigned long long>(marks[mark++]), 100.0 * acc / all);
+			}
+			std::printf("fetch all %llu words executed\n", static_cast<unsigned long long>(words));
+			if(FILE* f = std::fopen((dir + "/fetch.txt").c_str(), "w"))
+			{
+				for(const auto& [w, pc] : top)
+					std::fprintf(f, "%06x %u %llu\n", pc, fetch.len[pc], static_cast<unsigned long long>(w));
+				std::fclose(f);
+			}
 		}
 	}
 

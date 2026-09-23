@@ -1027,6 +1027,57 @@ Measured with `md_replay` on the six captures of the relocation table
   the window, which costs one wait state per fetch as P and zero as X or
   Y. What that does to the ~1,650 cycles/sample is *unmeasured*.
 
+### Cycles when the code runs from the window (23 September 2026)
+
+- ✅ **The DSP5672x has no instruction cache.** Code executed from the
+  shared window pays one wait state per program fetch (NXP AN3653 §2.4–2.5:
+  "zero wait states as X or Y memory and one wait state as P memory …
+  Instructions may be executed from shared memory but the hardware has not
+  been optimized for doing so"; "there is no instruction cache support in
+  the Symphony DSP5672x").
+- ✅ **Counted, not estimated.** `md_replay` built with the emulator's
+  interpreter (`out/md_reference_interp`, `DSP56K_FORCE_INTERPRETER=ON`) and
+  `MD_REPLAY_FETCH=1` counts every program word fetched from the engine
+  regions:
+  - a `rep` fetches once, as on the chip;
+  - a `do` body is fetched once per iteration.
+
+  The empty slot's render (`P:10008f–10009a`: 32 zeros and a busy-wait of
+  ~3,200 fetches, the MD's pacing) is left out, since an OT driver does not
+  call it. Worst 10 ms, per sample:
+
+  | Capture | Engine cycles | Words fetched | With +1 per fetch |
+  |---|---:|---:|---:|
+  | c10 (TRX-BD) | 142 | 74 | ~215 |
+  | c10_3 (BD, S2, PI-CC) | 329 | 241 | ~570 |
+  | c01_16 (GND ×3, TRX ×13) | 966 | 807 | ~1,770 |
+  | c37_16 (E12 ×9, P-I ×7) | 1,131 | 996 | ~2,130 |
+  | c47_2 (PI-CC, PI-HH) | 1,215 | 988 | ~2,200 |
+  | c1d_16 (S2, EFM ×8, E12 ×7) | 1,263 | 1,021 | ~2,280 |
+
+  So running from the window adds about 80 % to the engine's cycles.
+  PI-HH alone is ~900 cycles/sample. The Phase 0 profile's heaviest
+  16-voice load (~1,650) would come to ~3,000, beyond core 0's ~3,120
+  usable once T5–T8 have any FX.
+- ⚠ The interpreter build is not bit-identical to the reference on
+  c01_16 and c1d_16 (the JIT build is). The counts come from the same
+  code paths, but the interpreter/JIT discrepancy is unexplained.
+- ✅ **The fetches are concentrated.** In each capture the hottest
+  1,024 words of code carry 89–94 % of the fetches, and the hottest 2,724
+  carry 97–100 %. The union over the six captures of each one's hottest
+  code for 80 / 90 / 95 % of its fetches is 1,900 / 2,764 / 4,820 words.
+  All executed engine code across them is 11,392 words.
+- **The lever:** payload A's donor region, `P:0x1000–0x1b57` (PLATE,
+  SPRING and DARK, 2,724 words, `build_bus.PP`), is core 0's own P with no
+  wait state. Removing those three reverbs from payload A takes them from
+  T5–T8 only; payload B keeps its copies for T1–T4. The hot code (about
+  2.7 K words for 90 % coverage in these captures) would bring the window
+  penalty down to about a tenth, so a 16-voice kit costs roughly 1,050–1,400
+  cycles/sample (*estimated* from the counts above). Moving hot routines
+  into private P needs the relocator to split regions at routine
+  boundaries, with every branch that crosses them in long form. That is
+  not checked yet.
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and

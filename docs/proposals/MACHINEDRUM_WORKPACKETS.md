@@ -72,7 +72,7 @@ Statuses:
 | WP-E2 MIDI | todo | | | | | |
 | WP-E3 Admission | todo | | | | | |
 | WP-E4 Qualification | todo | | | | | hardware |
-| WP-R1 E12 sample delivery | claimed | `machinedrum` | | 2026-09-24 | | measuring E12 `fetch.txt` rate/access pattern and designing D4 options only |
+| WP-R1 E12 sample delivery | review | `machinedrum` | `PENDING` | 2026-09-24 | `machinedrum_reports/WP-R1.md` | D4: stream about 0.98M packed 24-bit words/s (3.0 MB/s) or trade proposed shared-window allocations for a bounded burst cache |
 | WP-R2 The TRX-S2 residual | review | `machinedrum` | `8513de2` | 2026-09-24 | `machinedrum_reports/WP-R2.md` | D3: current 36-word swap leaves c1d +1/c10 +2 blocks; full low image fixes c1d at ~70 estimated cycles/sample but not c10 |
 | WP-R3 The interpreter/JIT mismatch | blocked | `machinedrum` | `94ef689` | 2026-09-24 | `machinedrum_reports/WP-R3.md` | `ADD X,B` boundary isolated in both captures; needs the user's WP-R4 vendor repin before parity can be repaired |
 | WP-R4 The stale toolchain | blocked | | | | | the user reruns `scripts/setup.sh` |

@@ -1354,6 +1354,44 @@ disassembles the result back and refuses mis-encodings and label prefixes.
   full low image, which costs about 70 estimated cycles/sample and still
   leaves `c10_16` for further harness investigation.
 
+### WP-R1 E12 sample delivery (24 September 2026)
+
+- ✅ The 21 triples at `P:0x103d7b` decode to descriptor starts and sample
+  lengths. They cover `397,896` samples and the `201,804`-word block
+  `P:0x103dba–0x135205`; the last descriptor ends at `P:0x135206`.
+  The complete table and extraction command are in
+  [`WP-R1.md`](machinedrum_reports/WP-R1.md).
+- ✅ In the full `cap4/c37_16` interpreter replay, the six executed
+  `x:(r3)+` sites that point into the descriptor-defined sample block were:
+  `P:0x1038c2/0x1038c3` (`331,398` reads each),
+  `P:0x103bd3/0x103bd4` (`264,894` each), and
+  `P:0x103bf3/0x103bf4` (`94,520` each). The totals agree with the
+  corresponding `fetch.txt` instruction counts: `1,381,624` 24-bit P-word
+  reads over `2,093` rendered periods.
+- ✅ Sample traffic appeared in `1,952` periods (period tags `143–2094`),
+  with `272–884` reads per 32-sample period, median `680`, and mean `707.8`
+  reads over active periods (`660.1` including the quiet opening). The
+  maximum observed rate is `884/32 × 44.1 kHz = 1,218,263` P words/s;
+  the active-period mean is `975,436` P words/s, about `2.93 MB/s` packed
+  24-bit data. These are emulator measurements, not a ColdFire bus result.
+- ✅ The observed addresses range from `P:0x103dba` through `P:0x1351c1`.
+  Within a period, `1,361,306` of `1,379,672` address deltas are `+1`
+  (`98.67%`); the remaining jumps are between sequential bursts. The
+  sequential runs have median and maximum length `68` words. This is a
+  bursty sequential stream with per-voice/sample-boundary jumps, not a
+  random-access workload.
+- *inferred* A bounded cache needs at least the observed `884` words for
+  one maximum-read period before look-ahead and underrun margin; the full
+  `201,804`-word sample block cannot be resident. The proposed A2 shared
+  window is already fully allocated (`0x30000–0x3ffff`), so a cache needs a
+  layout trade-off before it has a home.
+- **review / D4:** the user must choose either (A) a ColdFire SDRAM →
+  shared-window streaming ring sized for at least the measured active mean
+  and maximum rates, or (B) a per-kit cache of sequential bursts, which
+  requires surrendering or relocating part of the proposed shared-window
+  code/table/P-I budget. Hardware latency, DMA setup cost, and underrun
+  margin remain unmeasured.
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and

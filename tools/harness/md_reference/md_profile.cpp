@@ -118,6 +118,18 @@ namespace
 	// more than the idle tick's four words), for the map scenario.
 	std::vector<uint32_t> g_packet, g_record, g_trigRecord;
 
+	// The capture scenario: the producer's state at a slot-0 loop head, then
+	// every slot's record (at P:6b), rendered block and record again (at P:b5),
+	// for md_replay.
+	struct Capture
+	{
+		bool armed = false;
+		bool snapped = false;
+		std::string dir;
+		FILE* log = nullptr;
+	};
+	Capture g_cap;
+
 	void onHost(uint32_t _dsp, char _kind, uint32_t _value, uint64_t _cycle)
 	{
 		if(_dsp == 1 && _kind == 'C')
@@ -132,6 +144,10 @@ namespace
 		}
 		else if(_dsp == 1 && _kind == 'W')
 			g_packet.push_back(_value);
+		// A capture also logs the producer's host stream, in order with the
+		// slot events: "C <vector>" and "W <word>".
+		if(_dsp == 1 && (_kind == 'C' || _kind == 'W') && g_cap.log && g_cap.snapped)
+			std::fprintf(g_cap.log, "%c %06x\n", _kind, _value);
 		if(g_trace)
 			std::fprintf(g_trace, "%llu %s %c %06x\n", static_cast<unsigned long long>(_cycle),
 				_dsp ? "producer" : "mixer", _kind, _value);
@@ -151,16 +167,6 @@ namespace
 		return v;
 	}
 
-	// The capture scenario: the producer's state at a slot-0 loop head, then
-	// every slot's record (at P:6b) and rendered block (at P:b5), for md_replay.
-	struct Capture
-	{
-		bool armed = false;
-		bool snapped = false;
-		std::string dir;
-		FILE* log = nullptr;
-	};
-	Capture g_cap;
 
 	constexpr uint32_t g_snapP = 0x150000, g_snapXY = 0x20000;
 
@@ -221,6 +227,12 @@ namespace
 			const auto base = y(0x140);
 			for(uint32_t i = 0; i < 32; ++i)
 				std::fprintf(g_cap.log, " %06x", y(base + i));
+			std::fputc('\n', g_cap.log);
+			// The slot's 64 words after the render: a word that differs at the
+			// slot's next P:6b was written by the host in between.
+			std::fprintf(g_cap.log, "S %u", y(0x142));
+			for(uint32_t i = 0; i < 64; ++i)
+				std::fprintf(g_cap.log, " %06x", y(y(0x141) + i));
 			std::fputc('\n', g_cap.log);
 		}
 	}
@@ -506,34 +518,55 @@ int main(int _argc, char** _argv)
 	for(int a = 3; a < _argc; ++a)
 	{
 		const std::string arg = _argv[a];
-		// "capture=<id>": md_replay's input. Assign <id> to track 1, then
-		// snapshot the producer at the next slot-0 loop head and log every
-		// record and rendered block through a trig, encoder A +10 and a trig.
+		// "capture=<id>[,<id>...]": md_replay's input. Assign the ids to tracks
+		// 1, 2, ..., then snapshot the producer at the next slot-0 loop head and
+		// log every record and rendered block through a trig of all those
+		// tracks, encoder A +10 (track 1) and a second trig.
 		if(arg.rfind("capture=", 0) == 0)
 		{
-			const auto id = static_cast<uint8_t>(std::strtol(arg.c_str() + 8, nullptr, 0));
-			rig.sysex({0xf0, 0x00, 0x20, 0x3c, 0x02, 0x00, 0x5b, 0x00, id, 0x00, 0xf7});
+			std::vector<uint8_t> ids;
+			for(size_t pos = 8; pos < arg.size();)
+			{
+				const auto comma = arg.find(',', pos);
+				ids.push_back(static_cast<uint8_t>(std::strtol(arg.substr(pos, comma - pos).c_str(), nullptr, 0)));
+				if(comma == std::string::npos)
+					break;
+				pos = comma + 1;
+			}
+			for(size_t t = 0; t < ids.size() && t < 16; ++t)
+			{
+				rig.sysex({0xf0, 0x00, 0x20, 0x3c, 0x02, 0x00, 0x5b, static_cast<uint8_t>(t), ids[t], 0x00, 0xf7});
+				rig.run(4410);
+			}
 			rig.run(22050);
 			char name[32];
-			std::snprintf(name, sizeof(name), "c%02x", id);
+			std::snprintf(name, sizeof(name), ids.size() > 1 ? "c%02x_%zu" : "c%02x", ids[0], ids.size());
 			g_cap.dir = outDir + "/" + name;
 			std::system(("mkdir -p '" + g_cap.dir + "'").c_str());
 			g_cap.log = std::fopen((g_cap.dir + "/log.txt").c_str(), "w");
 			g_cap.snapped = false;
 			g_cap.armed = true;
+			md::g_hostTraceHook = &onHost;
+			auto trigAll = [&](bool _down)
+			{
+				for(size_t t = 0; t < ids.size() && t < 16; ++t)
+					rig.trig(static_cast<int>(t), _down);
+			};
 			rig.run(4410);
-			rig.trig(0, true);
+			trigAll(true);
 			rig.run(441);
-			rig.trig(0, false);
+			trigAll(false);
 			rig.run(22050);
 			rig.encoder(md::PanelEncoder::DataEntryA, 10);
 			rig.run(13230);
-			rig.trig(0, true);
+			trigAll(true);
 			rig.run(441);
-			rig.trig(0, false);
+			trigAll(false);
 			rig.run(22050);
 			g_cap.armed = false;
+			md::g_hostTraceHook = nullptr;
 			std::fclose(g_cap.log);
+			g_cap.log = nullptr;
 			std::cout << name << ": captured\n";
 			continue;
 		}

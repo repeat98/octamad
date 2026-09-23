@@ -529,14 +529,26 @@ section 5.
 
 ### Assets
 
-- ✅ Section 1 carries a 200,006-word block at `P:1040c0–135205` whose
-  words decode as pairs of signed 12-bit samples. That is 402,060 samples,
-  9.12 s at 44.1 kHz, with sharp onsets and silent gaps between them. It is
-  *inferred* to be the E12 sample ROM: nobody has listened to it
-  (`e12_candidate_region.wav`), and no E12 machine has been mapped to an
-  offset yet. ❌ "207,174 words at `P:1028c0`, 9.40 s": the run's first
-  ~6 K words are code. The voice DSP executes blocks up to `P:103c71`,
-  among them its hottest per-sample loop.
+- ✅ **The E12 sample ROM is the 201,804-word block at `P:103dba–135205`.**
+  Its words decode as pairs of signed 12-bit samples.
+  - It is 21 samples laid back to back. Each is followed by `0x88` words
+    that no descriptor length covers.
+  - The 21 descriptors sit just below it, at `P:103d7b`, as triples of
+    `[start word, length in samples, 0]`. Each start equals the previous
+    start plus length/2 plus `0x88`, and the last one ends at `0x135206`
+    exactly.
+  - The descriptor lengths total 397,896 samples, 9.02 s at 44.1 kHz.
+  - The E12 engines read the samples through these descriptors. A
+    relocated replay that moved the first 774 words of the block with the
+    code broke E12 slots (section "Relocating to OT addresses").
+  - Nobody has listened to the samples yet (`e12_candidate_region.wav`),
+    and the machine-to-sample mapping is not read yet.
+- ❌ Two earlier boundaries are retracted:
+  - "200,006 words at `P:1040c0`, 9.12 s": the first sample starts 774
+    words lower, where the descriptors say.
+  - "207,174 words at `P:1028c0`, 9.40 s": that run's first ~6 K words
+    are code. The voice DSP executes blocks up to `P:103c71`, among them
+    its hottest per-sample loop.
 - ROM and RAM machines play user samples. Those are user data, so they are
   not in the update.
 
@@ -770,7 +782,11 @@ track 1 it logs every host-port word through an assign, a trig, encoder A
   3. Every period it calls **render** from `0x145c77`, which writes 32
      samples into a double buffer (`Y:0x100`/`0x120`, `m7 = $1f`). DMA0
      then sends that buffer to the link.
-  4. Slot 0 first waits for the frame sync on port C bit 1 (`P:bb–bf`).
+  4. After slot 0's render, the loop waits for the frame sync on port C
+     bit 1 (`P:bb–bf`). It then re-arms DMA2 to receive from ESSI0 into
+     an X ring at `x:$243` (`m0 = $ff`, `P:c0–cb`). At the end of the
+     pass it stores DMA1's position in `x:$256` (`P:e2`). Earlier text had
+     the wait before the render.
   5. The loop also writes its slot to the host every fourth slot (`P:73`).
 
   Host packets are `[destination][count−1][words…]`, fed through DMA5 by
@@ -782,14 +798,19 @@ track 1 it logs every host-port word through an assign, a trig, encoder A
   - a bare DSP56303, the fork's `dsp56kEmu` configured as `md::Dsp` does;
   - loaded from an `md_profile capture=<id>` snapshot: the producer's
     memory and registers at a slot-0 loop head;
-  - before each slot it writes the record the reference had, runs the
-    original loop to `P:b5`, and compares the 32 rendered words;
+  - before each slot it writes what the host sent since the previous
+    slot, decoded from the capture's host stream, then runs the original
+    loop to `P:b5` and compares the 32 rendered words;
   - it resumes past the frame-sync poll and the DMA wait by setting the PC,
     and drains the host-port writes;
   - no host port traffic, no ESSI link, no ColdFire.
-- ✅ **TRX-BD capture** (a trig, encoder A +10, a trig, 2.2 s): **33,502 of
-  33,502 blocks bit-identical** across all 16 slots. Slot 0, track 1, is
-  non-zero in 1,268 of its 2,094 blocks and peaks at full scale.
+- ✅ **TRX-BD capture** (a trig, encoder A +10, a trig, 2.2 s): **33,513 of
+  33,513 blocks bit-identical** across all 16 slots, re-measured under the
+  host-stream replay described in "Relocating to OT addresses". The first
+  measurement (33,502 of 33,502) wrote all 64 of each slot's words from
+  the log. That also overwrote voice state, so it could hide errors.
+  Slot 0, track 1, is non-zero in 1,268 of its 2,094 blocks and peaks at
+  full scale.
 - ✅ **The comparison catches real changes.** Altering the pitch word in all
   1,428 slot-0 records changes 1,249 of slot 0's blocks, from the first
   trigger on; the other slots stay identical. So render reads the record
@@ -798,8 +819,8 @@ track 1 it logs every host-port word through an assign, a trig, encoder A
 - What this proves: an engine's inputs are its record (word 0 plus
   parameters) and the voice DSP's resident state. Its output is 32 samples
   per call. The MD's host, DMA, ESSI and frame-sync paths are not needed.
-- What it does not prove yet: running at the OT's addresses (next), and any
-  engine other than TRX-BD (the capture takes any id).
+- Running at other addresses, and engines beyond TRX-BD, are in the next
+  subsection.
 
 ### Relocating to OT addresses: the inventory (23 September 2026)
 
@@ -861,6 +882,66 @@ Space: about 46 K words if both external regions keep their full extent,
 within the 64 K window. Stock's own runtime use of the window
 (`0x30000–0x30047` every frame, the `0x38000` entry stub and what it
 calls) has to be placed around.
+
+### Relocation: measured (23 September 2026)
+
+- ✅ **`md_relocate.py` moves both code regions and every capture still
+  renders bit-identically.** The move:
+  - `P:100000–103db9` goes to `0x3b000`, and `P:140000–147fff` to
+    `0x30000`. Both are in the emulator's bridged external RAM, where P,
+    X and Y alias as they do in the OT's shared window;
+  - the old regions are then filled with `0xa5a5a5`;
+  - it patches 987 words: 342 loop ends, 425 routine-table entries, 113
+    displacement operands, 104 `#>` immediates, one absolute operand and
+    two jump targets;
+  - the recursive descent finds 13,712 instructions (15,753 words) from 206
+    entry points. It covers all 10,449 words the Phase 0 profiles
+    executed in the code regions (`cat`, `load`).
+
+  Results (blocks bit-identical to the reference, plain replay and
+  relocated replay):
+
+  | Capture | Machines | Plain | Relocated |
+  |---|---|---|---|
+  | c10 | TRX-BD | 33,513 / 33,513 | 33,513 / 33,513 |
+  | c10_3 | TRX-BD, TRX-S2, PI-CC | 33,508 / 33,508 | 33,508 / 33,508 |
+  | c01_16 | GND ×3, TRX-BD…TRX-B2 | 33,513 / 33,513 | 33,513 / 33,513 |
+  | c37_16 | E12 ×9, P-I ×7 | 33,504 / 33,504 | 33,504 / 33,504 |
+  | c1d_16 | TRX-S2, EFM ×8, E12 ×7 | 31,555 / 33,506 | same blocks |
+  | c47_2 | PI-CC, PI-HH | 33,415 / 33,502 | same blocks |
+
+  All 50 engines ran in these captures. The two partial captures differ
+  only in slot 0, and identically with and without relocation: TRX-S2 and
+  PI-CC on track 1. The same two engines are exact on tracks 2 and 3
+  (c10_3).
+  - *Inferred* cause: the host's packet for slot 0 arrives while slot 0
+    renders, and these two engines read a record word late enough in the
+    render to see it. The replay applies host writes only between slots.
+  - That is the MD's host timing, which an OT driver writing records
+    between batches does not have. Replaying the writes at their cycle
+    would test the inference.
+- ✅ **Three corrections came out of the relocation runs:**
+  1. **The code region ends at `0x103dba`, not `0x1040c0`.** The E12
+     samples begin there ("Assets"). Moving their first 774 words with the
+     code broke the E12 voices, since the samples are read through
+     descriptors that stay put.
+  2. **No live pointers were found in the working RAM at `0x148000`.** A
+     value scan there "found" 60 words pointing into the code regions. They
+     were two smooth ramp tables (step `0x63c`) that happen to cross those
+     ranges, and patching them corrupted single samples. The scan is gone.
+     A value test cannot tell a pointer from data, so any live-state patch
+     is a guess until a replay confirms it. The X/Y scan still patches up
+     to 35 words per capture (c47_2: `Y:0x4e`, `Y:0xa0–0xbf` and two
+     voice-record words), and the replays pass with them.
+  3. **The record's 64 words mix host input and voice state, per engine.**
+     Engine `0x44` keeps its sample pointer in word 12, inside what looked
+     like the host's 16 words. The replay therefore takes the host's
+     writes from the host stream the capture now logs (`C`/`W` lines),
+     never from the reference's record. Earlier replays overwrote state and
+     reported the TRX-BD relocation clean when it was not.
+- Not tested yet: the low-memory swap (step 3 of the design), and the OT's
+  own window layout. The new addresses here are a test placement, not the
+  OT's.
 
 ### Open for Phase 1
 

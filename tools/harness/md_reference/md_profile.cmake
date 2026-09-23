@@ -20,3 +20,8 @@ set_target_properties(md_profile PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRE
 add_executable(md_replay ${CMAKE_CURRENT_LIST_DIR}/md_replay.cpp)
 target_link_libraries(md_replay PRIVATE dsp56kEmu)
 set_target_properties(md_replay PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+
+# md_dis: every address of a snapshot's P ranges decoded, for md_relocate.py.
+add_executable(md_dis ${CMAKE_CURRENT_LIST_DIR}/md_dis.cpp)
+target_link_libraries(md_dis PRIVATE dsp56kEmu)
+set_target_properties(md_dis PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)

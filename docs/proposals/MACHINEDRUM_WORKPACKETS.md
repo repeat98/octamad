@@ -83,6 +83,9 @@ Statuses:
 
 ## 0. Rules for every packet
 
+0. **Push to `origin` (`repeat98/octamad`) only.** Never push to
+   `upstream` (`sambanks/octabam`), never force-push, never push to
+   `main`. The unattended overnight goal is `MACHINEDRUM_OVERNIGHT.md`.
 1. **Work in a git worktree** off the branch `machinedrum-phase0` (not
    `main`). The command is
    `git worktree add .claude/worktrees/<name> -b <branch> machinedrum-phase0`.

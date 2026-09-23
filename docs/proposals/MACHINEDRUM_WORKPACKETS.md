@@ -50,7 +50,7 @@ Statuses:
 | WP-A1 Core-0 memory ledger | blocked | `machinedrum` | `dea1167` | 2026-09-23 | `machinedrum_reports/WP-A1.md` | four ledgers and write-up done; two heavy slice/recorder fixtures exited -11 before a wordmap, so X `0x2840–0x3fff` remains 🟡 |
 | WP-A2 The layout | review | `machinedrum` | `3573d25` | 2026-09-23 | `machinedrum_reports/WP-A2.md` | concrete non-overlapping MD map; user must choose stock-slot and voice-home trade-offs |
 | WP-A3 Layout-driven relocation and driver | review | 2026-09-24 | machinedrum | `ab87e7e`; twelve-kit gate passes with the two known TRX-S2 residual deltas; pending user sign-off on WP-A2 | |
-| WP-A4 Boot-time init on the OT | todo | | | | | |
+| WP-A4 Boot-time init on the OT | claimed | 2026-09-24 | machinedrum | add `md_replay --init` for the relocated sine, P-I buffers and voice records | |
 | WP-A5 The stereo mix | blocked | | | | | decision D1 |
 | WP-A6 The cycle report at OT addresses | todo | | | | | |
 | WP-B1 Module and remix skeleton | todo | | | | | |

@@ -136,6 +136,17 @@ effect (instruction count is not cycles: one rewrite moved instructions
 508 → 512 while cycles fell 735 → 731). A configuration that freezes at
 `BURN = 0` is already over budget.
 
+The ColdFire has its own since 23 Sep 2026: **CF BURN**
+(`modules/cfburn/`, remixes `cfburn` and `bamsep26-burn`).
+
+- It is an FX2 row whose BURN/FINE knobs spin 640/10 instructions per
+  step at the end of the stock delay routine, at IPL 5.
+- ✅ under the port: inert and exact over the complete routine
+  (`verify_cfburn.py`).
+- Not swept on hardware. Its cycles per step are inferred as ≈ 640,
+  assuming a register-only loop runs at one cycle per instruction on the
+  V4e.
+
 Measured with the original probe:
 
 | configuration | result | spare |

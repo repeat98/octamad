@@ -24,6 +24,12 @@ void te_process(TapeState *, const TapeParams *, volatile int32_t *ring,
                 uint32_t write, int32_t *audio, int32_t *record);
 uint32_t te_target(const TapeParams *, uint32_t tempo);
 extern TapeState te_states[8];
+#ifdef TE_HOST
+void te_host_read_linear(int32_t *, volatile int32_t *, int32_t, int32_t, int32_t, int32_t);
+void te_host_filter_block(int32_t *, const int32_t *, int32_t *);
+void te_host_tape_block(TapeState *, const int32_t *, int32_t *, int32_t *,
+                        int32_t, int32_t, int32_t);
+#endif
 /* Returns nonzero only when the stock track loop must skip its DSP-era mix. */
 unsigned te_cpu_frame(uint32_t *stock_stack);
 #endif

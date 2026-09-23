@@ -751,7 +751,10 @@ images froze on a second instance's TIME change and on loading three.
 **What the counts say.** Per eight-track 16-sample frame under the port's
 instruction meter: stock DELAY 7,628; eight tape instances settled ~23,000;
 all controls moving up to 32,355. Per instance that is ~1,900 settled and
-~3,100 moving. The frame period is 363 µs, ~95,800 CPU cycles at 264 MHz,
+~3,100 moving. (Those are the PR's images. After the 23 Sep 2026 EMAC
+rewrite: 15,283 settled at WOW=44, 16,459 at the MIX=90 default with TIME
+moving, up to 21,547 with every control reversing in BEAT, about 30% less
+throughout; `modules/tapeecho/VOICING.md`. Not yet flashed.) The frame period is 363 µs, ~95,800 CPU cycles at 264 MHz,
 shared with everything else the ColdFire runs. The meter prices an
 uncached SDRAM ring access at one cycle.
 

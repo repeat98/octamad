@@ -29,6 +29,9 @@ static std::vector<uint8_t> read(const char *p) {
     return {std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>()};
 }
 static constexpr uint32_t stack = 0x47100000, endpc = 0x47200000;
+// Direct-kernel instruction ceilings (regression limits, not hardware cycles).
+static constexpr unsigned READER_FIXED_CEILING=165, READER_MOVING_CEILING=250,
+    FADE_EXTRA=90, FILTER_CEILING=420, TAPE_CEILING=1000;
 static std::map<uint32_t,uint64_t>* activeProfile=nullptr;
 static std::vector<uint32_t>* activeTrace=nullptr;
 static unsigned run(ot::Machine& m, uint32_t pc, uint32_t until, unsigned max = 100000) {
@@ -78,25 +81,23 @@ static void formatter_tests(ot::Machine& m) {
     std::puts("  [PASS] shipped TIME formatter: 128 values, both modes, all eight tracks and four Parts; selected-track labels and stack ABI");
 }
 // Exercise the shipped assembly independently of normal audio levels:
-// both filter clamps, fractional carry, callee-saved registers, and head
-// reads at either end of the contiguous ring region.
+// read-out saturation, fractional carry, every output mode, gain ramps,
+// callee-saved registers, and head reads at either end of the contiguous
+// ring region. Expected values come from the native oracle's own kernels.
 #ifndef TE_HALF_RATE
 static void kernel_tests(ot::Machine& m) {
     std::ifstream symbols("out/tapeecho-cpu/profile-symbols.txt");
-    uint32_t filter=0,reader=0,recorder=0,finish=0,wetFinish=0,curve=0,address; char type; std::string name,line;
+    uint32_t filter=0,reader=0,tape=0,address; char type; std::string name,line;
     while(std::getline(symbols,line)) {
         std::istringstream fields(line);
         if(!(fields>>std::hex>>address>>type>>name))continue;
         if(name=="te_filter_block")filter=address;
         if(name=="te_read_linear")reader=address;
-        if(name=="te_record_block")recorder=address;
-        if(name=="te_finish_record")finish=address;
-        if(name=="te_record_wet_finish")wetFinish=address;
-        if(name=="te_curve")curve=address;
+        if(name=="te_tape_block")tape=address;
     }
-    if(!filter||!reader||!recorder||!finish||!wetFinish||!curve){std::fprintf(stderr,"missing assembly kernel symbols\n");std::exit(1);}
+    if(!filter||!reader||!tape){std::fprintf(stderr,"missing assembly kernel symbols\n");std::exit(1);}
     constexpr uint32_t buffer=0x47000000,coeff=buffer+128,history=coeff+32,ring=0x4f502c10;
-    uint32_t rng=0x12345678;unsigned positive=0,negative=0;
+    uint32_t rng=0x12345678;
     auto random=[&]() {rng^=rng<<13;rng^=rng>>17;rng^=rng<<5;return rng;};
     auto call=[&](uint32_t pc) {
         m68k_set_reg(m.getCpuState(),M68K_REG_SP,stack);m.write32(stack,endpc);
@@ -109,124 +110,89 @@ static void kernel_tests(ot::Machine& m) {
             if(m68k_get_reg(m.getCpuState(),m68k_register_t(M68K_REG_D0+i))!=0x12340000+i){std::fprintf(stderr,"kernel saved register %u mismatch\n",i);std::exit(1);}
         return instructions;
     };
+    // Both filter sections: random histories/carries, tone rows from the
+    // shipped table, and full-range inputs that drive both read-outs into
+    // saturation in both directions.
+    unsigned positive=0,negative=0,filterPeak=0;
     for(unsigned test=0;test<1024;++test) {
-        const int32_t *c=test%3==0?te_fixed[test%2]:test%3==1?te_corner[test%225]:te_worn[test%128];
-        int32_t z[5],expected[16];
-        for(unsigned j=0;j<4;++j)z[j]=(int32_t(random())/8)*2;
-        z[4]=random()&255;
-        for(unsigned j=0;j<5;++j) {m.write32(coeff+4*j,c[j]);m.write32(history+4*j,z[j]);}
+        const int32_t *lp=te_tone[random()%(sizeof(te_tone)/sizeof(te_tone[0]))];
+        int32_t z[8],expected[16];
+        for(unsigned j=0;j<6;++j)z[j]=test%4==3?int32_t(random()):int32_t(random())/4;
+        z[6]=random()&255;z[7]=random()&255;
+        for(unsigned j=0;j<3;++j)m.write32(coeff+4*j,lp[j]);
+        for(unsigned j=0;j<8;++j)m.write32(history+4*j,z[j]);
         for(unsigned j=0;j<16;++j) {
-            int32_t x=test%4==0?268435456:test%4==1?-268435456:int32_t(random())/8;
-            m.write32(buffer+4*j,x);
-            int64_t acc=z[4]+((int64_t(x*2)*c[0])>>23);
-            for(unsigned k=0;k<4;++k)acc+=(int64_t(z[k])*c[k+1])>>23;
-            int32_t y=acc>>8;z[4]=uint32_t(acc)&255;
-            if(y>268435456){y=268435456;z[4]=0;++positive;}
-            if(y<-268435456){y=-268435456;z[4]=0;++negative;}
-            z[1]=z[0];z[0]=x*2;z[3]=z[2];z[2]=y*2;expected[j]=y;
+            int32_t x=test%4==0?int32_t(0x7fffffff):test%4==1?int32_t(0x80000000):int32_t(random())/2;
+            if(test%4==3)x=int32_t(random());
+            m.write32(buffer+4*j,x);expected[j]=x;
         }
-        m.write32(stack+4,buffer);m.write32(stack+8,coeff);m.write32(stack+12,history);call(filter);
+        te_host_filter_block(expected,lp,z);
+        for(unsigned j=0;j<16;++j){positive+=expected[j]==0x7fffffff;negative+=expected[j]==int32_t(0x80000000);}
+        m.write32(buffer-4,0x13579bdf);m.write32(buffer+64,0x2468ace0);
+        m.write32(stack+4,buffer);m.write32(stack+8,coeff);m.write32(stack+12,history);
+        filterPeak=std::max(filterPeak,call(filter));
         for(unsigned j=0;j<16;++j)if(int32_t(m.read32(buffer+4*j))!=expected[j]) {
-            std::fprintf(stderr,"filter kernel mismatch case %u sample %u\n",test,j);std::exit(1);
+            std::fprintf(stderr,"filter kernel mismatch case %u sample %u: %d/%d\n",test,j,int32_t(m.read32(buffer+4*j)),expected[j]);std::exit(1);
         }
-        for(unsigned j=0;j<5;++j)if(int32_t(m.read32(history+4*j))!=z[j]){std::fprintf(stderr,"kernel history mismatch case %u word %u\n",test,j);std::exit(1);}
+        for(unsigned j=0;j<8;++j)if(int32_t(m.read32(history+4*j))!=z[j]){std::fprintf(stderr,"filter history mismatch case %u word %u\n",test,j);std::exit(1);}
+        if(m.read32(buffer-4)!=0x13579bdf||m.read32(buffer+64)!=0x2468ace0){std::fprintf(stderr,"filter kernel overwrote guard\n");std::exit(1);}
     }
-    if(!positive||!negative)std::exit(1);
-    unsigned recordClamps=0,mixClamps=0;
+    if(!positive||!negative){std::fprintf(stderr,"filter saturation not exercised\n");std::exit(1);}
+    std::printf("  [PASS] fused filter kernel: 1024 blocks, %u/%u saturated outputs, carries/histories/ABI/guards\n",positive,negative);
+    // Record/FIR/curve/output: settled full wet, MIX, MIX=0 and gain ramps
+    // (including a MIX ramp that reaches zero), full-range wet and dry.
+    unsigned modes[4]={0,0,0,0},recordSaturation=0,outputSaturation=0,tapePeak=0;
     for(unsigned test=0;test<1024;++test) {
-        constexpr auto audio=buffer+512,st=buffer+1024,rec=buffer+2048;
+        constexpr auto audio=buffer+512,st=buffer+1024,rec=buffer+2048,wet=buffer+3072;
         TapeState s{};s.rng=random();s.feedback=te_feedback[random()%128];
-        s.mix=test%4==0?0:test%4==1?2147483640:(random()%128)*16909320u;
+        const unsigned mode=test%4;
+        s.mix=mode==0?0:mode==1?2147483640:(random()%128)*16909320u;
         s.hiss=te_hiss[random()%128]<<16;
+        s.filters[0][0]=int32_t(random())/8;s.filters[0][1]=int32_t(random())/8;
         int32_t dm=0,df=0,dn=0;
-        if(test%4==3) {
-            dm=(int32_t((random()%128)*16909320u)-s.mix)/512;
+        if(mode==3) {
+            dm=test%16==3?-s.mix/8:(int32_t((random()%128)*16909320u)-s.mix)/512;
             df=(te_feedback[random()%128]-s.feedback)/512;
             dn=((te_hiss[random()%128]<<16)-s.hiss)/512;
         }
-        TapeState initialState=s;
+        ++modes[mode==3?3:!s.mix?0:s.mix==2147483640?1:2];
+        int32_t wetIn[16],audioIn[32],expectedAudio[32],expectedRecord[32];
+        for(unsigned j=0;j<16;++j)wetIn[j]=test%3==0?int32_t(random()):int32_t(random())/8;
+        for(unsigned j=0;j<32;++j)audioIn[j]=expectedAudio[j]=random();
+        TapeState expectedState=s;
+        te_host_tape_block(&expectedState,wetIn,expectedAudio,expectedRecord,dm,df,dn);
+        for(unsigned j=0;j<16;++j)recordSaturation+=std::abs(double(expectedRecord[2*j]))>=te_tape_curve[2040];
+        for(unsigned j=0;j<32;++j)outputSaturation+=expectedAudio[j]==0x7fffffff||expectedAudio[j]==int32_t(0x80000000);
         const auto words=reinterpret_cast<const uint32_t*>(&s);
         for(unsigned k=0;k<sizeof(s)/4;++k)m.write32(st+4*k,words[k]);
-        int32_t expectedAudio[32],expectedRecord[16],inputAudio[32];
-        auto mul=[](int32_t x,int32_t y){return int32_t((int64_t(x)*y)>>31);};
-        auto clip=[&](int32_t x){if(x>8388607||x<-8388608)++mixClamps;return std::clamp(x,-8388608,8388607);};
-        for(unsigned j=0;j<16;++j) {
-            int32_t wet=int32_t(random())/8;
-            m.write32(buffer+4*j,wet);
-            int32_t left=random(),right=random();m.write32(audio+8*j,left);m.write32(audio+8*j+4,right);
-            inputAudio[2*j]=left;inputAudio[2*j+1]=right;
-            s.mix+=dm;s.feedback+=df;s.hiss+=dn;s.rng=s.rng*1664525u+1013904223u;
-            int32_t l=left>>5,r=right>>5;
-            int32_t value=8*mul((l+r)/2,te_record_gain[0])+8*mul(wet,s.feedback)+mul(s.hiss>>16,s.rng);
-            if(value>268435456||value<-268435456)++recordClamps;
-            expectedRecord[j]=std::clamp(value,-268435456,268435456);
-            wet=8*mul(wet,te_makeup[0]);
-            if(s.mix) {
-                if(s.mix==2147483640) {
-                    left=right=uint32_t(clip(wet>>3))<<8;
-                } else {
-                    left=uint32_t(clip((l+mul(wet-l,s.mix))>>3))<<8;
-                    right=uint32_t(clip((r+mul(wet-r,s.mix))>>3))<<8;
-                }
-            }
-            expectedAudio[2*j]=left;expectedAudio[2*j+1]=right;
-        }
-        m.write32(rec-4,0x13579bdf);m.write32(rec+64,0x2468ace0);
-        m.write32(stack+4,st);m.write32(stack+8,buffer);m.write32(stack+12,audio);m.write32(stack+16,rec);
-        m.write32(stack+20,dm);m.write32(stack+24,df);m.write32(stack+28,dn);call(recorder);
-        for(unsigned j=0;j<32;++j)if(int32_t(m.read32(audio+4*j))!=expectedAudio[j]){std::fprintf(stderr,"record mix kernel mismatch %u/%u\n",test,j);std::exit(1);}
-        for(unsigned j=0;j<16;++j)if(int32_t(m.read32(rec+4*j))!=expectedRecord[j]){std::fprintf(stderr,"record kernel mismatch %u/%u\n",test,j);std::exit(1);}
-        for(unsigned k=0;k<sizeof(s)/4;++k)if(m.read32(st+4*k)!=words[k]){std::fprintf(stderr,"record state mismatch %u/%u\n",test,k);std::exit(1);}
-        if(m.read32(rec-4)!=0x13579bdf||m.read32(rec+64)!=0x2468ace0){std::fprintf(stderr,"record kernel overwrote guard\n");std::exit(1);}
-        constexpr auto finalRecord=buffer+3072;
-        int32_t x1=int32_t(random())/8,x2=int32_t(random())/8,expectedFinal[16];
-        initialState.filters[0][0]=x1;initialState.filters[0][1]=x2;
-        m.write32(history,x1);m.write32(history+4,x2);
-        for(unsigned j=0;j<16;++j) {
-            int32_t x=expectedRecord[j],shaped=x1+((x-2*x1+x2)>>3);
-            x2=x1;x1=x;
-            uint32_t a=shaped<0?-shaped:shaped,index=a>>18;
-            int32_t y=te_curve[index]+mul(te_curve[index+1]-te_curve[index],(a&262143u)<<13);
-            expectedFinal[j]=uint32_t(shaped<0?-y:y)<<5;
-        }
-        m.write32(finalRecord-4,0x13579bdf);m.write32(finalRecord+128,0x2468ace0);
-        m.write32(stack+4,rec);m.write32(stack+8,finalRecord);
-        m.write32(stack+12,history);m.write32(stack+16,curve);call(finish);
-        for(unsigned j=0;j<32;++j)if(int32_t(m.read32(finalRecord+4*j))!=expectedFinal[j/2]){std::fprintf(stderr,"FIR/curve kernel mismatch %u/%u\n",test,j);std::exit(1);}
-        if(int32_t(m.read32(history))!=x1||int32_t(m.read32(history+4))!=x2||
-           m.read32(finalRecord-4)!=0x13579bdf||m.read32(finalRecord+128)!=0x2468ace0){std::fprintf(stderr,"FIR/curve state/guard mismatch\n");std::exit(1);}
-        if(test%4==1) {
-            const auto initialWords=reinterpret_cast<const uint32_t*>(&initialState);
-            for(unsigned k=0;k<sizeof(s)/4;++k)m.write32(st+4*k,initialWords[k]);
-            for(unsigned j=0;j<32;++j)m.write32(audio+4*j,inputAudio[j]);
-            // Distinct poison requires every mono/stereo destination to be written.
-            for(unsigned j=0;j<32;++j)m.write32(finalRecord+4*j,0xdeadbeef);
-            m.write32(stack+4,st);m.write32(stack+8,buffer);
-            m.write32(stack+12,audio);m.write32(stack+16,finalRecord);call(wetFinish);
-            s.filters[0][0]=x1;s.filters[0][1]=x2;
-            for(unsigned j=0;j<32;++j)
-                if(int32_t(m.read32(audio+4*j))!=expectedAudio[j] ||
-                   int32_t(m.read32(finalRecord+4*j))!=expectedFinal[j/2]) {
-                    std::fprintf(stderr,"full-wet kernel mismatch %u/%u\n",test,j);std::exit(1);
-                }
-            for(unsigned k=0;k<sizeof(s)/4;++k)if(m.read32(st+4*k)!=words[k]) {
-                std::fprintf(stderr,"full-wet state mismatch %u/%u\n",test,k);std::exit(1);
-            }
-            if(m.read32(finalRecord-4)!=0x13579bdf||m.read32(finalRecord+128)!=0x2468ace0) {
-                std::fprintf(stderr,"full-wet kernel overwrote guard\n");std::exit(1);
-            }
-        }
+        for(unsigned j=0;j<16;++j)m.write32(wet+4*j,wetIn[j]);
+        for(unsigned j=0;j<32;++j){m.write32(audio+4*j,audioIn[j]);m.write32(rec+4*j,0xdeadbeef);}
+        m.write32(rec-4,0x13579bdf);m.write32(rec+128,0x2468ace0);
+        m.write32(audio-4,0x13579bdf);m.write32(audio+128,0x2468ace0);
+        m.write32(stack+4,st);m.write32(stack+8,wet);m.write32(stack+12,audio);m.write32(stack+16,rec);
+        m.write32(stack+20,dm);m.write32(stack+24,df);m.write32(stack+28,dn);
+        tapePeak=std::max(tapePeak,call(tape));
+        for(unsigned j=0;j<32;++j)if(int32_t(m.read32(audio+4*j))!=expectedAudio[j]){std::fprintf(stderr,"tape output mismatch %u/%u (mode %u)\n",test,j,mode);std::exit(1);}
+        for(unsigned j=0;j<32;++j)if(int32_t(m.read32(rec+4*j))!=expectedRecord[j]){std::fprintf(stderr,"tape record mismatch %u/%u (mode %u)\n",test,j,mode);std::exit(1);}
+        const auto after=reinterpret_cast<const uint32_t*>(&expectedState);
+        for(unsigned k=0;k<sizeof(s)/4;++k)if(m.read32(st+4*k)!=after[k]){std::fprintf(stderr,"tape state mismatch %u/%u\n",test,k);std::exit(1);}
+        if(m.read32(rec-4)!=0x13579bdf||m.read32(rec+128)!=0x2468ace0||
+           m.read32(audio-4)!=0x13579bdf||m.read32(audio+128)!=0x2468ace0){std::fprintf(stderr,"tape kernel overwrote guard\n");std::exit(1);}
     }
-    std::puts("  [PASS] fused full-wet kernel: 256 random-history/full-range blocks, audio/record/state/ABI/guards");
-    if(!recordClamps||!mixClamps)std::exit(1);
-    std::printf("  [PASS] record/mix kernel: 1024 gain/ramp cases, %u record clamps, %u mix clamps, state/ABI/guards\n",recordClamps,mixClamps);
-    std::puts("  [PASS] FIR/curve kernel: 1024 clamped-input/random-history blocks, stereo output, state/ABI/guards");
+    if(!recordSaturation||!outputSaturation){std::fprintf(stderr,"tape saturation not exercised\n");std::exit(1);}
+    std::printf("  [PASS] fused tape kernel: 1024 blocks (%u dry, %u full wet, %u mix, %u ramp), %u curve-limit records, %u clipped outputs, state/ABI/guards\n",
+                modes[0],modes[1],modes[2],modes[3],recordSaturation,outputSaturation);
     // Capture a shared counter by value: Machine outlives this function.
+    // Count longword loads: the emulator performs a multiply-with-load's
+    // 32-bit load as two 16-bit reads, the second at +2.
     auto reads=std::make_shared<unsigned>(0);
     m.addReadWatch(ring-0x08000000,ring-0x08000000+8*TE_RING,
-                  [reads](uint32_t,uint8_t,uint32_t,uint32_t){++*reads;});
-    unsigned fixedPeak=0,movingPeak=0;
+                  [reads](uint32_t a,uint8_t,uint32_t,uint32_t){*reads+=!(a&3);});
+    unsigned fixedPeak=0,movingPeak=0,fadeFixedPeak=0,fadeMovingPeak=0;
     for(unsigned test=0;test<2048;++test) {
+        // Half the blocks are a BEAT crossfade's outgoing head: out[] holds
+        // the incoming head and the weight runs from any fade position.
+        const int32_t blend=test%8<4 ? -1 : int32_t((random()%497)<<22);
         int32_t base=((test&1)?TE_RING-18:1)*256+(random()&255);
         int32_t wobble=int32_t(random()%257)-128,step=int32_t(random()%129)-64;
         if(test>=512) {
@@ -242,33 +208,41 @@ static void kernel_tests(ot::Machine& m) {
         if(!test)wobble=step=0;
         int32_t expected[16]; unsigned expectedReads=0,previousIndex=~0u;
         for(unsigned j=0;j<TE_RING;++j)if(j<28||j>TE_RING-28)m.write32(ring+8*j,random());
+        static std::vector<int32_t> host(TE_RING*2);
         int32_t w=wobble;
         for(unsigned j=0;j<16;++j) {
-            int32_t initial=int32_t(random())/8;m.write32(buffer+4*j,initial);
+            int32_t initial=int32_t(random())/8;m.write32(buffer+4*j,initial);expected[j]=initial;
             w+=step;uint32_t position=base+j*256-(w>>8),index=position>>8;
             if(index>=TE_RING-1) {
                 std::fprintf(stderr,"invalid reader fixture %u/%u: index %u\n",test,j,index);std::exit(1);
             }
-            int32_t a=int32_t(m.read32(ring+8*index))>>5,b=int32_t(m.read32(ring+8*(index+1)))>>5;
-            int32_t sample=a+((int64_t(b-a)*((position&255)<<23))>>31);
-            expected[j]=sample;
             expectedReads += j && index==previousIndex+1 ? 1 : 2;
             previousIndex=index;
+            host[2*index]=int32_t(m.read32(ring+8*index));
+            host[2*index+2]=int32_t(m.read32(ring+8*index+8));
         }
+        te_host_read_linear(expected,host.data(),base,wobble,step,blend);
         m.write32(stack+4,buffer);m.write32(stack+8,ring);m.write32(stack+12,base);
-        m.write32(stack+16,wobble);m.write32(stack+20,step);
+        m.write32(stack+16,wobble);m.write32(stack+20,step);m.write32(stack+24,blend);
         *reads=0;unsigned cost=call(reader);
-        if(step)movingPeak=std::max(movingPeak,cost);else fixedPeak=std::max(fixedPeak,cost);
+        auto& peak=blend<0 ? (step?movingPeak:fixedPeak) : (step?fadeMovingPeak:fadeFixedPeak);
+        peak=std::max(peak,cost);
         if(*reads!=expectedReads){std::fprintf(stderr,"reader SDRAM traffic mismatch %u/%u\n",*reads,expectedReads);std::exit(1);}
         for(unsigned j=0;j<16;++j)if(int32_t(m.read32(buffer+4*j))!=expected[j]) {
             std::fprintf(stderr,"reader kernel mismatch case %u sample %u\n",test,j);std::exit(1);
         }
     }
-    if(fixedPeak>200||movingPeak>420) {
-        std::fprintf(stderr,"reader instruction regression: fixed %u, moving %u\n",fixedPeak,movingPeak);std::exit(1);
+    if(fixedPeak>READER_FIXED_CEILING||movingPeak>READER_MOVING_CEILING||
+       fadeFixedPeak>READER_FIXED_CEILING+FADE_EXTRA||fadeMovingPeak>READER_MOVING_CEILING+FADE_EXTRA||
+       filterPeak>FILTER_CEILING||tapePeak>TAPE_CEILING) {
+        std::fprintf(stderr,"kernel instruction regression: reader fixed %u/%u, moving %u/%u (plain/crossfade), filter %u, tape %u\n",
+                     fixedPeak,fadeFixedPeak,movingPeak,fadeMovingPeak,filterPeak,tapePeak);std::exit(1);
     }
-    std::printf("  [PASS] reader instruction ceilings: fixed %u/200, moving %u/420 (not hardware cycles)\n",fixedPeak,movingPeak);
-    std::puts("  [PASS] assembly kernels: 1024 filter blocks (both clamps/carry), 2048 boundary reader blocks, callee-saved registers");
+    std::printf("  [PASS] kernel instruction ceilings: reader fixed %u/%u, moving %u/%u; crossfading reader fixed %u/%u, moving %u/%u; filters %u/%u, tape %u/%u (not hardware cycles)\n",
+                fixedPeak,READER_FIXED_CEILING,movingPeak,READER_MOVING_CEILING,
+                fadeFixedPeak,READER_FIXED_CEILING+FADE_EXTRA,fadeMovingPeak,READER_MOVING_CEILING+FADE_EXTRA,
+                filterPeak,FILTER_CEILING,tapePeak,TAPE_CEILING);
+    std::puts("  [PASS] reader: 2048 boundary blocks (signed/outside-ring anchors, fixed/moving heads, plain and crossfading), callee-saved registers");
     std::puts("  [PASS] reader data-load counts match overlap reuse: settled block reads 17 uncached words instead of 32");
 }
 #endif
@@ -453,12 +427,28 @@ static void benchmark(const std::vector<uint8_t>& image,const std::vector<uint8_
                     test.name,mean,minimum,peak,mean/baseline);
         if(test.tapes)std::printf("  [LOAD] %s: peak %u instructions on an instance-selection frame\n",test.name,loadingPeak);
         if(detailed && !stress)reportProfile(test,profileBlocks,detailedProfile);
+        // Optional per-PC listing for one case (TE_PC_DUMP=file, TE_PC_CASE=name).
+        if(detailed && !stress && std::getenv("TE_PC_DUMP") && std::getenv("TE_PC_CASE") &&
+           !std::strcmp(test.name,std::getenv("TE_PC_CASE"))) {
+            if(FILE* f=std::fopen(std::getenv("TE_PC_DUMP"),"w")) {
+                for(auto [pc,count]:detailedProfile)
+                    std::fprintf(f,"%08x %.2f\n",pc,double(count)/profileBlocks/(test.tapes?test.tapes:1));
+                std::fclose(f);
+            }
+        }
         if(stress) {
             std::sort(costs.begin(),costs.end());
             std::printf("  [SPIKE] %s: p95 %u, p99 %u, peak %u at measured block %u; peak/mean %.3f\n",
                 test.name,costs[949],costs[989],peak,peakFrame,peak/mean);
             std::map<uint32_t,uint64_t> worst;
             for(auto pc:peakTrace)++worst[pc];
+            if(std::getenv("TE_PC_DUMP") && std::getenv("TE_PC_CASE") &&
+               !std::strcmp(test.name,std::getenv("TE_PC_CASE"))) {
+                if(FILE* f=std::fopen(std::getenv("TE_PC_DUMP"),"w")) {
+                    for(auto [pc,count]:worst)std::fprintf(f,"%08x %.2f\n",pc,double(count)/test.tapes);
+                    std::fclose(f);
+                }
+            }
             std::puts("  [PEAK PROFILE] Executed functions on this case's worst measured block:");
             reportProfile(test,1,worst);
         }

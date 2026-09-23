@@ -102,6 +102,20 @@ the threshold. A stronger transformation would have to eliminate repeated
 arithmetic or memory work and demonstrate exact EMAC, register, memory,
 audio and transition equivalence; none is established here.
 
+Superseded as the ordering, 23 September 2026:
+[OPTIMIZATION_LEVERS.md](OPTIMIZATION_LEVERS.md) proposes such
+transformations. Each is gated on a precondition that proves equivalence:
+
+- L1: the delay's dry-only track, ~500 per qualifying track;
+- L2: the renderer's unity-rate phase step, ~1,000;
+- L3: a division loop that returns its input, ~290;
+- L4: `0x400068e4`'s early exit, ~570.
+
+It also places each scope in its context. The delay runs in the transfer
+interrupt at IPL 5, and the renderer inside the frame ISR. Analysis and
+correlation run in the priority-1 task `0x40098a5c`, so the correlation
+row's task is off the interrupt path. The unrolls above remain fallbacks.
+
 ## Frame percentiles are constrained by the emulator clock
 
 The configured ColdFire cadence is 3,990 executed instructions per audio

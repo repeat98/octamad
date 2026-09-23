@@ -76,7 +76,7 @@ Statuses:
 | WP-R2 The TRX-S2 residual | todo | | | | | decides D3 |
 | WP-R3 The interpreter/JIT mismatch | blocked | `machinedrum` | `94ef689` | 2026-09-24 | `machinedrum_reports/WP-R3.md` | `ADD X,B` boundary isolated in both captures; needs the user's WP-R4 vendor repin before parity can be repaired |
 | WP-R4 The stale toolchain | blocked | | | | | the user reruns `scripts/setup.sh` |
-| WP-R5 The c47_2 anomaly | todo | | | | | |
+| WP-R5 The c47_2 anomaly | claimed | `machinedrum` | | 2026-09-24 | | measuring per-slot fetch/cycle costs on c47_2; no capture or toolchain changes |
 | WP-R6 The MD mixer's per-voice section | blocked | | | | | only if D1 = B |
 
 ---

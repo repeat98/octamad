@@ -1118,7 +1118,7 @@ Measured with `md_replay` on the six captures of the relocation table
   carry 97–100 %. The union over the six captures of each one's hottest
   code for 80 / 90 / 95 % of its fetches is 1,900 / 2,764 / 4,820 words.
   All executed engine code across them is 11,392 words.
-- **The lever:** payload A's donor region, `P:0x1000–0x1b57` (PLATE,
+- **The lever:** payload A's donor region, `P:0x1000–0x1aa3` (PLATE,
   SPRING and DARK, 2,724 words, `build_bus.PP`), is core 0's own P with no
   wait state. Removing those three reverbs from payload A takes them from
   T5–T8 only; payload B keeps its copies for T1–T4. The hot code (about

@@ -18,25 +18,26 @@ are allowed to do is left.
    `docs/proposals/MACHINEDRUM_MACHINE.md`.
 
 **Where to work.**
-- In the existing worktree `.claude/worktrees/md-phase0`, on branch
-  `machinedrum-phase0`. The builds (`out/md_reference`,
-  `out/md_reference_interp`) and the twelve captures (`out/md_profile/cap4`,
-  `cap5`) are already there. Do not create another worktree for the same
-  branch.
-- Never work in the main checkout. Never rebuild the shared `vendor/`
-  toolchain.
+- In the main checkout, `/Users/jannikassfalg/coding/octamad`, on the
+  branch `machinedrum`. The builds (`out/md_reference`,
+  `out/md_reference_interp`) and the twelve captures
+  (`out/md_profile/cap4`, `cap5`) are already there.
+- Do not create worktrees; nothing goes under `.claude/`. Do not rebuild
+  the shared `vendor/` toolchain. Never `git stash`.
+- This overrides `CLAUDE.md`'s "ALWAYS WORK IN A GIT WORKTREE" for the
+  Machinedrum work. It is the user's decision (23 Sep 2026): the work must
+  be visible in the checkout, not hidden in the gitignored `.claude/`.
 
 **Git: always commit and push to octamad.**
-- `origin` is `github.com/repeat98/octamad`. Push only there:
-  `git push origin machinedrum-phase0`.
-- **Never push to `upstream`** (`sambanks/octabam`). Never force-push.
-  Never push or merge to `main`. Never open a pull request.
+- `origin` is `github.com/repeat98/octamad`. Push there:
+  `git push origin machinedrum`.
+- **The one prohibition: never push to `upstream`** (`sambanks/octabam`).
 - Push after every claim commit and after every finished packet. If a push
-  fails, do not work around it with force or another remote. Record the
-  failure in the night report and keep committing locally.
+  fails, do not work around it with another remote. Record the failure in
+  the night report and keep committing locally.
 - Before every push, check that no Elektron byte is in the commit: no
   firmware, snapshot, `.bin`, `.syx`, sample or extracted blob. Run
-  `git diff --numstat origin/machinedrum-phase0..HEAD` and look for `-`
+  `git diff --numstat origin/machinedrum..HEAD` and look for `-`
   (binary) entries. Anything under `out/` stays uncommitted.
 
 **The loop, once per packet.**
@@ -93,8 +94,7 @@ or anything that needs hardware.
   the driver, the relocator or the layout. A regression is reverted before
   the commit, not reported afterwards.
 - **Don't touch anything outside the Machinedrum.** That means other
-  modules, other remixes, the build, and other sessions' worktrees and
-  stashes. If a change to the build seems needed, write it up as a
+  modules, other remixes, the build, and other sessions' files. If a change to the build seems needed, write it up as a
   proposal and do not make it.
 
 **In the morning.** Write

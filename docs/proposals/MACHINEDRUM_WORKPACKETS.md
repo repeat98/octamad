@@ -25,7 +25,7 @@ section 1 decisions and section 12 before starting any packet.
 ## Status
 
 This table is the single place that says what is done. When you **start**
-a packet, set its row to `claimed`, with your branch and the date, commit
+a packet, set its row to `claimed`, with the branch and the date, commit
 that alone, and push or merge it, so no one else picks the same packet.
 When you **finish** one, set it to `done` (or `blocked`), with the commit
 and a link to your report. Edit only your own packet's row. Other rows
@@ -46,7 +46,7 @@ Statuses:
 
 | Packet | Status | Branch | Commit | Date | Report | Notes |
 |---|---|---|---|---|---|---|
-| WP-00 Phase 0/1 and the driver in the replay | done | `machinedrum-phase0` | `f4a93d8` | 2026-09-23 | `MACHINEDRUM_MACHINE.md` §12 | replay, relocation, hot split, driver steps 1–3 |
+| WP-00 Phase 0/1 and the driver in the replay | done | `machinedrum` | `f4a93d8` | 2026-09-23 | `MACHINEDRUM_MACHINE.md` §12 | replay, relocation, hot split, driver steps 1–3 |
 | WP-A1 Core-0 memory ledger | todo | | | | | first packet to hand out |
 | WP-A2 The layout | todo | | | | | decision gate: user sign-off |
 | WP-A3 Layout-driven relocation and driver | todo | | | | | |
@@ -83,14 +83,18 @@ Statuses:
 
 ## 0. Rules for every packet
 
-0. **Push to `origin` (`repeat98/octamad`) only.** Never push to
-   `upstream` (`sambanks/octabam`), never force-push, never push to
-   `main`. The unattended overnight goal is `MACHINEDRUM_OVERNIGHT.md`.
-1. **Work in a git worktree** off the branch `machinedrum-phase0` (not
-   `main`). The command is
-   `git worktree add .claude/worktrees/<name> -b <branch> machinedrum-phase0`.
-   Never `git stash` in the main checkout. See `CLAUDE.md`, "ALWAYS WORK IN
-   A GIT WORKTREE".
+0. **Commit and push to octamad; never to octabam.** `origin` is
+   `github.com/repeat98/octamad`, and every commit goes there:
+   `git push origin machinedrum`. `upstream` is `sambanks/octabam`.
+   **Never push to `upstream`.** That is the one git prohibition. The
+   unattended overnight goal is `MACHINEDRUM_OVERNIGHT.md`.
+1. **Work in the main checkout** (`/Users/jannikassfalg/coding/octamad`),
+   on the branch `machinedrum`. This is the user's decision for the
+   Machinedrum work (23 Sep 2026), and it overrides `CLAUDE.md`'s worktree
+   rule here: no worktrees under `.claude/`, which is gitignored and
+   hidden from the user. The MD builds and captures live in the main
+   checkout's `out/`. Never `git stash` (other sessions share the stash
+   list), and leave files outside the Machinedrum alone.
 2. **Never commit an Elektron byte**: no firmware, snapshot, extracted
    blob, sample or `.syx`. Everything derived from the user's firmware is
    built into `out/` (gitignored) at build time.
@@ -130,7 +134,8 @@ Statuses:
 | `md_dis` | Disassembles the P ranges of a snapshot |
 | `kits.txt` | The validation kits |
 
-**Build.** Once per worktree. The patches in `tools/patches/gearmulator-md-*.patch`
+**Build.** Already done in the main checkout's `out/`. Rebuild only
+after changing the tools. The patches in `tools/patches/gearmulator-md-*.patch`
 must already be applied in `vendor/gearmulator-md-mm`. Configure with:
 
 ```
@@ -188,7 +193,7 @@ Useful `md_replay` switches:
 
 ---
 
-## 2. Where things stand (23 September 2026, branch `machinedrum-phase0`)
+## 2. Where things stand (23 September 2026, branch `machinedrum`)
 
 - ✅ The voice DSP runs outside the MD, bit-identical (`md_replay`).
 - ✅ It is relocated (two code regions, 987 patches) with the hottest
@@ -464,7 +469,7 @@ using the `PANEL.md` primitives.
 - **WP-R4 The stale toolchain:** the main checkout's `vendor/dsp56300` is
   still at `c051afad` (before the 22 Sep repin), so `cmp a,b` assembles
   as `max`. Ask the user to rerun `scripts/setup.sh` in the main checkout.
-  Do not rebuild the shared vendor from a worktree.
+  Do not rebuild the shared `vendor/` yourself: other sessions use it.
 - **WP-R5 The c47_2 anomaly:** ~1,215 cycles/sample from the first block,
   with only 2 tracks assigned. Find which default-kit voice costs it.
 - **WP-R6 The MD mixer's per-voice section (if D1 = B):** locate level and

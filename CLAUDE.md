@@ -53,6 +53,17 @@ make reverb IN=loop.wav ARGS='--wet --mode all'
 Never claim something works because it assembled or linked. `make check` is
 the floor.
 
+**PUSH TO OCTAMAD, NEVER TO OCTABAM.** `origin` is
+`github.com/repeat98/octamad`, and every commit is pushed there.
+`upstream` is `sambanks/octabam`. Never push to `upstream`: that is the one
+thing not to do (the user, 23 Sep 2026).
+
+**The Machinedrum work is the exception to the worktree rule below.** It
+happens in the main checkout, on the branch `machinedrum`, with its builds
+and captures in the checkout's `out/`, and is pushed to `origin`. Nothing
+of it goes under `.claude/`, which is gitignored and hidden (the user, 23
+Sep 2026). See `docs/proposals/MACHINEDRUM_WORKPACKETS.md`.
+
 **ALWAYS WORK IN A GIT WORKTREE, never in the main checkout.** Several
 sessions share this repository at once; the main checkout's working tree,
 index and stash list are theirs as much as yours. Start every task with

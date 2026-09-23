@@ -56,19 +56,29 @@ index c46ec22b..305c9def 100644
  
  	// -------------------------------------------------------------------------
 diff --git a/source/elektron/md/mdLib/mdhardware.cpp b/source/elektron/md/mdLib/mdhardware.cpp
-index 5f7d7d18..bb4f1c08 100644
+index 5f7d7d18..540cd3e9 100644
 --- a/source/elektron/md/mdLib/mdhardware.cpp
 +++ b/source/elektron/md/mdLib/mdhardware.cpp
-@@ -30,6 +30,8 @@
+@@ -30,6 +30,9 @@
  
  namespace md
  {
 +	TUcExecHook g_ucExecHook = nullptr;
++	TLinkTraceHook g_linkTraceHook = nullptr;
 +
  	// The current 40 MHz ColdFire clock is consistent with the firmware's timer
  	// and UART divisors. It converts mixer-DSP execution into a UC cycle budget.
  
-@@ -1042,6 +1044,8 @@ namespace md
+@@ -476,6 +479,8 @@ namespace md
+ 						m_mmLinkAwaitFresh.store(false, std::memory_order_release);
+ 					}
+ 
++					if(g_linkTraceHook)
++						g_linkTraceHook(_values);
+ 					fwd(_frameIndex, _values);
+ 				});
+ 		}
+@@ -1042,6 +1047,8 @@ namespace md
  			pumpDsp2HostRequest();
  
  		const auto deltaCycles = m_uc.exec();
@@ -78,10 +88,10 @@ index 5f7d7d18..bb4f1c08 100644
  			m_midiSysexTransfer.service(deltaCycles,
  				m_midiInByteCursor == 0
 diff --git a/source/elektron/md/mdLib/mdhardware.h b/source/elektron/md/mdLib/mdhardware.h
-index 05557026..136cb413 100644
+index 05557026..5993b259 100644
 --- a/source/elektron/md/mdLib/mdhardware.h
 +++ b/source/elektron/md/mdLib/mdhardware.h
-@@ -27,6 +27,12 @@
+@@ -27,6 +27,15 @@
  
  namespace md
  {
@@ -90,6 +100,9 @@ index 05557026..136cb413 100644
 +	class Microcontroller;
 +	using TUcExecHook = void(*)(Microcontroller&);
 +	extern TUcExecHook g_ucExecHook;
++	// Every ESSI0 frame the producer transmits to the mixer (the inter-DSP link).
++	using TLinkTraceHook = void(*)(const dsp56k::Audio::TxFrame&);
++	extern TLinkTraceHook g_linkTraceHook;
 +
  	// One scheduler slice can finish its current JIT block after crossing a cycle
  	// target. Keep a small, reported input look-ahead so those codec reads never

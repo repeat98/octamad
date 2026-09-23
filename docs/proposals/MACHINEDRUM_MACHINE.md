@@ -738,6 +738,25 @@ track 1 it logs every host-port word through an assign, a trig, encoder A
 - The MD's SRAM host-port sender does not port (see above), so its packet
   format needs no decode beyond the traced stream.
 
+### The voice DSP's output: the Phase 1 boundary (23 September 2026)
+
+- ✅ The voice DSP sends the mixer **16 words per sample period** over the
+  inter-DSP ESSI0 link. `md_profile trace=<id>` logs it
+  (`g_linkTraceHook`, `gearmulator-md-hosttrace.patch`): 1,354,752 words
+  in 84,672 samples.
+- ✅ The stream is block-structured with a **512-word period, 32 samples ×
+  16 voices, voice-major**: each voice's 32 samples go out contiguously, and
+  track 1 is words 0–31 of every period. With only track 1 playing, no
+  other position is ever non-zero.
+- ✅ Track 1's words, read as a mono 44.1 kHz signal, are the two TRX-BD
+  hits of the trace scenario, at 0.50 s and 1.41 s. The second is higher
+  (~56 → ~62 Hz, by zero-crossing count) after PTCH +10.
+- So each voice leaves the voice DSP separately, and the mixer applies
+  level, pan and sends. *Inferred* from the per-voice stream. The Phase 1
+  proof compares at this boundary: a voice record in, that voice's
+  32-sample blocks out. The mixer, and therefore the MD master effects,
+  are outside it.
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and

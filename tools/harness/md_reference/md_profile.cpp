@@ -102,6 +102,18 @@ namespace
 		g_lastUcPc = pc;
 	}
 
+	// The producer->mixer link, frame by frame, while a trace scenario runs:
+	// one line per frame, its slot words.
+	FILE* g_link = nullptr;
+	void onLink(const dsp56k::Audio::TxFrame& _f)
+	{
+		if(!g_link)
+			return;
+		for(uint32_t i = 0; i < _f.size(); ++i)
+			std::fprintf(g_link, i ? " %06x" : "%06x", _f[i][0]);
+		std::fputc('\n', g_link);
+	}
+
 	// The producer's packet in flight and the last voice record (a packet of
 	// more than the idle tick's four words), for the map scenario.
 	std::vector<uint32_t> g_packet, g_record, g_trigRecord;
@@ -485,6 +497,8 @@ int main(int _argc, char** _argv)
 			g_trace = std::fopen((outDir + "/" + name + ".host.txt").c_str(), "w");
 			md::g_hostTraceHook = &onHost;
 			md::g_ucExecHook = &onUc;
+			g_link = std::fopen((outDir + "/" + name + ".link.txt").c_str(), "w");
+			md::g_linkTraceHook = &onLink;
 			auto mark = [&](const char* _m) { std::fprintf(g_trace, "# %s\n", _m); };
 			mark("assign");
 			rig.sysex({0xf0, 0x00, 0x20, 0x3c, 0x02, 0x00, 0x5b, 0x00, id, 0x00, 0xf7});
@@ -507,6 +521,9 @@ int main(int _argc, char** _argv)
 			md::g_hostTraceHook = nullptr;
 			std::fclose(g_trace);
 			md::g_ucExecHook = nullptr;
+			md::g_linkTraceHook = nullptr;
+			std::fclose(g_link);
+			g_link = nullptr;
 			FILE* cf = std::fopen((outDir + "/" + name + ".calls.txt").c_str(), "w");
 			for(const auto& [k, n] : g_handlerCalls)
 				std::fprintf(cf, "%06x %06x %llu\n", k.first, k.second, static_cast<unsigned long long>(n));

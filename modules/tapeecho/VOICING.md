@@ -4,6 +4,68 @@
 engine. **Not a hardware capture or a real-time certification.** This pass
 brings the CPU voice closer to Galaxy without moving it back to the DSP.
 
+## Read-head and full-wet optimization (23 Sep 2026)
+
+This pass preserves the native C engine, tables, filters, gain ramps, tape
+curve and control timing. The moving reader uses one relative Q16 phase
+instead of rebuilding the delay and address each sample. Its +255 bias
+preserves the original signed rounding exactly. A signed integer anchor
+keeps the four-second ring address outside that phase; negative anchors at
+the wrap seam are explicitly tested. Alternating sample registers eliminate
+copies when neighbouring reads overlap. When the phase step is zero, a
+separate loop uses a constant interpolation fraction and consecutive loads.
+Both paths retain 17 uncached sample loads for a contiguous block.
+
+The full-wet record kernel alternates its FIR history registers and removes
+an unnecessary branch per sample. No audio approximation or sample-rate
+reduction is involved. The generator now pins external tail calls to `jmp`:
+GNU as otherwise relaxes `jra te_read_linear` differently for 54454 and
+5475 and fails the existing encoding-identity gate. Regeneration uses the
+local GCC 15.2.0 toolchain; the numbers below include its changed register
+allocation, including a 16-instruction increase in the patched-stock case.
+
+Measured against the checked-in assembly at `1e6d246` with the same stock
+firmware, DMA model, stereo tone, 1500 warm-up and 1000 measured blocks.
+These are **executed instructions per complete eight-track 16-sample
+routine**, not hardware CPU percentages. Full-wet is used unless MIX is
+specified:
+
+| Configuration | Before | After | Reduction |
+| --- | ---: | ---: | ---: |
+| Original stock DELAY x8 | 7,628.0 | 7,628.0 | 0.0% |
+| Patched stock DELAY x8 | 7,892.0 | 7,908.0 | -0.2% |
+| Tape x8, settled, WOW=0 | 22,506.6 | 20,122.6 | 10.6% |
+| Tape x8, settled, WOW=44 | 22,954.1 | 21,989.5 | 4.2% |
+| Tape x8, moving FREE TIME, WOW=44 | 23,272.1 | 22,351.0 | 4.0% |
+| Tape x8, changing BEAT TIME, WOW=44 | 24,659.6 | 23,556.6 | 4.5% |
+| Tape x8, moving FREE TIME, MIX=90 | 25,808.1 | 25,271.0 | 2.1% |
+| Tape x8, all controls moving, full synthetic history | 31,974.4 | 30,758.3 | 3.8% |
+
+The settled ratio to stock falls from **2.95x to 2.64x without WOW**, and
+from **3.01x to 2.88x with WOW=44**. The fixed-reader kernel costs 185
+instructions per call; moving-reader boundary cases peak at 371. Direct
+kernel gates enforce ceilings of 200 and 420 respectively. Eight-instance
+endpoint stress peaks at 26,563 in FREE and 31,454 in BEAT; settled MIX=90
+with full history peaks at 25,028.
+
+Validation: all native voice/control gates and the eight-instance compiled
+ColdFire/native output-and-state comparison pass, including full history,
+control changes and ring wrap. The expanded kernel suite covers 2048 reader
+blocks (signed/outside-ring anchors, fractional positions, fixed/moving
+heads, actual uncached read counts and ABI) and 256 full-wet blocks with
+full-range input, random FIR history, clipping, state and buffer guards.
+Stock DELAY output/rings remain bit-identical. The optimized runtime boots
+to the RTOS handoff and all 169,144 runtime bytes match the linked image;
+menu and initial-register gates pass.
+
+`make check REMIX=tapeecho` passes the Tape Echo, dirty-state and cycle
+gates, then stops in `verify_replaces.py`: six unrelated Octakit remixes
+fail to assemble `modules/octakit/upstream/runtime/runtime.S:438` (short
+branch displacement out of range). The remaining boot/menu/register gates
+were run separately. This is not a clean full-repository check. Hardware
+cache/bus timing, CPU deadlines and the previously reported freezes still
+need a device test.
+
 ## One-page restoration and parameter spikes (21 Sep 2026)
 
 The six experimental page-2 controls were removed after hardware reports of

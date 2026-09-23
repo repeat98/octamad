@@ -27,6 +27,7 @@
 #include "rtos.h"
 #include "dsp.h"
 #include "wav.h"
+#include "work_profile.h"
 #include <chrono>
 #include <sstream>
 #include <fcntl.h>
@@ -54,6 +55,7 @@ int main(int _argc, char** _argv)
 	uint64_t maxInstructions = 50'000'000;	// route A's own budget
 	bool showPeripherals = false;
 	bool profile = false;
+	std::string workProfile;
 	std::string golden;
 	std::string cardImage;		// a FAT16 card image built by emu_rtos.stage_project
 	bool mount = false;			// post the card-mount request to the SYS task
@@ -122,6 +124,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--max" && i + 1 < _argc)	maxInstructions = std::strtoull(_argv[++i], nullptr, 0);
 		else if(a == "--periph")				showPeripherals = true;
 		else if(a == "--profile")				profile = true;
+		else if(a == "--work-profile" && i + 1 < _argc) workProfile = _argv[++i];
 		else if(a == "--golden" && i + 1 < _argc)	golden = _argv[++i];
 		else if(a == "--card" && i + 1 < _argc)		cardImage = _argv[++i];
 		else if(a == "--mount")						mount = true;
@@ -189,11 +192,17 @@ int main(int _argc, char** _argv)
 		else
 		{
 			std::printf("usage: ot_emu [--image FILE] [--max N] [--periph] [--profile]\n"
-			"              [--golden FILE] [--ms N]\n");
+			"              [--golden FILE] [--ms N]\n"
+			"              [--sequencer --dsp --frames N --work-profile PREFIX]\n");
 			return 2;
 		}
 	}
 
+	if(!workProfile.empty() && (!sequencer || !dsp || frames < 2))
+	{
+		std::fprintf(stderr, "--work-profile requires --sequencer --dsp and --frames >= 2\n");
+		return 2;
+	}
 	if(sequencer || !livePath.empty())
 		mount = true;			// M6c needs the card mounted and the project loaded; so does a panel
 
@@ -869,6 +878,12 @@ int main(int _argc, char** _argv)
 				// Timed actions while the sequencer runs -- a panel edit
 				// (--call-at) or MIDI IN bytes (--midi): the frame engine
 				// keeps going underneath them, as on the unit.
+				std::unique_ptr<ot::WorkProfile> work;
+				if(!workProfile.empty())
+				{
+					work = std::make_unique<ot::WorkProfile>(*dspPair, rtos.frameCount());
+					rtos.setStepObserver([&](uint32_t pc, uint64_t frame) { work->note(pc, frame); });
+				}
 				struct Action { uint64_t frame; bool call; std::vector<uint8_t> bytes; };
 				std::vector<Action> actions;
 				if(!callSpec.empty() && callAt >= 0)
@@ -901,6 +916,12 @@ int main(int _argc, char** _argv)
 				const auto wall0 = std::chrono::steady_clock::now();
 				const auto rs2 = rtos.runUntil(livePath.empty() ? budgetMs : 1e15, [&] { return rtos.frameCount() >= target || live.quit; });
 				const auto wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - wall0).count();
+				if(work)
+				{
+					rtos.setStepObserver({});
+					work->finish(workProfile);
+					std::printf("work profile: %s (instructions, idle skips separate; not hardware cycles)\n", workProfile.c_str());
+				}
 				const auto ran = rtos.frameCount() > frame0 ? static_cast<double>(rtos.frameCount() - frame0) : 0.0;
 				std::printf("cpu        : %llu ColdFire instructions over the frames (%.0f per frame of %g samples); %.2f s wall = %.1f M instr/s, %.1fx real time\n",
 					static_cast<unsigned long long>(m.instructions() - instr0),

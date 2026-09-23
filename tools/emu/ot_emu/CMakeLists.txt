@@ -90,3 +90,6 @@ add_executable(ot_tapeecho_cpu_test ../../harness/tapeecho_cpu_probe.cpp
     ../../../modules/tapeecho/cpu.c)
 target_compile_definitions(ot_tapeecho_cpu_test PRIVATE TE_HOST=1)
 target_link_libraries(ot_tapeecho_cpu_test PRIVATE ot_machine)
+
+add_executable(ot_stock_analysis_test ../../harness/stock_analysis_probe.cpp)
+target_link_libraries(ot_stock_analysis_test PRIVATE ot_machine)

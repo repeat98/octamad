@@ -621,6 +621,8 @@ namespace ot
 	bool Rtos::stepOnce(const bool _tick)
 	{
 		const auto pc = m_machine.pc();
+		if(m_stepObserver)
+			m_stepObserver(pc, m_frameCount);
 		// A TRUE RING: it keeps the LAST N instructions, not the first N.
 		// The first-N version answered "what does the ISR do" (O7's INTRQ
 		// race); a STALL asks the opposite question -- what was running when

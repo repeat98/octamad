@@ -387,10 +387,9 @@ namespace ot::v4e
 				g_emac.acc[_n] = static_cast<int64_t>(_v);
 		}
 
-		// The extension registers, exactly as route A's `get_mac_extf` /
-		// `get_mac_exti` / `set_mac_extf` read and write them. Nothing this
-		// firmware does reaches them on the M6c path; they are here so that a
-		// path that DOES cannot quietly get a different answer.
+		// The extension registers have DIFFERENT integer/fractional layouts.
+		// Stock's frame IRQ saves/restores them in integer mode (0x4000ac98,
+		// 0x4000d968), even when the interrupted task uses fractional mode.
 		uint32_t accExtRead(const uint32_t _lo)
 		{
 			const auto a0 = static_cast<uint64_t>(g_emac.acc[_lo]);
@@ -406,6 +405,21 @@ namespace ot::v4e
 
 		void accExtWrite(const uint32_t _lo, const uint32_t _v)
 		{
+			if(!(g_emac.macsr & g_macsrFractional))
+			{
+				// Integer: two 16-bit high halves; leave the low 32 bits alone.
+				// Same layout as QEMU's set_mac_exts/set_mac_extu, and the
+				// inverse of accExtRead above. No signed left-shift overflow.
+				for(unsigned i = 0; i < 2; ++i)
+				{
+					const uint64_t raw = uint32_t(g_emac.acc[_lo+i]) |
+						(uint64_t((_v >> (16*i)) & 0xffffu) << 32);
+					g_emac.acc[_lo+i] = int64_t(raw);
+					if(!(g_emac.macsr & g_macsrSigned) && (raw & (uint64_t(1) << 47)))
+						g_emac.acc[_lo+i] -= int64_t(1) << 48;
+				}
+				return;
+			}
 			int64_t res = g_emac.acc[_lo] & 0xffffffff00ll;
 			res |= static_cast<int64_t>(static_cast<int16_t>(_v & 0xff00)) << 32;
 			res |= _v & 0xff;

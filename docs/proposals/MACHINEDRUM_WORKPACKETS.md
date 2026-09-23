@@ -74,7 +74,7 @@ Statuses:
 | WP-E4 Qualification | todo | | | | | hardware |
 | WP-R1 E12 sample delivery | todo | | | | | decision D4 follows it |
 | WP-R2 The TRX-S2 residual | todo | | | | | decides D3 |
-| WP-R3 The interpreter/JIT mismatch | todo | | | | | |
+| WP-R3 The interpreter/JIT mismatch | claimed | `machinedrum` | | 2026-09-23 | | comparing the existing JIT/interpreter replays on c01_16 and c1d_16; no toolchain rebuild |
 | WP-R4 The stale toolchain | blocked | | | | | the user reruns `scripts/setup.sh` |
 | WP-R5 The c47_2 anomaly | todo | | | | | |
 | WP-R6 The MD mixer's per-voice section | blocked | | | | | only if D1 = B |

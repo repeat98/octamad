@@ -62,7 +62,7 @@ Statuses:
 | WP-C2 Port the parameter handlers | todo | | | | | |
 | WP-C3 Machine registration | todo | | | | | |
 | WP-C4 Kits and parameters | todo | | | | | |
-| WP-D1 Is the chord free? | todo | | | | | may start now; partial static read in `machinedrum_reports/WP-A1.md` item 4 |
+| WP-D1 Is the chord free? | claimed | `machinedrum` | | 2026-09-23 | | static read; continue from `machinedrum_reports/WP-A1.md` item 4 |
 | WP-D2 The sequencer data model | todo | | | | | user sign-off on the spec |
 | WP-D3 The sequencer engine | todo | | | | | |
 | WP-D4 Grid-record view | todo | | | | | |

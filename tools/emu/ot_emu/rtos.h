@@ -361,6 +361,8 @@ namespace ot
 		double ms() const { return m_sample / g_sampleHz * 1000.0; }
 		uint64_t pit0Fired() const { return m_pit0.fired(); }
 		uint64_t frameCount() const { return m_frameCount; }
+		// Read-only instruction observer, enabled only over an explicit profiling window.
+		void setStepObserver(std::function<void(uint32_t, uint64_t)> _fn) { m_stepObserver = std::move(_fn); }
 		bool framePending() const { return m_framePending; }
 		const Intc& intc0() const { return m_intc0; }
 		const Intc& intc1() const { return m_intc1; }
@@ -519,6 +521,7 @@ namespace ot
 		bool m_dspEdgeLatched = false;	// the DSP wrote its bank id while the frame clock was off (it waits at P:0x97 for the host to take it)
 		double m_nextFrame = g_framePeriod;
 		uint64_t m_frameCount = 0;
+		std::function<void(uint32_t, uint64_t)> m_stepObserver;
 		size_t m_seeded = 0;
 		std::string m_why;
 		Quirks m_quirks;

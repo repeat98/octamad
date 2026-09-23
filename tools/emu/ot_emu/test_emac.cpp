@@ -396,6 +396,25 @@ int main()
 			runSats(sup | N | Z | V | C, 1).second, N | Z | V | C);
 	}
 
+	// Integer-mode extension writes must preserve BOTH accumulators' low
+	// 32 bits. Stock's frame IRQ saves at 0x4000ac98 and restores at 0x4000d968
+	// with MACSR=0. Previously accExtWrite always used the fractional layout.
+	// Assembler source: tools/harness/stock_analysis_state.s, probe_extension_roundtrip.
+	for(unsigned mode : {0u, 0x40u}) for(unsigned acc : {0u, 1u})
+	{
+		std::vector<uint8_t> ext = {
+			0xa9,0x3c,0,0,0,uint8_t(mode), // move.l #mode,macsr
+			0xa1,0x00, 0xa3,0x00,         // move.l d0,acc0 / acc1
+			0xab,0x01,                    // move.l d1,accext01
+			uint8_t(0xa1+2*acc),0x80,     // move.l accN,d0
+		};
+		check("integer extension write preserves low 32 bits",
+			runProgram(ext,0x12345678,0xfedc89ab,5),0x12345678);
+		ext[12]=0xab; // instead read the combined extension register
+		check("integer extension write/read round-trip",
+			runProgram(ext,0x12345678,0xfedc89ab,5),0xfedc89ab);
+	}
+
 	std::printf("%s\n", g_failures ? "EMAC GATE FAILED -- nothing this emulator computes can be trusted"
 									: "EMAC gate passed.");
 	return g_failures ? 1 : 0;

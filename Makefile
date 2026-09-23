@@ -221,6 +221,8 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	@# and with OT_PROJECT a live tempo change under the port (SKIPs parts it
 	@# cannot run; a remix without REPITCH is a one-line pass).
 	python3 tools/verify/verify_repitch.py $(REMIX)
+	python3 tools/verify/verify_stock_analysis.py $(REMIX)
+	python3 tools/harness/test_profile_stock.py
 	@# EUCLID: native control laws, executed ColdFire hooks, both DSP payloads,
 	@# panel dial rendering and (with OT_PROJECT) full playback under the port.
 	$(PY) tools/verify/verify_euclid.py $(REMIX)

@@ -49,6 +49,9 @@ namespace ot
 		uint64_t fpcMin = ~0ull, fpcMax = 0, fpcSixteen = 0, fpcSamples = 0;	// frames per command
 		uint32_t esaiCyclesPerSlot = 0;
 		uint64_t idleSkipped = 0;
+		bool profileOn = false;
+		uint64_t profileWork = 0, profileSkipped = 0;
+		std::map<uint32_t, uint64_t> profilePcs;
 		uint64_t pulled = 0, pullShort = 0;	// read-back words taken / not produced in time
 		uint32_t lastSent[2] = {0, 0};		// a rolling pair of the last two words sent
 		uint32_t ddrAtArm = 0, dcoAtArm = 0;	// DMA0 as the DSP's handler left it, before any word drains
@@ -93,6 +96,19 @@ namespace ot
 
 		dsp56k::HDI08& hdi() { return px->getHDI08(); }
 	};
+
+	void DspPair::beginWorkProfile()
+	{
+		for(auto& c : m_cores)
+		{
+			c->profilePcs.clear(); c->profileWork = 0; c->profileSkipped = 0;
+			c->profileOn = true;
+		}
+	}
+	void DspPair::endWorkProfile() { for(auto& c : m_cores) c->profileOn = false; }
+	uint64_t DspPair::profileWork(int _core) const { return m_cores.at(_core)->profileWork; }
+	uint64_t DspPair::profileSkipped(int _core) const { return m_cores.at(_core)->profileSkipped; }
+	const std::map<uint32_t, uint64_t>& DspPair::profilePcs(int _core) const { return m_cores.at(_core)->profilePcs; }
 
 	DspPair::DspPair(const double _ratio, const double _ips)
 		: m_ratio(_ratio), m_ips(_ips), m_shared(g_shareHi - g_shareLo, 0)
@@ -820,6 +836,15 @@ namespace ot
 			c.dsp->execInterpreter();
 			c.dsp->doLoopEnd();
 			const auto d = c.dsp->getInstructionCounter() - before;
+			if(c.profileOn)
+			{
+				// REP iterations belong to the interpreter entry PC. Interrupt
+				// entry may also occur in this call; this is not a cycle meter.
+				const auto work = d > skipped ? d - skipped : 1;
+				c.profilePcs[pc] += work;
+				c.profileWork += work;
+				c.profileSkipped += skipped;
+			}
 			c.executed += d ? d : 1;
 			if(d > skipped + 1) c.surplus += d - skipped - 1;
 			if(!d) ++c.zeroDelta;

@@ -714,15 +714,34 @@ track 1 it logs every host-port word through an assign, a trig, encoder A
   3. The MD's interrupt-driven host-port plumbing does not port. The OT's
      own per-frame host path carries the records instead.
 
+### The voice update's helpers (23 September 2026, from disassembly, *inferred*)
+
+- `0x204c94`, **the per-track LFO tick**. It keeps per-track state in
+  internal SRAM (`0x01000f8e`, 36 bytes per track) and calls two waveform
+  generators through an 8-entry function table at `0x2523ee`, one per
+  shape (the MD LFO's SHP1/SHP2). It also handles restart on trigger.
+- `0x2069bc`, **applying an LFO value to its destination**. It reads the
+  destination track and parameter from the live kit
+  (`0x700022`/`0x700023`), then writes `value >> 7` into that track's live
+  parameter array at `0x2ad8a6 + 24·track`. MIDI machines get a second
+  copy in SRAM. Modulation therefore acts on parameters *before* the
+  handler builds the record, so the handler sees modulated values.
+- `0x209e52`, **a kit load**. The voice update calls it after the track
+  loop only when a kit change is pending (`0x261a3e` ≥ 0). It copies a
+  1,120-byte (`0x460`) kit into the live kit at `0x70000a`, whose machine
+  IDs sit at `0x7001aa`. It has no role on the OT, where kits are Part
+  persistence.
+- The MD's SRAM host-port sender does not port (see above), so its packet
+  format needs no decode beyond the traced stream.
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and
    per-voice state an extracted engine needs.
 2. Split the mixer's constant ~1,850 cycles into master effects and
    mixing.
-3. Identify `0x2069bc`, `0x204c94` and `0x209e52`, and the SRAM sender's
-   packet format against the traced stream. Then trace the 27 unmapped
-   parameters over time rather than at the trig.
+3. Confirm the LFO reading at run time (set an LFO, watch `0x2ad8a6`), and
+   trace the 27 unmapped parameters over time rather than at the trig.
 4. Map E12 machines to sample offsets, and listen to the block.
 
 ## References

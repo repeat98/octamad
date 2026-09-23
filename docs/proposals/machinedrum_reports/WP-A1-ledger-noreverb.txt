@@ -1,0 +1,1484 @@
+# scratch/cfgB/wordmap.bin: epochs core 0 1000, core 1 1000
+# scratch/cfgC/wordmap.bin: epochs core 0 1000, core 1 1000
+# core 0, payload A
+
+## X:0x00000-0x08fff  state 4899  scratch 1285  table 2626  loaded 14358  garbage 255  free 13441
+X:0x00000-0x0001d      30  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+X:0x0001e-0x00020       3  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+X:0x00021-0x00022       2  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+X:0x00023-0x00023       1  state  (written in up to 998 epochs, read-before-write in up to 998)
+X:0x00024-0x0003d      26  scratch  (written in up to 998 epochs, read-before-write in up to 0)
+X:0x0003e-0x0003f       2  state  (written in up to 998 epochs, read-before-write in up to 998)
+X:0x00040-0x00043       4  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+X:0x00044-0x00044       1  state  (written in up to 998 epochs, read-before-write in up to 1000)
+X:0x00045-0x0007f      59  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+X:0x00080-0x00080       1  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+X:0x00081-0x0008f      15  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+X:0x00090-0x00090       1  state  (written in up to 998 epochs, read-before-write in up to 1000)
+X:0x00091-0x000bf      47  scratch  (written in up to 998 epochs, read-before-write in up to 0)
+X:0x000c0-0x000c1       2  state  (written in up to 998 epochs, read-before-write in up to 998)
+X:0x000c2-0x0010f      78  scratch  (written in up to 1001 epochs, read-before-write in up to 998)
+X:0x00110-0x00110       1  state  (written in up to 998 epochs, read-before-write in up to 1000)
+X:0x00111-0x00121      17  scratch  (written in up to 998 epochs, read-before-write in up to 0)
+X:0x00122-0x0013d      28  garbage
+X:0x0013e-0x0013f       2  state  (written in up to 998 epochs, read-before-write in up to 37)
+X:0x00140-0x00145       6  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+X:0x00146-0x0015f      26  state  (written in up to 998 epochs, read-before-write in up to 39)
+X:0x00160-0x0017d      30  garbage
+X:0x0017e-0x001a1      36  state  (written in up to 998 epochs, read-before-write in up to 36)
+X:0x001a2-0x001ff      94  garbage
+X:0x00200-0x00201       2  scratch  (written in up to 1000 epochs, read-before-write in up to 0)
+X:0x00202-0x00207       6  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+X:0x00208-0x00208       1  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+X:0x00209-0x00209       1  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+X:0x0020a-0x0020e       5  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+X:0x0020f-0x00212       4  state  (written in up to 1001 epochs, read-before-write in up to 121)
+X:0x00213-0x00214       2  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+X:0x00215-0x0025c      72  table  (read in up to 998 epochs)
+X:0x0025d-0x00416     442  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+X:0x00417-0x00417       1  table  (read in up to 31 epochs)
+X:0x00418-0x00419       2  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+X:0x0041a-0x0041b       2  garbage
+X:0x0041c-0x0041c       1  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+X:0x0041d-0x0041d       1  garbage
+X:0x0041e-0x00425       8  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+X:0x00426-0x00436      17  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+X:0x00437-0x00437       1  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+X:0x00438-0x005fb     452  table  (read in up to 998 epochs)
+X:0x005fc-0x00601       6  loaded
+X:0x00602-0x00602       1  table  (read in up to 836 epochs)
+X:0x00603-0x0061f      29  loaded
+X:0x00620-0x00620       1  table  (read in up to 998 epochs)
+X:0x00621-0x00712     242  loaded
+X:0x00713-0x00713       1  table  (read in up to 998 epochs)
+X:0x00714-0x0071e      11  loaded
+X:0x0071f-0x0071f       1  table  (read in up to 998 epochs)
+X:0x00720-0x007af     144  loaded
+X:0x007b0-0x007b0       1  table  (read in up to 998 epochs)
+X:0x007b1-0x0081f     111  loaded
+X:0x00820-0x00820       1  table  (read in up to 998 epochs)
+X:0x00821-0x0091f     255  loaded
+X:0x00920-0x00920       1  table  (read in up to 998 epochs)
+X:0x00921-0x009af     143  loaded
+X:0x009b0-0x009b0       1  table  (read in up to 998 epochs)
+X:0x009b1-0x009c8      24  loaded
+X:0x009c9-0x009c9       1  table  (read in up to 998 epochs)
+X:0x009ca-0x009d2       9  loaded
+X:0x009d3-0x009d3       1  table  (read in up to 998 epochs)
+X:0x009d4-0x00a48     117  loaded
+X:0x00a49-0x00a4a       2  table  (read in up to 998 epochs)
+X:0x00a4b-0x00a4e       4  loaded
+X:0x00a4f-0x00a50       2  table  (read in up to 998 epochs)
+X:0x00a51-0x00a52       2  loaded
+X:0x00a53-0x00a54       2  table  (read in up to 998 epochs)
+X:0x00a55-0x00b9e     330  loaded
+X:0x00b9f-0x00b9f       1  table  (read in up to 998 epochs)
+X:0x00ba0-0x00cb0     273  loaded
+X:0x00cb1-0x00cb1       1  table  (read in up to 998 epochs)
+X:0x00cb2-0x00da3     242  loaded
+X:0x00da4-0x00da4       1  table  (read in up to 998 epochs)
+X:0x00da5-0x00daf      11  loaded
+X:0x00db0-0x00db0       1  table  (read in up to 998 epochs)
+X:0x00db1-0x00e40     144  loaded
+X:0x00e41-0x00e41       1  table  (read in up to 998 epochs)
+X:0x00e42-0x00eb0     111  loaded
+X:0x00eb1-0x00eb1       1  table  (read in up to 998 epochs)
+X:0x00eb2-0x00f59     168  loaded
+X:0x00f5a-0x00f5a       1  table  (read in up to 998 epochs)
+X:0x00f5b-0x00fb0      86  loaded
+X:0x00fb1-0x00fb1       1  table  (read in up to 998 epochs)
+X:0x00fb2-0x01040     143  loaded
+X:0x01041-0x01041       1  table  (read in up to 998 epochs)
+X:0x01042-0x01202     449  loaded
+X:0x01203-0x01203       1  table  (read in up to 998 epochs)
+X:0x01204-0x0144e     587  loaded
+X:0x0144f-0x0144f       1  table  (read in up to 998 epochs)
+X:0x01450-0x014c6     119  loaded
+X:0x014c7-0x014c7       1  table  (read in up to 998 epochs)
+X:0x014c8-0x0170f     584  loaded
+X:0x01710-0x01710       1  table  (read in up to 998 epochs)
+X:0x01711-0x0174e      62  loaded
+X:0x0174f-0x0174f       1  table  (read in up to 998 epochs)
+X:0x01750-0x019d8     649  loaded
+X:0x019d9-0x019d9       1  table  (read in up to 998 epochs)
+X:0x019da-0x01b98     447  loaded
+X:0x01b99-0x01b99       1  table  (read in up to 998 epochs)
+X:0x01b9a-0x01c18     127  loaded
+X:0x01c19-0x01c19       1  table  (read in up to 998 epochs)
+X:0x01c1a-0x01c98     127  loaded
+X:0x01c99-0x01c99       1  table  (read in up to 998 epochs)
+X:0x01c9a-0x01d9e     261  loaded
+X:0x01d9f-0x01dff      97  free
+X:0x01e00-0x01e1f      32  scratch  (written in up to 998 epochs, read-before-write in up to 0)
+X:0x01e20-0x01e21       2  garbage
+X:0x01e22-0x01e7e      93  free
+X:0x01e7f-0x01e7f       1  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+X:0x01e80-0x01e9f      32  scratch  (written in up to 998 epochs, read-before-write in up to 0)
+X:0x01ea0-0x01ea1       2  garbage
+X:0x01ea2-0x01efe      93  free
+X:0x01eff-0x01eff       1  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+X:0x01f00-0x01f1f      32  scratch  (written in up to 998 epochs, read-before-write in up to 0)
+X:0x01f20-0x01f21       2  garbage
+X:0x01f22-0x01f7e      93  free
+X:0x01f7f-0x01f7f       1  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+X:0x01f80-0x01f9f      32  scratch  (written in up to 998 epochs, read-before-write in up to 0)
+X:0x01fa0-0x01fa1       2  garbage
+X:0x01fa2-0x01ffe      93  free
+X:0x01fff-0x02081     131  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+X:0x02082-0x02082       1  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x02083-0x02089       7  state  (written in up to 502 epochs, read-before-write in up to 499)
+X:0x0208a-0x0208a       1  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x0208b-0x020d0      70  state  (written in up to 502 epochs, read-before-write in up to 499)
+X:0x020d1-0x02127      87  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x02128-0x02129       2  state  (written in up to 502 epochs, read-before-write in up to 499)
+X:0x0212a-0x0212a       1  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x0212b-0x02131       7  state  (written in up to 502 epochs, read-before-write in up to 499)
+X:0x02132-0x02132       1  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x02133-0x02178      70  state  (written in up to 502 epochs, read-before-write in up to 499)
+X:0x02179-0x021cf      87  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x021d0-0x021d1       2  state  (written in up to 502 epochs, read-before-write in up to 499)
+X:0x021d2-0x021d2       1  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x021d3-0x021d9       7  state  (written in up to 502 epochs, read-before-write in up to 499)
+X:0x021da-0x021da       1  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x021db-0x02220      70  state  (written in up to 502 epochs, read-before-write in up to 499)
+X:0x02221-0x02277      87  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x02278-0x02279       2  state  (written in up to 502 epochs, read-before-write in up to 499)
+X:0x0227a-0x0227a       1  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x0227b-0x02281       7  state  (written in up to 502 epochs, read-before-write in up to 499)
+X:0x02282-0x02282       1  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x02283-0x022c8      70  state  (written in up to 502 epochs, read-before-write in up to 499)
+X:0x022c9-0x0231f      87  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x02320-0x023fe     223  loaded
+X:0x023ff-0x02836    1080  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+X:0x02837-0x0283f       9  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x02840-0x03f7f    5952  free
+X:0x03f80-0x03f81       2  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+X:0x03f82-0x03fff     126  free
+X:0x04000-0x04081     130  state  (written in up to 500 epochs, read-before-write in up to 501)
+X:0x04082-0x04082       1  scratch  (written in up to 500 epochs, read-before-write in up to 0)
+X:0x04083-0x04089       7  state  (written in up to 500 epochs, read-before-write in up to 501)
+X:0x0408a-0x0408a       1  scratch  (written in up to 500 epochs, read-before-write in up to 0)
+X:0x0408b-0x040d0      70  state  (written in up to 500 epochs, read-before-write in up to 501)
+X:0x040d1-0x04127      87  scratch  (written in up to 500 epochs, read-before-write in up to 0)
+X:0x04128-0x04129       2  state  (written in up to 500 epochs, read-before-write in up to 501)
+X:0x0412a-0x0412a       1  scratch  (written in up to 500 epochs, read-before-write in up to 0)
+X:0x0412b-0x04131       7  state  (written in up to 500 epochs, read-before-write in up to 501)
+X:0x04132-0x04132       1  scratch  (written in up to 500 epochs, read-before-write in up to 0)
+X:0x04133-0x04178      70  state  (written in up to 500 epochs, read-before-write in up to 501)
+X:0x04179-0x041cf      87  scratch  (written in up to 500 epochs, read-before-write in up to 0)
+X:0x041d0-0x041d1       2  state  (written in up to 500 epochs, read-before-write in up to 501)
+X:0x041d2-0x041d2       1  scratch  (written in up to 500 epochs, read-before-write in up to 0)
+X:0x041d3-0x041d9       7  state  (written in up to 500 epochs, read-before-write in up to 501)
+X:0x041da-0x041da       1  scratch  (written in up to 500 epochs, read-before-write in up to 0)
+X:0x041db-0x04220      70  state  (written in up to 500 epochs, read-before-write in up to 501)
+X:0x04221-0x04277      87  scratch  (written in up to 500 epochs, read-before-write in up to 0)
+X:0x04278-0x04279       2  state  (written in up to 500 epochs, read-before-write in up to 501)
+X:0x0427a-0x0427a       1  scratch  (written in up to 500 epochs, read-before-write in up to 0)
+X:0x0427b-0x04281       7  state  (written in up to 500 epochs, read-before-write in up to 501)
+X:0x04282-0x04282       1  scratch  (written in up to 500 epochs, read-before-write in up to 0)
+X:0x04283-0x042c8      70  state  (written in up to 500 epochs, read-before-write in up to 501)
+X:0x042c9-0x0431f      87  scratch  (written in up to 500 epochs, read-before-write in up to 0)
+X:0x04320-0x043fe     223  loaded
+X:0x043ff-0x04836    1080  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+X:0x04837-0x0483f       9  scratch  (written in up to 500 epochs, read-before-write in up to 0)
+X:0x04840-0x0487f      64  loaded
+X:0x04880-0x04880       1  table  (read in up to 998 epochs)
+X:0x04881-0x048ff     127  loaded
+X:0x04900-0x04900       1  table  (read in up to 998 epochs)
+X:0x04901-0x0497f     127  loaded
+X:0x04980-0x04980       1  table  (read in up to 998 epochs)
+X:0x04981-0x049ff     127  loaded
+X:0x04a00-0x04a00       1  table  (read in up to 998 epochs)
+X:0x04a01-0x04a7f     127  loaded
+X:0x04a80-0x04a80       1  table  (read in up to 998 epochs)
+X:0x04a81-0x04aff     127  loaded
+X:0x04b00-0x04b00       1  table  (read in up to 998 epochs)
+X:0x04b01-0x04b7f     127  loaded
+X:0x04b80-0x04b80       1  table  (read in up to 998 epochs)
+X:0x04b81-0x04bff     127  loaded
+X:0x04c00-0x04c00       1  table  (read in up to 998 epochs)
+X:0x04c01-0x04c7f     127  loaded
+X:0x04c80-0x04c80       1  table  (read in up to 998 epochs)
+X:0x04c81-0x04cff     127  loaded
+X:0x04d00-0x04d00       1  table  (read in up to 998 epochs)
+X:0x04d01-0x04d7f     127  loaded
+X:0x04d80-0x04d80       1  table  (read in up to 998 epochs)
+X:0x04d81-0x04dff     127  loaded
+X:0x04e00-0x04e00       1  table  (read in up to 998 epochs)
+X:0x04e01-0x04e7f     127  loaded
+X:0x04e80-0x04e80       1  table  (read in up to 998 epochs)
+X:0x04e81-0x04eff     127  loaded
+X:0x04f00-0x04f00       1  table  (read in up to 998 epochs)
+X:0x04f01-0x04f7f     127  loaded
+X:0x04f80-0x04f80       1  table  (read in up to 998 epochs)
+X:0x04f81-0x04fff     127  loaded
+X:0x05000-0x05000       1  table  (read in up to 998 epochs)
+X:0x05001-0x0507f     127  loaded
+X:0x05080-0x05080       1  table  (read in up to 998 epochs)
+X:0x05081-0x050ff     127  loaded
+X:0x05100-0x05100       1  table  (read in up to 998 epochs)
+X:0x05101-0x0517f     127  loaded
+X:0x05180-0x05180       1  table  (read in up to 998 epochs)
+X:0x05181-0x051ff     127  loaded
+X:0x05200-0x05200       1  table  (read in up to 998 epochs)
+X:0x05201-0x0527f     127  loaded
+X:0x05280-0x05280       1  table  (read in up to 998 epochs)
+X:0x05281-0x052ff     127  loaded
+X:0x05300-0x05300       1  table  (read in up to 998 epochs)
+X:0x05301-0x0537f     127  loaded
+X:0x05380-0x05380       1  table  (read in up to 998 epochs)
+X:0x05381-0x053ff     127  loaded
+X:0x05400-0x05400       1  table  (read in up to 998 epochs)
+X:0x05401-0x0583f    1087  loaded
+X:0x05840-0x05fff    1984  free
+X:0x06000-0x06002       3  garbage
+X:0x06003-0x06005       3  free
+X:0x06006-0x06007       2  garbage
+X:0x06008-0x06009       2  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+X:0x0600a-0x0600c       3  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+X:0x0600d-0x06010       4  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+X:0x06011-0x06012       2  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+X:0x06013-0x06014       2  garbage
+X:0x06015-0x0601a       6  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+X:0x0601b-0x0607f     101  free
+X:0x06080-0x06081       2  garbage
+X:0x06082-0x060ff     126  free
+X:0x06100-0x06128      41  state  (written in up to 998 epochs, read-before-write in up to 997)
+X:0x06129-0x06130       8  scratch  (written in up to 998 epochs, read-before-write in up to 0)
+X:0x06131-0x06150      32  state  (written in up to 998 epochs, read-before-write in up to 998)
+X:0x06151-0x061ff     175  free
+X:0x06200-0x0620b      12  state  (written in up to 998 epochs, read-before-write in up to 997)
+X:0x0620c-0x0620d       2  scratch  (written in up to 998 epochs, read-before-write in up to 0)
+X:0x0620e-0x062ff     242  free
+X:0x06300-0x06302       3  garbage
+X:0x06303-0x06305       3  free
+X:0x06306-0x06307       2  garbage
+X:0x06308-0x06309       2  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+X:0x0630a-0x0630c       3  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+X:0x0630d-0x06310       4  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+X:0x06311-0x06312       2  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+X:0x06313-0x06314       2  garbage
+X:0x06315-0x0631a       6  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+X:0x0631b-0x063ff     229  free
+X:0x06400-0x0643d      62  state  (written in up to 998 epochs, read-before-write in up to 1000)
+X:0x0643e-0x0643f       2  scratch  (written in up to 1 epochs, read-before-write in up to 0)
+X:0x06440-0x0648f      80  state  (written in up to 998 epochs, read-before-write in up to 997)
+X:0x06490-0x064ff     112  free
+X:0x06500-0x0650e      15  state  (written in up to 998 epochs, read-before-write in up to 998)
+X:0x0650f-0x0650f       1  scratch  (written in up to 998 epochs, read-before-write in up to 0)
+X:0x06510-0x06510       1  state  (written in up to 998 epochs, read-before-write in up to 997)
+X:0x06511-0x06511       1  scratch  (written in up to 998 epochs, read-before-write in up to 0)
+X:0x06512-0x06512       1  free
+X:0x06513-0x06514       2  state  (written in up to 1 epochs, read-before-write in up to 997)
+X:0x06515-0x06516       2  scratch  (written in up to 998 epochs, read-before-write in up to 0)
+X:0x06517-0x06517       1  state  (written in up to 998 epochs, read-before-write in up to 997)
+X:0x06518-0x06518       1  scratch  (written in up to 998 epochs, read-before-write in up to 0)
+X:0x06519-0x06541      41  state  (written in up to 998 epochs, read-before-write in up to 997)
+X:0x06542-0x065ff     190  free
+X:0x06600-0x06602       3  garbage
+X:0x06603-0x06605       3  free
+X:0x06606-0x06607       2  garbage
+X:0x06608-0x06609       2  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+X:0x0660a-0x0660c       3  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+X:0x0660d-0x06610       4  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+X:0x06611-0x06612       2  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+X:0x06613-0x06614       2  garbage
+X:0x06615-0x0661a       6  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+X:0x0661b-0x066ff     229  free
+X:0x06700-0x0670c      13  state  (written in up to 998 epochs, read-before-write in up to 998)
+X:0x0670d-0x0670d       1  scratch  (written in up to 998 epochs, read-before-write in up to 0)
+X:0x0670e-0x0670e       1  state  (written in up to 998 epochs, read-before-write in up to 997)
+X:0x0670f-0x0670f       1  scratch  (written in up to 998 epochs, read-before-write in up to 0)
+X:0x06710-0x067ff     240  free
+X:0x06800-0x06802       3  state  (written in up to 998 epochs, read-before-write in up to 1000)
+X:0x06803-0x06804       2  scratch  (written in up to 998 epochs, read-before-write in up to 0)
+X:0x06805-0x0688f     139  state  (written in up to 998 epochs, read-before-write in up to 998)
+X:0x06890-0x068ff     112  free
+X:0x06900-0x06907       8  garbage
+X:0x06908-0x06912      11  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+X:0x06913-0x06914       2  garbage
+X:0x06915-0x0691a       6  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+X:0x0691b-0x06950      54  garbage
+X:0x06951-0x0697f      47  free
+X:0x06980-0x06980       1  garbage
+X:0x06981-0x06a00     128  free
+X:0x06a01-0x06a15      21  state  (written in up to 998 epochs, read-before-write in up to 997)
+X:0x06a16-0x06a18       3  free
+X:0x06a19-0x06a1b       3  state  (written in up to 998 epochs, read-before-write in up to 998)
+X:0x06a1c-0x06a1f       4  free
+X:0x06a20-0x06a43      36  state  (written in up to 998 epochs, read-before-write in up to 997)
+X:0x06a44-0x06b00     189  free
+X:0x06b01-0x06b15      21  state  (written in up to 998 epochs, read-before-write in up to 997)
+X:0x06b16-0x06b18       3  free
+X:0x06b19-0x06b1b       3  state  (written in up to 998 epochs, read-before-write in up to 998)
+X:0x06b1c-0x06b1f       4  free
+X:0x06b20-0x06b43      36  state  (written in up to 998 epochs, read-before-write in up to 997)
+X:0x06b44-0x06b46       3  free
+X:0x06b47-0x06b47       1  garbage
+X:0x06b48-0x06bd8     145  free
+X:0x06bd9-0x06bd9       1  garbage
+X:0x06bda-0x06bff      38  free
+X:0x06c00-0x06fff    1024  table  (read in up to 1001 epochs)
+X:0x07000-0x07000       1  loaded
+X:0x07001-0x07001       1  table  (read in up to 1 epochs)
+X:0x07002-0x07002       1  loaded
+X:0x07003-0x07003       1  table  (read in up to 1 epochs)
+X:0x07004-0x07004       1  loaded
+X:0x07005-0x07006       2  table  (read in up to 1 epochs)
+X:0x07007-0x07007       1  loaded
+X:0x07008-0x07008       1  table  (read in up to 1 epochs)
+X:0x07009-0x07009       1  loaded
+X:0x0700a-0x0700a       1  table  (read in up to 1 epochs)
+X:0x0700b-0x0700b       1  loaded
+X:0x0700c-0x0700c       1  table  (read in up to 1 epochs)
+X:0x0700d-0x07012       6  loaded
+X:0x07013-0x07014       2  table  (read in up to 2 epochs)
+X:0x07015-0x07015       1  loaded
+X:0x07016-0x07017       2  table  (read in up to 2 epochs)
+X:0x07018-0x0701a       3  loaded
+X:0x0701b-0x0701b       1  table  (read in up to 1 epochs)
+X:0x0701c-0x0701c       1  loaded
+X:0x0701d-0x0701d       1  table  (read in up to 1 epochs)
+X:0x0701e-0x0701e       1  loaded
+X:0x0701f-0x07020       2  table  (read in up to 1 epochs)
+X:0x07021-0x07021       1  loaded
+X:0x07022-0x07022       1  table  (read in up to 1 epochs)
+X:0x07023-0x07024       2  loaded
+X:0x07025-0x07028       4  table  (read in up to 1 epochs)
+X:0x07029-0x07029       1  loaded
+X:0x0702a-0x0702b       2  table  (read in up to 2 epochs)
+X:0x0702c-0x0702d       2  loaded
+X:0x0702e-0x0702e       1  table  (read in up to 2 epochs)
+X:0x0702f-0x0702f       1  loaded
+X:0x07030-0x07035       6  table  (read in up to 2 epochs)
+X:0x07036-0x07036       1  loaded
+X:0x07037-0x07037       1  table  (read in up to 1 epochs)
+X:0x07038-0x07038       1  loaded
+X:0x07039-0x07039       1  table  (read in up to 2 epochs)
+X:0x0703a-0x0703a       1  loaded
+X:0x0703b-0x0703b       1  table  (read in up to 1 epochs)
+X:0x0703c-0x0703d       2  loaded
+X:0x0703e-0x0703e       1  table  (read in up to 1 epochs)
+X:0x0703f-0x07040       2  loaded
+X:0x07041-0x07043       3  table  (read in up to 2 epochs)
+X:0x07044-0x07044       1  loaded
+X:0x07045-0x07046       2  table  (read in up to 1 epochs)
+X:0x07047-0x07048       2  loaded
+X:0x07049-0x07049       1  table  (read in up to 1 epochs)
+X:0x0704a-0x0704a       1  loaded
+X:0x0704b-0x0704b       1  table  (read in up to 2 epochs)
+X:0x0704c-0x0704d       2  loaded
+X:0x0704e-0x0704e       1  table  (read in up to 2 epochs)
+X:0x0704f-0x0704f       1  loaded
+X:0x07050-0x07050       1  table  (read in up to 1 epochs)
+X:0x07051-0x07051       1  loaded
+X:0x07052-0x07052       1  table  (read in up to 1 epochs)
+X:0x07053-0x07053       1  loaded
+X:0x07054-0x07055       2  table  (read in up to 3 epochs)
+X:0x07056-0x07057       2  loaded
+X:0x07058-0x07058       1  table  (read in up to 2 epochs)
+X:0x07059-0x07059       1  loaded
+X:0x0705a-0x0705d       4  table  (read in up to 2 epochs)
+X:0x0705e-0x0705e       1  loaded
+X:0x0705f-0x07060       2  table  (read in up to 2 epochs)
+X:0x07061-0x07062       2  loaded
+X:0x07063-0x07063       1  table  (read in up to 2 epochs)
+X:0x07064-0x07064       1  loaded
+X:0x07065-0x07066       2  table  (read in up to 1 epochs)
+X:0x07067-0x07067       1  loaded
+X:0x07068-0x0706d       6  table  (read in up to 1 epochs)
+X:0x0706e-0x0706f       2  loaded
+X:0x07070-0x07073       4  table  (read in up to 1 epochs)
+X:0x07074-0x07075       2  loaded
+X:0x07076-0x07076       1  table  (read in up to 2 epochs)
+X:0x07077-0x07078       2  loaded
+X:0x07079-0x0707c       4  table  (read in up to 2 epochs)
+X:0x0707d-0x0707d       1  loaded
+X:0x0707e-0x0707e       1  table  (read in up to 1 epochs)
+X:0x0707f-0x07083       5  loaded
+X:0x07084-0x07084       1  table  (read in up to 1 epochs)
+X:0x07085-0x07085       1  loaded
+X:0x07086-0x07086       1  table  (read in up to 2 epochs)
+X:0x07087-0x07088       2  loaded
+X:0x07089-0x07089       1  table  (read in up to 2 epochs)
+X:0x0708a-0x0708b       2  loaded
+X:0x0708c-0x07090       5  table  (read in up to 2 epochs)
+X:0x07091-0x07092       2  loaded
+X:0x07093-0x07095       3  table  (read in up to 998 epochs)
+X:0x07096-0x07096       1  loaded
+X:0x07097-0x07098       2  table  (read in up to 1 epochs)
+X:0x07099-0x07099       1  loaded
+X:0x0709a-0x0709b       2  table  (read in up to 2 epochs)
+X:0x0709c-0x0709c       1  loaded
+X:0x0709d-0x0709d       1  table  (read in up to 1 epochs)
+X:0x0709e-0x0709f       2  loaded
+X:0x070a0-0x070a1       2  table  (read in up to 3 epochs)
+X:0x070a2-0x070a2       1  loaded
+X:0x070a3-0x070a3       1  table  (read in up to 1 epochs)
+X:0x070a4-0x070a8       5  loaded
+X:0x070a9-0x070a9       1  table  (read in up to 1 epochs)
+X:0x070aa-0x070aa       1  loaded
+X:0x070ab-0x070ae       4  table  (read in up to 1 epochs)
+X:0x070af-0x070af       1  loaded
+X:0x070b0-0x070b0       1  table  (read in up to 1 epochs)
+X:0x070b1-0x070b3       3  loaded
+X:0x070b4-0x070b4       1  table  (read in up to 1 epochs)
+X:0x070b5-0x070b5       1  loaded
+X:0x070b6-0x070b8       3  table  (read in up to 2 epochs)
+X:0x070b9-0x070bb       3  loaded
+X:0x070bc-0x070bc       1  table  (read in up to 1 epochs)
+X:0x070bd-0x070bd       1  loaded
+X:0x070be-0x070be       1  table  (read in up to 1 epochs)
+X:0x070bf-0x070bf       1  loaded
+X:0x070c0-0x070c5       6  table  (read in up to 2 epochs)
+X:0x070c6-0x070c6       1  loaded
+X:0x070c7-0x070c7       1  table  (read in up to 1 epochs)
+X:0x070c8-0x070ca       3  loaded
+X:0x070cb-0x070cd       3  table  (read in up to 1 epochs)
+X:0x070ce-0x070cf       2  loaded
+X:0x070d0-0x070d1       2  table  (read in up to 1 epochs)
+X:0x070d2-0x070d3       2  loaded
+X:0x070d4-0x070d8       5  table  (read in up to 2 epochs)
+X:0x070d9-0x070da       2  loaded
+X:0x070db-0x070db       1  table  (read in up to 1 epochs)
+X:0x070dc-0x070dc       1  loaded
+X:0x070dd-0x070dd       1  table  (read in up to 1 epochs)
+X:0x070de-0x070de       1  loaded
+X:0x070df-0x070df       1  table  (read in up to 1 epochs)
+X:0x070e0-0x070e1       2  loaded
+X:0x070e2-0x070e2       1  table  (read in up to 1 epochs)
+X:0x070e3-0x070e5       3  loaded
+X:0x070e6-0x070e7       2  table  (read in up to 4 epochs)
+X:0x070e8-0x070e8       1  loaded
+X:0x070e9-0x070ea       2  table  (read in up to 2 epochs)
+X:0x070eb-0x070eb       1  loaded
+X:0x070ec-0x070ee       3  table  (read in up to 1 epochs)
+X:0x070ef-0x070ef       1  loaded
+X:0x070f0-0x070f0       1  table  (read in up to 2 epochs)
+X:0x070f1-0x070f1       1  loaded
+X:0x070f2-0x070f2       1  table  (read in up to 1 epochs)
+X:0x070f3-0x070f5       3  loaded
+X:0x070f6-0x070fc       7  table  (read in up to 1 epochs)
+X:0x070fd-0x070fe       2  loaded
+X:0x070ff-0x070ff       1  table  (read in up to 1 epochs)
+X:0x07100-0x07100       1  loaded
+X:0x07101-0x07101       1  table  (read in up to 1 epochs)
+X:0x07102-0x07102       1  loaded
+X:0x07103-0x07103       1  table  (read in up to 1 epochs)
+X:0x07104-0x07104       1  loaded
+X:0x07105-0x07105       1  table  (read in up to 1 epochs)
+X:0x07106-0x07108       3  loaded
+X:0x07109-0x0710f       7  table  (read in up to 2 epochs)
+X:0x07110-0x07112       3  loaded
+X:0x07113-0x07113       1  table  (read in up to 1 epochs)
+X:0x07114-0x07115       2  loaded
+X:0x07116-0x07118       3  table  (read in up to 2 epochs)
+X:0x07119-0x07119       1  loaded
+X:0x0711a-0x0711c       3  table  (read in up to 3 epochs)
+X:0x0711d-0x07120       4  loaded
+X:0x07121-0x07121       1  table  (read in up to 1 epochs)
+X:0x07122-0x07122       1  loaded
+X:0x07123-0x07124       2  table  (read in up to 2 epochs)
+X:0x07125-0x07126       2  loaded
+X:0x07127-0x07128       2  table  (read in up to 2 epochs)
+X:0x07129-0x07129       1  loaded
+X:0x0712a-0x0712c       3  table  (read in up to 3 epochs)
+X:0x0712d-0x0712d       1  loaded
+X:0x0712e-0x0712e       1  table  (read in up to 1 epochs)
+X:0x0712f-0x0712f       1  loaded
+X:0x07130-0x07137       8  table  (read in up to 2 epochs)
+X:0x07138-0x07138       1  loaded
+X:0x07139-0x07139       1  table  (read in up to 2 epochs)
+X:0x0713a-0x0713a       1  loaded
+X:0x0713b-0x0713b       1  table  (read in up to 1 epochs)
+X:0x0713c-0x0713d       2  loaded
+X:0x0713e-0x0713e       1  table  (read in up to 1 epochs)
+X:0x0713f-0x07141       3  loaded
+X:0x07142-0x07147       6  table  (read in up to 1 epochs)
+X:0x07148-0x07149       2  loaded
+X:0x0714a-0x0714c       3  table  (read in up to 3 epochs)
+X:0x0714d-0x0714e       2  loaded
+X:0x0714f-0x0714f       1  table  (read in up to 2 epochs)
+X:0x07150-0x07150       1  loaded
+X:0x07151-0x07151       1  table  (read in up to 1 epochs)
+X:0x07152-0x07152       1  loaded
+X:0x07153-0x07154       2  table  (read in up to 1 epochs)
+X:0x07155-0x07155       1  loaded
+X:0x07156-0x07156       1  table  (read in up to 1 epochs)
+X:0x07157-0x07159       3  loaded
+X:0x0715a-0x0715d       4  table  (read in up to 4 epochs)
+X:0x0715e-0x07160       3  loaded
+X:0x07161-0x07163       3  table  (read in up to 2 epochs)
+X:0x07164-0x07164       1  loaded
+X:0x07165-0x07169       5  table  (read in up to 2 epochs)
+X:0x0716a-0x0716a       1  loaded
+X:0x0716b-0x0716c       2  table  (read in up to 2 epochs)
+X:0x0716d-0x0716d       1  loaded
+X:0x0716e-0x0716e       1  table  (read in up to 1 epochs)
+X:0x0716f-0x0716f       1  loaded
+X:0x07170-0x07170       1  table  (read in up to 1 epochs)
+X:0x07171-0x07172       2  loaded
+X:0x07173-0x07174       2  table  (read in up to 1 epochs)
+X:0x07175-0x07175       1  loaded
+X:0x07176-0x0717a       5  table  (read in up to 2 epochs)
+X:0x0717b-0x0717b       1  loaded
+X:0x0717c-0x0717d       2  table  (read in up to 4 epochs)
+X:0x0717e-0x0717e       1  loaded
+X:0x0717f-0x0717f       1  table  (read in up to 2 epochs)
+X:0x07180-0x07180       1  loaded
+X:0x07181-0x07181       1  table  (read in up to 2 epochs)
+X:0x07182-0x07185       4  loaded
+X:0x07186-0x07188       3  table  (read in up to 1 epochs)
+X:0x07189-0x07189       1  loaded
+X:0x0718a-0x0718b       2  table  (read in up to 2 epochs)
+X:0x0718c-0x0718c       1  loaded
+X:0x0718d-0x0718d       1  table  (read in up to 2 epochs)
+X:0x0718e-0x0718e       1  loaded
+X:0x0718f-0x0718f       1  table  (read in up to 1 epochs)
+X:0x07190-0x07190       1  loaded
+X:0x07191-0x07192       2  table  (read in up to 1 epochs)
+X:0x07193-0x07193       1  loaded
+X:0x07194-0x0719a       7  table  (read in up to 2 epochs)
+X:0x0719b-0x071a0       6  loaded
+X:0x071a1-0x071a5       5  table  (read in up to 1 epochs)
+X:0x071a6-0x071a6       1  loaded
+X:0x071a7-0x071aa       4  table  (read in up to 2 epochs)
+X:0x071ab-0x071ab       1  loaded
+X:0x071ac-0x071ac       1  table  (read in up to 1 epochs)
+X:0x071ad-0x071ad       1  loaded
+X:0x071ae-0x071ae       1  table  (read in up to 1 epochs)
+X:0x071af-0x071af       1  loaded
+X:0x071b0-0x071b0       1  table  (read in up to 1 epochs)
+X:0x071b1-0x071b1       1  loaded
+X:0x071b2-0x071b3       2  table  (read in up to 1 epochs)
+X:0x071b4-0x071b5       2  loaded
+X:0x071b6-0x071b8       3  table  (read in up to 1 epochs)
+X:0x071b9-0x071b9       1  loaded
+X:0x071ba-0x071bd       4  table  (read in up to 2 epochs)
+X:0x071be-0x071be       1  loaded
+X:0x071bf-0x071c1       3  table  (read in up to 2 epochs)
+X:0x071c2-0x071c2       1  loaded
+X:0x071c3-0x071c4       2  table  (read in up to 1 epochs)
+X:0x071c5-0x071c6       2  loaded
+X:0x071c7-0x071cb       5  table  (read in up to 2 epochs)
+X:0x071cc-0x071cc       1  loaded
+X:0x071cd-0x071cd       1  table  (read in up to 1 epochs)
+X:0x071ce-0x071ce       1  loaded
+X:0x071cf-0x071d1       3  table  (read in up to 1 epochs)
+X:0x071d2-0x071d2       1  loaded
+X:0x071d3-0x071d5       3  table  (read in up to 2 epochs)
+X:0x071d6-0x071d6       1  loaded
+X:0x071d7-0x071d8       2  table  (read in up to 1 epochs)
+X:0x071d9-0x071d9       1  loaded
+X:0x071da-0x071da       1  table  (read in up to 1 epochs)
+X:0x071db-0x071db       1  loaded
+X:0x071dc-0x071dd       2  table  (read in up to 2 epochs)
+X:0x071de-0x071e0       3  loaded
+X:0x071e1-0x071e1       1  table  (read in up to 1 epochs)
+X:0x071e2-0x071e3       2  loaded
+X:0x071e4-0x071e6       3  table  (read in up to 2 epochs)
+X:0x071e7-0x071e7       1  loaded
+X:0x071e8-0x071e8       1  table  (read in up to 2 epochs)
+X:0x071e9-0x071e9       1  loaded
+X:0x071ea-0x071eb       2  table  (read in up to 1 epochs)
+X:0x071ec-0x071ed       2  loaded
+X:0x071ee-0x071ee       1  table  (read in up to 2 epochs)
+X:0x071ef-0x071ef       1  loaded
+X:0x071f0-0x071f3       4  table  (read in up to 2 epochs)
+X:0x071f4-0x071f7       4  loaded
+X:0x071f8-0x071f8       1  table  (read in up to 2 epochs)
+X:0x071f9-0x071f9       1  loaded
+X:0x071fa-0x071fa       1  table  (read in up to 2 epochs)
+X:0x071fb-0x071fb       1  loaded
+X:0x071fc-0x071fd       2  table  (read in up to 1 epochs)
+X:0x071fe-0x071fe       1  loaded
+X:0x071ff-0x071ff       1  table  (read in up to 1 epochs)
+X:0x07200-0x07203       4  loaded
+X:0x07204-0x07207       4  table  (read in up to 2 epochs)
+X:0x07208-0x07208       1  loaded
+X:0x07209-0x0720c       4  table  (read in up to 1 epochs)
+X:0x0720d-0x0720e       2  loaded
+X:0x0720f-0x0720f       1  table  (read in up to 1 epochs)
+X:0x07210-0x07210       1  loaded
+X:0x07211-0x07212       2  table  (read in up to 1 epochs)
+X:0x07213-0x07213       1  loaded
+X:0x07214-0x07214       1  table  (read in up to 1 epochs)
+X:0x07215-0x07215       1  loaded
+X:0x07216-0x07216       1  table  (read in up to 1 epochs)
+X:0x07217-0x07217       1  loaded
+X:0x07218-0x07219       2  table  (read in up to 1 epochs)
+X:0x0721a-0x0721a       1  loaded
+X:0x0721b-0x0721c       2  table  (read in up to 3 epochs)
+X:0x0721d-0x0721e       2  loaded
+X:0x0721f-0x0721f       1  table  (read in up to 1 epochs)
+X:0x07220-0x07225       6  loaded
+X:0x07226-0x07226       1  table  (read in up to 1 epochs)
+X:0x07227-0x07229       3  loaded
+X:0x0722a-0x0722a       1  table  (read in up to 2 epochs)
+X:0x0722b-0x0722b       1  loaded
+X:0x0722c-0x0722c       1  table  (read in up to 1 epochs)
+X:0x0722d-0x0722d       1  loaded
+X:0x0722e-0x0722f       2  table  (read in up to 2 epochs)
+X:0x07230-0x07230       1  loaded
+X:0x07231-0x07231       1  table  (read in up to 1 epochs)
+X:0x07232-0x07232       1  loaded
+X:0x07233-0x07233       1  table  (read in up to 1 epochs)
+X:0x07234-0x07234       1  loaded
+X:0x07235-0x07235       1  table  (read in up to 2 epochs)
+X:0x07236-0x07238       3  loaded
+X:0x07239-0x0723d       5  table  (read in up to 2 epochs)
+X:0x0723e-0x0723e       1  loaded
+X:0x0723f-0x0723f       1  table  (read in up to 1 epochs)
+X:0x07240-0x07240       1  loaded
+X:0x07241-0x07242       2  table  (read in up to 1 epochs)
+X:0x07243-0x07244       2  loaded
+X:0x07245-0x07247       3  table  (read in up to 1 epochs)
+X:0x07248-0x07248       1  loaded
+X:0x07249-0x07249       1  table  (read in up to 1 epochs)
+X:0x0724a-0x0724a       1  loaded
+X:0x0724b-0x0724c       2  table  (read in up to 1 epochs)
+X:0x0724d-0x0724e       2  loaded
+X:0x0724f-0x07251       3  table  (read in up to 2 epochs)
+X:0x07252-0x07252       1  loaded
+X:0x07253-0x07253       1  table  (read in up to 1 epochs)
+X:0x07254-0x07254       1  loaded
+X:0x07255-0x07255       1  table  (read in up to 2 epochs)
+X:0x07256-0x07258       3  loaded
+X:0x07259-0x0725a       2  table  (read in up to 1 epochs)
+X:0x0725b-0x0725b       1  loaded
+X:0x0725c-0x0725e       3  table  (read in up to 2 epochs)
+X:0x0725f-0x0725f       1  loaded
+X:0x07260-0x07260       1  table  (read in up to 1 epochs)
+X:0x07261-0x07261       1  loaded
+X:0x07262-0x07262       1  table  (read in up to 1 epochs)
+X:0x07263-0x07263       1  loaded
+X:0x07264-0x07265       2  table  (read in up to 2 epochs)
+X:0x07266-0x07267       2  loaded
+X:0x07268-0x0726b       4  table  (read in up to 3 epochs)
+X:0x0726c-0x0726d       2  loaded
+X:0x0726e-0x0726f       2  table  (read in up to 2 epochs)
+X:0x07270-0x07270       1  loaded
+X:0x07271-0x07272       2  table  (read in up to 2 epochs)
+X:0x07273-0x07273       1  loaded
+X:0x07274-0x07278       5  table  (read in up to 2 epochs)
+X:0x07279-0x0727a       2  loaded
+X:0x0727b-0x0727f       5  table  (read in up to 2 epochs)
+X:0x07280-0x07280       1  loaded
+X:0x07281-0x07281       1  table  (read in up to 1 epochs)
+X:0x07282-0x07282       1  loaded
+X:0x07283-0x07283       1  table  (read in up to 1 epochs)
+X:0x07284-0x07284       1  loaded
+X:0x07285-0x07285       1  table  (read in up to 1 epochs)
+X:0x07286-0x07288       3  loaded
+X:0x07289-0x0728a       2  table  (read in up to 1 epochs)
+X:0x0728b-0x0728f       5  loaded
+X:0x07290-0x07291       2  table  (read in up to 2 epochs)
+X:0x07292-0x07292       1  loaded
+X:0x07293-0x07293       1  table  (read in up to 1 epochs)
+X:0x07294-0x07295       2  loaded
+X:0x07296-0x07297       2  table  (read in up to 1 epochs)
+X:0x07298-0x072a1      10  loaded
+X:0x072a2-0x072a2       1  table  (read in up to 1 epochs)
+X:0x072a3-0x072a3       1  loaded
+X:0x072a4-0x072a5       2  table  (read in up to 1 epochs)
+X:0x072a6-0x072a6       1  loaded
+X:0x072a7-0x072a7       1  table  (read in up to 1 epochs)
+X:0x072a8-0x072ab       4  loaded
+X:0x072ac-0x072af       4  table  (read in up to 1 epochs)
+X:0x072b0-0x072b0       1  loaded
+X:0x072b1-0x072b3       3  table  (read in up to 2 epochs)
+X:0x072b4-0x072b4       1  loaded
+X:0x072b5-0x072b5       1  table  (read in up to 1 epochs)
+X:0x072b6-0x072b7       2  loaded
+X:0x072b8-0x072b8       1  table  (read in up to 1 epochs)
+X:0x072b9-0x072bc       4  loaded
+X:0x072bd-0x072bd       1  table  (read in up to 1 epochs)
+X:0x072be-0x072be       1  loaded
+X:0x072bf-0x072c0       2  table  (read in up to 1 epochs)
+X:0x072c1-0x072c1       1  loaded
+X:0x072c2-0x072c4       3  table  (read in up to 1 epochs)
+X:0x072c5-0x072c8       4  loaded
+X:0x072c9-0x072cb       3  table  (read in up to 2 epochs)
+X:0x072cc-0x072cd       2  loaded
+X:0x072ce-0x072cf       2  table  (read in up to 1 epochs)
+X:0x072d0-0x072d1       2  loaded
+X:0x072d2-0x072d4       3  table  (read in up to 1 epochs)
+X:0x072d5-0x072d5       1  loaded
+X:0x072d6-0x072d6       1  table  (read in up to 1 epochs)
+X:0x072d7-0x072d9       3  loaded
+X:0x072da-0x072da       1  table  (read in up to 1 epochs)
+X:0x072db-0x072db       1  loaded
+X:0x072dc-0x072dd       2  table  (read in up to 2 epochs)
+X:0x072de-0x072de       1  loaded
+X:0x072df-0x072e2       4  table  (read in up to 2 epochs)
+X:0x072e3-0x072e6       4  loaded
+X:0x072e7-0x072e7       1  table  (read in up to 1 epochs)
+X:0x072e8-0x072e8       1  loaded
+X:0x072e9-0x072f1       9  table  (read in up to 3 epochs)
+X:0x072f2-0x072f4       3  loaded
+X:0x072f5-0x072f6       2  table  (read in up to 1 epochs)
+X:0x072f7-0x072f7       1  loaded
+X:0x072f8-0x072f8       1  table  (read in up to 1 epochs)
+X:0x072f9-0x072f9       1  loaded
+X:0x072fa-0x072fa       1  table  (read in up to 1 epochs)
+X:0x072fb-0x072fc       2  loaded
+X:0x072fd-0x072fd       1  table  (read in up to 1 epochs)
+X:0x072fe-0x072fe       1  loaded
+X:0x072ff-0x072ff       1  table  (read in up to 2 epochs)
+X:0x07300-0x07301       2  loaded
+X:0x07302-0x07302       1  table  (read in up to 1 epochs)
+X:0x07303-0x07303       1  loaded
+X:0x07304-0x07305       2  table  (read in up to 1 epochs)
+X:0x07306-0x07306       1  loaded
+X:0x07307-0x07307       1  table  (read in up to 1 epochs)
+X:0x07308-0x07309       2  loaded
+X:0x0730a-0x0730a       1  table  (read in up to 1 epochs)
+X:0x0730b-0x0730b       1  loaded
+X:0x0730c-0x0730d       2  table  (read in up to 1 epochs)
+X:0x0730e-0x0730e       1  loaded
+X:0x0730f-0x0730f       1  table  (read in up to 1 epochs)
+X:0x07310-0x07312       3  loaded
+X:0x07313-0x07313       1  table  (read in up to 2 epochs)
+X:0x07314-0x07314       1  loaded
+X:0x07315-0x07315       1  table  (read in up to 1 epochs)
+X:0x07316-0x07319       4  loaded
+X:0x0731a-0x0731b       2  table  (read in up to 2 epochs)
+X:0x0731c-0x0731d       2  loaded
+X:0x0731e-0x0731e       1  table  (read in up to 2 epochs)
+X:0x0731f-0x07320       2  loaded
+X:0x07321-0x07321       1  table  (read in up to 1 epochs)
+X:0x07322-0x07322       1  loaded
+X:0x07323-0x07324       2  table  (read in up to 1 epochs)
+X:0x07325-0x07325       1  loaded
+X:0x07326-0x07326       1  table  (read in up to 1 epochs)
+X:0x07327-0x07328       2  loaded
+X:0x07329-0x0732b       3  table  (read in up to 2 epochs)
+X:0x0732c-0x0732c       1  loaded
+X:0x0732d-0x0732f       3  table  (read in up to 1 epochs)
+X:0x07330-0x07332       3  loaded
+X:0x07333-0x07333       1  table  (read in up to 2 epochs)
+X:0x07334-0x07335       2  loaded
+X:0x07336-0x07338       3  table  (read in up to 2 epochs)
+X:0x07339-0x0733b       3  loaded
+X:0x0733c-0x0733d       2  table  (read in up to 1 epochs)
+X:0x0733e-0x07340       3  loaded
+X:0x07341-0x07341       1  table  (read in up to 1 epochs)
+X:0x07342-0x07347       6  loaded
+X:0x07348-0x07348       1  table  (read in up to 1 epochs)
+X:0x07349-0x0734a       2  loaded
+X:0x0734b-0x0734c       2  table  (read in up to 1 epochs)
+X:0x0734d-0x0734e       2  loaded
+X:0x0734f-0x0734f       1  table  (read in up to 1 epochs)
+X:0x07350-0x07350       1  loaded
+X:0x07351-0x07353       3  table  (read in up to 1 epochs)
+X:0x07354-0x07356       3  loaded
+X:0x07357-0x07358       2  table  (read in up to 1 epochs)
+X:0x07359-0x07359       1  loaded
+X:0x0735a-0x0735b       2  table  (read in up to 1 epochs)
+X:0x0735c-0x0735d       2  loaded
+X:0x0735e-0x0735e       1  table  (read in up to 1 epochs)
+X:0x0735f-0x07361       3  loaded
+X:0x07362-0x07362       1  table  (read in up to 1 epochs)
+X:0x07363-0x07363       1  loaded
+X:0x07364-0x07364       1  table  (read in up to 1 epochs)
+X:0x07365-0x07367       3  loaded
+X:0x07368-0x07368       1  table  (read in up to 1 epochs)
+X:0x07369-0x07369       1  loaded
+X:0x0736a-0x0736b       2  table  (read in up to 1 epochs)
+X:0x0736c-0x0736d       2  loaded
+X:0x0736e-0x0736e       1  table  (read in up to 2 epochs)
+X:0x0736f-0x07370       2  loaded
+X:0x07371-0x07374       4  table  (read in up to 1 epochs)
+X:0x07375-0x07375       1  loaded
+X:0x07376-0x07376       1  table  (read in up to 1 epochs)
+X:0x07377-0x07378       2  loaded
+X:0x07379-0x0737a       2  table  (read in up to 3 epochs)
+X:0x0737b-0x0737b       1  loaded
+X:0x0737c-0x0737d       2  table  (read in up to 1 epochs)
+X:0x0737e-0x0737e       1  loaded
+X:0x0737f-0x0737f       1  table  (read in up to 1 epochs)
+X:0x07380-0x07382       3  loaded
+X:0x07383-0x07383       1  table  (read in up to 1 epochs)
+X:0x07384-0x07385       2  loaded
+X:0x07386-0x07386       1  table  (read in up to 1 epochs)
+X:0x07387-0x07388       2  loaded
+X:0x07389-0x0738b       3  table  (read in up to 1 epochs)
+X:0x0738c-0x0738c       1  loaded
+X:0x0738d-0x07390       4  table  (read in up to 979 epochs)
+X:0x07391-0x07391       1  loaded
+X:0x07392-0x07392       1  table  (read in up to 1 epochs)
+X:0x07393-0x07393       1  loaded
+X:0x07394-0x07394       1  table  (read in up to 2 epochs)
+X:0x07395-0x07398       4  loaded
+X:0x07399-0x0739a       2  table  (read in up to 1 epochs)
+X:0x0739b-0x0739c       2  loaded
+X:0x0739d-0x0739f       3  table  (read in up to 1 epochs)
+X:0x073a0-0x073a0       1  loaded
+X:0x073a1-0x073a4       4  table  (read in up to 2 epochs)
+X:0x073a5-0x073a5       1  loaded
+X:0x073a6-0x073a6       1  table  (read in up to 1 epochs)
+X:0x073a7-0x073a9       3  loaded
+X:0x073aa-0x073aa       1  table  (read in up to 1 epochs)
+X:0x073ab-0x073ab       1  loaded
+X:0x073ac-0x073ad       2  table  (read in up to 1 epochs)
+X:0x073ae-0x073ae       1  loaded
+X:0x073af-0x073b2       4  table  (read in up to 2 epochs)
+X:0x073b3-0x073b6       4  loaded
+X:0x073b7-0x073b7       1  table  (read in up to 1 epochs)
+X:0x073b8-0x073b9       2  loaded
+X:0x073ba-0x073bb       2  table  (read in up to 1 epochs)
+X:0x073bc-0x073bc       1  loaded
+X:0x073bd-0x073bd       1  table  (read in up to 1 epochs)
+X:0x073be-0x073be       1  loaded
+X:0x073bf-0x073bf       1  table  (read in up to 1 epochs)
+X:0x073c0-0x073c0       1  loaded
+X:0x073c1-0x073c1       1  table  (read in up to 1 epochs)
+X:0x073c2-0x073ca       9  loaded
+X:0x073cb-0x073cb       1  table  (read in up to 1 epochs)
+X:0x073cc-0x073cd       2  loaded
+X:0x073ce-0x073ce       1  table  (read in up to 3 epochs)
+X:0x073cf-0x073d0       2  loaded
+X:0x073d1-0x073d1       1  table  (read in up to 1 epochs)
+X:0x073d2-0x073d3       2  loaded
+X:0x073d4-0x073d5       2  table  (read in up to 1 epochs)
+X:0x073d6-0x073d8       3  loaded
+X:0x073d9-0x073d9       1  table  (read in up to 970 epochs)
+X:0x073da-0x073de       5  loaded
+X:0x073df-0x073e0       2  table  (read in up to 1 epochs)
+X:0x073e1-0x073e1       1  loaded
+X:0x073e2-0x073e2       1  table  (read in up to 1 epochs)
+X:0x073e3-0x073e4       2  loaded
+X:0x073e5-0x073e5       1  table  (read in up to 1 epochs)
+X:0x073e6-0x073e7       2  loaded
+X:0x073e8-0x073e8       1  table  (read in up to 1 epochs)
+X:0x073e9-0x073e9       1  loaded
+X:0x073ea-0x073ea       1  table  (read in up to 1 epochs)
+X:0x073eb-0x073eb       1  loaded
+X:0x073ec-0x073ec       1  table  (read in up to 1 epochs)
+X:0x073ed-0x073ee       2  loaded
+X:0x073ef-0x073ef       1  table  (read in up to 998 epochs)
+X:0x073f0-0x073f2       3  loaded
+X:0x073f3-0x073f4       2  table  (read in up to 998 epochs)
+X:0x073f5-0x073f6       2  loaded
+X:0x073f7-0x073f8       2  table  (read in up to 1 epochs)
+X:0x073f9-0x073fa       2  loaded
+X:0x073fb-0x073fc       2  table  (read in up to 2 epochs)
+X:0x073fd-0x073fd       1  loaded
+X:0x073fe-0x07400       3  table  (read in up to 1001 epochs)
+X:0x07401-0x07403       3  loaded
+X:0x07404-0x07405       2  table  (read in up to 998 epochs)
+X:0x07406-0x07406       1  loaded
+X:0x07407-0x07409       3  table  (read in up to 3 epochs)
+X:0x0740a-0x0740a       1  loaded
+X:0x0740b-0x0740b       1  table  (read in up to 1 epochs)
+X:0x0740c-0x0740f       4  loaded
+X:0x07410-0x07410       1  table  (read in up to 1 epochs)
+X:0x07411-0x07411       1  loaded
+X:0x07412-0x07412       1  table  (read in up to 1 epochs)
+X:0x07413-0x07413       1  loaded
+X:0x07414-0x07414       1  table  (read in up to 1 epochs)
+X:0x07415-0x07415       1  loaded
+X:0x07416-0x07418       3  table  (read in up to 1 epochs)
+X:0x07419-0x0741f       7  loaded
+X:0x07420-0x07420       1  table  (read in up to 1 epochs)
+X:0x07421-0x07422       2  loaded
+X:0x07423-0x07423       1  table  (read in up to 2 epochs)
+X:0x07424-0x07425       2  loaded
+X:0x07426-0x07427       2  table  (read in up to 2 epochs)
+X:0x07428-0x0742b       4  loaded
+X:0x0742c-0x0742c       1  table  (read in up to 1 epochs)
+X:0x0742d-0x07431       5  loaded
+X:0x07432-0x07432       1  table  (read in up to 1 epochs)
+X:0x07433-0x07434       2  loaded
+X:0x07435-0x07436       2  table  (read in up to 2 epochs)
+X:0x07437-0x07437       1  loaded
+X:0x07438-0x07438       1  table  (read in up to 1 epochs)
+X:0x07439-0x07443      11  loaded
+X:0x07444-0x07444       1  table  (read in up to 2 epochs)
+X:0x07445-0x07445       1  loaded
+X:0x07446-0x07448       3  table  (read in up to 2 epochs)
+X:0x07449-0x07449       1  loaded
+X:0x0744a-0x0744a       1  table  (read in up to 1 epochs)
+X:0x0744b-0x0744c       2  loaded
+X:0x0744d-0x0744d       1  table  (read in up to 1 epochs)
+X:0x0744e-0x07454       7  loaded
+X:0x07455-0x07456       2  table  (read in up to 1 epochs)
+X:0x07457-0x07457       1  loaded
+X:0x07458-0x0745a       3  table  (read in up to 1 epochs)
+X:0x0745b-0x0745b       1  loaded
+X:0x0745c-0x0745c       1  table  (read in up to 2 epochs)
+X:0x0745d-0x07462       6  loaded
+X:0x07463-0x07463       1  table  (read in up to 1 epochs)
+X:0x07464-0x07464       1  loaded
+X:0x07465-0x07466       2  table  (read in up to 1 epochs)
+X:0x07467-0x07467       1  loaded
+X:0x07468-0x07468       1  table  (read in up to 1 epochs)
+X:0x07469-0x0746c       4  loaded
+X:0x0746d-0x0746d       1  table  (read in up to 1 epochs)
+X:0x0746e-0x0746e       1  loaded
+X:0x0746f-0x0746f       1  table  (read in up to 1 epochs)
+X:0x07470-0x07472       3  loaded
+X:0x07473-0x07473       1  table  (read in up to 1 epochs)
+X:0x07474-0x07474       1  loaded
+X:0x07475-0x07475       1  table  (read in up to 2 epochs)
+X:0x07476-0x07476       1  loaded
+X:0x07477-0x0747b       5  table  (read in up to 1 epochs)
+X:0x0747c-0x0747c       1  loaded
+X:0x0747d-0x0747d       1  table  (read in up to 1 epochs)
+X:0x0747e-0x07480       3  loaded
+X:0x07481-0x07481       1  table  (read in up to 1 epochs)
+X:0x07482-0x07483       2  loaded
+X:0x07484-0x07486       3  table  (read in up to 1 epochs)
+X:0x07487-0x07488       2  loaded
+X:0x07489-0x0748a       2  table  (read in up to 1 epochs)
+X:0x0748b-0x0748c       2  loaded
+X:0x0748d-0x0748d       1  table  (read in up to 1 epochs)
+X:0x0748e-0x0748f       2  loaded
+X:0x07490-0x07490       1  table  (read in up to 1 epochs)
+X:0x07491-0x07493       3  loaded
+X:0x07494-0x07495       2  table  (read in up to 1 epochs)
+X:0x07496-0x07499       4  loaded
+X:0x0749a-0x0749a       1  table  (read in up to 1 epochs)
+X:0x0749b-0x074a0       6  loaded
+X:0x074a1-0x074a1       1  table  (read in up to 1 epochs)
+X:0x074a2-0x074a3       2  loaded
+X:0x074a4-0x074a5       2  table  (read in up to 2 epochs)
+X:0x074a6-0x074aa       5  loaded
+X:0x074ab-0x074ab       1  table  (read in up to 1 epochs)
+X:0x074ac-0x074b3       8  loaded
+X:0x074b4-0x074b4       1  table  (read in up to 2 epochs)
+X:0x074b5-0x074b6       2  loaded
+X:0x074b7-0x074b7       1  table  (read in up to 1 epochs)
+X:0x074b8-0x074b9       2  loaded
+X:0x074ba-0x074ba       1  table  (read in up to 1 epochs)
+X:0x074bb-0x074bb       1  loaded
+X:0x074bc-0x074bd       2  table  (read in up to 1 epochs)
+X:0x074be-0x074c2       5  loaded
+X:0x074c3-0x074c4       2  table  (read in up to 1 epochs)
+X:0x074c5-0x074c9       5  loaded
+X:0x074ca-0x074ca       1  table  (read in up to 1 epochs)
+X:0x074cb-0x074cc       2  loaded
+X:0x074cd-0x074ce       2  table  (read in up to 1 epochs)
+X:0x074cf-0x074d1       3  loaded
+X:0x074d2-0x074d4       3  table  (read in up to 1 epochs)
+X:0x074d5-0x074d5       1  loaded
+X:0x074d6-0x074d6       1  table  (read in up to 1 epochs)
+X:0x074d7-0x074db       5  loaded
+X:0x074dc-0x074dc       1  table  (read in up to 1 epochs)
+X:0x074dd-0x074dd       1  loaded
+X:0x074de-0x074de       1  table  (read in up to 1 epochs)
+X:0x074df-0x074e1       3  loaded
+X:0x074e2-0x074e3       2  table  (read in up to 2 epochs)
+X:0x074e4-0x074e8       5  loaded
+X:0x074e9-0x074ea       2  table  (read in up to 2 epochs)
+X:0x074eb-0x074ef       5  loaded
+X:0x074f0-0x074f0       1  table  (read in up to 1 epochs)
+X:0x074f1-0x074f2       2  loaded
+X:0x074f3-0x074f4       2  table  (read in up to 2 epochs)
+X:0x074f5-0x074f6       2  loaded
+X:0x074f7-0x074f8       2  table  (read in up to 1 epochs)
+X:0x074f9-0x07501       9  loaded
+X:0x07502-0x07503       2  table  (read in up to 2 epochs)
+X:0x07504-0x0750b       8  loaded
+X:0x0750c-0x0750c       1  table  (read in up to 1 epochs)
+X:0x0750d-0x0750d       1  loaded
+X:0x0750e-0x0750e       1  table  (read in up to 1 epochs)
+X:0x0750f-0x07511       3  loaded
+X:0x07512-0x07513       2  table  (read in up to 1 epochs)
+X:0x07514-0x07514       1  loaded
+X:0x07515-0x07516       2  table  (read in up to 1 epochs)
+X:0x07517-0x0751a       4  loaded
+X:0x0751b-0x0751b       1  table  (read in up to 1 epochs)
+X:0x0751c-0x0751d       2  loaded
+X:0x0751e-0x0751e       1  table  (read in up to 1 epochs)
+X:0x0751f-0x0751f       1  loaded
+X:0x07520-0x07522       3  table  (read in up to 2 epochs)
+X:0x07523-0x07527       5  loaded
+X:0x07528-0x07529       2  table  (read in up to 1 epochs)
+X:0x0752a-0x07531       8  loaded
+X:0x07532-0x07532       1  table  (read in up to 2 epochs)
+X:0x07533-0x07533       1  loaded
+X:0x07534-0x07535       2  table  (read in up to 1 epochs)
+X:0x07536-0x07537       2  loaded
+X:0x07538-0x07538       1  table  (read in up to 1 epochs)
+X:0x07539-0x0753a       2  loaded
+X:0x0753b-0x0753b       1  table  (read in up to 1 epochs)
+X:0x0753c-0x0753c       1  loaded
+X:0x0753d-0x0753d       1  table  (read in up to 1 epochs)
+X:0x0753e-0x07540       3  loaded
+X:0x07541-0x07542       2  table  (read in up to 1 epochs)
+X:0x07543-0x07547       5  loaded
+X:0x07548-0x07548       1  table  (read in up to 1 epochs)
+X:0x07549-0x0754a       2  loaded
+X:0x0754b-0x0754b       1  table  (read in up to 1 epochs)
+X:0x0754c-0x0754f       4  loaded
+X:0x07550-0x07552       3  table  (read in up to 1 epochs)
+X:0x07553-0x07554       2  loaded
+X:0x07555-0x07555       1  table  (read in up to 1 epochs)
+X:0x07556-0x07557       2  loaded
+X:0x07558-0x07558       1  table  (read in up to 1 epochs)
+X:0x07559-0x0755b       3  loaded
+X:0x0755c-0x0755c       1  table  (read in up to 1 epochs)
+X:0x0755d-0x0755f       3  loaded
+X:0x07560-0x07562       3  table  (read in up to 2 epochs)
+X:0x07563-0x07564       2  loaded
+X:0x07565-0x07567       3  table  (read in up to 1 epochs)
+X:0x07568-0x07568       1  loaded
+X:0x07569-0x0756a       2  table  (read in up to 1 epochs)
+X:0x0756b-0x0756d       3  loaded
+X:0x0756e-0x0756f       2  table  (read in up to 1 epochs)
+X:0x07570-0x07570       1  loaded
+X:0x07571-0x07571       1  table  (read in up to 2 epochs)
+X:0x07572-0x07572       1  loaded
+X:0x07573-0x07573       1  table  (read in up to 1 epochs)
+X:0x07574-0x07574       1  loaded
+X:0x07575-0x07575       1  table  (read in up to 1 epochs)
+X:0x07576-0x07579       4  loaded
+X:0x0757a-0x0757a       1  table  (read in up to 1 epochs)
+X:0x0757b-0x0757e       4  loaded
+X:0x0757f-0x0757f       1  table  (read in up to 1 epochs)
+X:0x07580-0x07580       1  loaded
+X:0x07581-0x07583       3  table  (read in up to 2 epochs)
+X:0x07584-0x07585       2  loaded
+X:0x07586-0x07586       1  table  (read in up to 1 epochs)
+X:0x07587-0x07589       3  loaded
+X:0x0758a-0x0758a       1  table  (read in up to 2 epochs)
+X:0x0758b-0x0758b       1  loaded
+X:0x0758c-0x0758c       1  table  (read in up to 1 epochs)
+X:0x0758d-0x0758f       3  loaded
+X:0x07590-0x07592       3  table  (read in up to 2 epochs)
+X:0x07593-0x07593       1  loaded
+X:0x07594-0x07594       1  table  (read in up to 2 epochs)
+X:0x07595-0x0759a       6  loaded
+X:0x0759b-0x0759b       1  table  (read in up to 998 epochs)
+X:0x0759c-0x0759c       1  loaded
+X:0x0759d-0x0759e       2  table  (read in up to 1 epochs)
+X:0x0759f-0x0759f       1  loaded
+X:0x075a0-0x075a0       1  table  (read in up to 2 epochs)
+X:0x075a1-0x075a1       1  loaded
+X:0x075a2-0x075a2       1  table  (read in up to 2 epochs)
+X:0x075a3-0x075a5       3  loaded
+X:0x075a6-0x075a6       1  table  (read in up to 1 epochs)
+X:0x075a7-0x075a7       1  loaded
+X:0x075a8-0x075ad       6  table  (read in up to 998 epochs)
+X:0x075ae-0x075ae       1  loaded
+X:0x075af-0x075b1       3  table  (read in up to 2 epochs)
+X:0x075b2-0x075b2       1  loaded
+X:0x075b3-0x075b3       1  table  (read in up to 1 epochs)
+X:0x075b4-0x075b6       3  loaded
+X:0x075b7-0x075b9       3  table  (read in up to 1 epochs)
+X:0x075ba-0x075bf       6  loaded
+X:0x075c0-0x075c0       1  table  (read in up to 2 epochs)
+X:0x075c1-0x075c1       1  loaded
+X:0x075c2-0x075c2       1  table  (read in up to 1 epochs)
+X:0x075c3-0x075c3       1  loaded
+X:0x075c4-0x075c7       4  table  (read in up to 2 epochs)
+X:0x075c8-0x075c8       1  loaded
+X:0x075c9-0x075c9       1  table  (read in up to 1 epochs)
+X:0x075ca-0x075cd       4  loaded
+X:0x075ce-0x075d0       3  table  (read in up to 1 epochs)
+X:0x075d1-0x075d5       5  loaded
+X:0x075d6-0x075d6       1  table  (read in up to 998 epochs)
+X:0x075d7-0x075da       4  loaded
+X:0x075db-0x075db       1  table  (read in up to 1 epochs)
+X:0x075dc-0x075dc       1  loaded
+X:0x075dd-0x075dd       1  table  (read in up to 1 epochs)
+X:0x075de-0x075de       1  loaded
+X:0x075df-0x075df       1  table  (read in up to 2 epochs)
+X:0x075e0-0x075e5       6  loaded
+X:0x075e6-0x075e6       1  table  (read in up to 1 epochs)
+X:0x075e7-0x075e7       1  loaded
+X:0x075e8-0x075e9       2  table  (read in up to 1 epochs)
+X:0x075ea-0x075eb       2  loaded
+X:0x075ec-0x075ec       1  table  (read in up to 1 epochs)
+X:0x075ed-0x075ee       2  loaded
+X:0x075ef-0x075ef       1  table  (read in up to 2 epochs)
+X:0x075f0-0x075f0       1  loaded
+X:0x075f1-0x075f1       1  table  (read in up to 1 epochs)
+X:0x075f2-0x075f5       4  loaded
+X:0x075f6-0x075f6       1  table  (read in up to 1 epochs)
+X:0x075f7-0x075f7       1  loaded
+X:0x075f8-0x075f9       2  table  (read in up to 1 epochs)
+X:0x075fa-0x075fb       2  loaded
+X:0x075fc-0x075fc       1  table  (read in up to 1 epochs)
+X:0x075fd-0x075fe       2  loaded
+X:0x075ff-0x07602       4  table  (read in up to 998 epochs)
+X:0x07603-0x07605       3  loaded
+X:0x07606-0x07606       1  table  (read in up to 1 epochs)
+X:0x07607-0x0760b       5  loaded
+X:0x0760c-0x0760c       1  table  (read in up to 1 epochs)
+X:0x0760d-0x0760d       1  loaded
+X:0x0760e-0x0760f       2  table  (read in up to 1 epochs)
+X:0x07610-0x07611       2  loaded
+X:0x07612-0x07612       1  table  (read in up to 1 epochs)
+X:0x07613-0x07615       3  loaded
+X:0x07616-0x07616       1  table  (read in up to 1 epochs)
+X:0x07617-0x0761b       5  loaded
+X:0x0761c-0x0761f       4  table  (read in up to 2 epochs)
+X:0x07620-0x07620       1  loaded
+X:0x07621-0x07621       1  table  (read in up to 1 epochs)
+X:0x07622-0x07628       7  loaded
+X:0x07629-0x07629       1  table  (read in up to 998 epochs)
+X:0x0762a-0x0762b       2  loaded
+X:0x0762c-0x0762e       3  table  (read in up to 2 epochs)
+X:0x0762f-0x07632       4  loaded
+X:0x07633-0x07634       2  table  (read in up to 1 epochs)
+X:0x07635-0x07635       1  loaded
+X:0x07636-0x07637       2  table  (read in up to 2 epochs)
+X:0x07638-0x07639       2  loaded
+X:0x0763a-0x0763b       2  table  (read in up to 1 epochs)
+X:0x0763c-0x0763c       1  loaded
+X:0x0763d-0x0763e       2  table  (read in up to 1 epochs)
+X:0x0763f-0x07640       2  loaded
+X:0x07641-0x07641       1  table  (read in up to 1 epochs)
+X:0x07642-0x07643       2  loaded
+X:0x07644-0x07644       1  table  (read in up to 1 epochs)
+X:0x07645-0x07648       4  loaded
+X:0x07649-0x0764a       2  table  (read in up to 1 epochs)
+X:0x0764b-0x0764c       2  loaded
+X:0x0764d-0x0764f       3  table  (read in up to 2 epochs)
+X:0x07650-0x07652       3  loaded
+X:0x07653-0x07653       1  table  (read in up to 1 epochs)
+X:0x07654-0x07656       3  loaded
+X:0x07657-0x0765b       5  table  (read in up to 1 epochs)
+X:0x0765c-0x0765c       1  loaded
+X:0x0765d-0x0765f       3  table  (read in up to 2 epochs)
+X:0x07660-0x07664       5  loaded
+X:0x07665-0x07667       3  table  (read in up to 998 epochs)
+X:0x07668-0x0766c       5  loaded
+X:0x0766d-0x0766d       1  table  (read in up to 2 epochs)
+X:0x0766e-0x07670       3  loaded
+X:0x07671-0x07672       2  table  (read in up to 1 epochs)
+X:0x07673-0x07674       2  loaded
+X:0x07675-0x07675       1  table  (read in up to 1 epochs)
+X:0x07676-0x07677       2  loaded
+X:0x07678-0x07679       2  table  (read in up to 1 epochs)
+X:0x0767a-0x0767b       2  loaded
+X:0x0767c-0x0767d       2  table  (read in up to 2 epochs)
+X:0x0767e-0x07682       5  loaded
+X:0x07683-0x07683       1  table  (read in up to 2 epochs)
+X:0x07684-0x07684       1  loaded
+X:0x07685-0x07685       1  table  (read in up to 1 epochs)
+X:0x07686-0x0768b       6  loaded
+X:0x0768c-0x0768d       2  table  (read in up to 1 epochs)
+X:0x0768e-0x0768f       2  loaded
+X:0x07690-0x07691       2  table  (read in up to 2 epochs)
+X:0x07692-0x0769b      10  loaded
+X:0x0769c-0x0769e       3  table  (read in up to 2 epochs)
+X:0x0769f-0x076a1       3  loaded
+X:0x076a2-0x076a2       1  table  (read in up to 1 epochs)
+X:0x076a3-0x076a4       2  loaded
+X:0x076a5-0x076a5       1  table  (read in up to 1 epochs)
+X:0x076a6-0x076a7       2  loaded
+X:0x076a8-0x076a8       1  table  (read in up to 1 epochs)
+X:0x076a9-0x076a9       1  loaded
+X:0x076aa-0x076aa       1  table  (read in up to 1 epochs)
+X:0x076ab-0x076ab       1  loaded
+X:0x076ac-0x076ac       1  table  (read in up to 2 epochs)
+X:0x076ad-0x076af       3  loaded
+X:0x076b0-0x076b0       1  table  (read in up to 1 epochs)
+X:0x076b1-0x076b6       6  loaded
+X:0x076b7-0x076b8       2  table  (read in up to 1 epochs)
+X:0x076b9-0x076ba       2  loaded
+X:0x076bb-0x076bc       2  table  (read in up to 2 epochs)
+X:0x076bd-0x076be       2  loaded
+X:0x076bf-0x076bf       1  table  (read in up to 1 epochs)
+X:0x076c0-0x076c2       3  loaded
+X:0x076c3-0x076c3       1  table  (read in up to 2 epochs)
+X:0x076c4-0x076c4       1  loaded
+X:0x076c5-0x076c5       1  table  (read in up to 1 epochs)
+X:0x076c6-0x076c9       4  loaded
+X:0x076ca-0x076cb       2  table  (read in up to 2 epochs)
+X:0x076cc-0x076cc       1  loaded
+X:0x076cd-0x076cf       3  table  (read in up to 1 epochs)
+X:0x076d0-0x076d2       3  loaded
+X:0x076d3-0x076d3       1  table  (read in up to 1 epochs)
+X:0x076d4-0x076d9       6  loaded
+X:0x076da-0x076db       2  table  (read in up to 2 epochs)
+X:0x076dc-0x076e5      10  loaded
+X:0x076e6-0x076e6       1  table  (read in up to 1 epochs)
+X:0x076e7-0x076e9       3  loaded
+X:0x076ea-0x076ec       3  table  (read in up to 2 epochs)
+X:0x076ed-0x076f0       4  loaded
+X:0x076f1-0x076f1       1  table  (read in up to 2 epochs)
+X:0x076f2-0x076f6       5  loaded
+X:0x076f7-0x076f7       1  table  (read in up to 1 epochs)
+X:0x076f8-0x076f9       2  loaded
+X:0x076fa-0x076fc       3  table  (read in up to 2 epochs)
+X:0x076fd-0x07705       9  loaded
+X:0x07706-0x07706       1  table  (read in up to 1 epochs)
+X:0x07707-0x07707       1  loaded
+X:0x07708-0x0770b       4  table  (read in up to 1 epochs)
+X:0x0770c-0x0770f       4  loaded
+X:0x07710-0x07711       2  table  (read in up to 1 epochs)
+X:0x07712-0x07715       4  loaded
+X:0x07716-0x07716       1  table  (read in up to 1 epochs)
+X:0x07717-0x07719       3  loaded
+X:0x0771a-0x0771a       1  table  (read in up to 2 epochs)
+X:0x0771b-0x0771b       1  loaded
+X:0x0771c-0x0771c       1  table  (read in up to 1 epochs)
+X:0x0771d-0x0771f       3  loaded
+X:0x07720-0x07720       1  table  (read in up to 1 epochs)
+X:0x07721-0x07721       1  loaded
+X:0x07722-0x07722       1  table  (read in up to 1 epochs)
+X:0x07723-0x07723       1  loaded
+X:0x07724-0x07725       2  table  (read in up to 1 epochs)
+X:0x07726-0x07729       4  loaded
+X:0x0772a-0x0772a       1  table  (read in up to 2 epochs)
+X:0x0772b-0x0772b       1  loaded
+X:0x0772c-0x0772d       2  table  (read in up to 1 epochs)
+X:0x0772e-0x0772e       1  loaded
+X:0x0772f-0x0772f       1  table  (read in up to 2 epochs)
+X:0x07730-0x07735       6  loaded
+X:0x07736-0x07736       1  table  (read in up to 1 epochs)
+X:0x07737-0x07739       3  loaded
+X:0x0773a-0x0773a       1  table  (read in up to 2 epochs)
+X:0x0773b-0x0773e       4  loaded
+X:0x0773f-0x07740       2  table  (read in up to 996 epochs)
+X:0x07741-0x07741       1  loaded
+X:0x07742-0x07742       1  table  (read in up to 1 epochs)
+X:0x07743-0x07744       2  loaded
+X:0x07745-0x07745       1  table  (read in up to 1 epochs)
+X:0x07746-0x07746       1  loaded
+X:0x07747-0x07747       1  table  (read in up to 1 epochs)
+X:0x07748-0x07748       1  loaded
+X:0x07749-0x0774a       2  table  (read in up to 1 epochs)
+X:0x0774b-0x0774d       3  loaded
+X:0x0774e-0x0774f       2  table  (read in up to 2 epochs)
+X:0x07750-0x07755       6  loaded
+X:0x07756-0x07759       4  table  (read in up to 2 epochs)
+X:0x0775a-0x0775a       1  loaded
+X:0x0775b-0x0775b       1  table  (read in up to 1 epochs)
+X:0x0775c-0x0775c       1  loaded
+X:0x0775d-0x0775e       2  table  (read in up to 2 epochs)
+X:0x0775f-0x0775f       1  loaded
+X:0x07760-0x07761       2  table  (read in up to 1 epochs)
+X:0x07762-0x07764       3  loaded
+X:0x07765-0x07765       1  table  (read in up to 2 epochs)
+X:0x07766-0x07768       3  loaded
+X:0x07769-0x0776c       4  table  (read in up to 2 epochs)
+X:0x0776d-0x07770       4  loaded
+X:0x07771-0x07772       2  table  (read in up to 1 epochs)
+X:0x07773-0x07777       5  loaded
+X:0x07778-0x07779       2  table  (read in up to 2 epochs)
+X:0x0777a-0x0777d       4  loaded
+X:0x0777e-0x0777f       2  table  (read in up to 1 epochs)
+X:0x07780-0x07782       3  loaded
+X:0x07783-0x07783       1  table  (read in up to 1 epochs)
+X:0x07784-0x07784       1  loaded
+X:0x07785-0x07789       5  table  (read in up to 1 epochs)
+X:0x0778a-0x0778a       1  loaded
+X:0x0778b-0x0778c       2  table  (read in up to 1 epochs)
+X:0x0778d-0x0778f       3  loaded
+X:0x07790-0x07791       2  table  (read in up to 1 epochs)
+X:0x07792-0x07793       2  loaded
+X:0x07794-0x07795       2  table  (read in up to 2 epochs)
+X:0x07796-0x07797       2  loaded
+X:0x07798-0x07798       1  table  (read in up to 3 epochs)
+X:0x07799-0x07799       1  loaded
+X:0x0779a-0x0779a       1  table  (read in up to 1 epochs)
+X:0x0779b-0x0779b       1  loaded
+X:0x0779c-0x0779c       1  table  (read in up to 2 epochs)
+X:0x0779d-0x0779e       2  loaded
+X:0x0779f-0x0779f       1  table  (read in up to 2 epochs)
+X:0x077a0-0x077a0       1  loaded
+X:0x077a1-0x077a9       9  table  (read in up to 2 epochs)
+X:0x077aa-0x077aa       1  loaded
+X:0x077ab-0x077ab       1  table  (read in up to 1 epochs)
+X:0x077ac-0x077ac       1  loaded
+X:0x077ad-0x077ae       2  table  (read in up to 2 epochs)
+X:0x077af-0x077b7       9  loaded
+X:0x077b8-0x077b8       1  table  (read in up to 2 epochs)
+X:0x077b9-0x077c7      15  loaded
+X:0x077c8-0x077c8       1  table  (read in up to 2 epochs)
+X:0x077c9-0x077ce       6  loaded
+X:0x077cf-0x077cf       1  table  (read in up to 1 epochs)
+X:0x077d0-0x077d0       1  loaded
+X:0x077d1-0x077d2       2  table  (read in up to 1 epochs)
+X:0x077d3-0x077d6       4  loaded
+X:0x077d7-0x077d8       2  table  (read in up to 998 epochs)
+X:0x077d9-0x077e1       9  loaded
+X:0x077e2-0x077e2       1  table  (read in up to 1 epochs)
+X:0x077e3-0x077e6       4  loaded
+X:0x077e7-0x077e8       2  table  (read in up to 2 epochs)
+X:0x077e9-0x077ec       4  loaded
+X:0x077ed-0x077ed       1  table  (read in up to 1 epochs)
+X:0x077ee-0x077ef       2  loaded
+X:0x077f0-0x077f0       1  table  (read in up to 1 epochs)
+X:0x077f1-0x077f6       6  loaded
+X:0x077f7-0x077f7       1  table  (read in up to 2 epochs)
+X:0x077f8-0x077fa       3  loaded
+X:0x077fb-0x077fc       2  table  (read in up to 998 epochs)
+X:0x077fd-0x077fe       2  loaded
+X:0x077ff-0x077ff       1  table  (read in up to 998 epochs)
+X:0x07800-0x07810      17  loaded
+X:0x07811-0x07811       1  table  (read in up to 998 epochs)
+X:0x07812-0x07850      63  loaded
+X:0x07851-0x07851       1  table  (read in up to 998 epochs)
+X:0x07852-0x078d0     127  loaded
+X:0x078d1-0x078d1       1  table  (read in up to 998 epochs)
+X:0x078d2-0x07a91     448  loaded
+X:0x07a92-0x07fff    1390  free
+X:0x08000-0x08000       1  scratch  (written in up to 500 epochs, read-before-write in up to 0)
+X:0x08001-0x08005       5  state  (written in up to 500 epochs, read-before-write in up to 1)
+X:0x08006-0x08007       2  table  (read in up to 501 epochs)
+X:0x08008-0x0800d       6  state  (written in up to 500 epochs, read-before-write in up to 1)
+X:0x0800e-0x0800f       2  table  (read in up to 501 epochs)
+X:0x08010-0x08015       6  state  (written in up to 500 epochs, read-before-write in up to 1)
+X:0x08016-0x08017       2  table  (read in up to 501 epochs)
+X:0x08018-0x0801d       6  state  (written in up to 500 epochs, read-before-write in up to 1)
+X:0x0801e-0x0801f       2  table  (read in up to 501 epochs)
+X:0x08020-0x08025       6  state  (written in up to 500 epochs, read-before-write in up to 1)
+X:0x08026-0x08027       2  table  (read in up to 501 epochs)
+X:0x08028-0x0802d       6  state  (written in up to 500 epochs, read-before-write in up to 1)
+X:0x0802e-0x0802f       2  table  (read in up to 501 epochs)
+X:0x08030-0x08035       6  state  (written in up to 500 epochs, read-before-write in up to 1)
+X:0x08036-0x08037       2  table  (read in up to 501 epochs)
+X:0x08038-0x0803d       6  state  (written in up to 500 epochs, read-before-write in up to 1)
+X:0x0803e-0x0803f       2  table  (read in up to 501 epochs)
+X:0x08040-0x08045       6  state  (written in up to 500 epochs, read-before-write in up to 1)
+X:0x08046-0x08047       2  table  (read in up to 501 epochs)
+X:0x08048-0x0804d       6  state  (written in up to 500 epochs, read-before-write in up to 1)
+X:0x0804e-0x0804f       2  table  (read in up to 501 epochs)
+X:0x08050-0x08055       6  state  (written in up to 500 epochs, read-before-write in up to 1)
+X:0x08056-0x08057       2  table  (read in up to 501 epochs)
+X:0x08058-0x0805d       6  state  (written in up to 500 epochs, read-before-write in up to 1)
+X:0x0805e-0x0805f       2  table  (read in up to 501 epochs)
+X:0x08060-0x08065       6  state  (written in up to 500 epochs, read-before-write in up to 1)
+X:0x08066-0x08067       2  table  (read in up to 501 epochs)
+X:0x08068-0x0806d       6  state  (written in up to 500 epochs, read-before-write in up to 1)
+X:0x0806e-0x0806f       2  table  (read in up to 501 epochs)
+X:0x08070-0x08075       6  state  (written in up to 500 epochs, read-before-write in up to 355)
+X:0x08076-0x08077       2  table  (read in up to 501 epochs)
+X:0x08078-0x0807d       6  state  (written in up to 500 epochs, read-before-write in up to 500)
+X:0x0807e-0x0807f       2  table  (read in up to 501 epochs)
+X:0x08080-0x08080       1  state  (written in up to 502 epochs, read-before-write in up to 499)
+X:0x08081-0x08081       1  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x08082-0x08082       1  state  (written in up to 502 epochs, read-before-write in up to 499)
+X:0x08083-0x08085       3  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x08086-0x08087       2  table  (read in up to 501 epochs)
+X:0x08088-0x0808d       6  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x0808e-0x0808f       2  table  (read in up to 501 epochs)
+X:0x08090-0x08095       6  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x08096-0x08097       2  table  (read in up to 501 epochs)
+X:0x08098-0x0809d       6  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x0809e-0x0809f       2  table  (read in up to 501 epochs)
+X:0x080a0-0x080a5       6  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x080a6-0x080a7       2  table  (read in up to 501 epochs)
+X:0x080a8-0x080ad       6  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x080ae-0x080af       2  table  (read in up to 501 epochs)
+X:0x080b0-0x080b5       6  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x080b6-0x080b7       2  table  (read in up to 501 epochs)
+X:0x080b8-0x080bd       6  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x080be-0x080bf       2  table  (read in up to 501 epochs)
+X:0x080c0-0x080c5       6  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x080c6-0x080c7       2  table  (read in up to 501 epochs)
+X:0x080c8-0x080cd       6  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x080ce-0x080cf       2  table  (read in up to 501 epochs)
+X:0x080d0-0x080d5       6  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x080d6-0x080d7       2  table  (read in up to 501 epochs)
+X:0x080d8-0x080dd       6  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x080de-0x080df       2  table  (read in up to 501 epochs)
+X:0x080e0-0x080e5       6  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x080e6-0x080e7       2  table  (read in up to 501 epochs)
+X:0x080e8-0x080ed       6  scratch  (written in up to 502 epochs, read-before-write in up to 0)
+X:0x080ee-0x080ef       2  table  (read in up to 501 epochs)
+X:0x080f0-0x080f5       6  state  (written in up to 502 epochs, read-before-write in up to 355)
+X:0x080f6-0x080f7       2  table  (read in up to 500 epochs)
+X:0x080f8-0x080fd       6  state  (written in up to 502 epochs, read-before-write in up to 499)
+X:0x080fe-0x080ff       2  table  (read in up to 500 epochs)
+X:0x08100-0x0833f     576  state  (written in up to 224 epochs, read-before-write in up to 612)
+X:0x08340-0x08340       1  garbage
+X:0x08341-0x08341       1  free
+X:0x08342-0x08342       1  garbage
+X:0x08343-0x0857f     573  free
+X:0x08580-0x088a1     802  loaded
+X:0x088a2-0x088a2       1  table  (read in up to 998 epochs)
+X:0x088a3-0x088e1      63  loaded
+X:0x088e2-0x088e2       1  table  (read in up to 998 epochs)
+X:0x088e3-0x08d63    1153  loaded
+X:0x08d64-0x08d7a      23  table  (read in up to 998 epochs)
+X:0x08d7b-0x08d80       6  loaded
+X:0x08d81-0x08d81       1  table  (read in up to 998 epochs)
+X:0x08d82-0x08d87       6  loaded
+X:0x08d88-0x08d88       1  table  (read in up to 998 epochs)
+X:0x08d89-0x08d8c       4  loaded
+X:0x08d8d-0x08d97      11  table  (read in up to 998 epochs)
+X:0x08d98-0x08fff     616  free
+
+## Y:0x00000-0x0bfff  state 8220  scratch 564  table 914  loaded 28043  garbage 188  free 11223
+Y:0x00000-0x0002f      48  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+Y:0x00030-0x00030       1  state  (written in up to 998 epochs, read-before-write in up to 998)
+Y:0x00031-0x0005f      47  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+Y:0x00060-0x00060       1  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+Y:0x00061-0x0010f     175  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+Y:0x00110-0x00110       1  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+Y:0x00111-0x0019f     143  scratch  (written in up to 1001 epochs, read-before-write in up to 11)
+Y:0x001a0-0x001b7      24  garbage
+Y:0x001b8-0x001ff      72  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+Y:0x00200-0x00223      36  table  (read in up to 998 epochs)
+Y:0x00224-0x0023f      28  garbage
+Y:0x00240-0x0027f      64  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+Y:0x00280-0x00280       1  state  (written in up to 990 epochs, read-before-write in up to 628)
+Y:0x00281-0x0028f      15  scratch  (written in up to 1001 epochs, read-before-write in up to 0)
+Y:0x00290-0x005fb     876  table  (read in up to 1001 epochs)
+Y:0x005fc-0x00754     345  loaded
+Y:0x00755-0x00755       1  table  (read in up to 998 epochs)
+Y:0x00756-0x00794      63  loaded
+Y:0x00795-0x01dff    5739  free
+Y:0x01e00-0x01e00       1  garbage
+Y:0x01e01-0x01e7f     127  free
+Y:0x01e80-0x01e80       1  garbage
+Y:0x01e81-0x01eff     127  free
+Y:0x01f00-0x01f00       1  garbage
+Y:0x01f01-0x01f7f     127  free
+Y:0x01f80-0x01f80       1  garbage
+Y:0x01f81-0x027ff    2175  free
+Y:0x02800-0x0340b    3084  state  (written in up to 998 epochs, read-before-write in up to 998)
+Y:0x0340c-0x0342d      34  free
+Y:0x0342e-0x03439      12  garbage
+Y:0x0343a-0x034b9     128  free
+Y:0x034ba-0x034c5      12  garbage
+Y:0x034c6-0x03591     204  free
+Y:0x03592-0x0359d      12  garbage
+Y:0x0359e-0x03679     220  free
+Y:0x0367a-0x03685      12  garbage
+Y:0x03686-0x0376d     232  free
+Y:0x0376e-0x03779      12  garbage
+Y:0x0377a-0x03873     250  free
+Y:0x03874-0x0387f      12  garbage
+Y:0x03880-0x0398b     268  free
+Y:0x0398c-0x03997      12  garbage
+Y:0x03998-0x03ab5     286  free
+Y:0x03ab6-0x03ac1      12  garbage
+Y:0x03ac2-0x03bf1     304  free
+Y:0x03bf2-0x03bfd      12  garbage
+Y:0x03bfe-0x03d43     326  free
+Y:0x03d44-0x03d4f      12  garbage
+Y:0x03d50-0x03ead     350  free
+Y:0x03eae-0x03eb9      12  garbage
+Y:0x03eba-0x03fff     326  free
+Y:0x04000-0x047ff    2048  state  (written in up to 17 epochs, read-before-write in up to 49)
+Y:0x04800-0x06203    6660  loaded
+Y:0x06204-0x06204       1  table  (read in up to 998 epochs)
+Y:0x06205-0x07fff    7675  loaded
+Y:0x08000-0x08c0b    3084  state  (written in up to 999 epochs, read-before-write in up to 998)
+Y:0x08c0c-0x0bfff   13300  loaded
+
+## window core 0:0x30000-0x3ffff  state 72  table 16  loaded 32699  free 32749
+window core 0:0x30000-0x30047      72  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+window core 0:0x30048-0x37fff   32696  loaded
+window core 0:0x38000-0x3800f      16  table  (read in up to 1001 epochs)
+window core 0:0x38010-0x38012       3  loaded
+window core 0:0x38013-0x3ffff   32749  free
+
+## window core 1:0x30000-0x3ffff  state 16  table 68  loaded 32913  free 32539
+window core 1:0x30000-0x30002       3  table  (read in up to 1000 epochs)
+window core 1:0x30003-0x30003       1  loaded
+window core 1:0x30004-0x30044      65  table  (read in up to 1000 epochs)
+window core 1:0x30045-0x300aa     102  loaded
+window core 1:0x300ab-0x31fff    8021  free
+window core 1:0x32000-0x32039      58  loaded
+window core 1:0x3203a-0x37fff   24518  free
+window core 1:0x38000-0x3800f      16  state  (written in up to 1001 epochs, read-before-write in up to 1000)
+window core 1:0x38010-0x3ffff   32752  loaded

@@ -47,7 +47,7 @@ Statuses:
 | Packet | Status | Branch | Commit | Date | Report | Notes |
 |---|---|---|---|---|---|---|
 | WP-00 Phase 0/1 and the driver in the replay | done | `machinedrum` | `f4a93d8` | 2026-09-23 | `MACHINEDRUM_MACHINE.md` §12 | replay, relocation, hot split, driver steps 1–3 |
-| WP-A1 Core-0 memory ledger | claimed | `machinedrum` | | 2026-09-23 | | |
+| WP-A1 Core-0 memory ledger | claimed | `machinedrum` | | 2026-09-23 | `machinedrum_reports/WP-A1.md` | handed over mid-packet: measured, write-up (`CORE0_MEMORY.md`) not done; see report "Open" |
 | WP-A2 The layout | todo | | | | | decision gate: user sign-off |
 | WP-A3 Layout-driven relocation and driver | todo | | | | | |
 | WP-A4 Boot-time init on the OT | todo | | | | | |
@@ -62,7 +62,7 @@ Statuses:
 | WP-C2 Port the parameter handlers | todo | | | | | |
 | WP-C3 Machine registration | todo | | | | | |
 | WP-C4 Kits and parameters | todo | | | | | |
-| WP-D1 Is the chord free? | todo | | | | | may start now |
+| WP-D1 Is the chord free? | todo | | | | | may start now; partial static read in `machinedrum_reports/WP-A1.md` item 4 |
 | WP-D2 The sequencer data model | todo | | | | | user sign-off on the spec |
 | WP-D3 The sequencer engine | todo | | | | | |
 | WP-D4 Grid-record view | todo | | | | | |

@@ -1,0 +1,225 @@
+--- a/vendor/dsp56300/source/dsp56kEmu/memory.h
++++ b/vendor/dsp56300/source/dsp56kEmu/memory.h
+@@ -85,6 +85,9 @@
+ 		// octabam: every data write (P, X, Y), after address translation, for
+ 		// an activity instrument -- one branch per write when unset.
+ 		std::function<void(EMemArea, TWord, TWord)>			m_writeHook;
++	public:
++		std::function<void(EMemArea, TWord)>				m_readHookA1;	// octamad WP-A1 isolated build
++	private:
+ 		
+ 		struct STransaction
+ 		{
+--- a/vendor/dsp56300/source/dsp56kEmu/memory.cpp
++++ b/vendor/dsp56300/source/dsp56kEmu/memory.cpp
+@@ -177,6 +177,7 @@
+ #endif
+ 
+ 		memTranslateAddress(_area, _offset);
++		if(m_readHookA1) m_readHookA1(_area, _offset);
+ 
+ #ifdef _DEBUG
+ 		assert(_offset < XIO_Reserved_High_First);
+--- a/tools/emu/ot_emu/dsp.cpp
++++ b/tools/emu/ot_emu/dsp.cpp
+@@ -77,6 +77,12 @@
+ 		uint8_t icr = 0, cvr = 0x32, ivr = 0x0f, txh = 0, txm = 0;
+ 		uint32_t lastRx = 0;		// the last word taken: RXH/RXM read it back
+ 		bool hcPending = false;
++		// WP-A1 (isolated build): per word of X/Y/P below 0x40000, which frame epochs wrote,
++		// read, and read before any write in the same epoch. Epoch = frame vectors taken.
++		uint32_t a1Epoch = 0;
++		std::vector<uint8_t> a1Flags[3];
++		std::vector<uint32_t> a1LastW[3], a1LastR[3], a1LastRB[3];
++		std::vector<uint16_t> a1W[3], a1R[3], a1RB[3];
+ 		uint32_t hcVector = 0;
+ 		// THE PC RING AND THE FAULT. The interpreter indexes its opcode cache by
+ 		// the PC into a table sized to P memory (0x80000 words here), so a PC
+@@ -147,6 +153,14 @@
+ 					h.ddr0 = c.px->read(0xffffee, dsp56k::Nop); h.dco0 = c.px->read(0xffffed, dsp56k::Nop);
+ 					h.dsr1 = c.px->read(0xffffeb, dsp56k::Nop); h.dco1 = c.px->read(0xffffe9, dsp56k::Nop);
+ 					m_watchHits.push_back(h);
++				}
++				if(m_a1On && _off < 0x40000)
++				{
++					const int ar = _area == dsp56k::MemArea_X ? 0 : _area == dsp56k::MemArea_Y ? 1 : 2;
++					const uint32_t e = c.a1Epoch + 1;
++					if(c.a1LastW[ar][_off] != e) { c.a1LastW[ar][_off] = e; if(c.a1W[ar][_off] < 0xffff) ++c.a1W[ar][_off]; }
++					c.a1Flags[ar][_off] |= c.a1Epoch ? 2 : 1;
++					if(c.a1Epoch && (_val & 0xffffff)) c.a1Flags[ar][_off] |= 4;
+ 				}
+ 				if(!m_writesOn || _area == dsp56k::MemArea_P || !(_val & 0xffffff) || _off >= 0x40000)
+ 					return;
+@@ -189,6 +203,8 @@
+ 			{
+ 				Core& k = *m_cores[i];
+ 				++k.vectorsTaken[_vba];
++				if(m_a1On && _vba == (i == 0 ? 0x18u : 0x12u))
++					++k.a1Epoch;
+ 				if(!k.hcPending || _vba != k.hcVector)
+ 					return;
+ 				k.hcPending = false;
+@@ -1062,5 +1078,55 @@
+ 			}
+ 		}
+ 		return s;
++	}
++}
++
++namespace ot
++{
++	void DspPair::enableWordMap()
++	{
++		m_a1On = true;
++		for(size_t i = 0; i < m_cores.size(); ++i)
++		{
++			Core& c = *m_cores[i];
++			for(int a = 0; a < 3; ++a)
++			{
++				c.a1Flags[a].assign(0x40000, 0);
++				c.a1LastW[a].assign(0x40000, 0); c.a1LastR[a].assign(0x40000, 0); c.a1LastRB[a].assign(0x40000, 0);
++				c.a1W[a].assign(0x40000, 0); c.a1R[a].assign(0x40000, 0); c.a1RB[a].assign(0x40000, 0);
++			}
++			Core* cp = &c;
++			c.mem->m_readHookA1 = [this, cp](const dsp56k::EMemArea _area, const dsp56k::TWord _off)
++			{
++				if(_off >= 0x40000)
++					return;
++				Core& k = *cp;
++				const int ar = _area == dsp56k::MemArea_X ? 0 : _area == dsp56k::MemArea_Y ? 1 : 2;
++				const uint32_t e = k.a1Epoch + 1;
++				if(k.a1LastR[ar][_off] != e) { k.a1LastR[ar][_off] = e; if(k.a1R[ar][_off] < 0xffff) ++k.a1R[ar][_off]; }
++				k.a1Flags[ar][_off] |= k.a1Epoch ? 16 : 8;
++				if(k.a1Epoch && k.a1LastW[ar][_off] != e && k.a1LastRB[ar][_off] != e)
++				{
++					k.a1LastRB[ar][_off] = e;
++					if(k.a1RB[ar][_off] < 0xffff) ++k.a1RB[ar][_off];
++				}
++			};
++		}
+ 	}
++	void DspPair::writeWordMap(const std::string& _file) const
++	{
++		FILE* f = std::fopen(_file.c_str(), "wb");
++		if(!f) return;
++		const uint32_t hdr[4] = {0x41314d50, static_cast<uint32_t>(m_cores.size()), m_cores[0]->a1Epoch, m_cores.size() > 1 ? m_cores[1]->a1Epoch : 0};
++		std::fwrite(hdr, 4, 4, f);
++		for(auto& cp : m_cores)
++			for(int a = 0; a < 3; ++a)
++			{
++				std::fwrite(cp->a1Flags[a].data(), 1, 0x40000, f);
++				std::fwrite(cp->a1W[a].data(), 2, 0x40000, f);
++				std::fwrite(cp->a1R[a].data(), 2, 0x40000, f);
++				std::fwrite(cp->a1RB[a].data(), 2, 0x40000, f);
++			}
++		std::fclose(f);
++	}
+ }
+--- a/tools/emu/ot_emu/dsp.h
++++ b/tools/emu/ot_emu/dsp.h
+@@ -195,6 +195,8 @@
+ 		// command. A region written with content is where audio (or state)
+ 		// passes through, whatever the buffer is called.
+ 		void setWriteMap(const bool _on) { m_writesOn = _on; }
++		void enableWordMap();
++		void writeWordMap(const std::string& _file) const;
+ 		// A write watch on one DSP word: the last 16 (pc, value, executed) that wrote it (O9b).
+ 		void setWriteWatch(const int _core, const char _space, const uint32_t _addr) { m_watchCore = _core; m_watchSpace = _space; m_watchAddr = _addr; m_watchOn = true; }
+ 		struct WatchHit { uint32_t pc, val; uint64_t executed; uint32_t last[4]; uint32_t ddr0, dco0, dsr1, dco1, r4, r6, area, r0; };
+@@ -244,6 +246,7 @@
+ 		uint64_t m_traceEvery = 0, m_traceFrom = 0;
+ 		bool m_idleSkip = true;
+ 		bool m_capture = false, m_tones = false, m_mapOn = false, m_writesOn = false;
++		bool m_a1On = false;
+ 		bool m_pulling = false;
+ 		bool m_pcWatchOn = false; int m_pcWatchCore = 0; uint32_t m_pcWatchPc = 0; uint64_t m_pcWatchFrom = 0;	// with a `from`, the FIRST 24 arrivals after it are kept
+ 		std::vector<PcWatchHit> m_pcWatchHits;
+--- a/tools/emu/ot_emu/main.cpp
++++ b/tools/emu/ot_emu/main.cpp
+@@ -100,6 +100,7 @@
+ 	std::string dspStopwatch;	// O12: core:startpc:stoppc -- instructions between the two, per pair (the cycle meter)
+ 	std::string dspWatch;		// O9b: core:space:addr -- the last 16 writers of one DSP word
+ 	std::string dspMap;		// O9: per-frame non-zero counts per 4K chunk of both cores' X and Y -> FILE
++	std::string dspWordMap;	// WP-A1 isolated build
+ 	std::string dspWrites;		// O9: per-frame NON-ZERO WRITE counts per 256-word region of both cores' X and Y -> FILE
+ 	std::string coverage;		// O9b: every ColdFire PC executed from the transport start on, with its count -> FILE (diff two runs)
+ 	bool frameTimer = false;	// O9b: keep the free-running 16-sample frame timer with --dsp (default: the DSP's bank word is the frame edge)
+@@ -173,6 +174,7 @@
+ 		else if(a == "--dsp-pcwatch" && i + 1 < _argc)	dspPcWatch = _argv[++i];
+ 		else if(a == "--dsp-stopwatch" && i + 1 < _argc)	dspStopwatch = _argv[++i];
+ 		else if(a == "--dsp-writes" && i + 1 < _argc)	dspWrites = _argv[++i];
++		else if(a == "--dsp-wordmap" && i + 1 < _argc)	dspWordMap = _argv[++i];
+ 		else if(a == "--coverage" && i + 1 < _argc)	coverage = _argv[++i];
+ 		else if(a == "--main-level" && i + 1 < _argc)	mainLevel = std::atoi(_argv[++i]);
+ 		else if(a == "--mem-dump" && i + 1 < _argc)	memDump = _argv[++i];
+@@ -265,6 +267,9 @@
+ 		{
+ 			dspPair->dirty(dspDirty);
+ 			std::printf("dsp dirty  : X/Y 0..%#x of both cores and the shared window filled with garbage (seed %#x)\n", ot::DspPair::g_shareLo - 1, dspDirty);
++		}
++		if(!dspWordMap.empty()) {
++			dspPair->enableWordMap();
+ 		}
+ 		if(audioIn == "tones")
+ 			dspPair->setAudioTones(true);
+@@ -1085,6 +1090,7 @@
+ 				std::printf("             pc %#07x <- %06x at executed %llu; last pcs %06x %06x %06x %06x; r0 %06x r4 %06x r6 %06x area %u\n", h.pc, h.val, static_cast<unsigned long long>(h.executed),
+ 					h.last[0], h.last[1], h.last[2], h.last[3], h.r0, h.r4, h.r6, h.area);
+ 		}
++		if(!dspWordMap.empty()) { dspPair->writeWordMap(dspWordMap); std::printf("dsp wordmap: %s\n", dspWordMap.c_str()); }
+ 		if(!dspWrites.empty())
+ 		{
+ 			std::ofstream t(dspWrites);
+--- a/tools/emu/ot_emu/CMakeLists.txt
++++ b/tools/emu/ot_emu/CMakeLists.txt
+@@ -35,50 +35,3 @@
+ 
+ add_executable(ot_emu main.cpp)
+ target_link_libraries(ot_emu PRIVATE ot_machine)
+-
+-# THE GATE. `docs/firmware/RTOS_FORK.md` section 10.16: three defects in Unicorn's EMAC
+-# cost a week, each producing a confident wrong finding. Nothing this emulator
+-# computes is trustworthy until this passes.
+-include(CTest)
+-add_executable(ot_emac_test test_emac.cpp)
+-target_link_libraries(ot_emac_test PRIVATE ot_machine)
+-add_test(NAME emac COMMAND ot_emac_test)
+-
+-# The peripheral rules, each one a silent failure in route A before it was
+-# found (RTOS_FORK sections 8.2 and 4).
+-add_executable(ot_periph_test test_periph.cpp)
+-target_link_libraries(ot_periph_test PRIVATE ot_machine)
+-add_test(NAME periph COMMAND ot_periph_test)
+-
+-# The run loop: route A's M6a gate, self-contained (the full oracle diff needs
+-# route A itself -- see tools/emu/ot_emu/oracle.py). Runs from the repo root so it
+-# finds the operator's own stock image; skips cleanly if it is absent.
+-add_executable(ot_rtos_test test_rtos.cpp)
+-target_link_libraries(ot_rtos_test PRIVATE ot_machine)
+-add_test(NAME rtos COMMAND ot_rtos_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
+-
+-# O8: the firmware's own DSP upload, through the emulated host port, lands the
+-# bytes the image carries -- both bootstrap ROMs and both payloads, record for
+-# record, parsed independently from the image (docs/firmware/DSP.md section 2).
+-add_executable(ot_dsp_test test_dsp.cpp)
+-target_link_libraries(ot_dsp_test PRIVATE ot_machine)
+-add_test(NAME dsp COMMAND ot_dsp_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
+-
+-# Repitch's firmware patch relies on stock TSTR value numbers, descriptor
+-# bounds and one rate-selection block. Keep those reverse-engineered facts
+-# executable so a different base image cannot silently invalidate the hook.
+-add_executable(ot_repitch_stock_test ../../harness/repitch_probe.cpp)
+-target_link_libraries(ot_repitch_stock_test PRIVATE ot_machine)
+-add_test(NAME repitch-stock COMMAND ot_repitch_stock_test
+-	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
+-add_test(NAME repitch-patch COMMAND ot_repitch_stock_test --patched out/mainos_bus.bin
+-	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
+-
+-# Euclid's sequencer-to-filter adapter, including its compiled control engine.
+-add_executable(ot_euclid_test ../../harness/euclid_probe.cpp)
+-target_link_libraries(ot_euclid_test PRIVATE ot_machine)
+-
+-add_executable(ot_tapeecho_cpu_test ../../harness/tapeecho_cpu_probe.cpp
+-    ../../../modules/tapeecho/cpu.c)
+-target_compile_definitions(ot_tapeecho_cpu_test PRIVATE TE_HOST=1)
+-target_link_libraries(ot_tapeecho_cpu_test PRIVATE ot_machine)

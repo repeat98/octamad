@@ -24,8 +24,16 @@ address that points into a moved region:
     A value test cannot tell a pointer from data that happens to fall in the
     range, so a live patch is a guess the replay has to confirm.
 
+    python3 tools/harness/md_reference/md_relocate.py --hot <capture dirs,...>
+        [--hot-base 0x1000] [--hot-size 2724] <capture dir> [profile dirs...]
+
+--hot also moves the hottest code units (by the fetch.txt counts of those
+captures, md_replay MD_REPLAY_FETCH=2) into private P at --hot-base, as the
+OT's core-0 donor region would hold them (see hot_units).
+
 Writes <capture dir>/reloc.txt, which md_replay --reloc applies:
-  M <old start> <old end> <new start>     move a region (end exclusive)
+  M <old start> <old end> <new start>     move a region or a hot unit (end exclusive)
+  Z <start> <end>                         wipe a region copy of a hot unit
   W <new addr> <value>                    a patched P word at its new place
                                           (or in place, below the regions)
   X|Y <addr> <value>                      a patched live-state word
@@ -55,7 +63,14 @@ END = re.compile(r"^(rts|rti|jmp|bra|illegal|stop|debug)$")
 BRANCH = re.compile(rf"^(b{CC}|j{CC}|bs{CC}|js{CC}|bsr|jsr|brclr|brset|bsclr|bsset|jclr|jset|jsclr|jsset|bra|jmp)$")
 
 
+# With --hot: old word address -> new address in private P for the hot
+# units (see hot_units), which move separately from their region.
+HOT = {}
+
+
 def moved(a):
+    if a in HOT:
+        return HOT[a]
     for s, e, n in REGIONS:
         if s <= a < e:
             return n + (a - s)
@@ -82,7 +97,107 @@ def targets(text):
             if re.match(r"^(j|b|do|dor)", text)]
 
 
+def relative(op):
+    return (op.startswith("b") and BRANCH.match(op) is not None) or op == "dor"
+
+
+def hot_units(code, fetch_dirs, base, size):
+    """Split the code into units that can move on their own, and pick the
+    ones that carry the most fetches into `size` words at `base`.
+
+    A unit is joined across a fall-through (unless the instruction before
+    ends the path) and across every one-word PC-relative branch (b..., dor),
+    whose short displacement cannot be patched. Absolute operands (j..., do, #>, tables)
+    are patched through moved(), so they may cross units freely. Fetch counts
+    come from md_replay MD_REPLAY_FETCH=2 (fetch.txt, per capture); each
+    capture counts as its share of its own fetches."""
+    parent = {a: a for a in code}
+
+    def find(a):
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    def join(a, b):
+        if a in parent and b in parent:
+            parent[find(a)] = find(b)
+
+    for a, (ln, wa, wb, text) in code.items():
+        op = text.split()[0] if text else ""
+        if not END.match(op) and a + ln in code:
+            join(a, a + ln)
+        # A one-word relative branch has a short displacement that cannot
+        # be patched; a two-word one is re-pointed in main().
+        if ln == 1 and relative(op):
+            for t in targets(text):
+                join(a, t)
+    units = {}
+    for a in code:
+        units.setdefault(find(a), []).append(a)
+
+    # Fetches per capture and unit (the captures run equally long, so the
+    # totals compare). Greedy: each step takes the unit that most lowers the
+    # sum of squared remaining fetches per word it costs, which works on
+    # whichever kit is worst at that point.
+    per = []
+    for d in fetch_dirs:
+        f = {}
+        for l in (Path(d) / "fetch.txt").read_text().splitlines():
+            pc, _, w = l.split()
+            pc = int(pc, 16)
+            if pc in parent:
+                r = find(pc)
+                f[r] = f.get(r, 0) + int(w)
+        per.append(f)
+    sizes = {r: max(a + code[a][0] for a in m) - min(m) for r, m in units.items()}
+    rem = [sum(f.values()) for f in per]
+    start_rem = list(rem)
+    candidates = {r for f in per for r in f}
+    chosen, used = [], 0
+    while True:
+        best, best_score = None, 0.0
+        for r in candidates:
+            if used + sizes[r] > size:
+                continue
+            gain = sum(rem[i] ** 2 - (rem[i] - f.get(r, 0)) ** 2 for i, f in enumerate(per))
+            score = gain / sizes[r]
+            if score > best_score:
+                best, best_score = r, score
+        if best is None:
+            break
+        chosen.append(best)
+        candidates.discard(best)
+        used += sizes[best]
+        rem = [rem[i] - f.get(best, 0) for i, f in enumerate(per)]
+    moves = []
+    at = base
+    for r in sorted(chosen, key=lambda r: min(units[r])):
+        start = min(units[r])
+        end = max(a + code[a][0] for a in units[r])
+        for a in range(start, end):
+            HOT[a] = at + (a - start)
+        moves.append((start, end, at))
+        at += end - start
+    big = sorted(sizes.values(), reverse=True)[:5]
+    print(f"hot: {len(units)} units (largest {big} words); chose {len(chosen)}, {at - base} words at "
+          f"{base:04x}; fetches left per capture: "
+          + ", ".join(f"{100 * r / max(s0, 1):.0f}%" for r, s0 in zip(rem, start_rem)))
+    return moves
+
+
 def main():
+    args = sys.argv[1:]
+    hot_dirs, hot_base, hot_size = [], 0x1000, 2724
+    while args and args[0].startswith("--"):
+        flag = args.pop(0)
+        if flag == "--hot":
+            hot_dirs = args.pop(0).split(",")
+        elif flag == "--hot-base":
+            hot_base = int(args.pop(0), 0)
+        elif flag == "--hot-size":
+            hot_size = int(args.pop(0), 0)
+    sys.argv = [sys.argv[0]] + args
     cap = Path(sys.argv[1])
     snap = cap / "snapshot.bin"
     P = memoryview(snap.read_bytes()).cast("I")
@@ -115,6 +230,8 @@ def main():
                 break
             a += ln
 
+    hot_moves = hot_units(code, hot_dirs, hot_base, hot_size) if hot_dirs else []
+
     patches = {}
     kinds = {}
     for a, (ln, wa, wb, text) in code.items():
@@ -129,6 +246,27 @@ def main():
                 "disp" if re.search(r"\(r\d[+-]\$", text) else "abs")
         kinds[kind] = kinds.get(kind, 0) + 1
         patches[a + 1] = m
+    # Two-word relative branches (target = own address + word B) whose source
+    # and target now move by different offsets.
+    for a, (ln, wa, wb, text) in code.items():
+        op = text.split()[0] if text else ""
+        if ln != 2 or not relative(op):
+            continue
+        disp = wb - 0x1000000 if wb & 0x800000 else wb
+        if op == "dor":
+            # Word B is LA - PC (LA the loop's last word); the disassembler
+            # prints LA + 1, as it does for do.
+            t = [a + disp]
+        else:
+            t = targets(text)
+        if not t or t[0] - a != disp:
+            sys.exit(f"{a:06x} {text}: relative target does not decode as own address + word B")
+        na, nt = moved(a), moved(t[0])
+        na = a if na is None else na
+        nt = t[0] if nt is None else nt
+        if nt - na != disp:
+            patches[a + 1] = (nt - na) & 0xFFFFFF
+            kinds["rel"] = kinds.get("rel", 0) + 1
     for base, n in TABLES:
         for i in range(n):
             m = moved(P[base + i])
@@ -171,6 +309,14 @@ def main():
     with (cap / "reloc.txt").open("w") as f:
         for s, e, n in REGIONS:
             f.write(f"M {s:06x} {e:06x} {n:06x}\n")
+        for s, e, n in hot_moves:
+            f.write(f"M {s:06x} {e:06x} {n:06x}\n")
+        # The region copies of the hot units are dead: wipe them, so a
+        # reference that still reaches them shows.
+        for s, e, n in hot_moves:
+            for rs, re_, rn in REGIONS:
+                if rs <= s < re_:
+                    f.write(f"Z {rn + s - rs:06x} {rn + e - rs:06x}\n")
         for a, v in sorted(patches.items()):
             f.write(f"W {moved(a) if moved(a) is not None else a:06x} {v:06x}\n")
         for area, a, v in live:

@@ -88,7 +88,8 @@ namespace
 	// The empty slot's render (P:10008f..10009a): 32 zeros and a busy-wait of
 	// ~3,200 fetches, the MD's pacing; an OT driver does not call it. Its
 	// cycles and fetches are left out.
-	bool inEmptyRender(TWord _pc) { return _pc >= 0x10008f && _pc <= 0x10009a; }
+	TWord g_emptyLo = 0x10008f, g_emptyHi = 0x10009a;	// moved with --reloc
+	bool inEmptyRender(TWord _pc) { return _pc >= g_emptyLo && _pc <= g_emptyHi; }
 	uint64_t g_lastCycles = 0, g_emptyCycles = 0;
 	TWord g_lastPc = 0;
 
@@ -238,6 +239,12 @@ int main(int _argc, char** _argv)
 				for(TWord i = 0; i < m[1] - m[0]; ++i)
 					memory.set(MemArea_P, m[2] + i, memory.get(MemArea_P, m[0] + i));
 			}
+			else if(kind == "Z")
+			{
+				in >> a >> b;
+				for(TWord i = static_cast<TWord>(std::stoul(a, nullptr, 16)); i < std::stoul(b, nullptr, 16); ++i)
+					memory.set(MemArea_P, i, 0xa5a5a5);
+			}
 			else
 			{
 				in >> a >> b;
@@ -262,6 +269,18 @@ int main(int _argc, char** _argv)
 				for(TWord i = m[0]; i < m[1]; ++i)
 					memory.set(MemArea_P, i, 0xa5a5a5);
 		std::cout << "relocated " << moves.size() << " regions, " << written << " patched words; old regions wiped\n";
+	}
+	// Where the empty slot's render lives now (a later move, a hot unit,
+	// takes precedence over its region's).
+	for(auto it = moves.rbegin(); it != moves.rend(); ++it)
+	{
+		const auto& m = *it;
+		if(0x10008f >= m[0] && 0x10009a < m[1])
+		{
+			g_emptyLo = m[2] + (0x10008f - m[0]);
+			g_emptyHi = m[2] + (0x10009a - m[0]);
+			break;
+		}
 	}
 	dsp.setPC(0x6b);
 

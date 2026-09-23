@@ -1073,10 +1073,37 @@ Measured with `md_replay` on the six captures of the relocation table
   T5–T8 only; payload B keeps its copies for T1–T4. The hot code (about
   2.7 K words for 90 % coverage in these captures) would bring the window
   penalty down to about a tenth, so a 16-voice kit costs roughly 1,050–1,400
-  cycles/sample (*estimated* from the counts above). Moving hot routines
-  into private P needs the relocator to split regions at routine
-  boundaries, with every branch that crosses them in long form. That is
-  not checked yet.
+  cycles/sample (*estimated* from the counts above).
+- ✅ **Moving hot code into private P works bit-identically.**
+  `md_relocate.py --hot <captures>` splits the code into 239 units that can
+  move on their own:
+  - consecutive instructions stay together unless the first ends the path;
+  - a one-word relative branch joins its source and target;
+  - two-word relative branches (target = own address + word B; for `dor`
+    the loop's last word) get their displacement recomputed.
+
+  It then packs the units greedily into 2,724 words at `P:0x1000`,
+  minimising the sum of squared remaining fetches across the captures. It
+  chose 32 units and re-pointed 22 displacements. The region copies it left
+  behind are wiped. All six captures replay identically to the plain
+  replay. Window fetches, worst 10 ms per sample:
+
+  | Capture | Engine cycles | Window words before → after | Total before → after |
+  |---|---:|---|---|
+  | c01_16 | 966 | 807 → 520 | 1,773 → ~1,490 |
+  | c37_16 | 1,131 | 996 → 502 | 2,127 → ~1,630 |
+  | c1d_16 | 1,263 | 1,021 → 359 | 2,284 → ~1,620 |
+  | c47_2 | 1,215 | 988 → 246 | 2,203 → ~1,460 |
+
+  About 1,500 of core 0's ~3,120 stay for T5–T8's FX with these kits.
+  - The limit is unit size: the largest unit is 788 words, a long
+    straight-line routine of which only part is hot. Splitting inside one
+    needs an inserted jump, which is not done.
+  - The hot set was chosen and measured on the same six captures. A kit
+    not captured can be hot elsewhere, so the numbers are optimistic until
+    other kits are measured.
+  - Taking CHORUS as well (`0x0eb7`, 329 words, adjacent to the donor
+    region) would add room, at the cost of that effect on T5–T8.
 
 ### Open for Phase 1
 

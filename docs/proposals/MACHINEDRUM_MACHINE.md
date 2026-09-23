@@ -1322,6 +1322,38 @@ disassembles the result back and refuses mis-encodings and label prefixes.
   `0x25`, EFM-CB. Track 7's EFM-CB is the default-kit voice that costs the
   anomaly; this is emulator measurement, not a hardware qualification.
 
+### WP-R2 TRX-S2 residual (24 September 2026)
+
+- ✅ The clean JIT replay of `cap4/c1d_16` remains at `31,555` identical and
+  `1,951` different blocks, with the first difference at block `2,288`.
+  The first differing output is slot 0, one word in the block; this is the
+  known first render after the TRX-S2 trigger.
+- ✅ At `P:0x102d49`, the watched entry has `R7=0x100` and `R3=0x40`.
+  The first `macr -y1,x1,b x:(r7)+,b y:(r3)+,b` therefore reads the low
+  scratch words `X:0x100` and `Y:0x40`. After `move b1,r3; add x,b; and
+  #>$7fff,b`, the loop reads the sine table at `Y:0x148000+R3` at
+  `P:0x102d8d` and `P:0x102db2`.
+- ✅ The block-numbered watch at the divergent block recorded
+  `B=0x0612c1e0000000`, `R7=0x100`, `R3=0x40`, `X:0x100=0`,
+  `Y:0x40=0xf81a02`, and `Y:0x148040=0x01921d` at entry. The later
+  table reads used `R3=0x7bcc` and `0x1f00`, with table values
+  `0xe5d061` and `0x7fd885` respectively.
+- ✅ Narrow poison reruns of `Y:0x40–0x41` and `X:0x100–0x101` left the
+  first mismatch at block `2,288`. The reads are established, but those
+  reruns do not prove either one word is the sole cause.
+- *inferred* The residual is a per-call carry-in from low scratch and the
+  accumulator state, which is why the driver preserves `B` around the
+  render. The existing 36-word swap is the measured minimum for the normal
+  low-memory state, not a complete first-render reproduction.
+- ✅ The existing full-image A/B remains: carrying `X:0–0xff` and
+  `Y:0–0x13f` (576 words each way) fixes `c1d_16` but not `c10_16`; the
+  extra cost is `~70` cycles/sample, *estimated* rather than hardware
+  measured.
+- **review / D3:** the user must choose the current 36-word swap, which
+  retains the `c1d_16` one-block and `c10_16` two-block residuals, or the
+  full low image, which costs about 70 estimated cycles/sample and still
+  leaves `c10_16` for further harness investigation.
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and

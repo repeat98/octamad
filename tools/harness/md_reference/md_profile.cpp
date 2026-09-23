@@ -151,8 +151,84 @@ namespace
 		return v;
 	}
 
+	// The capture scenario: the producer's state at a slot-0 loop head, then
+	// every slot's record (at P:6b) and rendered block (at P:b5), for md_replay.
+	struct Capture
+	{
+		bool armed = false;
+		bool snapped = false;
+		std::string dir;
+		FILE* log = nullptr;
+	};
+	Capture g_cap;
+
+	constexpr uint32_t g_snapP = 0x150000, g_snapXY = 0x20000;
+
+	void snapshotProducer(const dsp56k::DSP& _dsp)
+	{
+		FILE* f = std::fopen((g_cap.dir + "/snapshot.bin").c_str(), "wb");
+		auto dumpArea = [&](dsp56k::EMemArea _a, uint32_t _n)
+		{
+			for(uint32_t i = 0; i < _n; ++i)
+			{
+				const uint32_t w = _dsp.memory().get(_a, i);
+				std::fwrite(&w, 4, 1, f);
+			}
+		};
+		dumpArea(dsp56k::MemArea_P, g_snapP);
+		dumpArea(dsp56k::MemArea_X, g_snapXY);
+		dumpArea(dsp56k::MemArea_Y, g_snapXY);
+		std::fclose(f);
+		FILE* r = std::fopen((g_cap.dir + "/regs.txt").c_str(), "w");
+		for(int e = dsp56k::Reg_X0; e <= dsp56k::Reg_M7; ++e)
+		{
+			if(e == dsp56k::Reg_SSH || e == dsp56k::Reg_SSL || e == dsp56k::Reg_A2 || e == dsp56k::Reg_B2)
+				continue;
+			dsp56k::TReg24 v;
+			if(_dsp.readReg(static_cast<dsp56k::EReg>(e), v))
+				std::fprintf(r, "%d %06x\n", e, v.toWord());
+		}
+		for(int e : {dsp56k::Reg_A, dsp56k::Reg_B})
+		{
+			dsp56k::TReg56 v;
+			if(_dsp.readReg(static_cast<dsp56k::EReg>(e), v))
+				std::fprintf(r, "%d %014llx\n", e, static_cast<unsigned long long>(v.var));
+		}
+		std::fclose(r);
+	}
+
+	void onCapture(const dsp56k::DSP& _dsp, uint32_t _pc)
+	{
+		const auto y = [&](uint32_t _a) { return _dsp.memory().get(dsp56k::MemArea_Y, _a); };
+		if(_pc == 0x6b)
+		{
+			const auto slot = y(0x142);
+			if(!g_cap.snapped)
+			{
+				if(slot != 0)
+					return;
+				snapshotProducer(_dsp);
+				g_cap.snapped = true;
+			}
+			std::fprintf(g_cap.log, "R %u", slot);
+			for(uint32_t i = 0; i < 64; ++i)
+				std::fprintf(g_cap.log, " %06x", y(y(0x141) + i));
+			std::fputc('\n', g_cap.log);
+		}
+		else if(_pc == 0xb5 && g_cap.snapped)
+		{
+			std::fprintf(g_cap.log, "O %u", y(0x142));
+			const auto base = y(0x140);
+			for(uint32_t i = 0; i < 32; ++i)
+				std::fprintf(g_cap.log, " %06x", y(base + i));
+			std::fputc('\n', g_cap.log);
+		}
+	}
+
 	void onExec(dsp56k::DSP* _dsp)
 	{
+		if(g_cap.armed && _dsp == g_dsp[1])
+			onCapture(*_dsp, _dsp->getPC().toWord());
 		const int i = _dsp == g_dsp[0] ? 0 : 1;
 		auto& p = g_prof[i];
 		const auto pc = _dsp->getPC().toWord();
@@ -430,6 +506,37 @@ int main(int _argc, char** _argv)
 	for(int a = 3; a < _argc; ++a)
 	{
 		const std::string arg = _argv[a];
+		// "capture=<id>": md_replay's input. Assign <id> to track 1, then
+		// snapshot the producer at the next slot-0 loop head and log every
+		// record and rendered block through a trig, encoder A +10 and a trig.
+		if(arg.rfind("capture=", 0) == 0)
+		{
+			const auto id = static_cast<uint8_t>(std::strtol(arg.c_str() + 8, nullptr, 0));
+			rig.sysex({0xf0, 0x00, 0x20, 0x3c, 0x02, 0x00, 0x5b, 0x00, id, 0x00, 0xf7});
+			rig.run(22050);
+			char name[32];
+			std::snprintf(name, sizeof(name), "c%02x", id);
+			g_cap.dir = outDir + "/" + name;
+			std::system(("mkdir -p '" + g_cap.dir + "'").c_str());
+			g_cap.log = std::fopen((g_cap.dir + "/log.txt").c_str(), "w");
+			g_cap.snapped = false;
+			g_cap.armed = true;
+			rig.run(4410);
+			rig.trig(0, true);
+			rig.run(441);
+			rig.trig(0, false);
+			rig.run(22050);
+			rig.encoder(md::PanelEncoder::DataEntryA, 10);
+			rig.run(13230);
+			rig.trig(0, true);
+			rig.run(441);
+			rig.trig(0, false);
+			rig.run(22050);
+			g_cap.armed = false;
+			std::fclose(g_cap.log);
+			std::cout << name << ": captured\n";
+			continue;
+		}
 		// "map=<id>": which record words each of encoders A-H moves. Assign
 		// <id> to track 1; per encoder: +8 detents, trig, compare the record
 		// that carries the trigger with the baseline trigger record; -8 back.

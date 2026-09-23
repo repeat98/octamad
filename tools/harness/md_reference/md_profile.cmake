@@ -15,3 +15,8 @@
 add_executable(md_profile ${CMAKE_CURRENT_LIST_DIR}/md_profile.cpp)
 target_link_libraries(md_profile PRIVATE mdLib)
 set_target_properties(md_profile PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+
+# md_replay: the voice DSP outside the Machinedrum, from an md_profile capture.
+add_executable(md_replay ${CMAKE_CURRENT_LIST_DIR}/md_replay.cpp)
+target_link_libraries(md_replay PRIVATE dsp56kEmu)
+set_target_properties(md_replay PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)

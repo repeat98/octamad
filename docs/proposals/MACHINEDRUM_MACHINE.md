@@ -757,6 +757,50 @@ track 1 it logs every host-port word through an assign, a trig, encoder A
   32-sample blocks out. The mixer, and therefore the MD master effects,
   are outside it.
 
+### Phase 1: the voice DSP runs outside the Machinedrum (23 September 2026)
+
+- ✅ **The voice loop** (`P:64–e7`, read from the disassembly): once per
+  32-sample period it walks the 16 slots. For slot `v`:
+  1. Its record is at `Y:0x800 + 0x40·v`, and the slot's current engine
+     is at `y:$153+v`.
+  2. A non-zero word 0 is a trigger carrying the DSP-side engine number
+     (TRX-BD `0x11`). If that engine differs from the current one, the
+     loop first calls **init** from a table at `0x145af5`. It then calls
+     **trigger** from `0x145bb6` and clears word 0.
+  3. Every period it calls **render** from `0x145c77`, which writes 32
+     samples into a double buffer (`Y:0x100`/`0x120`, `m7 = $1f`). DMA0
+     then sends that buffer to the link.
+  4. Slot 0 first waits for the frame sync on port C bit 1 (`P:bb–bf`).
+  5. The loop also writes its slot to the host every fourth slot (`P:73`).
+
+  Host packets are `[destination][count−1][words…]`, fed through DMA5 by
+  the host-command handler at vector `0x12` (`P:12` → `P:e8`). The
+  destination word is written before the command; the earlier grouping
+  that attached it to the previous packet is corrected here.
+- ✅ **`md_replay`** (`tools/harness/md_reference/md_replay.cpp`, built by
+  `md_profile.cmake`) runs this without the Machinedrum:
+  - a bare DSP56303, the fork's `dsp56kEmu` configured as `md::Dsp` does;
+  - loaded from an `md_profile capture=<id>` snapshot: the producer's
+    memory and registers at a slot-0 loop head;
+  - before each slot it writes the record the reference had, runs the
+    original loop to `P:b5`, and compares the 32 rendered words;
+  - it resumes past the frame-sync poll and the DMA wait by setting the PC,
+    and drains the host-port writes;
+  - no host port traffic, no ESSI link, no ColdFire.
+- ✅ **TRX-BD capture** (a trig, encoder A +10, a trig, 2.2 s): **33,502 of
+  33,502 blocks bit-identical** across all 16 slots. Slot 0, track 1, is
+  non-zero in 1,268 of its 2,094 blocks and peaks at full scale.
+- ✅ **The comparison catches real changes.** Altering the pitch word in all
+  1,428 slot-0 records changes 1,249 of slot 0's blocks, from the first
+  trigger on; the other slots stay identical. So render reads the record
+  every block. Altering only the trigger record changes nothing: the next
+  record restores the value before the voice sounds.
+- What this proves: an engine's inputs are its record (word 0 plus
+  parameters) and the voice DSP's resident state. Its output is 32 samples
+  per call. The MD's host, DMA, ESSI and frame-sync paths are not needed.
+- What it does not prove yet: running at the OT's addresses (next), and any
+  engine other than TRX-BD (the capture takes any id).
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and

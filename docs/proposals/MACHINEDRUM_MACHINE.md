@@ -1301,6 +1301,27 @@ disassembles the result back and refuses mis-encodings and label prefixes.
   then repeat this parity check against the repinned vendor. No firmware,
   sample or extracted bytes were added.
 
+### WP-R5 c47_2 default-kit cost (24 September 2026)
+
+- ✅ A temporary per-slot diagnostic around the existing interpreter replay
+  measured `c47_2`'s first 2,094 periods without changing the capture,
+  driver or toolchain. The clean replay still reports `1,212.1` mean cycles
+  and `985.8` engine words per sample, with a worst 10 ms window of `1,214.7`
+  cycles and `987.7` words.
+- ✅ The two assigned voices settle to DSP-side current values `0x48` and
+  `0x49` (the capture's P-I-CC and P-I-HH assignments). The untouched
+  default voices are, by track, EFM-SD `2,881` cycles / `2,219` words,
+  EFM-XT `2,431` / `1,828`, EFM-CP `2,525` / `1,904`, EFM-RS `3,433` /
+  `2,620`, **EFM-CB `3,946` / `2,983`**, EFM-HH `3,099` / `2,388`, EFM-CY
+  `3,073` / `2,739`, then E12-BD through E12-CB at `1,392–1,803` cycles /
+  `1,254–1,636` words per render. The full per-slot table is in
+  [`WP-R5.md`](machinedrum_reports/WP-R5.md).
+- *inferred* The current-value sequence is one above the catalog/SysEx
+  machine number in this capture: the assigned `0x47`/`0x48` values become
+  `0x48`/`0x49`, and the default `0x26` therefore identifies catalog engine
+  `0x25`, EFM-CB. Track 7's EFM-CB is the default-kit voice that costs the
+  anomaly; this is emulator measurement, not a hardware qualification.
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and

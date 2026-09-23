@@ -652,15 +652,44 @@ track 1 it logs every host-port word through an assign, a trig, encoder A
 
   The two halves meet in these records, delivered over the OT's host port.
 
+### Record words and the ColdFire handlers (23 September 2026)
+
+- ✅ This comes from `md_profile map=<id>` and `md_mapsummary.py`, run on all
+  50 engines. For each of encoders A–H: 8 detents, a trig, and the record
+  carrying the trigger compared with a baseline trig. **325 of the 352
+  named parameters move a record word**, usually one word per parameter.
+  Some rows also list a word that drifted between trigs (E12's word 4);
+  the first word listed is the parameter's own.
+- Two engines sent no trigger record in this harness: GND-NS and TRX-S2.
+  Their trigger must travel another way.
+- The other 19 unmapped parameters: GND-IM UVAL, TRX-BD RAMP, TRX-CP HARD,
+  EFM-BD MFB, EFM-XT CLIC, EFM-CP MDEC, EFM-HH FB, EFM-CY HPF, E12-OH DEC,
+  E12-SH DEC, E12-BC BC, the P-I HARDs (BD, MT, ML), P-I-SD RVOL, and the
+  P-I RC/CC/HH AG.
+  *Inferred*: they act over time or at control rate rather than in the
+  trigger record.
+- ✅ Every core engine's descriptor handler is a pure function
+  `f(record*, params*)`, 44 distinct ones in 32–586 bytes (about 11 KB in
+  all). It reads eight 16-bit parameters and writes the record's 32-bit
+  fields with shifts, `mulu.w`/`muls.l` and lookups in about ten tables at
+  `0x2462e8–0x24da14` of the OS image. The disassembly
+  (`m68k-elf-objdump -m m68k:5206e`) shows no calls, no MAC/EMAC
+  instructions and no hardware access. The MD's CPU is an MCF5206e (ISA_A,
+  per the reference) and the OT's an MCF54454 (ISA_B). *Inferred*: the
+  handlers run on the OT unchanged, with their table addresses relocated.
+  That makes the ColdFire half of the port a copy, not a rewrite.
+- Not yet located: the caller that runs a handler, adds modulation and
+  serializes the record into the host packet; and where the trigger word
+  (`0x11`/`0x02`) comes from.
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and
    per-voice state an extracted engine needs.
 2. Split the mixer's constant ~1,850 cycles into master effects and
    mixing.
-3. Map every record word per engine: turn each of encoders A–H and read
-   which word moves. Then find the ColdFire handler that builds the
-   record, and check its instructions against the OT's ColdFire.
+3. Locate the handlers' caller: modulation, serialization, the trigger word.
+   Then trace the 27 unmapped parameters over time rather than at the trig.
 4. Map E12 machines to sample offsets, and listen to the block.
 
 ## References

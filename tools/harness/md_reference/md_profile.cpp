@@ -81,8 +81,24 @@ namespace
 	Profile g_prof[2];
 	FILE* g_trace = nullptr;						// host-port trace, while a trace scenario runs
 
+	// The producer's packet in flight and the last voice record (a packet of
+	// more than the idle tick's four words), for the map scenario.
+	std::vector<uint32_t> g_packet, g_record, g_trigRecord;
+
 	void onHost(uint32_t _dsp, char _kind, uint32_t _value, uint64_t _cycle)
 	{
+		if(_dsp == 1 && _kind == 'C')
+		{
+			if(g_packet.size() > 4)
+			{
+				g_record = g_packet;
+				if(g_packet[1] != 0 && g_trigRecord.empty())
+					g_trigRecord = g_packet;		// the first record carrying a trigger
+			}
+			g_packet.clear();
+		}
+		else if(_dsp == 1 && _kind == 'W')
+			g_packet.push_back(_value);
 		if(g_trace)
 			std::fprintf(g_trace, "%llu %s %c %06x\n", static_cast<unsigned long long>(_cycle),
 				_dsp ? "producer" : "mixer", _kind, _value);
@@ -381,6 +397,61 @@ int main(int _argc, char** _argv)
 	for(int a = 3; a < _argc; ++a)
 	{
 		const std::string arg = _argv[a];
+		// "map=<id>": which record words each of encoders A-H moves. Assign
+		// <id> to track 1; per encoder: +8 detents, trig, compare the record
+		// that carries the trigger with the baseline trigger record; -8 back.
+		if(arg.rfind("map=", 0) == 0)
+		{
+			const auto id = static_cast<uint8_t>(std::strtol(arg.c_str() + 4, nullptr, 0));
+			md::g_hostTraceHook = &onHost;
+			rig.sysex({0xf0, 0x00, 0x20, 0x3c, 0x02, 0x00, 0x5b, 0x00, id, 0x00, 0xf7});
+			rig.run(22050);
+			auto trigRecord = [&]()
+			{
+				g_trigRecord.clear();
+				rig.trig(0, true);
+				rig.run(441);
+				rig.trig(0, false);
+				rig.run(22050);
+				return g_trigRecord;
+			};
+			const auto base = trigRecord();
+			FILE* f = std::fopen((outDir + "/map.txt").c_str(), "a");
+			auto words = [](const std::vector<uint32_t>& _v)
+			{
+				std::string r;
+				char b[8];
+				for(auto w : _v) { std::snprintf(b, sizeof(b), " %06x", w); r += b; }
+				return r;
+			};
+			std::fprintf(f, "%02x base%s\n", id, words(base).c_str());
+			for(int e = 0; e < 8; ++e)
+			{
+				const auto& before = base;
+				rig.encoder(static_cast<md::PanelEncoder>(e), 8);
+				rig.run(4410);
+				const auto after = trigRecord();
+				std::string changed;
+				for(size_t i = 0; i < std::max(before.size(), after.size()); ++i)
+				{
+					const auto x = i < before.size() ? before[i] : 0xffffffffu;
+					const auto y = i < after.size() ? after[i] : 0xffffffffu;
+					if(x != y)
+					{
+						char b[48];
+						std::snprintf(b, sizeof(b), " w%zu:%06x>%06x", i, x & 0xffffff, y & 0xffffff);
+						changed += b;
+					}
+				}
+				std::fprintf(f, "%02x enc%c%s\n", id, 'A' + e, changed.empty() ? " -" : changed.c_str());
+				rig.encoder(static_cast<md::PanelEncoder>(e), -8);
+				rig.run(22050);
+			}
+			std::fclose(f);
+			md::g_hostTraceHook = nullptr;
+			std::cout << "map " << std::hex << int(id) << std::dec << "\n";
+			continue;
+		}
 		// "trace=<id>": the host-port traffic of assigning <id> to track 1,
 		// a trig, ten detents of encoder A, a second trig; and the producer's
 		// X/Y words that changed across all of it.

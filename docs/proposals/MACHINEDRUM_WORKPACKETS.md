@@ -62,7 +62,7 @@ Statuses:
 | WP-C2 Port the parameter handlers | todo | | | | | |
 | WP-C3 Machine registration | todo | | | | | |
 | WP-C4 Kits and parameters | todo | | | | | |
-| WP-D1 Is the chord free? | done | `machinedrum` | `PENDING` | 2026-09-23 | `machinedrum_reports/WP-D1.md` | neither target tests the held track key; use FUNC + track as fallback |
+| WP-D1 Is the chord free? | done | `machinedrum` | `d4a626b` | 2026-09-23 | `machinedrum_reports/WP-D1.md` | neither target tests the held track key; use FUNC + track as fallback |
 | WP-D2 The sequencer data model | todo | | | | | user sign-off on the spec |
 | WP-D3 The sequencer engine | todo | | | | | |
 | WP-D4 Grid-record view | todo | | | | | |

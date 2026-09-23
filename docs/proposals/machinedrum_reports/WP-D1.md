@@ -1,7 +1,7 @@
 # WP-D1 Is the chord free?: report
 
 - **Status:** done
-- **Branch and commit:** `machinedrum` @ `PENDING`
+- **Branch and commit:** `machinedrum` @ `d4a626b`
 - **Date:** 23 September 2026
 - **Agent:** overnight Machinedrum handover
 

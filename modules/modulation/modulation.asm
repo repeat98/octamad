@@ -9,7 +9,30 @@
 ; >= 0x4000 is an FX2 slot and proc runs the dry path, which writes nothing
 ; to Y. Two 1,024-word lines (L, R) out of the FX1 slot's 3,072; the read
 ; offset is masked, not the address. MIX 0 is an exact passthrough; a
-; change of MODE clears every state slot.
+; change of MODE clears the walk, $23..$3f ($20, $21, $41 and the lines
+; persist).
+;
+; The r7 block:
+;   $00..$0b   per block: MIX, LFO inc, DLY centre, DPTH, FDBK, TONE c, WDTH,
+;              bl bd ff kc kb (the LINE weights)
+;   $0c        the mode 0..4; $0d the FX2 flag (init); $0e the line base
+;              (init); $0f the P table base
+;   $10..$1e   PHSR per block: u, bm/dbm/bf/dbf L and R, v L, fb, w2 w4 w6 w8;
+;              COMB per block: gain $1a, h0 $1b, h1 $1c, polarity $1d,
+;              period $1e; PHSR's v R at $1f
+;   $20        the line write phase (persistent)
+;   $21        the LFO phase (persistent)
+;   $23..$3f   the per-sample walk on r3, cleared on a MODE change: LINE
+;              $23..$2d, PHSR $25..$3f (y previous L/R at $23/$24, the ramps'
+;              block copies at $25/$26 and $33/$34), COMB $23..$39
+;   $40        the last block's MODE select word
+;   $41        the LOFI hold counter (persistent)
+;   $42        the LOFI hold length; $45 its mask; $46 the TONE knob word;
+;              $47 mo_para's park (per block)
+;   $48..$69   the block's constant stream on r4/r1: LINE 34 words, PHSR 18,
+;              COMB 16 (each loop's header lists the order)
+;   $22, $43, $44, $6a..$83 free
+; init zeroes $11..$46 and, on FX1, the lines.
 ; ---------------------------------------------------------------------------
 
 init:
@@ -158,8 +181,8 @@ proc:
         move    p:(r5),x0
         move    x0,x:(r7+$45)
 ; ---- MODE (slot 6 select of r6+$c, the knob field) ------------------------
-; A change of mode clears every state slot $23..$3c (Spectrum's rule: a
-; state that meant something else in the last mode is garbage in this one).
+; A change of mode clears the walk $23..$3f: a state that meant something
+; else in the last mode is garbage in this one.
         move    x:(r6+$c),a
         and     #>$ff0000,a
         move    x:(r7+$40),x0           ; the last block's select ($40: above
@@ -170,7 +193,7 @@ proc:
         move    r7,r5
         move    #$23,n5
         move    (r5)+n5
-        do      #26,>mo_mclr
+        do      #29,>mo_mclr
         move    a,x:(r5)+
 mo_mclr:
         nop
@@ -241,204 +264,374 @@ mo_bflng:
 ; ===========================================================================
 mo_line:
         move    #$1,n0                  ; (short immediate, stock's own form)
+; Pointer-addressed (22 Sep 2026). The block's constants in a stream at $48
+; (r4), in the order the sample reads them: inc wid | depth centre c fb hold
+; mask c | depth centre c fb mask c | i f bl bd ff c200 kc c200 kb | the same
+; for R | m. The states walk from $23 on r3: lpi L, latch L, lpo L, lpi R,
+; latch R, lpo R, hp L, lpb L, wet L, hp R, lpb R. r2/r6 = the lines' bases,
+; y0 = the write phase, n4 = the LFO phase, n1 = the LOFI counter, n2/n6 =
+; the taps and then the LPo outputs. r6 (the page pointer) is not read past
+; here: the dispatcher reloads it.
+        move    r7,r4
+        move    #$48,n4
+        move    (r4)+n4
+        move    #>$ffffff,m4
+        move    r4,r1
+        move    #>$ffffff,m1
+        move    x:(r7+$01),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$06),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$03),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$02),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$05),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$04),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$42),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$45),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$05),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$03),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$02),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$05),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$04),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$45),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$05),x0
+        move    x0,x:(r1)+
+; the fixed tap's centre split once here (mo_tap's split) into i and f
+        move    x:(r7+$02),a
+        move    a,x0
+        and     #>$fff,a
+        asl     #$b,a,a
+        move    a1,y1                   ; f, Q23
+        move    x0,a
+        asr     #$c,a,a
+        move    a1,x1                   ; i
+        move    #>$039912,y0            ; c200 = 0.0281
+        move    x1,x:(r1)+
+        move    y1,x:(r1)+
+        move    x:(r7+$07),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$08),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$09),x0
+        move    x0,x:(r1)+
+        move    y0,x:(r1)+
+        move    x:(r7+$0a),x0
+        move    x0,x:(r1)+
+        move    y0,x:(r1)+
+        move    x:(r7+$0b),x0
+        move    x0,x:(r1)+
+        move    x1,x:(r1)+
+        move    y1,x:(r1)+
+        move    x:(r7+$07),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$08),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$09),x0
+        move    x0,x:(r1)+
+        move    y0,x:(r1)+
+        move    x:(r7+$0a),x0
+        move    x0,x:(r1)+
+        move    y0,x:(r1)+
+        move    x:(r7+$0b),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$00),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$0e),r2
+        move    #>$ffffff,m2
+        move    x:(r7+$0e),r6
+        move    #>$400,n6
+        move    (r6)+n6
+        move    #>$ffffff,m6
+        move    #>$ffffff,m3
+        move    x:(r7+$20),y0
+        move    x:(r7+$21),a
+        move    a1,n4
+        move    x:(r7+$41),a
+        move    a1,n1
         do      n7,>molinz
-        bsr     mo_lfo                  ; both triangles, into $19 and $1f
+        move    r4,r1
+        move    r7,r3
+        move    #$23,n3
+        move    (r3)+n3
 ; ---- advance the write phase ----------------------------------------------
-        move    x:(r7+$20),a            ; 0..1023, so phase + 1 is 1..1024: a2 = 0
+        move    y0,a                    ; 0..1023, so phase + 1 is 1..1024: a2 = 0
         add     #>$1,a
         and     #>$3ff,a
-        move    a1,x:(r7+$20)           ; a1 straight to memory: no limiter
-; ---- L: the swept tap ----------------------------------------------------------
-        move    x:(r7+$19),x0           ; lfo L
-        move    x:(r7+$03),y1           ; depth, Q11.12
-        mpy     x0,y1,a                 ; the sweep, Q11.12 signed
-        move    x:(r7+$02),x0           ; centre
+        move    a1,y0                   ; a1 straight over: no limiter
+; ---- the two triangles: a = lfo L, x1 = lfo R ------------------------------
+; The stream gives inc then wid; the phase (n4) advances once and the right
+; channel reads it WID further round. tri = 4 |phase - 0.5| - 1.
+        move    n4,a
+        move    x:(r1)+,x0              ; inc
+        add     x0,a                    ; phase <= $7fffff + inc <= $790: no carry
+        and     #>$7fffff,a             ; into a2, which stays 0 through the and
+        move    a1,n4
+        move    x:(r1)+,x0              ; wid
+        add     x0,a                    ; (< 2^24: a2 = 0 through the and)
+        and     #>$7fffff,a
+        move    #$40,y1                 ; 0.5 (short immediate: bits 23-16)
+        sub     y1,a
+        abs     a                       ; 0 .. 0.5
+        asl     #$2,a,a                 ; 0 .. 2, in the guard bits
+        move    #>$7fffff,x0
+        sub     x0,a                    ; -1 .. 1
+        move    a,x1                    ; LIMITING: lfo R
+        move    n4,a
+        sub     y1,a
+        abs     a
+        asl     #$2,a,a
+        sub     x0,a                    ; lfo L
+; ---- L: the swept tap ----------------------------------------------------
+        move    a,x0                    ; lfo L
+        move    x:(r1)+,y1              ; depth, Q11.12
+        mpy     x0,y1,a x:(r1)+,x0      ; the sweep, Q11.12 signed; centre
         add     x0,a
-        clr     b
-        move    b,y0                    ; line L
+        move    r2,r5                   ; line L
         bsr     mo_tap
-        move    a,x:(r7+$3d)            ; tap L
-; ---- R: the same on the second line ----------------------------------------
-        move    x:(r7+$1f),x0           ; lfo R
-        move    x:(r7+$03),y1
-        mpy     x0,y1,a
-        move    x:(r7+$02),x0
-        add     x0,a
-        move    #>$400,y0               ; line R
-        bsr     mo_tap
-        move    a,x:(r7+$3e)            ; tap R
-; ---- the line writes: LPi(dry) + fb*tap, a LIMITING store ------------------
-        move    x:(r0),a                ; dry L
-        move    x:(r7+$23),b            ; lpi L
+        move    a,n2                    ; tap L
+; ---- the line write L: LPi(dry) + fb*tap, a LIMITING store -----------------
+        move    x:(r0),a           ; dry L
+        move    x:(r3),b                ; lpi L
         sub     b,a
         asr     #$1,a,a
         move    a,x0
-        move    x:(r7+$05),y1           ; c
+        move    x:(r1)+,y1              ; c
         mpy     x0,y1,a
         asl     #$1,a,a
         add     b,a
-        move    a,x:(r7+$23)
-        move    a,b                     ; (limited)
-        move    x:(r7+$3d),x0           ; tap L
-        move    x:(r7+$04),y1           ; fb
+        move    a,x:(r3)+
+        move    a,b                     ; (limited: an accumulator-to-accumulator
+                                        ; MOVE goes through the limiter; TFR would not)
+        move    n2,x0                   ; tap L
+        move    x:(r1)+,y1              ; fb
         mpy     x0,y1,a
         add     b,a
-        move    a,x:(r7+$10)            ; LIMITING store: the loop cannot rail
-        move    x:(r7+$20),a
-        move    x:(r7+$0e),x0
-        add     x0,a
-        move    a,r5
-        move    x:(r7+$10),a
-        bsr     mo_lofl
+        move    a,x0                    ; LIMITING: the loop cannot rail
+        move    y0,a
+        move    a1,n5
+        move    r2,r5
+        move    (r5)+n5                 ; line L at the write phase
+        move    x0,a
+; ---- mo_lofl, inline (23 Sep 2026; three sites each, FREE allows it) ----
+        move    a,y1
+        move    n1,a
+        move    x:(r1)+,x0              ; the hold length
+        add     #>$1,a
+        cmp     x0,a
+        move    #$0,x0                  ; (a plain immediate move keeps the flags)
+        tge     x0,a
+        move    a1,n1
+        move    x:(r3),a
+        tge     y1,a
+        move    a,x:(r3)+
+        move    x:(r1)+,x0              ; the mask
+        and     x0,a
         move    a,y:(r5)                ; write line L
-        move    x:(r0+n0),a             ; dry R
-        move    x:(r7+$24),b            ; lpi R
+; ---- LPo L: wo L ---------------------------------------------------------
+        move    n2,a                    ; tap L
+        move    x:(r3),b
         sub     b,a
         asr     #$1,a,a
         move    a,x0
-        move    x:(r7+$05),y1
+        move    x:(r1)+,y1              ; c
         mpy     x0,y1,a
         asl     #$1,a,a
         add     b,a
-        move    a,x:(r7+$24)
-        move    a,b
-        move    x:(r7+$3e),x0           ; tap R
-        move    x:(r7+$04),y1
-        mpy     x0,y1,a
-        add     b,a
-        move    a,x:(r7+$10)
-        move    x:(r7+$20),a
-        move    x:(r7+$0e),x0
+        move    a,x:(r3)+
+        move    a,n2                    ; wo L
+; ---- R: the swept tap ----------------------------------------------------
+        move    x1,x0                   ; lfo R
+        move    x:(r1)+,y1              ; depth, Q11.12
+        mpy     x0,y1,a x:(r1)+,x0      ; the sweep, Q11.12 signed; centre
         add     x0,a
-        add     #>$400,a
-        move    a,r5
-        move    x:(r7+$10),a
-        bsr     mo_lofr
-        move    a,y:(r5)                ; write line R
-; ---- LPo on both taps (in place) --------------------------------------------
-        move    x:(r7+$3d),a
-        move    x:(r7+$25),b
-        sub     b,a
-        asr     #$1,a,a
-        move    a,x0
-        move    x:(r7+$05),y1
-        mpy     x0,y1,a
-        asl     #$1,a,a
-        add     b,a
-        move    a,x:(r7+$25)
-        move    a,x:(r7+$3d)            ; wo L
-        move    x:(r7+$3e),a
-        move    x:(r7+$26),b
-        sub     b,a
-        asr     #$1,a,a
-        move    a,x0
-        move    x:(r7+$05),y1
-        mpy     x0,y1,a
-        asl     #$1,a,a
-        add     b,a
-        move    a,x:(r7+$26)
-        move    a,x:(r7+$3e)            ; wo R
-; ---- wet L = bl*fixed_L + bd*dry_L + ff*wo_L + kc*HP_L(wo_R) + kb*LPb_L(dry_L)
-        move    x:(r7+$02),a            ; the fixed tap at the centre (read after
-        clr     b                       ; this sample's write: a delay >= 8 never
-        move    b,y0                    ; sees it)
+        move    r6,r5                   ; line R
         bsr     mo_tap
-        move    a,x0                    ; fixed L
-        move    x:(r7+$07),y1           ; bl
+        move    a,n6                    ; tap R
+; ---- the line write R: LPi(dry) + fb*tap, a LIMITING store -----------------
+        move    x:(r0+n0),a        ; dry R
+        move    x:(r3),b                ; lpi R
+        sub     b,a
+        asr     #$1,a,a
+        move    a,x0
+        move    x:(r1)+,y1              ; c
         mpy     x0,y1,a
-        move    x:(r0),x0               ; dry L
-        move    x:(r7+$08),y1           ; bd
+        asl     #$1,a,a
+        add     b,a
+        move    a,x:(r3)+
+        move    a,b                     ; (limited: an accumulator-to-accumulator
+                                        ; MOVE goes through the limiter; TFR would not)
+        move    n6,x0                   ; tap R
+        move    x:(r1)+,y1              ; fb
+        mpy     x0,y1,a
+        add     b,a
+        move    a,x0                    ; LIMITING: the loop cannot rail
+        move    y0,a
+        move    a1,n5
+        move    r6,r5
+        move    (r5)+n5                 ; line R at the write phase
+        move    x0,a
+; ---- mo_lofr, inline (23 Sep 2026; three sites each, FREE allows it) ----
+        move    a,y1
+        move    n1,a
+        tst     a
+        move    x:(r3),a
+        teq     y1,a
+        move    a,x:(r3)+
+        move    x:(r1)+,x0
+        and     x0,a
+        move    a,y:(r5)                ; write line R
+; ---- LPo R: wo R ---------------------------------------------------------
+        move    n6,a                    ; tap R
+        move    x:(r3),b
+        sub     b,a
+        asr     #$1,a,a
+        move    a,x0
+        move    x:(r1)+,y1              ; c
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        add     b,a
+        move    a,x:(r3)+
+        move    a,n6                    ; wo R
+; ---- wet L = bl*fixed + bd*dry + ff*wo + kc*HP(wo of the other side) + kb*LPb(dry)
+        move    x:(r1)+,x0              ; the fixed tap at the centre, split per
+        move    x:(r1)+,y1              ; block into i and f (read after this
+        move    r2,r5                   ; sample's write: a delay >= 8 never
+        bsr     mo_itap                 ; sees it)
+        move    a,x0                    ; fixed L
+        move    x:(r1)+,y1              ; bl
+        mpy     x0,y1,a x:(r0),x0       ; dry L
+        move    x:(r1)+,y1              ; bd
         mac     x0,y1,a
-        move    x:(r7+$3d),x0           ; wo L
-        move    x:(r7+$09),y1           ; ff
+        move    n2,x0                   ; wo L
+        move    x:(r1)+,y1              ; ff
         mac     x0,y1,a
         move    a,x1                    ; the sum so far (limited)
-; HP_L(wo_R): s += c200*(x - s); hp = x - s
-        move    x:(r7+$3e),a            ; wo R
-        move    x:(r7+$27),b
+; HP(wo of the other side): s += c200*(x - s); hp = x - s
+        move    n6,a
+        move    x:(r3),b
         sub     b,a
         asr     #$1,a,a
         move    a,x0
-        move    #>$039912,y1            ; c200 = 0.0281
+        move    x:(r1)+,y1              ; c200 = 0.0281
         mpy     x0,y1,a
         asl     #$1,a,a
         add     b,a
-        move    a,x:(r7+$27)
-        move    x:(r7+$3e),b
+        move    a,x:(r3)+
+        move    n6,b
         sub     a,b                     ; hp
         move    b,x0
-        move    x:(r7+$0a),y1           ; kc
+        move    x:(r1)+,y1              ; kc
         mpy     x0,y1,a
         add     x1,a
         move    a,x1
-; LPb_L(dry_L)
+; LPb(dry)
         move    x:(r0),a
-        move    x:(r7+$29),b
+        move    x:(r3),b
         sub     b,a
         asr     #$1,a,a
         move    a,x0
-        move    #>$039912,y1
+        move    x:(r1)+,y1              ; c200
         mpy     x0,y1,a
         asl     #$1,a,a
         add     b,a
-        move    a,x:(r7+$29)
+        move    a,x:(r3)+
         move    a,x0
-        move    x:(r7+$0b),y1           ; kb
+        move    x:(r1)+,y1              ; kb
         mpy     x0,y1,a
         add     x1,a
-        move    a,x:(r7+$3d)            ; wet L (limited)
-; ---- wet R, mirrored ----------------------------------------------------------
-        move    x:(r7+$02),a            ; R's fixed tap at the centre
-        move    #>$400,y0
-        bsr     mo_tap
+        move    a,x:(r3)+               ; wet L (limited)
+; ---- wet R = bl*fixed + bd*dry + ff*wo + kc*HP(wo of the other side) + kb*LPb(dry)
+        move    x:(r1)+,x0              ; the fixed tap: i, f
+        move    x:(r1)+,y1
+        move    r6,r5
+        bsr     mo_itap
         move    a,x0                    ; fixed R
-        move    x:(r7+$07),y1           ; bl
-        mpy     x0,y1,a
-        move    x:(r0+n0),x0            ; dry R
-        move    x:(r7+$08),y1
+        move    x:(r1)+,y1              ; bl
+        mpy     x0,y1,a x:(r0+n0),x0    ; dry R
+        move    x:(r1)+,y1              ; bd
         mac     x0,y1,a
-        move    x:(r7+$3e),x0           ; wo R
-        move    x:(r7+$09),y1
+        move    n6,x0                   ; wo R
+        move    x:(r1)+,y1              ; ff
         mac     x0,y1,a
-        move    a,x1
-; HP_R(wo_L): lpo L's state IS wo L this sample ($3d holds wet L by now)
-        move    x:(r7+$25),a            ; wo L
-        move    x:(r7+$28),b
+        move    a,x1                    ; the sum so far (limited)
+; HP(wo of the other side): s += c200*(x - s); hp = x - s
+        move    n2,a
+        move    x:(r3),b
         sub     b,a
         asr     #$1,a,a
         move    a,x0
-        move    #>$039912,y1
+        move    x:(r1)+,y1              ; c200 = 0.0281
         mpy     x0,y1,a
         asl     #$1,a,a
         add     b,a
-        move    a,x:(r7+$28)
-        move    x:(r7+$25),b
-        sub     a,b
+        move    a,x:(r3)+
+        move    n2,b
+        sub     a,b                     ; hp
         move    b,x0
-        move    x:(r7+$0a),y1
+        move    x:(r1)+,y1              ; kc
         mpy     x0,y1,a
         add     x1,a
         move    a,x1
+; LPb(dry)
         move    x:(r0+n0),a
-        move    x:(r7+$2a),b
+        move    x:(r3),b
         sub     b,a
         asr     #$1,a,a
         move    a,x0
-        move    #>$039912,y1
+        move    x:(r1)+,y1              ; c200
         mpy     x0,y1,a
         asl     #$1,a,a
         add     b,a
-        move    a,x:(r7+$2a)
+        move    a,x:(r3)+
         move    a,x0
-        move    x:(r7+$0b),y1
+        move    x:(r1)+,y1              ; kb
         mpy     x0,y1,a
         add     x1,a
-        move    a,x:(r7+$3e)            ; wet R
-        bsr     momixs                  ; MIX from $3d/$3e
+        move    #$3,n3                  ; wet L is three back from the cursor
+; ---- momixs, inline (23 Sep 2026; three sites each, FREE allows it) ----
+        move    a,x1                    ; wet R (limited)
+        move    (r3)-n3
+        move    x:(r3),a                ; wet L
+        move    x:(r0),b
+        sub     b,a
+        asr     #$1,a,a
+        move    a,x0
+        move    x:(r1)+,y1              ; m
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        add     b,a
+        move    a,x:(r0)
+        move    x1,a
+        move    x:(r0+n0),b
+        sub     b,a
+        asr     #$1,a,a
+        move    a,x0
+        mpy     x0,y1,a                 ; (y1 = m still)
+        asl     #$1,a,a
+        add     b,a
+        move    a,x:(r0+n0)
         move    (r0)+n0                 ; the frame advance: n0 is 1 for the
         move    (r0)+n0                 ; whole loop, so two steps, no reload
 molinz:
         nop
+        move    y0,a
+        move    a1,x:(r7+$20)           ; the write phase
+        move    n4,a
+        move    a1,x:(r7+$21)           ; the LFO phase
+        move    n1,a
+        move    a1,x:(r7+$41)           ; the LOFI counter
         rts
 
 ; ===========================================================================
@@ -532,149 +725,246 @@ mo_padv:
         move    #>$65ac8c,x0            ; 0.794: the -2 dB trim
         move    x0,x:(r5)
 ; ---- the loop --------------------------------------------------------------
+; Pointer-addressed (22 Sep 2026). The stream at $48 (r4): dbm dbf fb w2 w4
+; w6 w8 hold mask | dbm dbf fb w2 w4 w6 w8 mask | m. The walk from $25 on
+; r3, per channel: bm bf, the two feedback stages, the eight mod stages, the
+; LOFI latch, then (L only) the wet. The ramps' states are copied into the
+; walk for the block and back after it; y previous in n2/n6 (their slots
+; $23/$24), the LOFI counter in n1.
         move    #$1,n0
-        do      n7,>mophsz
-; ===== channel L =====
-        move    x:(r7+$11),a            ; the ramps
+        move    r7,r4
+        move    #$48,n4
+        move    (r4)+n4
+        move    #>$ffffff,m4
+        move    r4,r1
+        move    #>$ffffff,m1
         move    x:(r7+$12),x0
-        add     x0,a
-        move    a,x:(r7+$11)
-        move    x:(r7+$13),a
+        move    x0,x:(r1)+
         move    x:(r7+$14),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$1a),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$1b),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$1c),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$1d),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$1e),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$42),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$45),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$16),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$18),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$1a),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$1b),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$1c),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$1d),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$1e),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$45),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$00),x0
+        move    x0,x:(r1)+
+        move    #>$ffffff,m3
+        move    x:(r7+$11),x0           ; bm L
+        move    x0,x:(r7+$25)
+        move    x:(r7+$13),x0           ; bf L
+        move    x0,x:(r7+$26)
+        move    x:(r7+$15),x0           ; bm R
+        move    x0,x:(r7+$33)
+        move    x:(r7+$17),x0           ; bf R
+        move    x0,x:(r7+$34)
+        move    x:(r7+$23),a
+        move    a1,n2
+        move    x:(r7+$24),a
+        move    a1,n6
+        move    x:(r7+$41),a
+        move    a1,n1
+        do      n7,>mophsz
+        move    r4,r1
+        move    r7,r3
+        move    #$25,n3
+        move    (r3)+n3
+; ===== channel L =====
+        move    x:(r3),a                ; the ramps
+        move    x:(r1)+,x0              ; dbm
         add     x0,a
-        move    a,x:(r7+$13)
-        move    x:(r7+$2f),x0           ; y previous (halved, as the chain runs)
-        move    x:(r7+$1a),y1           ; fb
+        move    a,x:(r3)+
+        move    a,y0                    ; bm (limited)
+        move    x:(r3),a
+        move    x:(r1)+,x0              ; dbf
+        add     x0,a
+        move    a,x:(r3)+
+        move    a,x1                    ; bf (limited)
+        move    n2,x0                   ; y previous (halved, as the chain runs)
+        move    x:(r1)+,y1              ; fb
         mpy     x0,y1,a
-        move    x:(r0),b
+        move    x:(r0),b           
         asr     #$1,b,b
         add     b,a                     ; u = x/2 + fb * yprev: the chain runs at
-        move    a,x:(r7+$10)            ; HALF scale (an allpass cascade peaks
-        move    x:(r7+$10),a            ; above its input; the stores clamp at 1)
-        move    r7,r4
-        move    #$2b,n4
-        move    (r4)+n4                 ; the feedback stages
-        move    x:(r7+$13),y1           ; bf
+        move    a,x0                    ; HALF scale (an allpass cascade peaks
+                                        ; above its input; the stores clamp at 1)
+        move    x1,y1                   ; bf
+        bsr     mo_apst                 ; the feedback stages
         bsr     mo_apst
+        move    x0,n2                   ; the feedback section's output
+        move    y0,y1                   ; bm
+        clr     b                       ; the tap sum
+        bsr     mo_apst                 ; the mod stages
         bsr     mo_apst
-        move    a,x:(r7+$2f)            ; the feedback section's output
-        move    r7,r4
-        move    #$23,n4
-        move    (r4)+n4                 ; the mod stages
-        move    x:(r7+$11),y1           ; bm
-        clr     b
-        move    b,x:(r7+$3f)            ; the tap sum
-        bsr     mo_apst
-        bsr     mo_apst
-        move    a,x0
-        move    x:(r7+$1b),y1           ; w2
-        move    x:(r7+$3f),b
+        move    x:(r1)+,y1              ; w2
         mac     x0,y1,b
-        move    b,x:(r7+$3f)
-        move    x:(r7+$11),y1
-        move    x0,a
+        move    b,x1
+        move    x1,b                    ; the sum, limited and clean
+        move    y0,y1                   ; bm
         bsr     mo_apst
         bsr     mo_apst
-        move    a,x0
-        move    x:(r7+$1c),y1           ; w4
-        move    x:(r7+$3f),b
+        move    x:(r1)+,y1              ; w4
         mac     x0,y1,b
-        move    b,x:(r7+$3f)
-        move    x:(r7+$11),y1
-        move    x0,a
+        move    b,x1
+        move    x1,b                    ; the sum, limited and clean
+        move    y0,y1                   ; bm
         bsr     mo_apst
         bsr     mo_apst
-        move    a,x0
-        move    x:(r7+$1d),y1           ; w6
-        move    x:(r7+$3f),b
+        move    x:(r1)+,y1              ; w6
         mac     x0,y1,b
-        move    b,x:(r7+$3f)
-        move    x:(r7+$11),y1
-        move    x0,a
+        move    b,x1
+        move    x1,b                    ; the sum, limited and clean
+        move    y0,y1                   ; bm
         bsr     mo_apst
         bsr     mo_apst
-        move    a,x0
-        move    x:(r7+$1e),y1           ; w8
-        move    x:(r7+$3f),b
+        move    x:(r1)+,y1              ; w8
         mac     x0,y1,b
         asl     #$1,b,b                 ; back to full scale
-        move    b,x:(r7+$3d)            ; wet L (limited)
-        move    x:(r7+$3d),a
-        bsr     mo_lofl                 ; no line here: the wet itself
-        move    a,x:(r7+$3d)
+        move    b,x1                    ; wet L (limited)
+        move    x1,a
+; ---- mo_lofl, inline (23 Sep 2026; three sites each, FREE allows it) ----
+        move    a,y1
+        move    n1,a
+        move    x:(r1)+,x0              ; the hold length
+        add     #>$1,a
+        cmp     x0,a
+        move    #$0,x0                  ; (a plain immediate move keeps the flags)
+        tge     x0,a
+        move    a1,n1
+        move    x:(r3),a
+        tge     y1,a
+        move    a,x:(r3)+
+        move    x:(r1)+,x0              ; the mask
+        and     x0,a
+        move    a,x:(r3)+               ; wet L
 ; ===== channel R =====
-        move    x:(r7+$15),a
-        move    x:(r7+$16),x0
+        move    x:(r3),a                ; the ramps
+        move    x:(r1)+,x0              ; dbm
         add     x0,a
-        move    a,x:(r7+$15)
-        move    x:(r7+$17),a
-        move    x:(r7+$18),x0
+        move    a,x:(r3)+
+        move    a,y0                    ; bm (limited)
+        move    x:(r3),a
+        move    x:(r1)+,x0              ; dbf
         add     x0,a
-        move    a,x:(r7+$17)
-        move    x:(r7+$30),x0
-        move    x:(r7+$1a),y1
+        move    a,x:(r3)+
+        move    a,x1                    ; bf (limited)
+        move    n6,x0                   ; y previous (halved, as the chain runs)
+        move    x:(r1)+,y1              ; fb
         mpy     x0,y1,a
-        move    x:(r0+n0),b
+        move    x:(r0+n0),b        
         asr     #$1,b,b
+        add     b,a                     ; u = x/2 + fb * yprev: the chain runs at
+        move    a,x0                    ; HALF scale (an allpass cascade peaks
+                                        ; above its input; the stores clamp at 1)
+        move    x1,y1                   ; bf
+        bsr     mo_apst                 ; the feedback stages
+        bsr     mo_apst
+        move    x0,n6                   ; the feedback section's output
+        move    y0,y1                   ; bm
+        clr     b                       ; the tap sum
+        bsr     mo_apst                 ; the mod stages
+        bsr     mo_apst
+        move    x:(r1)+,y1              ; w2
+        mac     x0,y1,b
+        move    b,x1
+        move    x1,b                    ; the sum, limited and clean
+        move    y0,y1                   ; bm
+        bsr     mo_apst
+        bsr     mo_apst
+        move    x:(r1)+,y1              ; w4
+        mac     x0,y1,b
+        move    b,x1
+        move    x1,b                    ; the sum, limited and clean
+        move    y0,y1                   ; bm
+        bsr     mo_apst
+        bsr     mo_apst
+        move    x:(r1)+,y1              ; w6
+        mac     x0,y1,b
+        move    b,x1
+        move    x1,b                    ; the sum, limited and clean
+        move    y0,y1                   ; bm
+        bsr     mo_apst
+        bsr     mo_apst
+        move    x:(r1)+,y1              ; w8
+        mac     x0,y1,b
+        asl     #$1,b,b                 ; back to full scale
+        move    b,x1                    ; wet R (limited)
+        move    x1,a
+; ---- mo_lofr, inline (23 Sep 2026; three sites each, FREE allows it) ----
+        move    a,y1
+        move    n1,a
+        tst     a
+        move    x:(r3),a
+        teq     y1,a
+        move    a,x:(r3)+
+        move    x:(r1)+,x0
+        and     x0,a
+        move    #$e,n3                  ; wet L is fourteen back from the cursor
+; ---- momixs, inline (23 Sep 2026; three sites each, FREE allows it) ----
+        move    a,x1                    ; wet R (limited)
+        move    (r3)-n3
+        move    x:(r3),a                ; wet L
+        move    x:(r0),b
+        sub     b,a
+        asr     #$1,a,a
+        move    a,x0
+        move    x:(r1)+,y1              ; m
+        mpy     x0,y1,a
+        asl     #$1,a,a
         add     b,a
-        move    a,x:(r7+$10)
-        move    x:(r7+$10),a
-        move    r7,r4
-        move    #$2d,n4
-        move    (r4)+n4
-        move    x:(r7+$17),y1
-        bsr     mo_apst
-        bsr     mo_apst
-        move    a,x:(r7+$30)
-        move    r7,r4
-        move    #$31,n4
-        move    (r4)+n4
-        move    x:(r7+$15),y1
-        clr     b
-        move    b,x:(r7+$3f)
-        bsr     mo_apst
-        bsr     mo_apst
+        move    a,x:(r0)
+        move    x1,a
+        move    x:(r0+n0),b
+        sub     b,a
+        asr     #$1,a,a
         move    a,x0
-        move    x:(r7+$1b),y1
-        move    x:(r7+$3f),b
-        mac     x0,y1,b
-        move    b,x:(r7+$3f)
-        move    x:(r7+$15),y1
-        move    x0,a
-        bsr     mo_apst
-        bsr     mo_apst
-        move    a,x0
-        move    x:(r7+$1c),y1
-        move    x:(r7+$3f),b
-        mac     x0,y1,b
-        move    b,x:(r7+$3f)
-        move    x:(r7+$15),y1
-        move    x0,a
-        bsr     mo_apst
-        bsr     mo_apst
-        move    a,x0
-        move    x:(r7+$1d),y1
-        move    x:(r7+$3f),b
-        mac     x0,y1,b
-        move    b,x:(r7+$3f)
-        move    x:(r7+$15),y1
-        move    x0,a
-        bsr     mo_apst
-        bsr     mo_apst
-        move    a,x0
-        move    x:(r7+$1e),y1
-        move    x:(r7+$3f),b
-        mac     x0,y1,b
-        asl     #$1,b,b
-        move    b,x:(r7+$3e)            ; wet R (limited)
-        move    x:(r7+$3e),a
-        bsr     mo_lofr
-        move    a,x:(r7+$3e)
-        bsr     momixs
+        mpy     x0,y1,a                 ; (y1 = m still)
+        asl     #$1,a,a
+        add     b,a
+        move    a,x:(r0+n0)
         move    (r0)+n0
         move    (r0)+n0
 mophsz:
         nop
+        move    x:(r7+$25),x0
+        move    x0,x:(r7+$11)
+        move    x:(r7+$26),x0
+        move    x0,x:(r7+$13)
+        move    x:(r7+$33),x0
+        move    x0,x:(r7+$15)
+        move    x:(r7+$34),x0
+        move    x0,x:(r7+$17)
+        move    n2,a
+        move    a1,x:(r7+$23)
+        move    n6,a
+        move    a1,x:(r7+$24)
+        move    n1,a
+        move    a1,x:(r7+$41)
         rts
 
 ; ===========================================================================
@@ -735,103 +1025,197 @@ mo_bcomb:
         add     #>$200000,a
         move    a,x:(r7+$1c)
 ; ---- the loop --------------------------------------------------------------
+; Pointer-addressed (22 Sep 2026). The stream at $48 (r4): period-1 polarity
+; h1 h0 gain hold mask trim | period-1 polarity h1 h0 gain mask trim | m. The
+; walk from
+; $23 on r3, per channel: mo_herm's eight scratch words, x1, x2, the LOFI
+; latch, then (L only) the wet. r2/r6 = the lines' bases, y0 = the write
+; phase, n1 = the LOFI counter.
         move    #$1,n0
-        do      n7,>mocmbz
-        move    x:(r7+$20),a
-        add     #>$1,a
-        and     #>$3ff,a
-        move    a1,x:(r7+$20)
-; ===== channel L =====
+        move    r7,r4
+        move    #$48,n4
+        move    (r4)+n4
+        move    #>$ffffff,m4
+        move    r4,r1
+        move    #>$ffffff,m1
         move    x:(r7+$1e),a
         sub     #>$1000,a               ; period - 1 (the FIR's own delay)
-        clr     b
-        move    b,y0
-        bsr     mo_herm
+        move    a,x1
+        move    #>$2026f3,y1            ; 0.251, the -12 dB output trim
+        move    x1,x:(r1)+
+        move    x:(r7+$1d),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$1c),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$1b),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$1a),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$42),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$45),x0
+        move    x0,x:(r1)+
+        move    y1,x:(r1)+
+        move    x1,x:(r1)+
+        move    x:(r7+$1d),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$1c),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$1b),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$1a),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$45),x0
+        move    x0,x:(r1)+
+        move    y1,x:(r1)+
+        move    x:(r7+$00),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$0e),r2
+        move    #>$ffffff,m2
+        move    x:(r7+$0e),r6
+        move    #>$400,n6
+        move    (r6)+n6
+        move    #>$ffffff,m6
+        move    #>$ffffff,m3
+        move    x:(r7+$20),y0
+        move    x:(r7+$41),a
+        move    a1,n1
+        do      n7,>mocmbz
+        move    r4,r1
+        move    r7,r3
+        move    #$23,n3
+        move    (r3)+n3
+        move    y0,a
+        add     #>$1,a
+        and     #>$3ff,a
+        move    a1,y0
+; ===== channel L =====
+        move    x:(r1)+,a               ; period - 1 (the FIR's own delay)
+        move    r2,r5
+        bsr     mo_herm                 ; r3 -> the third word of its scratch
+        move    #$6,n3
+        move    (r3)+n3                 ; -> x1 L
         move    a,x0
-        move    x:(r7+$1d),y1           ; the polarity
-        mpy     x0,y1,a
-        move    x:(r0),x0
+        move    x:(r1)+,y1              ; the polarity
+        mpy     x0,y1,a x:(r0),x0
         add     x0,a                    ; s = +-read + x
-        move    a,x:(r7+$10)
-        move    x:(r7+$10),a            ; (limited)
-        move    x:(r7+$3a),x0           ; x2
+        move    a,x1                    ; (limited)
+        move    x1,a
+        move    (r3)+
+        move    x:(r3)-,x0              ; x2
         add     x0,a
         asr     #$1,a,a
         move    a,x0
-        move    x:(r7+$1c),y1           ; h1
-        mpy     x0,y1,a
+        move    x:(r1)+,y1              ; h1
+        mpy     x0,y1,a x:(r3),x0       ; and x1
         asl     #$1,a,a
-        move    x:(r7+$39),x0           ; x1
-        move    x:(r7+$1b),y1           ; h0
-        mac     x0,y1,a
-        move    a,x:(r7+$3f)
-        move    x:(r7+$39),x0           ; x2 <- x1, x1 <- s
-        move    x0,x:(r7+$3a)
-        move    x:(r7+$10),x0
-        move    x0,x:(r7+$39)
-        move    x:(r7+$3f),x0
-        move    x:(r7+$1a),y1           ; gain
+        move    x:(r1)+,y1              ; h0
+        mac     x0,y1,a x1,x:(r3)+      ; x1 <- s
+        move    x0,x:(r3)+              ; x2 <- x1
+        move    a,x0                    ; the FIR's output (limited)
+        move    x:(r1)+,y1              ; gain
         mpy     x0,y1,a
-        bsr     mo_lofl
-        move    a,x:(r7+$3d)            ; wet L = the sample written
-        move    x:(r7+$20),a
-        move    x:(r7+$0e),x0
-        add     x0,a
-        move    a,r5
-        move    x:(r7+$3d),a
-        move    a,y:(r5)
+; ---- mo_lofl, inline (23 Sep 2026; three sites each, FREE allows it) ----
+        move    a,y1
+        move    n1,a
+        move    x:(r1)+,x0              ; the hold length
+        add     #>$1,a
+        cmp     x0,a
+        move    #$0,x0                  ; (a plain immediate move keeps the flags)
+        tge     x0,a
+        move    a1,n1
+        move    x:(r3),a
+        tge     y1,a
+        move    a,x:(r3)+
+        move    x:(r1)+,x0              ; the mask
+        and     x0,a
+        move    a,x1                    ; wet L = the sample written
+        move    y0,a
+        move    a1,n5
+        move    r2,r5
+        move    (r5)+n5
+        move    x1,a
+        move    a,y:(r5)                ; write line L
+        move    x1,x0                   ; the -12 dB output trim, after the line
+        move    x:(r1)+,y1              ; write so the ring is untouched: 0.251
+        mpy     x0,y1,a
+        move    a,x:(r3)+               ; wet L, trimmed
 ; ===== channel R =====
-        move    x:(r7+$1e),a
-        sub     #>$1000,a
-        move    #>$400,y0
-        bsr     mo_herm
+        move    x:(r1)+,a               ; period - 1 (the FIR's own delay)
+        move    r6,r5
+        bsr     mo_herm                 ; r3 -> the third word of its scratch
+        move    #$6,n3
+        move    (r3)+n3                 ; -> x1 R
         move    a,x0
-        move    x:(r7+$1d),y1
-        mpy     x0,y1,a
-        move    x:(r0+n0),x0
-        add     x0,a
-        move    a,x:(r7+$10)
-        move    x:(r7+$10),a
-        move    x:(r7+$3c),x0
+        move    x:(r1)+,y1              ; the polarity
+        mpy     x0,y1,a x:(r0+n0),x0
+        add     x0,a                    ; s = +-read + x
+        move    a,x1                    ; (limited)
+        move    x1,a
+        move    (r3)+
+        move    x:(r3)-,x0              ; x2
         add     x0,a
         asr     #$1,a,a
         move    a,x0
-        move    x:(r7+$1c),y1
+        move    x:(r1)+,y1              ; h1
+        mpy     x0,y1,a x:(r3),x0       ; and x1
+        asl     #$1,a,a
+        move    x:(r1)+,y1              ; h0
+        mac     x0,y1,a x1,x:(r3)+      ; x1 <- s
+        move    x0,x:(r3)+              ; x2 <- x1
+        move    a,x0                    ; the FIR's output (limited)
+        move    x:(r1)+,y1              ; gain
+        mpy     x0,y1,a
+; ---- mo_lofr, inline (23 Sep 2026; three sites each, FREE allows it) ----
+        move    a,y1
+        move    n1,a
+        tst     a
+        move    x:(r3),a
+        teq     y1,a
+        move    a,x:(r3)+
+        move    x:(r1)+,x0
+        and     x0,a
+        move    a,x1                    ; wet R = the sample written
+        move    y0,a
+        move    a1,n5
+        move    r6,r5
+        move    (r5)+n5
+        move    x1,a
+        move    a,y:(r5)                ; write line R
+        move    x1,x0                   ; the -12 dB output trim, after the line
+        move    x:(r1)+,y1              ; write so the ring is untouched: 0.251
+        mpy     x0,y1,a
+        move    #$c,n3                  ; wet L is twelve back from the cursor
+; ---- momixs, inline (23 Sep 2026; three sites each, FREE allows it) ----
+        move    a,x1                    ; wet R (limited)
+        move    (r3)-n3
+        move    x:(r3),a                ; wet L
+        move    x:(r0),b
+        sub     b,a
+        asr     #$1,a,a
+        move    a,x0
+        move    x:(r1)+,y1              ; m
         mpy     x0,y1,a
         asl     #$1,a,a
-        move    x:(r7+$3b),x0
-        move    x:(r7+$1b),y1
-        mac     x0,y1,a
-        move    a,x:(r7+$3f)
-        move    x:(r7+$3b),x0
-        move    x0,x:(r7+$3c)
-        move    x:(r7+$10),x0
-        move    x0,x:(r7+$3b)
-        move    x:(r7+$3f),x0
-        move    x:(r7+$1a),y1
-        mpy     x0,y1,a
-        bsr     mo_lofr
-        move    a,x:(r7+$3e)            ; wet R
-        move    x:(r7+$20),a
-        move    x:(r7+$0e),x0
-        add     x0,a
-        add     #>$400,a
-        move    a,r5
-        move    x:(r7+$3e),a
-        move    a,y:(r5)
-; the -12 dB output trim, after the line writes so the ring is untouched
-        move    x:(r7+$3d),x0
-        move    #>$2026f3,y1            ; 0.251
-        mpy     x0,y1,a
-        move    a,x:(r7+$3d)
-        move    x:(r7+$3e),x0
-        mpy     x0,y1,a
-        move    a,x:(r7+$3e)
-        bsr     momixs
+        add     b,a
+        move    a,x:(r0)
+        move    x1,a
+        move    x:(r0+n0),b
+        sub     b,a
+        asr     #$1,a,a
+        move    a,x0
+        mpy     x0,y1,a                 ; (y1 = m still)
+        asl     #$1,a,a
+        add     b,a
+        move    a,x:(r0+n0)
         move    (r0)+n0
         move    (r0)+n0
 mocmbz:
         nop
+        move    y0,a
+        move    a1,x:(r7+$20)
+        move    n1,a
+        move    a1,x:(r7+$41)
         rts
 
 ; ===========================================================================
@@ -841,39 +1225,9 @@ mo_dry:
         rts
 
 ; ---------------------------------------------------------------------------
-; mo_lfo -- the two triangles for this sample into $19 (L) and $1f (R). The
-; phase advances once; the right channel reads it WID further round.
-; tri = 4 |phase - 0.5| - 1: 1 at 0, -1 at 0.5. Straight-line.
-; ---------------------------------------------------------------------------
-mo_lfo:
-        move    x:(r7+$21),a
-        move    x:(r7+$01),x0
-        add     x0,a                    ; phase <= $7fffff + inc <= $790: no carry
-        and     #>$7fffff,a             ; into a2, which stays 0 through the and
-        move    a1,x:(r7+$21)
-        move    #$40,x0                 ; 0.5 (short immediate: bits 23-16)
-        sub     x0,a
-        abs     a                       ; 0 .. 0.5
-        asl     #$2,a,a                 ; 0 .. 2, in the guard bits
-        move    #>$7fffff,x0
-        sub     x0,a                    ; -1 .. 1
-        move    a,x:(r7+$19)            ; LIMITING store: lfo L
-        move    x:(r7+$21),a
-        move    x:(r7+$06),x0
-        add     x0,a                    ; (< 2^24: a2 = 0 through the and)
-        and     #>$7fffff,a
-        move    #$40,x0
-        sub     x0,a
-        abs     a
-        asl     #$2,a,a
-        move    #>$7fffff,x0
-        sub     x0,a
-        move    a,x:(r7+$1f)            ; lfo R
-        rts
-
-; ---------------------------------------------------------------------------
 ; mo_para -- a = a 0..1 phase -> a = the parabola 2t - t|t| of its triangle,
-; -1..1 (the station's sine). Uses x0 x1 y1 b and $3f. Straight-line.
+; -1..1 (the station's sine). Uses x0 x1 y1 b and $47 (per block; $3f is
+; PHSR's walk). Straight-line.
 ; ---------------------------------------------------------------------------
 mo_para:
         move    #$40,x0
@@ -882,8 +1236,8 @@ mo_para:
         asl     #$2,a,a
         move    #>$7fffff,x0
         sub     x0,a
-        move    a,x:(r7+$3f)            ; LIMITING: t
-        move    x:(r7+$3f),x1
+        move    a,x:(r7+$47)            ; LIMITING: t
+        move    x:(r7+$47),x1
         move    x1,a
         abs     a
         move    a,y1                    ; |t|
@@ -896,158 +1250,155 @@ mo_para:
         rts
 
 ; ---------------------------------------------------------------------------
-; mo_tap -- a = the delay in Q11.12 (8 .. 1,015), y0 = the line offset (0 or
-; $400) -> a = the tap, the fraction blended toward the OLDER neighbour (a
-; delay of i + f between the samples at i and i + 1; blending toward the
-; newer one made it i - f and clicked at every integer crossing -- 12 Sep
-; 2026). Uses x0 x1 y1 b r5 and $3f. Straight-line. AGU settle: r5 is
-; written at least two instructions before it addresses.
+; mo_tap -- a = the delay in Q11.12 (8 .. 1,015), y0 = the write phase, r5 =
+; the line's base -> a = the tap, the fraction blended toward the OLDER
+; neighbour: a delay of i + f lies between the samples at i and i + 1
+; (blended toward the newer one it reads i - f and clicks at every integer
+; crossing). Uses x0 y1 b n5; x1 is kept. mo_itap enters with the split
+; already done: x0 = i, y1 = f. Straight-line.
 ; ---------------------------------------------------------------------------
 mo_tap:
-        move    a,x:(r7+$3f)            ; the total
-        asr     #$c,a,a
-        move    a1,x1                   ; i
-        move    x:(r7+$20),a            ; the write phase
-        sub     x1,a
-        and     #>$3ff,a                ; (a2 may be stale: a1 is what is read)
-        move    a1,x0
-        move    x:(r7+$0e),a
-        add     x0,a
-        add     y0,a
-        move    a,r5                    ; -> sample i
-        move    x0,a
-        add     #>$3ff,a                ; i + 1, mod 1024 (positive throughout)
-        and     #>$3ff,a
-        move    a1,x0
-        move    x:(r7+$0e),a
-        add     x0,a
-        add     y0,a
-        move    y:(r5),x1               ; t0
-        move    a,r5                    ; -> sample i + 1
-        move    x:(r7+$3f),a
+        move    a,x0                    ; the total (positive, under 1: not limited)
+        move    x0,a                    ; clean: a0 = 0
         and     #>$fff,a
         asl     #$b,a,a                 ; the fraction, Q23
         move    a1,y1
+        move    x0,a
+        asr     #$c,a,a
+        move    a1,x0                   ; i
+mo_itap:
+; the fixed taps enter here, their split done per block: x0 = i, y1 = f
+        move    y0,a                    ; the write phase
+        sub     x0,a
+        and     #>$3ff,a                ; (a2 may be stale: a1 is what is read)
+        move    a1,x0
+        move    a1,n5
+        move    x0,a
+        add     #>$3ff,a                ; i + 1, mod 1024 (positive throughout)
+        and     #>$3ff,a
+        move    (r5)+n5                 ; -> sample i
+        move    y:(r5),b                ; t0
+        move    (r5)-n5
+        move    a1,n5
+        move    (r5)+n5                 ; -> sample i + 1
         move    y:(r5),a                ; t1
-        sub     x1,a                    ; t1 - t0
+        sub     b,a                     ; t1 - t0
         move    a,x0
         mpy     x0,y1,a                 ; f (t1 - t0)
-        add     x1,a
+        add     b,a
         rts
 
 ; ---------------------------------------------------------------------------
-; mo_herm -- a = the delay in Q11.12 (>= 4), y0 = the line offset -> a = the
-; 4-point Hermite read (stmlib's ReadHermite: xm1 one sample NEWER than i,
-; x1 and x2 older), everything scaled by 1/16 so no intermediate leaves +-1:
+; mo_herm -- a = the delay in Q11.12 (>= 4), y0 = the write phase, r5 = the
+; line's base, r3 -> eight words of scratch -> a = the 4-point Hermite read
+; (stmlib's ReadHermite: xm1 one sample NEWER than i, x1 and x2 older),
+; everything scaled by 1/16 so no intermediate leaves +-1:
 ;   c = (x1 - xm1)/2 ; v = x0 - x1 ; w = c + v ; a = w + v + (x2 - x0)/2 ;
 ;   b = w + a ; out = (((a f) - b) f + c) f + x0
-; Uses x0 x1 y1 b r3 r5 and $10 $23..$2a. Straight-line.
+; The scratch: xm1 c x0 x1 w x2 a; r3 leaves on its third word. Uses x0 x1
+; y1 b n3 n5. Straight-line.
 ; ---------------------------------------------------------------------------
 mo_herm:
-        move    a,x:(r7+$3f)
+        move    a,x0                    ; the total
+        move    x0,a                    ; clean
+        and     #>$fff,a
+        asl     #$b,a,a
+        move    a1,y1                   ; f, Q23
+        move    x0,a
         asr     #$c,a,a
         move    a1,x1                   ; i
-        move    x:(r7+$20),a
+        move    y0,a
         sub     x1,a
         add     #>$1,a                  ; i - 1: xm1
         and     #>$3ff,a
-        move    a1,x0
-        move    x:(r7+$0e),a
-        add     x0,a
-        add     y0,a
-        move    a,r5
-        move    x:(r7+$20),a
-        sub     x1,a                    ; i: x0
-        and     #>$3ff,a
-        move    a1,x0
-        move    x:(r7+$0e),a
-        add     x0,a
-        add     y0,a
-        move    a,r3
+        move    a1,n5
+        move    (r5)+n5
         move    y:(r5),b                ; xm1
-        move    b,x:(r7+$23)
-        move    x:(r7+$20),a
-        sub     x1,a
-        add     #>$3ff,a                ; i + 1: x1
+        move    (r5)-n5
+        move    b,x:(r3)+
+        move    (r3)+                   ; (c's word)
+        add     #>$3ff,a                ; each next index is the last - 1 mod
+        and     #>$3ff,a                ; 1024 (a1 only: a2 is stale)
+        move    a1,n5
+        move    (r5)+n5
+        move    y:(r5),b                ; x0
+        move    (r5)-n5
+        move    b,x:(r3)+
+        add     #>$3ff,a
         and     #>$3ff,a
-        move    a1,x0
-        move    x:(r7+$0e),a
-        add     x0,a
-        add     y0,a
-        move    y:(r3),b                ; x0
-        move    a,r5
-        move    b,x:(r7+$24)
-        move    x:(r7+$20),a
-        sub     x1,a
-        add     #>$3fe,a                ; i + 2: x2
-        and     #>$3ff,a
-        move    a1,x0
-        move    x:(r7+$0e),a
-        add     x0,a
-        add     y0,a
+        move    a1,n5
+        move    (r5)+n5
         move    y:(r5),b                ; x1
-        move    a,r3
-        move    b,x:(r7+$25)
-        move    x:(r7+$3f),a
-        and     #>$fff,a
-        asl     #$b,a,a
-        move    a1,x:(r7+$27)           ; f, Q23
-        move    y:(r3),b                ; x2
-        move    b,x:(r7+$26)
+        move    (r5)-n5
+        move    b,x:(r3)+
+        move    (r3)+                   ; (w's word)
+        add     #>$3ff,a
+        and     #>$3ff,a
+        move    a1,n5
+        move    (r5)+n5
+        move    y:(r5),b                ; x2
+        move    (r5)-n5
+        move    b,x:(r3)
 ; the polynomial, /16
-        move    x:(r7+$25),a            ; x1
-        move    x:(r7+$23),x0           ; xm1
+        move    #$2,n3
+        move    (r3)-n3                 ; -> x1
+        move    x:(r3)-,a               ; x1
+        move    (r3)-
+        move    (r3)-                   ; -> xm1
+        move    x:(r3)+,x0              ; xm1
         sub     x0,a
         asr     #$5,a,a                 ; c/16
-        move    a,x:(r7+$28)
-        move    x:(r7+$24),b            ; x0
-        move    x:(r7+$25),x0
+        move    a,x:(r3)+
+        move    x:(r3)+,b               ; x0
+        move    x:(r3)+,x0              ; x1
         sub     x0,b                    ; v
         asr     #$4,b,b                 ; v/16
         add     b,a                     ; w/16
-        move    a,x:(r7+$29)
+        move    a,x:(r3)+
         add     b,a                     ; w + v
-        move    x:(r7+$26),b            ; x2
-        move    x:(r7+$24),x0
+        move    x:(r3)+,b               ; x2
+        move    #$4,n3
+        move    (r3)-n3                 ; -> x0
+        move    x:(r3)+n3,x0            ; x0
         sub     x0,b
         asr     #$5,b,b                 ; (x2 - x0)/32
         add     b,a                     ; a/16
-        move    a,x:(r7+$2a)
-        move    x:(r7+$29),b
+        move    a,x:(r3)-               ; a; r3 -> x2
+        move    (r3)-                   ; -> w
+        move    x:(r3)+,b               ; w
         add     b,a                     ; b/16 = (w + a)/16
         move    a,x1
-        move    x:(r7+$2a),x0
-        move    x:(r7+$27),y1           ; f
+        move    (r3)+                   ; -> a
+        move    x:(r3),x0               ; a/16
         mpy     x0,y1,a                 ; a f /16
         sub     x1,a                    ; - b/16
         move    a,x0
         mpy     x0,y1,a                 ; (..) f
-        move    x:(r7+$28),x0
+        move    #$5,n3
+        move    (r3)-n3                 ; -> c
+        move    x:(r3)+,x0
         add     x0,a                    ; + c/16
         move    a,x0
         mpy     x0,y1,a                 ; (..) f
         asl     #$4,a,a                 ; x 16
-        move    x:(r7+$24),x0
+        move    x:(r3),x0               ; x0
         add     x0,a                    ; + x0
         rts
 
 ; ---------------------------------------------------------------------------
-; mo_apst -- one first-order allpass stage: a = x, y1 = b0, r4 -> its state;
-; y = b0 x + z ; z' = b0 y - x ; returns a = y (limited), r4 advanced.
-; Uses x0 b and $10. Straight-line.
+; mo_apst -- one first-order allpass stage: x0 = x (limited), y1 = b0, r3
+; -> its state; y = b0 x + z ; z' = b0 y - x ; returns x0 = y (limited), r3
+; advanced, so a chain of stages passes x0 straight through. Uses a x1; b
+; and y0 are kept. Straight-line.
 ; ---------------------------------------------------------------------------
 mo_apst:
-        move    a,x0                    ; x (limited)
-        mpy     x0,y1,a                 ; b0 x
-        move    x:(r4),b
-        add     b,a                     ; y
-        move    a,x:(r7+$10)            ; LIMITING
-        move    x0,b                    ; x
-        move    x:(r7+$10),x0           ; y
+        mpy     x0,y1,a x:(r3),x1       ; b0 x, and z
+        add     x1,a                    ; y
+        move    x0,x1                   ; x
+        move    a,x0                    ; y (LIMITING)
         mpy     x0,y1,a                 ; b0 y
-        sub     b,a                     ; - x
-        move    a,x:(r4)+               ; z' (limited), next stage
-        move    x:(r7+$10),a            ; y
+        sub     x1,a                    ; - x
+        move    a,x:(r3)+               ; z' (limited), next stage
         rts
 
 ; ---------------------------------------------------------------------------
@@ -1076,63 +1427,17 @@ mo_tab:
         rts
 
 ; ---------------------------------------------------------------------------
-; mo_lofl / mo_lofr -- LOFI: the value in a held and masked. One counter
-; ($41) for both channels: L advances it and latches ($43) on the compare,
-; R latches ($44) on the counter reading 0. The mask keeps bit 23, so a2
-; stays consistent through the and and the store does not saturate.
-; Applied at the LINE WRITE in the line modes and COMB (the line is clocked
-; coarse and the taps read through the stairs; COMB's ring recirculates it)
-; and on the wet in PHSR, which has no line.
+; LOFI (mo_lofl / mo_lofr, inline at their three sites each): the value in a
+; held and masked. One counter (n1) for both channels: L advances it and
+; latches on the compare, R latches on the counter reading 0; each channel's
+; latch is the walk word at r3 (advanced). The stream gives the hold length
+; then the mask (L), the mask (R). The mask keeps bit 23, so a2 stays
+; consistent through the and and the store does not saturate. Applied at the
+; LINE WRITE in the line modes and COMB (the line is clocked coarse and the
+; taps read through the stairs; COMB's ring recirculates it) and on the wet
+; in PHSR, which has no line. Uses x0 y1; x1 is kept.
+;
+; MIX (momixs, inline at its three sites): the wet in a (R) and n3 words
+; behind the walk cursor (L) against the dry still in the frame, written
+; back: out = dry + m (wet - dry). The stream gives m, the last word.
 ; ---------------------------------------------------------------------------
-mo_lofl:
-        move    a,y0
-        move    x:(r7+$41),a
-        move    x:(r7+$42),x0
-        move    #>$0,x1
-        add     #>$1,a
-        cmp     x0,a
-        tge     x1,a
-        move    a1,x:(r7+$41)
-        move    x:(r7+$43),a
-        tge     y0,a
-        move    a,x:(r7+$43)
-        move    x:(r7+$45),x1
-        and     x1,a
-        rts
-mo_lofr:
-        move    a,y0
-        move    x:(r7+$41),a
-        tst     a
-        move    x:(r7+$44),a
-        teq     y0,a
-        move    a,x:(r7+$44)
-        move    x:(r7+$45),x1
-        and     x1,a
-        rts
-
-; ---------------------------------------------------------------------------
-; momixs -- MIX the wet in $3d/$3e against the dry still in the frame and
-; write it back: out = dry + m (wet - dry).
-; ---------------------------------------------------------------------------
-momixs:
-        move    x:(r7+$3d),a
-        move    x:(r0),b
-        sub     b,a
-        asr     #$1,a,a
-        move    a,x0
-        move    x:(r7+$00),y1           ; m
-        mpy     x0,y1,a
-        asl     #$1,a,a
-        add     b,a
-        move    a,x:(r0)
-        move    x:(r7+$3e),a
-        move    x:(r0+n0),b
-        sub     b,a
-        asr     #$1,a,a
-        move    a,x0
-        move    x:(r7+$00),y1
-        mpy     x0,y1,a
-        asl     #$1,a,a
-        add     b,a
-        move    a,x:(r0+n0)
-        rts

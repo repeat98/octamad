@@ -6,9 +6,10 @@ decided from the allocator base at init). MODE selects the filter:
   * LADR -- the linear zero-delay Moog transistor ladder (audiojs/filter
     moogLadder, MIT), 24 dB/oct, resonance to the edge of self-oscillation
     at RES 127 and bounded there;
-  * LP / BP -- a driven Oberheim SEM zero-delay SVF (Zavalishin's
+  * SEM / BP -- a driven Oberheim SEM zero-delay SVF (Zavalishin's
     trapezoidal form, audiojs/filter oberheim, MIT), the cutoff ramped per
-    sample across the block;
+    sample across the block; SEM's SHPE knob (page 2, `---` in every other
+    mode) is the SEM's mode pot, 0 LP, 64 notch, 127 HP (23 Sep 2026);
   * ISO -- an isolator (Airwindows Capacitor2); RES is the dielectric colour;
   * VOWL -- a three-formant bank (constant-peak-gain resonators) morphed
     across A E I O U by FREQ, RES narrowing the bands.
@@ -16,8 +17,9 @@ decided from the allocator base at init). MODE selects the filter:
 ENV (a block-peak follower, instant attack, LSP = release) and LDP (an LFO,
 LSP = speed) both move the cutoff; WDTH is mid/side width on the output.
 
-Every mpy is `mpy x0,y1`, the audited-signed form; every clip is the store
-limiter.
+Every mpy is `mpy x0,y1`, the audited-signed form, but the VOWL decode's
+`mpy x1,y1,b` (R' > 0, in build_bus.MPYSU_AUDITED); every clip is the
+store limiter.
 """
 
 from remix.schema import (ModeView, BusRole, Claims, DspSection, Formatter, Harness, Kind,
@@ -65,7 +67,7 @@ MODULE = Module(
     name="spectrum",
     key="SPECTRUM",
     kind=Kind.DSP_EFFECT,
-    doc="BamSep26 station: a filter pedal -- SEM LP/BP/HP, Airwindows Capacitor2, formants, the Moog ladder; ENV and LFO onto the cutoff; width.",
+    doc="BamSep26 station: a filter pedal -- the Moog ladder, SEM (LP..HP by SHPE), BP, Airwindows Capacitor2, formants; ENV and LFO onto the cutoff; width.",
     menu=MenuEntry(
         fx2_id=0x04,
         replaces="FILTER",            # stock FILTER's id: both menus, every part
@@ -91,22 +93,29 @@ MODULE = Module(
         # ---- page 2: knob / select / knob / select / knob / select ----------
         # MODE top left (slot 6, the knob field), as on every effect (16 Sep 2026)
         Param(b"MODE", 0, 5, active=True, formatter=_STEP,
-              labels=("LADR", "LP", "BP", "ISO", "VOWL"),
-              doc="LADR the Moog (first: the best one); LP/BP the SEM; ISO an isolator (Capacitor2); VOWL"),
-        _BLANK, _BLANK, _BLANK, _BLANK, _BLANK,
+              labels=("LADR", "SEM", "BP", "ISO", "VOWL"),
+              doc="LADR the Moog (first); SEM (SHPE: LP..notch..HP) and BP the SVF; ISO (Capacitor2); VOWL"),
+        # SHPE on slot 7 ($c's companion field): the SEM's mode pot; `---`
+        # in every other mode (the views below).
+        Param(b"SHPE", 0, 128, active=True, formatter=_PLAIN,
+              doc="SEM only: 0 lowpass, 64 notch (LP + HP), 127 highpass; --- in the other modes"),
+        _BLANK, _BLANK, _BLANK, _BLANK,
     ),
     # FREQ is always where, RES always the flavour; a mode labels RES for
     # what it is there. ISO's defaults land by stamp and, with MODE DEFAULTS
     # in the remix, on a panel MODE turn.
     mode_slot=6,
-    mode_views=(ModeView(mode=3, names={0: b"LOW", 1: b"COLR"}, defaults={0: 127, 1: 64}),
-                ModeView(mode=4, names={0: b"VOWL", 1: b"SHRP"})),   # FREQ morphs A E I O U
+    mode_views=(ModeView(mode=0, names={7: b"---"}),
+                ModeView(mode=1, defaults={7: 0}),                    # SEM: SHPE lands on LP
+                ModeView(mode=2, names={7: b"---"}),
+                ModeView(mode=3, names={0: b"LOW", 1: b"COLR", 7: b"---"}, defaults={0: 127, 1: 64}),
+                ModeView(mode=4, names={0: b"VOWL", 1: b"SHRP", 7: b"---"})),   # FREQ morphs A E I O U
     dsp=DspSection(
         asm="modules/spectrum/spectrum.asm",
         # G2_TABLE is read with p:(r5)+ and interpolated linearly per block.
         ptable=G2_TABLE + COS_TABLE + VOWL_ER,
         priority=12,                  # after every existing module
-        bus_role=BusRole.NONE,        # an insert that also WRITES the bus
+        bus_role=BusRole.NONE,        # an insert: no bus role
         ybase=YBase.NEVER,
         gate_label=None,              # no housekeeping, so no XBUS gate
     ),

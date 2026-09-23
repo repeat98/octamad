@@ -69,15 +69,14 @@ MODULE = Module(
     params=(
         # ---- page 1: the performance surface, scene/CC-reachable -----------
         Param(b"DRV", 0, active=True, formatter=_PLAIN,
-              doc="saturation drive; 0 skips the stage (bit-exact); TAPE 0.8x..8x"),
+              doc="drive into the curve, +12 dB at 127 (TUBE/INFL output-compensated); 0 skips"),
         Param(b"FOLD", 0, active=True, formatter=_PLAIN,
               doc="wavefolder drive, 1x..48x into the fold at a held level; 0 = no folding"),
         Param(b"WDTH", 64, 128, active=True, formatter=_BIPOL,
               doc="mid/side width, drawn -64..+63: 0 = untouched, -64 = mono, +63 = double the sides"),
         Param(b"COMP", 0, active=True, formatter=_PLAIN,
               doc="compression amount; 0 = no gain reduction at any level"),
-        # TONE on page 1 again (20 Sep 2026, the return's slot): a tilt after
-        # the saturator, drawn -64..+63.
+        # TONE: a tilt after the saturator, drawn -64..+63.
         Param(b"TONE", 64, 128, active=True, formatter=_BIPOL,
               doc="a tilt after the saturator in every mode: 64 flat, 127 bright, 0 dark"),
         # MIX on page 1 since 16 Sep 2026 (Sam's knob pass); TONE back beside it 20 Sep.

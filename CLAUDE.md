@@ -53,20 +53,60 @@ make reverb IN=loop.wav ARGS='--wet --mode all'
 Never claim something works because it assembled or linked. `make check` is
 the floor.
 
-This is our own fork, not the shared upstream octabam repo — work directly
-in the main checkout. The worktree mandate that used to live here (isolating
-each task under `.claude/worktrees/<name>` because multiple sessions shared
-one checkout) no longer applies; nothing here concurrently touches this
-tree's working state, index or stash list.
+**ALWAYS WORK IN A GIT WORKTREE, never in the main checkout.** Several
+sessions share this repository at once; the main checkout's working tree,
+index and stash list are theirs as much as yours. Start every task with
+`git worktree add .claude/worktrees/<name> -b <branch> origin/main`, work
+and run the gates there, and open the PR from it. Never `git stash` or
+`git stash pop` in the main checkout: on 13 Sep 2026 a pop there took
+another session's stash (`o14 port edits`) instead of the caller's own
+and a `stash drop` removed it from the list -- restored by commit SHA,
+but only because the dangling commits were still there. In a worktree:
+`vendor/` and `.venv/` are symlinks to the main checkout's (gitignored,
+and excluded in `.git/info/exclude`); `out/raw/section_3_MAIN_OS.bin`
+must be there too (`make os && make recon`, or copy it); without them the
+selftest reports "remix X does not build" and every gate fails before it
+starts. `git submodule update --init` in the worktree as well. **Do NOT
+symlink `out/emu`**: its CMake cache names the main checkout's sources,
+so `cmake --build` there compiles THEIR `tools/emu/ot_emu`, not yours
+(14 Sep 2026: a port edit "built" fine and the binary did not have it).
+Build the port into the worktree: `make emu-cf` (a fresh cache, ~1 min).
+**The same holds for `dsp_host` and `dsp_asm`:** `scripts/setup.sh` builds
+them from a COPY staged into `vendor/dsp56300/source/dsp_host/`, so in a
+worktree the shared binary is the main checkout's, whatever the branch's
+`tools/harness/dsp_host/dsp_host.cpp` says, and `dsp_host` ignores an
+option it does not know. PR #356 was reviewed twice (21–22 Sep 2026) as
+"MOD has no effect, residual 0.000" for exactly this reason: its
+`-paramfile` never ran, every render used default knobs, and the effect
+was fine (34 gates pass under its own host). A branch that changes
+`dsp_host.cpp` is built in an isolated tree, never into `vendor/`:
+
+```
+cat > /tmp/hostpr/CMakeLists.txt <<EOF
+cmake_minimum_required(VERSION 3.10)
+project(hostpr CXX)
+set(CMAKE_CXX_STANDARD 17)
+add_subdirectory(/ABS/PATH/TO/main/vendor/dsp56300 dsp56300)
+add_executable(dsp_host_pr /ABS/PATH/TO/worktree/tools/harness/dsp_host/dsp_host.cpp)
+target_include_directories(dsp_host_pr PRIVATE /ABS/PATH/TO/main/vendor/dsp56300/source)
+target_link_libraries(dsp_host_pr PRIVATE dsp56kEmu)
+EOF
+cmake -S /tmp/hostpr -B /tmp/hostpr/build -DCMAKE_BUILD_TYPE=Release && cmake --build /tmp/hostpr/build --target dsp_host_pr -j8
+```
+
+then point the harness at it (`benchmark_reverbs.HOST`, `send_probe`'s
+host path) for that run.
 
 ## Traps that have already cost real work
 
 **The assembler mis-encodes instructions, silently.** `dsp_asm` encodes
 `tfr a,b` as `rnd b`, and **any `mpy` operand order it doesn't know as
 `mpysu`** — found with `mpy x0,y0`, confirmed 9 Aug 2026 for `mpy x1,y1`
-and `mpy x0,x1` too (23 sites in the shipping reverb are mpysu; all audited
-safe because their second operand is always positive, which is the only
-reason the engine works). `mpysu` treats the SECOND operand as unsigned, so
+and `mpy x0,x1` too (every shipping site is audited safe because its second
+operand is always positive, which is the only reason the engine works; the
+sites are counted per module in `build_bus.MPYSU_AUDITED`, and since 23 Sep
+2026 every `assemble()` round-trips its bytes through the disassembler and
+stops on any other mismatch or on a count that differs from the table). `mpysu` treats the SECOND operand as unsigned, so
 a negative multiplier there is silently corrupted. `mpy x0,y1` and
 `mpy y0,x0` encode signed. Both assemble clean and do the wrong thing.
 **Disassemble what you assemble** when a result surprises you — and always
@@ -138,6 +178,13 @@ condition codes** — the dependency is invisible at the point you edit, and
 `clr`, `and`, `abs`, `tst` and every arithmetic op all set them. Same family
 as the A2-staleness trap: legal instructions, correct-looking source, wrong
 machine behaviour.
+
+**AN ACCUMULATOR-TO-ACCUMULATOR `move a,b` LIMITS; `tfr a,b` MOVES ALL 56
+BITS.** A parallel `tfr x1,a  a,x:(r3)+` written to replace `move a,x:(r3)+ /
+move a,b` differed on the bit-identity gate whenever `a` exceeded 24 bits
+(23 Sep 2026, Modulation's LINE loop; encodings confirmed by disassembly,
+found by bisecting one item). The two are interchangeable only when the
+source is known to fit.
 
 **`Tcc` takes a REGISTER source, never an accumulator, and `clr` takes an
 accumulator, never a register.** `tpl b,a` and `clr x0` are both
@@ -275,7 +322,14 @@ LOW words of two reads as a voice record's mode:level, which the CFPRM's
 pseudocode (`OMC,S/U == 01`: `ACC[39:24]` rounded into `Rx[15:0]`, upper half
 zero) puts there and a plain `>> 8` leaves at zero — every voice rendered
 silent for a whole session (8 Sep 2026, O9b). The self-test never exercised
-S/U. Read the CFPRM's MOVCLR pseudocode before touching `accRead`.
+S/U. Read the CFPRM's MOVCLR pseudocode before touching `accRead`. The ACCext
+registers have two layouts as well (fractional: eight extension + eight
+low bits per accumulator; integer: sixteen extension bits), and the frame
+ISR saves and restores them in INTEGER mode every frame (`0x4000ac96`,
+`0x4000d968`); the port's write knew only the fractional layout until 23
+Sep 2026 and put the saved word's low byte into ACCn[7:0] on every restore
+-- invisible to a stock A/A (deterministic), found by Jannik Aßfalg's A/B/A
+of a ColdFire patch. `test_emac.cpp` holds both layouts now.
 
 **THE VENDORED DSP AGU LEFT A MODULO BUFFER ON A PRE-DECREMENT FROM ITS
 BASE.** `x:-(r2)` with r2 = 0 and m2 = 0x3f gave `0xffffbf` where the chip
@@ -335,10 +389,14 @@ watch for: a level that is flat across sender count in one layout and drifts
 in another. It surfaced as an "unexplained residual" in a completely
 different effect's send level, and the effect being blamed was innocent.
 
-**r7 scratch is COMPLETELY FULL — `$00..$83` all in use as of 10 Aug 2026**
-(the "only `$00..$0c` free" note held until the R16–R18 work consumed the
-rest). New per-track state goes in the Y state table, not r7. `$84+` hangs
-the unit. (Do not scan for these with `"\$$s"` in a shell — it expands.)
+**r7 scratch `$00..$83` is the per-instance block; `$84+` hangs the unit**
+(a host track's own state lives there between calls, images 39–42). Each
+module's header maps its own block; a slot census of the source is the
+truth, not the map (23 Sep 2026: BusVerb's map said full and 14 slots had
+no reference; BusDelay's map listed nine slots the code never touches, and
+one it used twice — the PITCH decode's park on grain 3's scatter record).
+New per-track state goes in a free slot of the module's own block or the
+Y state table. (Do not scan for these with `"\$$s"` in a shell — it expands.)
 
 **A dump can resolve a perfectly plausible dispatch entry for an effect it
 does not contain.** `SPEC=1` (which `make render` sets) aliases the absent

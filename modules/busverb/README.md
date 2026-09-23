@@ -19,6 +19,16 @@ Voicing rounds up to 16 Sep 2026: `git show 3ceba41:docs/history/VOICING.md`.
   40 → 0.64, 80 → 0.87, 127 → 1.49 s. At DIFF 127 the four diffusion
   allpasses at g 0.77 read as a metallic sheen; capping the span at ~0.70
   removes it.
+- Cost (pricer `cycle_count.py`, words): 1,135 → 1,117 cycles/sample on
+  23 Sep 2026, when the sample loop moved its u vectors, feedback
+  scratch, output stage, allpass phase, chain word and aux pointers onto
+  pointers and registers: one-word displaced `(r7+$..)` accesses per
+  sample 206 → 111 (the loop once, plus fbA/fbB × 4 and apbody × 4; the
+  ×8 tank loop had none). Probe 57 (`docs/firmware/CHIP.md` §2) timed a
+  displaced move at 3.98 cycles against 2.00 for a pointer or register
+  move, which the pricer cannot see. 28 bus-gate cases bit-identical
+  (`make verify-bus`, with PLATE, BIG, the shimmer and the gate driven
+  since the same day).
 
 ## On the unit
 

@@ -35,7 +35,10 @@ class).
 payload is initialised through the stock part initialiser on load; 48 B
 of runtime, one internal pointer literal, the stamp). abi.inc and the
 reload routine unchanged, so the bridge and the pinned returns stand;
-verify_octakit byte-exact, ok-ms green.
+verify_octakit byte-exact, ok-ms green. 23 Sep 2026: c6d3f39, her README
+only (four feature descriptions: UNDO KIT, FUNC+PASTE+PART, the
+PTN+FUNC+RIGHT chain, PTN+FUNC+TRIG on inactive Patterns); no source
+changed, the build is byte-identical.
 
 Her recipe rewrites the apply_part entry 0x40009094 and the scene-parameter
 writer 0x40052ae8; the ledger refuses any other module on those sites. CC

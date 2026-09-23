@@ -388,9 +388,20 @@ namespace ot::v4e
 		}
 
 		// The extension registers, exactly as route A's `get_mac_extf` /
-		// `get_mac_exti` / `set_mac_extf` read and write them. Nothing this
-		// firmware does reaches them on the M6c path; they are here so that a
-		// path that DOES cannot quietly get a different answer.
+		// `get_mac_exti` / `set_mac_extf` / `set_mac_exti` read and write
+		// them: in fractional mode ACCext holds each accumulator's eight
+		// extension bits and eight low bits; in integer mode its sixteen
+		// extension bits. The frame ISR reaches BOTH directions every frame,
+		// in integer mode: `clrl %d0; movel %d0,%macsr; movel %accext01,%d4;
+		// movel %accext23,%d5` at 0x4000ac96 saves the interrupted context and
+		// `movel #0,%macsr; ...; movel %d4,%accext01; movel %d5,%accext23` at
+		// 0x4000d968 restores it. Until 23 Sep 2026 the write knew only the
+		// fractional layout, so every restore put the low byte of the saved
+		// extension word into ACCn[7:0] and the wrong bits above bit 31
+		// (0x12345678 came back 0x123456ab; the extensions read back 0xfe008900
+		// for 0xfedc89ab) -- found by Jannik Assfalg's A/B/A of a ColdFire
+		// patch whose integer-mode MAC loop was interrupted mid-accumulation.
+		// The EMAC gate holds both layouts now.
 		uint32_t accExtRead(const uint32_t _lo)
 		{
 			const auto a0 = static_cast<uint64_t>(g_emac.acc[_lo]);
@@ -406,6 +417,16 @@ namespace ot::v4e
 
 		void accExtWrite(const uint32_t _lo, const uint32_t _v)
 		{
+			if(!(g_emac.macsr & g_macsrFractional))
+			{
+				int64_t res = static_cast<int64_t>(static_cast<uint32_t>(g_emac.acc[_lo]));
+				res |= static_cast<int64_t>(static_cast<int16_t>(_v)) << 32;
+				g_emac.acc[_lo] = res;
+				res = static_cast<int64_t>(static_cast<uint32_t>(g_emac.acc[_lo + 1]));
+				res |= static_cast<int64_t>(static_cast<int32_t>(_v & 0xffff0000)) << 16;
+				g_emac.acc[_lo + 1] = res;
+				return;
+			}
 			int64_t res = g_emac.acc[_lo] & 0xffffffff00ll;
 			res |= static_cast<int64_t>(static_cast<int16_t>(_v & 0xff00)) << 32;
 			res |= _v & 0xff;

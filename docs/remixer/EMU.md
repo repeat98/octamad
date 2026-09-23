@@ -47,6 +47,23 @@ pins the semantics (`0xc00 × 0x200000` = 3, `−0xc00` = −3, `msacl` = −3);
 EMAC-with-load shim keeps one trampoline slot per distinct instruction
 (a rewritten trampoline is not retranslated).
 
+**The port's EMAC gate holds both ACCext layouts (23 Sep 2026).** The
+frame ISR saves the interrupted context's accumulator extension registers
+in integer mode (`clrl %d0; movel %d0,%macsr; movel %accext01,%d4; movel
+%accext23,%d5` at `0x4000ac96`) and restores them the same way at
+`0x4000d968`, every frame. `v4e.cpp`'s write knew only the fractional
+layout (eight extension + eight low bits per accumulator; the integer
+layout is sixteen extension bits), so every restore put the saved word's
+low byte into ACCn[7:0]: 0x12345678 came back 0x123456ab, the extensions
+0xfe008900 for 0xfedc89ab. Found by Jannik Aßfalg (an A/B/A of a ColdFire
+patch whose integer-mode MAC loop the ISR interrupted mid-accumulation;
+a stock A/A repeats exactly because the corruption is deterministic),
+reproduced here to the byte by the eight new assertions in
+`test_emac.cpp`, fixed to QEMU's `set_mac_exti`. `verify_set` on
+OCTABAM89 (900 frames, `bus`): block dump bit-identical before and after,
+18/18 — that fixture never has a live extension at an interrupt, so the
+fix is landed on the gate, not on a symptom.
+
 ## What the boot needs
 
 Reset state: `SR = 0x2700` before `A7 = 0x48000000` (SR first, or the
@@ -197,6 +214,35 @@ host-port transfer state machine — real work, nothing to idle-skip.
 Unicorn's TCG (route A's core, QEMU's m68k JIT) on a store loop from this
 image with no hooks and no instruction count: 52 M instr/s. Real time
 needs 66 M/s on the ColdFire plus the DSP side.
+
+Jannik Aßfalg's exclusive profile (23 Sep 2026, 🟡 his port build with a
+`--work-profile` PC counter that is not in this tree; a fixture of eight
+FLEX tracks looping a 440 Hz sample at 120 BPM, trigs on steps 1–4, DELAY
+on T1–T7 and PLATE on T8, 5,600 frames after a 20 s load; instructions,
+not cycles):
+
+| ColdFire scope | instructions / frame | share |
+|---|---:|---:|
+| frame ISR `0x4000aad0..0x4000d9b0` | 10,720 | 26.2% |
+| eight-track delay `0x400031a0..0x4000385a` | 7,665 | 18.7% |
+| sample analysis `0x40098388..0x400985ac` | 5,643 | 13.8% |
+| voice renderer `0x40007960..0x40008f82` | 5,605 | 13.7% |
+| correlation search | 2,196 | 5.4% |
+| total | 40,903 | |
+
+Ranges are half-open and exclusive of callees; the four boundaries
+re-checked here by objdump ✅ (the ISR ends in `rte` at `0x4000d9ae`, the
+delay and the renderer in `rts` at `0x40003858` / `0x40008f80`, the
+analysis routine is a `lea -36(%sp)` frame ending in `rts` at
+`0x400985aa`). What "sample analysis" and the "correlation search" do is
+his reading, unverified here; the routine's MAC recurrence at
+`0x40098494..0x400984be` is five `macl`/`msacl` with parallel loads in a
+`bgt` loop, and no `jsr`/`lea` in the image names `0x40098388` (a table
+or relative call). His opt-in module `stock-analysis-fast` (−251
+instructions/frame, 0.6%, audio identical over 5,600 frames on his
+emulator) was not sent; his hardware acceptance is pending, and his
+report's own limits hold: p95/p99 unchanged, so no worst-case headroom
+claim.
 
 **Retracted 22 Sep 2026**: "it has no MAC-with-parallel-load form" was
 wrong. Unicorn 2.1.4's `DISAS_INSN(mac)` (vendored QEMU 5.0.1) has the

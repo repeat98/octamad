@@ -218,6 +218,8 @@ def measure(name):
         worst = dict(worst)
         worst["inner"] = ((worst["inner"] + ", ") if worst["inner"] else "") + \
             f"worst of {len(alts)} mode loops ({others})"
+        # every priced path, for --modes: (loop end label, alternative, cycles)
+        worst["modes"] = [m for a in alts for m in a["modes"]]
         return worst
     return _measure_loop(name, src, lines, hits[0])
 
@@ -448,8 +450,16 @@ def _measure_loop(name, src, lines, i):
                      % (disp_w, "/".join(f"{w}w" + (f"+{s}roll" if s else "") + (f"+{c}call" if c else "")
                                          for w, s, c in zip(alt_w, alt_sur, alt_call))))
     note = ", ".join(notes) if notes else ""
+    # every priced path of this loop: the fork's alternatives each on the
+    # loop's shared cost, or the loop alone
+    if fork_labels:
+        shared = cycles - max(alt_cyc)
+        modes = [(end_label, f"alt {k + 1}", shared + c) for k, c in enumerate(alt_cyc)]
+    else:
+        modes = [(end_label, "", cycles)]
     return dict(name=name, words=words, cycles=cycles, inner=note,
-                loop_end=end_label, total_words=len(blob) // 3, marked=marked)
+                loop_end=end_label, total_words=len(blob) // 3, marked=marked,
+                modes=modes)
 
 
 def verify(name, m):
@@ -495,6 +505,14 @@ def main():
     bank = sum(legacy[k] * n for k, n in BANK.items()) if legacy else None
     room = room_for_new_work(bank) if bank is not None else None
 
+    if "--modes" in args:
+        # every priced path per module (a fork alternative on its loop's
+        # shared cost, or a whole mode loop), the pricer's per-mode view
+        print("per mode (loop end label, fork alternative): cycles/sample")
+        for m in rows:
+            for lbl, alt, cyc in m.get("modes", []):
+                print(f"  {m['name']:16} {lbl:10} {alt:8} {cyc:>6}")
+        return
     if "--json" in args:
         print(json.dumps(dict(remix=remix.name,
                               per_effect={m["name"]: m["cycles"] for m in rows},

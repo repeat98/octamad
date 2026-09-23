@@ -43,6 +43,7 @@ from remix import ledger  # noqa: E402
 
 OUT = pathlib.Path("out/mainos_bus.bin")
 DIS = pathlib.Path("vendor/dsp56300/build/source/dsp_host/dsp_asm")
+DISASM = pathlib.Path("vendor/dsp56300/build/source/disassemble/dsp56kDisassemble")
 
 # ---- ColdFire menu tables (task 11, tools/build/build_menu.py, reproduced here) --
 FX2_IDS = 0x400d5fdc
@@ -500,22 +501,100 @@ def _dev_hooks(key, src):
 
 _SCRATCH = None
 
+# Disassemble what you assemble (CLAUDE.md): dsp_asm's own listing (-list)
+# against dsp56kDisassemble's decode of the same bytes, mnemonic by mnemonic.
+# Only mnemonics are compared: a branch displacement or a `do` immediate
+# renders differently in a listing and a decoder without any bug. What this
+# cannot see is a resolver choosing the wrong ADDRESS for a symbolic operand
+# (the label-prefix trap): both tools decode the bytes dsp_asm wrote.
+# Jannik Aßfalg, PR #380, 22 Sep 2026.
+_LISTLINE = re.compile(r"^([0-9a-f]{6}): (\S+)(?:\s+(.*?))?\s*; "
+                       r"[0-9a-f]{6}(?: [0-9a-f]{6})?$")
 
-def assemble(src_text, org):
+# `mpy` that dsp_asm encodes as `mpysu` is the one mismatch the shipping
+# code carries on purpose: the second operand is non-negative at every site
+# (CLAUDE.md). Sites per assemble() call, by module label and operands. A
+# build whose count differs from this table stops with the site list: a new
+# site needs its operand audited and this table updated; a vanished site
+# needs the table updated so the count stays exact.
+MPYSU_AUDITED = {
+    "REVERB SERVER": {"x0,y0,a": 12, "x0,x1,a": 9, "x1,y1,a": 4},
+    "CHARACTER":     {"x1,y1,b": 1},
+    "SPECTRUM":      {"x1,y1,b": 1},
+}
+# These flags substitute or excise module source (probes, the shimmer
+# excision, the marker splice, a candidate engine), so the shipping counts
+# do not apply: a variant build prints what it found instead.
+_VARIANT_FLAGS = ("NOSHIM", "MARKER", "PROBE", "XPROBE", "TPROBE", "DELAYPROBE",
+                  "RVSRC", "DLSRC")
+
+
+def _listing(text):
+    out = {}
+    for line in text.splitlines():
+        m = _LISTLINE.match(line)
+        if m:
+            out[int(m.group(1), 16)] = (m.group(2), (m.group(3) or "").strip())
+    return out
+
+
+def _roundtrip(list_out, blob, org, label):
+    src = _listing(list_out)
+    if not src:
+        return
+    tmp = _SCRATCH / "roundtrip.bin"
+    tmp.write_bytes(blob)
+    r = subprocess.run([str(DISASM), "-in", str(tmp), "-pc", f"{org:x}", "-le"],
+                       capture_output=True, text=True)
+    dec = _listing(r.stdout)
+    bad, mpysu = [], {}
+    for a, (sm, sop) in src.items():
+        if a not in dec or dec[a][0] == sm:
+            continue
+        dm, dop = dec[a]
+        if (sm, dm) == ("mpy", "mpysu"):
+            mpysu.setdefault(sop, []).append(a)
+        else:
+            bad.append((a, sm, sop, dm, dop))
+    who = f" in {label}" if label else ""
+    if bad:
+        detail = "\n".join(f"    P:0x{a:05x}  wrote '{sm} {sop}'  chip runs "
+                           f"'{dm} {dop}'" for a, sm, sop, dm, dop in bad)
+        sys.exit(f"disassemble-what-you-assemble: dsp_asm wrote bytes{who} that "
+                 f"do not decode to the mnemonic typed:\n{detail}")
+    found = {k: len(v) for k, v in mpysu.items()}
+    audited = MPYSU_AUDITED.get(label, {})
+    if any(os.environ.get(k) for k in _VARIANT_FLAGS):
+        if found:
+            print(f"  mpysu{who} (variant build, table not enforced): {found}")
+        return
+    if found != audited:
+        sites = "\n".join(f"    mpy {k}: {len(v)} site(s) at "
+                          + ", ".join(f"P:0x{a:05x}" for a in v)
+                          for k, v in sorted(mpysu.items()))
+        sys.exit(f"mpysu audit{who}: found {found or 'none'}, MPYSU_AUDITED says "
+                 f"{audited or 'none'}. Every mpy encoded as mpysu needs its "
+                 f"second operand shown non-negative (CLAUDE.md), then the table "
+                 f"in tools/build/build_bus.py updated:\n{sites or '    (no sites)'}")
+
+
+def assemble(src_text, org, label=""):
     global _SCRATCH
     if _SCRATCH is None:
         import tempfile
         _SCRATCH = pathlib.Path(tempfile.mkdtemp(prefix="build_bus."))
     tmp, binf, symf = (_SCRATCH / n for n in ("src.asm", "out.bin", "out.sym"))
     tmp.write_text(src_text)
-    subprocess.run([str(DIS), "-in", str(tmp), "-org", f"{org:x}",
-                    "-out", str(binf), "-sym", str(symf)],
-                   check=True, capture_output=True)
+    r = subprocess.run([str(DIS), "-in", str(tmp), "-org", f"{org:x}",
+                        "-out", str(binf), "-sym", str(symf), "-list"],
+                       check=True, capture_output=True, text=True)
     blob = binf.read_bytes()
     words = [blob[i] | (blob[i + 1] << 8) | (blob[i + 2] << 16)
              for i in range(0, len(blob), 3)]
     syms = dict((k, int(v, 16)) for k, v in
                 (l.split() for l in symf.read_text().split("\n") if l))
+    if DISASM.exists() and os.environ.get("NOROUNDTRIP") != "1":
+        _roundtrip(r.stdout, blob, org, label)
     return words, syms["init"], syms["proc"]
 
 
@@ -2539,7 +2618,7 @@ hostquit:
                     print(f"  {'PTABLE':13} P:0x{DEV_DELAY_P:05x}..0x{_at:05x} "
                           f"({len(_ptab):4d} words)  {name}'s table  (DEV: leads "
                           f"the out-of-region record)")
-                words, init_a, proc_a = assemble(src, _at)
+                words, init_a, proc_a = assemble(src, _at, label=name)
                 if _at + len(words) >= 0x20000:
                     sys.exit(f"payload {tag}: DEV delay overruns the "
                              f"entry-point plausibility bound "
@@ -2586,7 +2665,7 @@ hostquit:
                         _s2, _xt_sites[name] = _p2x(_s2, name)
                     else:
                         _c += len(_tab)
-                _w, _ia, _pa = assemble(_s2, _c)
+                _w, _ia, _pa = assemble(_s2, _c, label=name)
                 _last = (_c, len(_w))
                 if _c + len(_w) <= _end:
                     _fit = (_r, _tab, _s2, _c, _w, _ia, _pa)
@@ -2672,7 +2751,8 @@ hostquit:
 
         if probe == "silence":
             words, init_a, proc_a = assemble(
-                pathlib.Path("dsp/silence_stub.asm").read_text(), cursor)
+                pathlib.Path("dsp/silence_stub.asm").read_text(), cursor,
+                label="SILENCE STUB")
             if cursor + len(words) > _end_of_run(cursor):
                 sys.exit("silence stub does not fit the region's free tail")
             place(words, cursor)

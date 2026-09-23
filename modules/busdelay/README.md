@@ -73,16 +73,16 @@ at the target).
 
 Each mode's `ModeView` re-defaults the knobs and names every knob the mode
 never reads `---` (20 Sep 2026, every effect). PING 0 by default: an aux
-delay sits still; the bounce is the knob's. The tape wow (MDEP / MRAT, a
+delay sits still; the bounce is the knob's. The tape wow (WOW, a
 lerped read at TIME + wow, flutter, and a loop saturation gated on the
 depth) went 15 Sep 2026 for the crackle, whose cause was the TIME jump
 (glided 20 Sep); the wow came back the same day in the freeze's slot as one
 depth knob at a fixed rate, riding the glide's between-samples read (Sam:
 "wow back freeze gone"). WOW 0 is bit-identical to the glide alone
 (`verify_delay`, every case). The freeze hold is gone.
-In REVERSE the two 16K lines are one 32K mono ring
-(XTRM = 16,384 samples = 371 ms, the mode's default), PING is forced off and
-the output is mono to both channels.
+In REVERSE LineL alone is the 32K mono ring (the R line is not read or
+written; XTRM = 16,384 samples = 371 ms, the mode's default), PING is forced
+off and the output is mono to both channels.
 
 ## Local rendering
 
@@ -93,7 +93,7 @@ DEV hatch (`make render-delay`) places the delay out of region in payload A.
 
 - CLEAN and REVERSE bit-identical across the `verify_delay` cases (defaults,
   PING 0/127, TIME 0/127, FDBK+TONE, split, WET 0, wow, the unknown-mode
-  fallback); `verify-bus` 21/21.
+  fallback); `verify-bus` 28/28 (GRAIN, REVERSE, PING and the reverb's other arms were added to the gate 23 Sep 2026).
 - GRAIN DC gate (0.25 FS DC, full density, unison): p-p 0 across scatter
   0/64/127 and every size (four windows a quarter period apart sum to
   exactly 2).
@@ -110,9 +110,29 @@ DEV hatch (`make render-delay`) places the delay out of region in payload A.
   gets repeats 1, 3, 5: L/R = 1/feedback).
 - REVERSE at 371 ms: a 50 ms burst comes back reversed ~300 ms later; the
   sine is continuous at every size.
-- Cost: 1,354 words per payload; 1,126 cycles/sample static worst path
-  (`make check`, 20 Sep 2026: 1,326 after the return left, +28 for the
-  TIME ramp).
+- Cost: 1,300 words on payload B; pricer (`cycle_count.py --modes`, words)
+  GRAIN 1,028 / REVERSE 395 per sample (1,354 words and 1,126 before the
+  23 Sep 2026 rewrite; 1,326 words after the return left 20 Sep, +28 for
+  the TIME ramp).
+- 23 Sep 2026: the sample loop reads the aux accumulator through r3 and
+  writes the chain at `(r3+n3)`, keeps x_in, the lag, the fraction, the
+  TIME ramp, the crossfeed terms and the stage outputs in registers, and
+  the GRAIN and REVERSE arms run after the line writes and write the wet
+  slots themselves (the SHIFTED substitution and its flag are gone; GRAIN
+  keeps s/frac/gain/t0 in registers, its phase cursor in r6 and its wet sum
+  in n6; REVERSE keeps its lags and windows in registers). Displaced
+  `(r7+$..)` moves per sample, counting each `do #4` body four times and
+  callees per call: CLEAN 91 -> 35, GRAIN 294 -> 102, REVERSE 109 -> 39.
+  Probe 57 (`docs/firmware/CHIP.md` §2) timed a one-word displaced move at
+  3.98 cycles against 2.00 for a pointer or register move. All 28
+  `verify-bus` cases bit-identical. Not gated: a TIME move during a render
+  (no case glides), so the ramp's move to n4 is by reading, not by render.
+- 23 Sep 2026: two per-block writes landed in GRAIN's records. The PITCH
+  decode parked f and oct in raw $49, grain 3's scatter word on line L
+  (moved to raw $16); the SIZE decode wrote the REVERSE lag cap to raw $56,
+  grain 3's window multiplier on line R (the write was a duplicate of raw
+  $2a's and is gone). Each change moves the two GRAIN gate cases and none
+  of the other 26.
 
 On Sam's unit in every rig flash. Heard: REVERSE 371 ms over 93 ("the long
 one is better"); GRAIN DENS 32 → 127 on the loop "sounds pretty good".

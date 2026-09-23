@@ -173,8 +173,12 @@ for sat, name in ((0, "TAPE"), (1, "TUBE"), (2, "INFL")):
 # the saturators are trimmed to near unity small-signal (14 Sep 2026: the
 # tape's +21 dB at DRV 127 made the live round unjudgeable)
 for sat, name in ((0, "TAPE"), (1, "TUBE"), (2, "INFL")):
+    # 23 Sep 2026: DRV drives the curve by G = 1 + 3d (+12 dB at 127) with the
+    # output scaled per mode -- TAPE 1 (its trim holds unity), TUBE (1+d)/G,
+    # INFL 1/G -- so the small-signal gain at DRV 127 is +12 / +6 / 0 dB.
     _g = rms_db(render(tone(438, amp=0.03), DRV=127, SAT=sat)[0]) - rms_db(tone(438, amp=0.03))
-    check(f"SAT {name} DRV=127 is within 4 dB of unity on a -30 dBFS tone", abs(_g) < 4.0, f"{_g:+.1f} dB")
+    _want = {0: 12.0, 1: 6.0, 2: 0.0}[sat]
+    check(f"SAT {name} DRV=127 small-signal gain is {_want:+.0f} dB within 4 dB on a -30 dBFS tone", abs(_g - _want) < 4.0, f"{_g:+.1f} dB")
 # TONE is a tilt after the saturator in every mode: on noise
 # the top/bottom balance must rise with the knob, and 64 must be the input.
 def _tilt(L):

@@ -64,7 +64,19 @@ ones — the DSP toolchain itself is plain CMake). It builds:
 
 The disassembler from the same dsp56300 project is the other half:
 disassemble what you assemble, because the assembler's failure mode is
-clean assembly of wrong machine code.
+clean assembly of wrong machine code. Every `build_bus.assemble()` call
+runs `dsp_asm -list` against an independent `dsp56kDisassemble` decode of
+the same bytes and compares mnemonics (Jannik Aßfalg, PR #380, 22 Sep
+2026): a mismatch fails the build. `mpy` encoded as `mpysu` is the one
+mismatch the shipping code carries on purpose (CLAUDE.md: second operand
+always non-negative at every site); those sites are counted per module in
+`build_bus.MPYSU_AUDITED`, a count that differs from the table fails the
+build with the site list, and a matching count prints nothing. A build
+under a flag that substitutes source (`PROBE`, `NOSHIM`, `MARKER`, a
+candidate engine) prints its counts instead of enforcing the table.
+`NOROUNDTRIP=1` disables the check. It cannot see a resolver picking the
+wrong ADDRESS for a symbolic operand (both tools decode the bytes dsp_asm
+wrote), the label-prefix trap: that one is still read by hand.
 
 ## 2. Acquiring and unpacking an OS
 
@@ -93,6 +105,7 @@ Two instruction sets, two toolchains:
 | `tools/build/dsp_disasm_all.py` | DSP | disassembles every P module of both payloads at its load address: one `.asm` per payload plus per-module binaries |
 | `tools/build/dsp_reach.py` | DSP | control-flow reachability sweep from the real entry points (dispatch tables, vectors, bootstraps) |
 | `scripts/disasm.sh` (`make disasm`) | ColdFire | radare2 on the decompressed MAIN OS with the right arch and base (m68k BE @ `0x40000400`); `emac` uses objdump, the only decoder that reads the ColdFire V4e extensions |
+| `tools/build/where.py` (`make where A=<addr> [N=bytes]`) | ColdFire | every doc paragraph citing that address (file:line first), the nearest other cited addresses, and a `scripts/disasm.sh emac` window, in one command (Jannik Aßfalg, PR #380). The docs are scanned on each call; there is no index file to keep in step, and a finding about an address goes in its topical doc |
 
 ### Disassembling the ColdFire ✅ (Bryan T, 30 Aug 2026; re-read here)
 
@@ -202,3 +215,6 @@ last section), the hardware rig — protocol in `docs/history/CAPTURE_18AUG.md`:
 - Comments cite probes and tools that were pruned from the tree
   (`dsp/baseprobe.asm`, `tools/build/build_menu.py`, …); they live in git
   history as the provenance of measured numbers: `git show <sha>:<path>`.
+- Every DSP module `build_bus.py` assembles is disassembled and compared
+  against its own listing before the build finishes; `make where A=<addr>`
+  is the ColdFire-side lookup, on demand.

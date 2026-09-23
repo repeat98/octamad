@@ -56,6 +56,12 @@ when a glyph has none, and skipping glyphs whose `+12` word is negative.
 
 There is no colour or level anywhere in the record.
 
+Eight such records sit at `0x400ba812 … 0x400ba89e` (nordseele, 22 Sep
+2026): `0x400ba876` is the small UI font, 506 literal references in the
+image (✅ counted here), `0x400ba83a` a large one (29 references). The two
+in the table are the ones the text routines use; the other six are not
+decoded.
+
 ## 3. Text — one bit, ORed, no intensity
 
 Two entry points, both ultimately the same blitter:
@@ -82,6 +88,26 @@ no intensity. ✅ Confirmed negatively on the unit: a probe module
 (`ui-dimprobe`, not in this tree) recorded the two spare arguments of
 `0x40013904` (`fp@(24)`, `fp@(28)`) and they never varied with what was
 dimmed.
+
+### 3b. The SETUP windows' calls, for a page of one's own (nordseele, MKI, 15 Sep 2026)
+
+Run on a MKI by octalab; each entry point re-read here as a function
+prologue with the reference count shown ✅. `0x4005829c(115, 64, 0, 0, 1,
+closed)` the window; `0x400125ac(surface, 0, 1)` its planes cleared as the
+SETUP windows do; `0x400570b8(object, title, "")` the frame and title band
+(5 refs); `0x40011b94(surface, x, y0, y1, 1)` a solid vertical line;
+`0x40011a58(surface, x0, y, x1)` a dotted horizontal line, one pixel in
+two (26 refs); `0x40012004(surface, x0, y0, x1, y1, 1)` a line drawn pixel
+by pixel with the ink toggling (15 refs); `0x40013904(font, surface, x, y,
+align, invert, width, fmt, …)` formatted text, align 1 centred / 2 right,
+its box cleared first, `width` a template string sizing the box (the
+stock's `"XXXX"` at `0x400b451d`) (128 refs). Not reconciled: §3 reads
+`0x40013904` as `(font, surface, x, y, a, b, fmt, args…)`, six fixed
+arguments before `fmt`; nordseele's read has seven. The stock example is
+EFFECT 1 SETUP (opener `FUN_40059afc`, descriptor `0x400bc25a`, draw
+`FUN_4003792c`): a solid line at x `0x34`, dotted verticals at `0x48` and
+`0x5c`, a dotted horizontal at y `0x1c`, 20-px cells, labels centred at x
+`col·0x14 + 0x3e`, y `0x30 − row·0x1b`; y runs up from the bottom row.
 
 ## 4. Regions — where shading lives
 

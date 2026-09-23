@@ -52,6 +52,10 @@ ID2POS = 0x400d6150
 LIST_REFS = [0x400375f4, 0x40052496, 0x40059a42]
 FX1_ID_LOOKUP = 0x400d5f58
 FX1_CHOOSER = 0x400d6060
+# 11 entries + the NUL terminator = 12 words; 0x400d6090 is FX2_LIST (the
+# stock table build_bus mirrors the live chooser into when Octakit is
+# present), so a wider window reads that table as FX1 damage.
+FX1_CHOOSER_LEN = 0x30
 FX1_ID2POS = 0x400d60d0                 # FX1's own cursor-row table
 FX1_LIST_REFS = [0x40037990, 0x40052706, 0x40059bd2]
 FX1_NONE = 0x400d4618
@@ -382,14 +386,14 @@ def main():
         # The stock list is left where it is; the refs point elsewhere. The
         # cursor table is rewritten WHOLE (every dropped id clamped to row
         # 0), which the FX1 section above checks entry by entry.
-        _skip.update(range(FX1_CHOOSER - BASE, FX1_CHOOSER - BASE + 0x40))
+        _skip.update(range(FX1_CHOOSER - BASE, FX1_CHOOSER - BASE + FX1_CHOOSER_LEN))
         _skip.update(range(FX1_ID2POS - BASE, FX1_ID2POS - BASE + 0x80))
     for _eid in _rep_ids:
         _a = FX1_ID_LOOKUP + _eid * 4 - BASE
         _skip.update(range(_a, _a + 4))
         _stock_P = next((m.menu.donor_desc + 0x38 for m in _MODS.values()
                          if m.is_stock and m.menu.fx2_id == _eid), None)
-        for _o in range(0, 0x40, 4):
+        for _o in range(0, FX1_CHOOSER_LEN, 4):
             if int.from_bytes(stock[FX1_CHOOSER - BASE + _o:
                                     FX1_CHOOSER - BASE + _o + 4], "big") == _stock_P:
                 _skip.update(range(FX1_CHOOSER - BASE + _o,
@@ -405,7 +409,7 @@ def main():
     _except = " and".join(_except)
     _same(FX1_ID_LOOKUP - BASE, 0x80,
           "FX1 id lookup table (0x400d5f58, 32 entries) unchanged" + _except)
-    _same(FX1_CHOOSER - BASE, 0x40,
+    _same(FX1_CHOOSER - BASE, FX1_CHOOSER_LEN,
           "FX1 chooser list (0x400d6060, 11 entries) unchanged" + _except)
     # ==== FX1 rows this remix asked for ==================================
     # The same shape as the FX2 checks above, because it is the same

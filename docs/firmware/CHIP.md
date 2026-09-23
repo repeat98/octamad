@@ -61,7 +61,7 @@ part defaults FX1 = FILTER.
 | CPU | Freescale ColdFire MCF54454VR266, 32-bit big-endian, 266 MHz | ✅ board photo (an MKI board reads `MCF54454`; an earlier note said `MCF5445A`) |
 | CPU clock tree | crystal 24 MHz → VCO 528 → CPU 264 MHz, internal bus 132, FlexBus 66 | ✅ from the image + MCF54455RM (below) |
 | Audio DSP | Freescale Symphony DSP56721 (`DSPB56721AG`) | ✅ board photo |
-| DSP cores | two DSP5636x cores, 200 MHz / 200 MIPS each (the part's maximum) | ✅ datasheet. 🟡 This board runs the PLL at its reset default from a crystal the payload makes the audio clock: 183.456 MHz = 4,160 cycles/sample (§2) |
+| DSP cores | two DSP5636x cores, 200 MHz / 200 MIPS each (the part's maximum) | ✅ datasheet; ✅ 199.9 MHz = 4,532 cycles/sample on this board, measured 22 Sep 2026 (§2). ❌ 183.456 MHz / 4,160 (inferred from the payload's register writes, until 22 Sep 2026) |
 | External memory controller | none; all DSP memory is on-chip | ✅ datasheet |
 | Shared DSP memory | 8 blocks × 8 K words = 64 K words at `$030000`, reachable by both cores; P/X/Y alias there | ✅ reference manual + hardware |
 | ColdFire RAM | 128 MB SDRAM | ✅ `docs/remixer/PLACEMENT.md` |
@@ -103,8 +103,8 @@ reviewed; the falsifier is a hardware measurement of the unit's tick rate.
 
 | | | |
 |---|---|---|
-| per core, per sample @ 44.1 kHz, datasheet clock | 200 MIPS ÷ 44,100 = 4,535 | ✅ arithmetic; ❌ not this board's |
-| per core, per sample, from the firmware's clock setup | PLL never written → reset `0x2B60C2` = EXTAL × 195/24; ESAI clocked from EXTAL (Port H `0xaa0000`), TPSR=1/TPM=0/TFP=0, 8 × 32-bit slots → fs = EXTAL/512; 4,160 cycles/sample (Fsys 183.456 MHz if EXTAL = 22.5792 MHz) | 🟡 from the payload's register writes + DSP56720RM; falsified by a PCTL write, PINIT = 0, or a different DSP crystal (`COLDFIRE_PORT.md` O8) |
+| per core, per sample @ 44.1 kHz, datasheet clock | 200 MIPS ÷ 44,100 = 4,535 | ✅ arithmetic; ✅ this board's: 4,532 measured (next row) |
+| per core, per sample, this board | 4,532 (199.9 MHz): probe 55 (branch `probe55`, 22 Sep 2026), core 1's timer 0 free-running at CLK/2, its per-frame advance (36,258) printed as an amplitude against a fixed reference, read from a MicroBook capture by `tools/harness/clock_probe.py` (gain-independent) | ✅ hardware. ❌ 4,160 / 183.456 MHz (the PLL at its reset default `0x2B60C2` = EXTAL × 195/24, inferred from the payload's register writes, until 22 Sep 2026). What sets the clock is not located |
 | measured ceiling for FX work | ~2,350 with 4× FX1 FILTER as environment | ✅ hardware, burn probe, two sweeps |
 | spare with the R46 reverb + 4× FILTER + running sequencer | 704 (breakup at p3=22 × 32; p3=23 = the high-pitch squeal, the deep-overrun signature) | ✅ hardware |
 | the R46 reverb's true cost | ≈1,650/sample (2,356 − 704); `cycle_count.py` prices it 1,384, so the pricer reads ~270 low on the reverb (and ~264 high on the delay) | ✅ two consistent sweeps |
@@ -112,7 +112,7 @@ reviewed; the falsifier is a hardware measurement of the unit's tick rate.
 | one FX1 FILTER's true cost | 192 cycles/sample ((1,088 − 704)/2) | ✅ hardware; ❌ the earlier ~260 inference |
 | total DSP-usable budget | ≈3,120 cycles/sample (three sweeps agree: 1,652 + 4×192 + 704 = 3,124; 964 + 768 + 1,392 the same) | ✅ triangulated |
 | safe planning number | ~500 on top of the current reverb in a 4-FILTER bank; ~900 with 2 | 🟡 sweep minus a contention margin |
-| stock's own share | ≈1,410 (4,535 − 3,120); ≈1,040 on the 🟡 4,160 clock | ✅ by subtraction |
+| stock's own share | ≈1,410 (4,532 − 3,120) | ✅ by subtraction. ❌ ≈1,040 (on the 4,160 clock, until 22 Sep 2026) |
 | the historic "1,392 spare" | the 7 Aug bank's spare (ceiling 964 + 1,392 = 2,356, consistent) | ✅ then; superseded as a headline |
 | ❌ "the budget is 1,080" | the load one probe build happened to survive, never a ceiling | |
 | ❌ "FILTER credit", +768 on top of 3,120 (12–15 Sep 2026) | the four environment FILTERs are inside the 3,120 (the sum above), so adding them back double-counted; removed from the pricer | |
@@ -163,6 +163,26 @@ dispatch in the meter's unit and agrees within 2 % (BusVerb 1,109 under the
 firmware, 1,130 on the meter). Only the burn sweep measures the ceiling.
 `make cycles` prints the live per-module figures and the worst load a core
 can be asked for.
+
+Words are not cycles on this chip (probe 57, branch `probe55`, 22 Sep
+2026: core 1's timer 0 around a 1,000-iteration one-instruction DO loop on
+T1's FX1, printed as an amplitude and read by `clock_probe.py --bench`):
+
+| instruction | cycles per iteration |
+|---|---|
+| `move x0,a` | 2.00 ✅ |
+| `move x:(r0),a` | 2.00 ✅ |
+| `move x:(r7+$15),a` (one-word displaced) | 3.98 ✅ |
+| `move x:(r7+$70),a` (two-word displaced) | 6.01 ✅ |
+
+A station's whole-proc timer window is not usable for its absolute cost:
+probes 59/61 (8 nops × 125 and × 1,000 iterations) differed by one frame
+(72,512 cycles), not by their instruction counts — the window is
+pre-empted by whole frames of the unit's other audio work. Probe 56's
+per-station numbers (LP 464, VOWL 685, LADR 797, ISO 1,010, TAPE 887, JUNO
+1,260 cycles/sample) carry that pre-emption and are not separable from it
+❓; the burn sweep and the pricer with the per-form costs above are the
+instruments.
 
 ### The rig's load, measured (15 Sep 2026)
 

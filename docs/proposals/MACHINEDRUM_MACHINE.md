@@ -1250,6 +1250,33 @@ disassembles the result back and refuses mis-encodings and label prefixes.
   MD page should use FUNC + track as the fallback. This is a static result;
   no hardware behavior was changed or tested.
 
+### WP-A2 proposed core-0 layout (23 September 2026)
+
+- ✅ The input budgets are the measured values above: 15,621 engine words,
+  2,724 hot words, up to 28,061 table words, a 32,768-word sine, 1,536
+  words per P-I voice, and a 192-word current driver assembly. The overlap
+  checker is [`modules/machinedrum/layout.py`](../../modules/machinedrum/layout.py).
+- *inferred* The proposal uses `X/Y:0x3400–0x37ff` for the 1K voice/state
+  block and records, with hot code in `P:0x1000–0x1aa3`. It budgets the
+  shared window as sine `0x30000–0x37fff`, packed code/tables
+  `0x38000–0x3d9ff`, six P-I buffers `0x3da00–0x3fdff`, and 512 words of
+  driver code `0x3fe00–0x3ffff`. Y-only tables get `Y:0x4000–0x85ff`.
+  The code/table capacity is 40,960 words against the 40,958-word maximum
+  after the hot split, leaving two words before future alignment padding.
+- ✅ The internal driver addresses are concrete and non-overlapping:
+  loop words `Y:0x0c00–0x0c1f` (`HALF=0x0c03`, `TMP=0x0c04`), `OUTBUF`
+  `Y:0x0d00–0x0eff`, `MDSAVE` `Y:0x0f20–0x0f43`, and `STASH`
+  `Y:0x1800–0x1a3f`.
+- 🟡 The proposal conflicts with stock ownership in exactly the places
+  listed in the layout file: payload-A frame state and T7/T8 FX2 storage in
+  the shared window, payload-B entry/read and loaded/effect words there, the
+  `0x3400` FX1 slot, both private T5/T6 FX2 slots used for Y-only tables,
+  and the PLATE/SPRING/DARK donor P span. These are layout-review costs, not
+  silently accepted collisions.
+- *inferred* The selected six-P-I cap is a fit budget, not a qualification
+  result. The user must choose the stock-slot sacrifices and one of the
+  voice-home options in `layout.py` before WP-A2 can leave `review`.
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and

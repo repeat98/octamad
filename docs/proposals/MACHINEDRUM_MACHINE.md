@@ -17,10 +17,10 @@ level, pan, mute, and modulation. All 16 parts can sound within that single
 OT track. Two internal parts may use the same engine with different settings.
 
 Incoming MIDI must be able to trigger individual internal parts. The user
-initially selected direct OT sequencing and is now considering an embedded
-16-part sequencer. **The sequencing choice is open; the recommendation is an
-embedded 16-part pattern sequencer synchronized to OT clock/transport.**
-Section 6 compares both approaches. The instance produces a stereo mix that
+initially selected direct OT sequencing. **On 23 September 2026 the user
+chose the embedded 16-part pattern sequencer (option B), synchronized to OT
+clock and transport** (section 1, decisions). Section 6 keeps both options
+for the record. The instance produces a stereo mix that
 enters its parent OT track's normal processing and routing.
 
 The user permits a limit on simultaneously assigned MACHINEDRUM machines to
@@ -58,10 +58,15 @@ no requirement for eight simultaneous Machinedrum instances.
 - **The MD master effects are out of scope**: the delay, reverb, EQ and
   dynamics that CTR-RE/GB/EQ/DX drive. The parent track's OT FX process the
   instance's stereo mix. Per-part processing (the MD FX page) stays.
+- **Sequencing is option B, the embedded 16-part pattern sequencer**
+  (section 6). Its pattern plays whenever the OT transport runs, with one
+  MD pattern per OT pattern. Only its editing view is entered and left,
+  through the OT's own grid recording (section 4, "Entering and leaving the
+  MD sequencer").
 
-For example, T1 can host MD instance A with a kick on internal part 1, snare
-on part 2, and hats on parts 3/4. T2 can host an independent instance B only
-if the qualified instance cap and resource placement permit it.
+For example, T5 can host the Part's MD instance with a kick on internal part
+1, snare on part 2, and hats on parts 3/4. A second instance in the same
+Part is not planned (section 1, decisions).
 
 The intended result is original MD behavior. Direct reuse of original DSP
 routines/subsystems is the first route. Approximate recreations require a
@@ -165,15 +170,34 @@ YES auditions, NO closes. Empty keys are inactive. Engine assignment affects
 only that part; initialize it from original defaults, with explicit reset
 and a documented restore policy for previously edited engines.
 
-### Grid recording
+### Entering and leaving the MD sequencer (decided 23 September 2026)
 
-Grid mode keeps TRIG 1-16 as OT sequencer steps. The screen shows which
-internal part is being edited; toggling a step changes that part's hit in
-the step's trigger mask. Other internal parts' hits at that step remain.
-This is the direct-OT-event editor in option A; option B instead edits the
-selected internal part's own pattern lane. Both need an MD PART selection
-overlay reachable during grid recording, then
-return to the same OT step page and retain the newly selected internal part.
+The MD pattern is not a mode that runs; it plays whenever the OT transport
+runs. Only its editing view is entered and left, and that view rides on the
+OT's own grid recording:
+
+- **Playing:** OT PLAY/STOP start and stop the MD pattern, and the OT
+  tempo drives it. It changes with the OT pattern (one MD pattern per OT
+  pattern). Muting the MD track mutes the whole instance.
+- **Entering:** select the MD track (its T5–T8 key), then press RECORD
+  (●). On an MD track, grid recording shows **the selected part's lane** on
+  TRIG 1–16, not the OT track's steps. The LCD info box names the part
+  being edited (e.g. `P05 E12-SD`), so the MD view is always recognisable.
+- **Switching parts:** hold the MD track's key. The LCD lists the 16 parts
+  with their engines, and the trig LEDs show which parts have steps.
+  TRIG 1–16 picks one, and releasing the track key returns to that part's
+  lane on the same step page. This works while the pattern plays.
+- **Step pages and locks:** PAGE pages through lanes longer than 16 steps.
+  Holding a step and turning A–F locks that part's parameter, as on the OT.
+- **Leaving:** RECORD again ends grid recording, as on the OT, or select
+  another track. The MD pattern keeps playing; only the view closes.
+- **The MD track's own OT lane** is a 17th entry in the part selector
+  (`TRK`). It is for OT-level events: restart trigs, scene and pattern
+  locks.
+- **Open:** whether "hold track key + TRIG" is free in stock OS 1.40C. The
+  track keys take part in other chords (FUNC for mute, CUE for cue), and
+  the panel handlers are not checked yet. If it is taken, the fallback is
+  FUNC + track key held.
 
 Handle press/release ownership and held trigs/scenes explicitly. Pad
 selection, engine assignment, performance audition, and grid editing must
@@ -181,6 +205,28 @@ never accidentally run each other's event handlers. Their exact shortcut
 bindings are a UI milestone, not claimed existing firmware behavior.
 
 ## 5. Eight encoders adapted to six
+
+**Proposed page mapping (23 September 2026, not yet decided).** It stays on
+the stock page machinery (descriptors, four-character names, the knob
+drawer) as far as possible:
+
+| OT control | On an MD track (T5–T8) |
+|---|---|
+| SRC | the selected part's synth parameters 1–6 on A–F |
+| FUNC+SRC (SRC setup) | synth parameters 7–8, engine choice, part level and pan |
+| AMP, LFO, FX1, FX2 | the OT track's own, acting on the instance's stereo mix |
+| LEVEL | the OT track's level |
+| info box | part and engine (e.g. `P05 E12-SD`), where stock shows the sample |
+
+The user's concept mockup (an image generated outside this repo, kept
+locally, not committed) shows all eight parameters as knobs on one screen,
+with a kit/part/engine box and a level meter. That would need a drawer of
+our own on the 128 × 64 surface (`docs/firmware/PANEL.md` has the
+primitives), with the eight knobs still on six encoders. Open:
+- six knobs per page (stock drawer) or eight on one screen;
+- whether per-part level and pan live on the setup page;
+- the mix itself: a simple per-part level/pan in the driver, or the MD
+  mixer's own per-voice section.
 
 The six OT encoders edit the currently selected internal part. Split each
 eight-parameter MD group into two views while preserving its original order:
@@ -243,7 +289,7 @@ simultaneous hits and repeated triggers. A single last-value trigger flag
 cannot represent this workload. UI part selection has no role in playback
 routing. Define mute/trigger relationships within the instance.
 
-### Option B: embedded 16-part pattern sequencer (recommended, not yet selected)
+### Option B: embedded 16-part pattern sequencer (chosen, 23 September 2026)
 
 Each MD instance owns a pattern with 16 internal drum lanes and their
 parameter locks. It consumes the OT timing and transport service; it does
@@ -275,7 +321,8 @@ complete MD OS or emulating its processors on the OT.
 
 Choose one sequencing architecture before implementing pattern persistence
 and the grid editor. Do not build two independent sequencers for the same
-instance by default. Option B is currently a recommendation, not a confirmed
+instance by default. (Superseded: the user chose option B on 23 September
+2026. The rest of this paragraph is the earlier wording.) Option B was then a recommendation, not a confirmed
 change to the user's initial choice.
 
 ### MIDI and modulation shared by both options

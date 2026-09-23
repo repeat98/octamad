@@ -7,6 +7,15 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- The ColdFire port's EMAC extension-register write knew only the
+  fractional layout (23 Sep 2026, from Jannik Aßfalg's stock profile): the
+  frame ISR saves and restores ACCext in integer mode every frame, so
+  every restore put the saved word's low byte into the accumulator. Fixed
+  to the CFPRM/QEMU integer layout, eight assertions in the EMAC gate; the
+  set gate's block dump is bit-identical. Docs: `FUN_4000c8a4` is
+  mid-operand, the frame builder is inside the frame ISR
+  `0x4000aad0..0x4000d9b0`; the stock delay routine ends at `0x4000385a`.
+  No image change.
 - The efficiency / tech-debt pass (23 Sep 2026), the frame around the five
   per-module entries below: `make verify-bus` grew from 21 to 28 cases
   (GRAIN, REVERSE, PLATE, BIG, the shimmer and the gate had no

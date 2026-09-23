@@ -14,7 +14,7 @@ the author's evidence · ❌ retracted.
 
 | | |
 |---|---|
-| frame routine | `0x400031a0` (body to ~`0x40003900`) |
+| frame routine | `0x400031a0..0x4000385a` (`rts` at `0x40003858` ✅ 23 Sep 2026; "to ~`0x40003900`" until then) |
 | ring base | SDRAM `0x4F502C10` (cached alias `0x477...`, `PLACEMENT.md`) |
 | ring size | 1,411,200 bytes per track = 176,400 × 8 = 4 s × stereo × 4 bytes; stride 1,411,328 ✅ (`0x400037aa`–`b6`) |
 | 4-second cap | `if (samples > 176400) samples = 176400` |

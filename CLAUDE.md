@@ -275,7 +275,14 @@ LOW words of two reads as a voice record's mode:level, which the CFPRM's
 pseudocode (`OMC,S/U == 01`: `ACC[39:24]` rounded into `Rx[15:0]`, upper half
 zero) puts there and a plain `>> 8` leaves at zero — every voice rendered
 silent for a whole session (8 Sep 2026, O9b). The self-test never exercised
-S/U. Read the CFPRM's MOVCLR pseudocode before touching `accRead`.
+S/U. Read the CFPRM's MOVCLR pseudocode before touching `accRead`. The ACCext
+registers have two layouts as well (fractional: eight extension + eight
+low bits per accumulator; integer: sixteen extension bits), and the frame
+ISR saves and restores them in INTEGER mode every frame (`0x4000ac96`,
+`0x4000d968`); the port's write knew only the fractional layout until 23
+Sep 2026 and put the saved word's low byte into ACCn[7:0] on every restore
+-- invisible to a stock A/A (deterministic), found by Jannik Aßfalg's A/B/A
+of a ColdFire patch. `test_emac.cpp` holds both layouts now.
 
 **THE VENDORED DSP AGU LEFT A MODULO BUFFER ON A PRE-DECREMENT FROM ITS
 BASE.** `x:-(r2)` with r2 = 0 and m2 = 0x3f gave `0xffffbf` where the chip

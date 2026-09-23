@@ -1392,6 +1392,32 @@ disassembles the result back and refuses mis-encodings and label prefixes.
   code/table/P-I budget. Hardware latency, DMA setup cost, and underrun
   margin remain unmeasured.
 
+### WP-A3 layout-driven relocation and driver (24 September 2026)
+
+- ✅ `md_relocate.py` and `md_driver.py` now import the plain address book in
+  [`modules/machinedrum/layout.py`](../../modules/machinedrum/layout.py).
+  The two relocated source spans land at `P:0x38000` (engine code and
+  descriptors) and `P:0x30000` (the 32K sine/table span); hot units default to
+  `P:0x1000`, loop words to `Y:0x0c00`, and the driver assembles at
+  `P:0x3fe00`. The old `--loopvars` flag remains only as an explicit
+  compatibility override; the normal gate uses the layout with no override.
+- ✅ The twelve-kit gate passed the proposed addresses. Ten kits preserve
+  their baseline counts; the only changes are the already-known TRX-S2
+  residuals: `c1d_16` is one extra differing block and `c10_16` is two extra
+  differing blocks. The complete table and commands are in
+  [`WP-A3.md`](machinedrum_reports/WP-A3.md).
+- ✅ `MD_REPLAY_STATEDIFF=5` was run on the relocated driver. The driver
+  loads the voice record base through `r6` from `Y:0x0c01`; no output block
+  changed on the diagnostic `c10` run. Four late word-3 state diagnostics
+  remain the existing low-scratch/state carry-in phenomenon, not a changed
+  voice-block base.
+- *inferred* The gate qualifies address plumbing in the replay harness only;
+  the shared-window ownership conflicts, voice-home choice, and six P-I-voice
+  cap remain the user’s A2 layout decisions. All A3 results are pending the
+  user’s sign-off.
+- **review:** user sign-off is required on the A2 map before this relocation
+  can be treated as an OT implementation result.
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and

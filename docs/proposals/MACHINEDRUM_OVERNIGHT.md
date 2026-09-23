@@ -5,10 +5,12 @@ Give the text below to the agent as its task.
 ---
 
 **Goal.** Work through the Machinedrum work packets in
-`docs/proposals/MACHINEDRUM_WORKPACKETS.md`, one at a time, until 08:00
-local time. Each packet ends with its acceptance check run and its output
-recorded, then committed and pushed. Stop earlier only when no packet you
-are allowed to do is left.
+`docs/proposals/MACHINEDRUM_WORKPACKETS.md`, one at a time, until **07:00
+local time**. The morning report
+`docs/proposals/machinedrum_reports/NIGHT-2026-09-24.md` is due at 07:00.
+Each packet ends with its acceptance check run and its output recorded, then
+committed and pushed. Stop earlier only when no packet you are allowed to do
+is left.
 
 **Before you start.** Read, in this order:
 1. `CLAUDE.md` (all of it: the traps are real);
@@ -57,22 +59,29 @@ are allowed to do is left.
 7. Go back to step 1.
 
 **Night order.** Skip any packet that is blocked.
-1. **WP-A1** Core-0 memory ledger.
-2. **WP-D1** Is the chord free? A static read.
-3. **WP-A2** The layout. Propose it, set it to `review`, and do not wait
-   for sign-off.
-4. **WP-R3** The interpreter/JIT mismatch.
-5. **WP-R5** The c47_2 anomaly.
-6. **WP-R2** The TRX-S2 residual. Measure only; decision D3 stays with the
-   user.
-7. **WP-R1** E12 sample delivery. The measurement and the design options
-   only; decision D4 stays with the user.
-8. **WP-A3**, then **WP-A4**, then **WP-A6**, **on the proposed layout**,
-   while WP-A2 is in `review`. Label every result "on the proposed layout,
-   pending the user's sign-off". If the user later changes the layout,
-   these are redone.
-9. **WP-B1**, then **WP-B2**, on the proposed layout, with the same label.
-   `make check` must stay green for the other remixes.
+1. **Finish WP-A1**. Follow items 1–2 under "Open and handover" in
+   `machinedrum_reports/WP-A1.md`: write `docs/firmware/CORE0_MEMORY.md`
+   from `WP-A1-ledger-all.txt`, `WP-A1-ledger-noreverb.txt` and the report's
+   tables, classifying every word of X `0–0x8fff`, Y `0–0xbfff` and the shared
+   window with evidence per range; add a section 12 entry to
+   `MACHINEDRUM_MACHINE.md`; mark `DSP.md` §7's "X 0x1d9f–0x483f delay
+   region for PLATE/DARK" as ❌ and point it to `CORE0_MEMORY.md`; run one
+   heavier project (all eight tracks playing, a slice machine, and a recorder
+   armed) with `tools/harness/md_reference/core0_wordmap.sh` and
+   `core0_ledger.py` to test whether X `0x2840–0x3fff` stays untouched (each
+   run takes about 40 s); then set WP-A1 to `done`.
+2. **WP-D1**. Continue from item 4 of the WP-A1 report: disassemble
+   `0x40060b58` and `0x400501d8` with the command in that report and check
+   whether either tests for a held track key.
+3. **WP-A2**. Propose the layout in `modules/machinedrum/layout.py`, with
+   an overlap check. Include the new FX1-slot option from item 3 of the
+   WP-A1 report. Set it to `review`; do not wait for sign-off.
+4. Then **WP-R3**, **WP-R5**, **WP-R2** (measure only), and **WP-R1**
+   (measurement and design options only).
+5. Then **WP-A3**, **WP-A4**, **WP-A6**, **WP-B1**, and **WP-B2**, all on the
+   proposed layout. Label every result "pending the user's sign-off". If the
+   user later changes the layout, these are redone. `make check` must stay
+   green for the other remixes.
 
 Do not start WP-A5 (decision D1), WP-B3 or later packets, WP-D2 or later,
 or anything that needs hardware.

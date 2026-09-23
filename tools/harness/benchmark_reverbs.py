@@ -25,7 +25,9 @@ import send_probe
 from remix import registry, stock
 
 ROOT = Path(__file__).resolve().parents[2]
-HOST = ROOT / 'vendor/dsp56300/build/source/dsp_host/dsp_host'
+# DSP_HOST names a dsp_host built from this tree when the shared vendor/ binary
+# is another checkout's (CLAUDE.md, the staged-copy trap).
+HOST = Path(os.environ.get('DSP_HOST') or ROOT / 'vendor/dsp56300/build/source/dsp_host/dsp_host')
 OUT = ROOT / 'out/reverb_bench'
 FRAMES = 16
 WARM = 256

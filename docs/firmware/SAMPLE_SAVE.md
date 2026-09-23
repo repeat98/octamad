@@ -289,11 +289,18 @@ builder simply does not ask.
 
 ## 7. What is not known
 
-- **The writer has not been executed.** Everything above is a static read with
-  a correct decoder. Running it means driving SAVE SAMPLE under `tools/emu/`
-  route A and watching for the `0x400166b8` call with length `0x2c` from
-  `0x40021032`. Falsifier: if no 44 byte write precedes the audio chunks, the
-  header builder is not what it looks like.
+- **The writer has not been executed here.** Everything above is a static
+  read with a correct decoder. Running it means driving SAVE SAMPLE under
+  `tools/emu/` route A and watching for the `0x400166b8` call with length
+  `0x2c` from `0x40021032`. Falsifier: if no 44 byte write precedes the audio
+  chunks, the header builder is not what it looks like. A stock save path
+  HAS run on hardware by another caller: octalab's CAPTURE (nordseele, MKI,
+  21 Sep 2026 ✅) drives the storage-job entry `0x40024168`, which reads the
+  object to save from `0x460be9ec` (`movel` at `+0x08`, re-read here) and its
+  kind from `0x460be9e8` — the pair `MAINMENU.md` §7's select committer
+  writes its pending edit to. With the pair unset on one path the job wrote
+  header-only WAVs; set before each job, real audio. Whether that job reaches
+  `0x40084e46` → `0x40020f04` is not traced.
 - **The converters `0x40097b54` and `0x40097f8c` are not disassembled.** Their
   argument shape is known from the call site, their internals are not.
 - **The FAT layer is still unmapped.** `0x40016864` and `0x400166b8` are used

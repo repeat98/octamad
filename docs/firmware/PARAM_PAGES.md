@@ -422,7 +422,10 @@ writes bank byte + `0x1001614e` copy, dirty flags, bitmaps `0x400339d8` →
 returns unless a trig key is down (`FUN_4003171c`); octalab replicates its
 body (dirty flags `bank+0x9b332` / `0x100f8598` / `0x40027e00`, refresh
 `0x4009da20`). Our decode of the same records by name is
-`tools/hw/ot_spec.py`.
+`tools/hw/ot_spec.py`. nordseele lowered their label for the `+0x10` step
+mask ("trigless locks") to 🟡 on 22 Sep 2026; our own reading of it stands
+✅ (`tools/hw/ot_bank.py`: exactly the locked steps without a trig, four
+patterns of OCTABAM90 byte-diffed).
 
 Smaller, same source: 🟡 pattern `+0x8e55` scale mode, `+0x8e53` length,
 `+0x8e54` scale, `+0x8e50` master length (short, −1 INF); per track `TRAC

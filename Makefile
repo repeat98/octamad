@@ -240,6 +240,11 @@ verify-roll: ## Prove an alternate REVERB engine is bit-identical: make verify-r
 verify-spectrum-ident: ## Prove a rewritten Spectrum is bit-identical to a saved reference: make verify-spectrum-ident SAVE=1 on the tree you trust, then make verify-spectrum-ident
 	python3 tools/verify/verify_spectrum_ident.py $(if $(SAVE),ref,check)
 
+.PHONY: verify-ident
+verify-ident: ## Prove a rewritten FX1 station is bit-identical across a knob matrix: make verify-ident MOD=character SAVE=1 on the tree you trust, then make verify-ident MOD=character
+	@test -n "$(MOD)" || { echo "usage: make verify-ident MOD=<spectrum|character|modulation> [SAVE=1]"; exit 1; }
+	python3 tools/verify/verify_ident.py $(MOD) $(if $(SAVE),ref,check)
+
 .PHONY: verify-delay
 verify-delay: ## Prove an alternate DELAY engine is bit-identical: make verify-delay CAND=modules/busdelay/delay_new.asm
 	@test -n "$(CAND)" || { echo "usage: make verify-delay CAND=modules/busdelay/delay_new.asm [REF=modules/busdelay/delay_server.asm]"; exit 1; }
@@ -338,13 +343,9 @@ disasm: ## Open radare2 on the decompressed ColdFire MAIN OS
 	scripts/disasm.sh
 
 .PHONY: where
-where: ## What's recorded + a live disasm window for one address. make where A=0x40004d40 [N=128] [NOTE="..."]
-	@test -n "$(A)" || { echo "usage: make where A=0x40004d40 [N=bytes] [NOTE=\"finding\"]"; exit 1; }
-	python3 tools/build/where.py $(A) $(if $(N),-n $(N)) $(if $(NOTE),--note "$(NOTE)")
-
-.PHONY: symbols-seed
-symbols-seed: ## Re-scan CLAUDE.md/docs/STATUS.md for addresses -> firmware/symbols.toml (additive, safe to re-run)
-	python3 tools/build/seed_symbols.py
+where: ## Every doc paragraph citing one ColdFire address + a disasm window. make where A=0x40004d40 [N=128]
+	@test -n "$(A)" || { echo "usage: make where A=0x40004d40 [N=bytes]"; exit 1; }
+	python3 tools/build/where.py $(A) $(if $(N),-n $(N))
 
 .PHONY: clean
 clean: ## Remove build products (keeps downloads/ and vendor/)

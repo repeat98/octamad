@@ -235,6 +235,73 @@ int main()
 		}
 	}
 
+	// ---- the ACCext registers, BOTH layouts ---------------------------------
+	// The frame ISR saves them in INTEGER mode (`clrl %d0; movel %d0,%macsr;
+	// movel %accext01,%d4; movel %accext23,%d5` at 0x4000ac96) and restores
+	// them the same way (`movel #0,%macsr; ... movel %d4,%accext01; movel
+	// %d5,%accext23` at 0x4000d968), every frame. Until 23 Sep 2026 the write
+	// knew only the fractional layout (CFPRM: eight extension + eight low
+	// bits per accumulator) and so put the saved word's low byte into
+	// ACCn[7:0] on every restore: 0x12345678 came back 0x123456ab and the
+	// extensions read back 0xfe008900 for 0xfedc89ab. Found by Jannik
+	// Assfalg's A/B/A of a ColdFire patch whose integer-mode MAC loop the ISR
+	// interrupted mid-accumulation (the stock run repeats exactly because the
+	// corruption is deterministic -- an A/A cannot see it).
+	//
+	//   a93c 0000 0000  movel #0,%macsr        a100  movel %d0,%acc0
+	//   a301  movel %d1,%acc1                  ab02  movel %d2,%accext01
+	//   ab84  movel %accext01,%d4              a186  movel %acc0,%d6
+	//   a387  movel %acc1,%d7
+	//   a500  movel %d0,%acc2                  a701  movel %d1,%acc3
+	//   af03  movel %d3,%accext23              af85  movel %accext23,%d5
+	//   a93c 0000 00c0  movel #0xc0,%macsr     a586  movel %acc2,%d6
+	//   a93c 0000 0080  movel #0x80,%macsr     a787  movel %acc3,%d7
+	std::printf("ACCext gate (integer layout = the frame ISR's save/restore; fractional = the control):\n");
+	{
+		struct Regs { uint32_t d4, d5, d6, d7; };
+		const auto runExt = [](const std::vector<uint8_t>& _code, const uint32_t _d0, const uint32_t _d1,
+			const uint32_t _d2, const uint32_t _d3)
+		{
+			std::vector<uint8_t> image(_code);
+			image.push_back(0x4e); image.push_back(0x71);
+			ot::Machine m(image);
+			m68k_set_reg(m.getCpuState(), M68K_REG_D0, _d0);
+			m68k_set_reg(m.getCpuState(), M68K_REG_D1, _d1);
+			m68k_set_reg(m.getCpuState(), M68K_REG_D2, _d2);
+			m68k_set_reg(m.getCpuState(), M68K_REG_D3, _d3);
+			const auto stop = m.run(static_cast<uint64_t>(image.size() / 2));
+			if(stop == ot::Machine::Stop::Illegal)
+				std::printf("     (stopped: %s)\n", m.why().c_str());
+			return Regs{static_cast<uint32_t>(m68k_get_reg(m.getCpuState(), M68K_REG_D4)),
+				static_cast<uint32_t>(m68k_get_reg(m.getCpuState(), M68K_REG_D5)),
+				static_cast<uint32_t>(m68k_get_reg(m.getCpuState(), M68K_REG_D6)),
+				static_cast<uint32_t>(m68k_get_reg(m.getCpuState(), M68K_REG_D7))};
+		};
+		// 1. Integer mode: the extension word neither disturbs the low 32 bits
+		//    nor reads back changed.
+		const auto i = runExt({0xa9, 0x3c, 0, 0, 0, 0, 0xa1, 0x00, 0xa3, 0x01, 0xab, 0x02,
+			0xab, 0x84, 0xa1, 0x86, 0xa3, 0x87}, 0x12345678, 0x9abcdef0, 0xfedc89ab, 0);
+		check("integer: accext01 reads back what was written", i.d4, 0xfedc89ab);
+		check("integer: accext01 write leaves acc0[31:0] alone", i.d6, 0x12345678);
+		check("integer: accext01 write leaves acc1[31:0] alone", i.d7, 0x9abcdef0);
+		// 2. Integer mode: the sixteen bits land in ACC[47:32], where the
+		//    read-out's saturation sees them (unsigned OMC: any extension bit
+		//    -> 0xffffffff; signed OMC: ACC[47:31] not all-equal -> 0x7fffffff
+		//    for a positive extension).
+		const auto j = runExt({0xa9, 0x3c, 0, 0, 0, 0, 0xa5, 0x00, 0xa7, 0x01, 0xaf, 0x03,
+			0xaf, 0x85, 0xa9, 0x3c, 0, 0, 0, 0xc0, 0xa5, 0x86, 0xa9, 0x3c, 0, 0, 0, 0x80, 0xa7, 0x87},
+			0x12345678, 0x9abcdef0, 0, 0x00017fff);
+		check("integer: accext23 reads back what was written", j.d5, 0x00017fff);
+		check("integer: acc2 extension 0x7fff saturates the unsigned read", j.d6, 0xffffffff);
+		check("integer: acc3 extension 0x0001 saturates the signed read", j.d7, 0x7fffffff);
+		// 3. Fractional mode (the control): the eight-plus-eight layout
+		//    round-trips and the fractional read-out is untouched.
+		const auto f = runExt({0xa9, 0x3c, 0, 0, 0, 0x20, 0xa1, 0x00, 0xab, 0x02, 0xab, 0x84, 0xa1, 0x86},
+			0x12345678, 0, 0x11ab22cd, 0);
+		check("fractional: accext01 reads back what was written", f.d4, 0x11ab22cd);
+		check("fractional: acc0 reads its 32 fraction bits", f.d6, 0x12345678);
+	}
+
 	// ---- MOV3Q to MEMORY (the V4e layer, same dispatch path) -------------
 	// ❌ Retracts v4e.cpp's "only Dn is reached by this firmware": the project
 	// load runs eight `mov3ql #-1,%a0@+` at 0x4009d8d0 and the refusal was a

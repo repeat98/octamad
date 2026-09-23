@@ -1,35 +1,57 @@
 #!/usr/bin/env python3
-"""What do we already know about this ColdFire address, and what's actually
-there? One command instead of re-grepping docs/ and re-typing an objdump
-invocation:
+"""What the docs already say about a ColdFire address, and what is there.
 
     python3 tools/build/where.py 0x40004d40
-    make where A=0x40004d40                  # same thing
-    make where A=0x40004d40 N=128             # wider disassembly window
-    make where A=0x40004d40 NOTE="confirmed under the port: ..."
-                                               # record a NEW finding, in place
+    make where A=0x40004d40 [N=128]
 
-Prints, in order:
-  1. every note firmware/symbols.toml already has for this exact address
-     (seeded from docs/CLAUDE.md prose, or added by a previous `NOTE=`)
-  2. the nearest OTHER recorded addresses, so you can tell whether you're
-     inside a documented region even without an exact hit
-  3. a live EMAC-correct disassembly window around the address, via
-     scripts/disasm.sh emac -- the same tool `make disasm`'s docstring
-     recommends, run for you instead of re-typed by hand
-
-With NOTE=, appends that text to the address's entry (source recorded as
-"session <today>") and saves -- so the next `where` on this address, in this
-session or a future one, already has it.
+Prints every paragraph of CLAUDE.md, README.md, docs/**/*.md and
+modules/*/README.md that cites the exact address (file:line first), the
+nearest other cited addresses within 0x200, and an EMAC-correct
+disassembly window from scripts/disasm.sh. The docs are scanned on each
+call; nothing is cached or duplicated. A new finding about an address goes
+in the topical doc (docs/firmware/CONTRIBUTIONS.md says where), which is
+what the next call prints.
 """
-import argparse, pathlib, subprocess, sys
-
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-import symtable  # noqa: E402
+import argparse, pathlib, re, subprocess, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+ADDR_RE = re.compile(r"\b0x4[0-9a-f]{7}\b")
 NEARBY_WINDOW = 0x200
 NEARBY_MAX = 6
+
+
+def files():
+    return ([ROOT / "CLAUDE.md", ROOT / "README.md"]
+            + sorted((ROOT / "docs").rglob("*.md"))
+            + sorted((ROOT / "modules").glob("*/README.md")))
+
+
+def paragraphs(text):
+    """(start_line, paragraph) per blank-line-delimited block."""
+    buf, start = [], 1
+    for i, line in enumerate(text.splitlines(), 1):
+        if line.strip():
+            if not buf:
+                start = i
+            buf.append(line)
+        elif buf:
+            yield start, "\n".join(buf)
+            buf = []
+    if buf:
+        yield start, "\n".join(buf)
+
+
+def scan():
+    """addr -> [(file:line, paragraph)] over every doc, one pass."""
+    cites = {}
+    for f in files():
+        if not f.is_file():
+            continue
+        rel = f.relative_to(ROOT)
+        for start, para in paragraphs(f.read_text(errors="replace")):
+            for a in set(ADDR_RE.findall(para)):
+                cites.setdefault(int(a, 16), []).append((f"{rel}:{start}", para))
+    return cites
 
 
 def main():
@@ -38,57 +60,40 @@ def main():
     ap.add_argument("addr")
     ap.add_argument("--bytes", "-n", type=lambda s: int(s, 0), default=64,
                     help="disassembly window size (default 64)")
-    ap.add_argument("--note", default=None,
-                    help="record a new finding for this address")
-    ap.add_argument("--name", default=None, help="name this address (with --note)")
-    ap.add_argument("--kind", default=None,
-                    help="function|table|hook-site|cave|poke|detour|global (with --note)")
-    ap.add_argument("--confidence", default=None, choices=["doc", "measured"],
-                    help="with --note (default: doc)")
     args = ap.parse_args()
-    addr = symtable.norm(args.addr)
-    ival = int(addr, 16)
+    s = args.addr.strip().lower()
+    s = s if s.startswith("0x") else "0x" + s
+    if not re.fullmatch(r"0x[0-9a-f]{6,8}", s):
+        sys.exit(f"where: {args.addr!r} is not a hex address")
+    ival = int(s, 16)
+    cites = scan()
 
-    if args.note:
-        source = f"session {__import__('datetime').date.today().isoformat()}"
-        added = symtable.add_note(addr, args.note, source, name=args.name,
-                                  kind=args.kind, confidence=args.confidence)
-        print(f"{'recorded' if added else 'already on file (unchanged)'}: "
-             f"{addr} -- {args.note}")
+    print(f"=== 0x{ival:08x} ===")
+    for src, para in cites.get(ival, []):
+        print(f"  ({src}) {' '.join(para.split())}")
+    if ival not in cites:
+        print("  no doc cites this address")
 
-    entries = symtable.load()
-    e = entries.get(addr)
-    print(f"\n=== {addr} ===")
-    if e:
-        if e.get("name"):
-            print(f"  name: {e['name']}  ({e.get('kind', 'unknown')}, "
-                 f"{e.get('confidence', 'doc')})")
-        for n in e["notes"]:
-            print(f"  [{n['date']}] ({n['source']}) {n['text']}")
-    else:
-        print("  no recorded notes -- nothing seeded or learned here yet")
-
-    nearby = sorted(
-        (abs(int(a, 16) - ival), a, en) for a, en in entries.items()
-        if a != addr and abs(int(a, 16) - ival) <= NEARBY_WINDOW)[:NEARBY_MAX]
+    nearby = sorted((abs(a - ival), a) for a in cites if a != ival
+                    and abs(a - ival) <= NEARBY_WINDOW)[:NEARBY_MAX]
     if nearby:
-        print(f"\n  nearby recorded addresses (within 0x{NEARBY_WINDOW:x}):")
-        for dist, a, en in nearby:
-            sign = "+" if int(a, 16) >= ival else "-"
-            label = en.get("name") or (en["notes"][0]["text"][:70] + "..."
-                                       if en["notes"] else "")
-            print(f"    {a}  ({sign}0x{dist:x})  {label}")
+        print(f"\n  nearby cited addresses (within 0x{NEARBY_WINDOW:x}):")
+        for dist, a in nearby:
+            src, para = cites[a][0]
+            sign = "+" if a >= ival else "-"
+            print(f"    0x{a:08x}  ({sign}0x{dist:x})  {src}: "
+                  f"{' '.join(para.split())[:70]}...")
 
     disasm = ROOT / "scripts" / "disasm.sh"
     raw = ROOT / "out" / "raw" / "section_3_MAIN_OS.bin"
     if disasm.is_file() and raw.is_file() and ival >= 0x40000400:
-        print(f"\n  -- scripts/disasm.sh emac {addr} {args.bytes} --")
-        r = subprocess.run(["bash", str(disasm), "emac", addr, str(args.bytes)],
+        print(f"\n  -- scripts/disasm.sh emac 0x{ival:08x} {args.bytes} --")
+        r = subprocess.run(["bash", str(disasm), "emac", f"0x{ival:08x}", str(args.bytes)],
                            cwd=ROOT, capture_output=True, text=True)
         print((r.stdout or r.stderr).rstrip())
     else:
-        print("\n  (no out/raw/section_3_MAIN_OS.bin -- run 'make os' then "
-             "'make recon' for a live disassembly window)")
+        print("\n  (no out/raw/section_3_MAIN_OS.bin: `make os` then `make recon` "
+              "for the disassembly window)")
 
 
 if __name__ == "__main__":

@@ -111,7 +111,8 @@ sequencer trig
    0x800018be/de and moved into the immediate array 0x46c7e9fa by the
    per-tick comparator at 0x4000b308 when their quantise class fires
    (RECORDER.md)
-   → FUN_4000c8a4 (the frame builder, control rate): consumes mailboxes,
+   → the frame ISR 0x4000aad0..0x4000d9b0, its frame builder (control
+     rate; "FUN_4000c8a4" is mid-operand, MIDI.md): consumes mailboxes,
      updates 8 voices, assembles a parameter frame in a double buffer in
      shared RAM 0x80000000 (ping-pong 0x800000e0)
      → the DSP host port at 0x20000000

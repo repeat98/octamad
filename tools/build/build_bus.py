@@ -501,29 +501,32 @@ def _dev_hooks(key, src):
 
 _SCRATCH = None
 
-# "Disassemble what you assemble" (CLAUDE.md: the assembler mis-encodes some
-# instruction forms SILENTLY -- tfr as rnd, several mpy operand orders as
-# mpysu, cmp as max -- every one of those was found by a human noticing a
-# surprising RESULT and disassembling by hand, sometimes days later). `-list`
-# makes dsp_asm echo back its own idea of what each word means; DISASM
-# decodes those same words with no knowledge of what was typed. Comparing the
-# two MNEMONICS (not the full operand text -- a branch's relative displacement
-# and a `do` loop's immediate legitimately render differently between an
-# assembly listing and an independent decoder, with no bug involved) turns a
-# same-operands-wrong-opcode encoding defect into a build failure instead of
-# a surprise. It cannot see a resolver picking the wrong ADDRESS for a
-# symbolic operand (the label-prefix trap): both tools render whatever bytes
-# dsp_asm already wrote, so a corrupted value looks consistent to both. See
-# docs/remixer/TOOLING.md section 4.
+# Disassemble what you assemble (CLAUDE.md): dsp_asm's own listing (-list)
+# against dsp56kDisassemble's decode of the same bytes, mnemonic by mnemonic.
+# Only mnemonics are compared: a branch displacement or a `do` immediate
+# renders differently in a listing and a decoder without any bug. What this
+# cannot see is a resolver choosing the wrong ADDRESS for a symbolic operand
+# (the label-prefix trap): both tools decode the bytes dsp_asm wrote.
+# Jannik Aßfalg, PR #380, 22 Sep 2026.
 _LISTLINE = re.compile(r"^([0-9a-f]{6}): (\S+)(?:\s+(.*?))?\s*; "
                        r"[0-9a-f]{6}(?: [0-9a-f]{6})?$")
 
-# mpy encoded as mpysu is not a defect here -- it is the ISA's encoding for
-# certain mpy operand pairs, and the project's rule (CLAUDE.md) is to AUDIT
-# the second operand's sign at each site, not to avoid the form. 23 such
-# sites already ship, audited safe. Flag it so a new site gets looked at;
-# never fail the build on it alone.
-_MPYSU_OK = {("mpy", "mpysu")}
+# `mpy` that dsp_asm encodes as `mpysu` is the one mismatch the shipping
+# code carries on purpose: the second operand is non-negative at every site
+# (CLAUDE.md). Sites per assemble() call, by module label and operands. A
+# build whose count differs from this table stops with the site list: a new
+# site needs its operand audited and this table updated; a vanished site
+# needs the table updated so the count stays exact.
+MPYSU_AUDITED = {
+    "REVERB SERVER": {"x0,y0,a": 12, "x0,x1,a": 9, "x1,y1,a": 4},
+    "CHARACTER":     {"x1,y1,b": 1},
+    "SPECTRUM":      {"x1,y1,b": 1},
+}
+# These flags substitute or excise module source (probes, the shimmer
+# excision, the marker splice, a candidate engine), so the shipping counts
+# do not apply: a variant build prints what it found instead.
+_VARIANT_FLAGS = ("NOSHIM", "MARKER", "PROBE", "XPROBE", "TPROBE", "DELAYPROBE",
+                  "RVSRC", "DLSRC")
 
 
 def _listing(text):
@@ -538,36 +541,41 @@ def _listing(text):
 def _roundtrip(list_out, blob, org, label):
     src = _listing(list_out)
     if not src:
-        return          # nothing decodable on this call (e.g. an empty stub)
+        return
     tmp = _SCRATCH / "roundtrip.bin"
     tmp.write_bytes(blob)
     r = subprocess.run([str(DISASM), "-in", str(tmp), "-pc", f"{org:x}", "-le"],
                        capture_output=True, text=True)
     dec = _listing(r.stdout)
-    bad, warn = [], []
+    bad, mpysu = [], {}
     for a, (sm, sop) in src.items():
-        if a not in dec:
+        if a not in dec or dec[a][0] == sm:
             continue
         dm, dop = dec[a]
-        if dm == sm:
-            continue
-        (warn if (sm, dm) in _MPYSU_OK else bad).append((a, sm, sop, dm, dop))
-    if warn:
-        who = f" in {label}" if label else ""
-        for a, sm, sop, dm, dop in warn:
-            print(f"  ⚠ mpysu{who}: P:0x{a:05x}  wrote '{sm} {sop}', "
-                  f"chip runs '{dm} {dop}' -- audit: is the second operand "
-                  f"always non-negative here?")
-    if not bad:
-        return
+        if (sm, dm) == ("mpy", "mpysu"):
+            mpysu.setdefault(sop, []).append(a)
+        else:
+            bad.append((a, sm, sop, dm, dop))
     who = f" in {label}" if label else ""
-    detail = "\n".join(f"    P:0x{a:05x}  wrote '{sm} {sop}'  chip runs "
-                       f"'{dm} {dop}'" for a, sm, sop, dm, dop in bad)
-    sys.exit(f"disassemble-what-you-assemble caught a silent mis-encoding"
-             f"{who} -- dsp_asm wrote bytes that do not decode to the "
-             f"mnemonic that was typed:\n{detail}\n"
-             f"  (see CLAUDE.md, 'the assembler mis-encodes instructions, "
-             f"silently' -- this is that trap, before it ships)")
+    if bad:
+        detail = "\n".join(f"    P:0x{a:05x}  wrote '{sm} {sop}'  chip runs "
+                           f"'{dm} {dop}'" for a, sm, sop, dm, dop in bad)
+        sys.exit(f"disassemble-what-you-assemble: dsp_asm wrote bytes{who} that "
+                 f"do not decode to the mnemonic typed:\n{detail}")
+    found = {k: len(v) for k, v in mpysu.items()}
+    audited = MPYSU_AUDITED.get(label, {})
+    if any(os.environ.get(k) for k in _VARIANT_FLAGS):
+        if found:
+            print(f"  mpysu{who} (variant build, table not enforced): {found}")
+        return
+    if found != audited:
+        sites = "\n".join(f"    mpy {k}: {len(v)} site(s) at "
+                          + ", ".join(f"P:0x{a:05x}" for a in v)
+                          for k, v in sorted(mpysu.items()))
+        sys.exit(f"mpysu audit{who}: found {found or 'none'}, MPYSU_AUDITED says "
+                 f"{audited or 'none'}. Every mpy encoded as mpysu needs its "
+                 f"second operand shown non-negative (CLAUDE.md), then the table "
+                 f"in tools/build/build_bus.py updated:\n{sites or '    (no sites)'}")
 
 
 def assemble(src_text, org, label=""):

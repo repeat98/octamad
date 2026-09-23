@@ -44,7 +44,7 @@ writes Part `+0x8f07e + track·30 + slot`, shadow `0x100a51cc`, lane
 ## Scenes / crossfader ✅
 
 `FUN_4003f1b4` handles only STRT/LEN/RATE. The general morph runs every
-DSP frame inside the frame builder `FUN_4000c8a4` (`0x4000cc6c..0x4000cf3e`)
+DSP frame inside the frame builder (`0x4000cc6c..0x4000cf3e`, inside the frame ISR `0x4000aad0..0x4000d9b0`)
 on the ping-pong frame copy; live param words are never touched. Scene
 block = 8 tracks × 0x20; byte *k* ↔ frame halfword *k*; bytes 24-29 = FX2
 page 1 (`r6+0..5`); the loop stops at halfword 17 of the page block; `0xFF`
@@ -533,7 +533,13 @@ nothing per channel needs decoding.
 The 0x40-byte per-track record (`0x80000110 + ping*0x200 + t*0x40`) is
 **fully written every frame** by the frame builder's copy loop at
 `0x4000cb2a..0x4000cb98` (same function as the writer call; no `rts`
-between `0x4000c8a4` and the `jsr 0x40004bd4` at `0x4000d0e4`, M):
+between `0x4000c8a2` and the `jsr 0x40004bd4` at `0x4000d0e4`, M). ❌ The
+`FUN_4000c8a4` this document named until 23 Sep 2026 is not a function:
+`0x4000c8a4` is inside the operand of `lea 0x46c7e9fa,%a2` at `0x4000c8a2`
+(objdump, the stream converging from `0x4000c864`), and the builder is
+part of the frame ISR `0x4000aad0` (`lea -252(%sp)`) `..0x4000d9b0` (`rte`
+at `0x4000d9ae`). Jannik Aßfalg's profiler refused the label; re-checked
+here ✅:
 
 ```
 4000cb4e  moveml d0-d5,(a0)      ; +0x00..+0x17  <- 0x80000a50+64t [24..47]
@@ -586,7 +592,7 @@ ColdFire `mvs/mvz/byterev/mac`, which is most of this code). Markers as in
 * `FUN_4003f1b4` is **not** the general morph. It is a special path for the
   three playback-position parameters (STRT/LEN/RATE) that must reach the voice
   task as a message. **The general morph runs every DSP frame inside the frame
-  builder `FUN_4000c8a4` (`0x4000cc6c..0x4000cf3e`)**, on the DSP-bound copy of
+  builder (`0x4000cc6c..0x4000cf3e`, inside the frame ISR `0x4000aad0..0x4000d9b0`)**, on the DSP-bound copy of
   the parameter halfwords, never on the live parameter words.
 * A scene block covers **page 1 of five pages only — 30 knobs per track**.
   Page 2 (slots 6..11) and the companion fields are unreachable, and the

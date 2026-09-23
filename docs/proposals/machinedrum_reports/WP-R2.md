@@ -1,7 +1,7 @@
 # WP-R2 The TRX-S2 residual: report
 
 - **Status:** review
-- **Branch and commit:** `machinedrum` @ `PENDING`
+- **Branch and commit:** `machinedrum` @ `8513de2`
 - **Date:** 2026-09-24
 - **Agent:** Codex
 

@@ -73,7 +73,7 @@ Statuses:
 | WP-E3 Admission | todo | | | | | |
 | WP-E4 Qualification | todo | | | | | hardware |
 | WP-R1 E12 sample delivery | todo | | | | | decision D4 follows it |
-| WP-R2 The TRX-S2 residual | review | `machinedrum` | `PENDING` | 2026-09-24 | `machinedrum_reports/WP-R2.md` | D3: current 36-word swap leaves c1d +1/c10 +2 blocks; full low image fixes c1d at ~70 estimated cycles/sample but not c10 |
+| WP-R2 The TRX-S2 residual | review | `machinedrum` | `8513de2` | 2026-09-24 | `machinedrum_reports/WP-R2.md` | D3: current 36-word swap leaves c1d +1/c10 +2 blocks; full low image fixes c1d at ~70 estimated cycles/sample but not c10 |
 | WP-R3 The interpreter/JIT mismatch | blocked | `machinedrum` | `94ef689` | 2026-09-24 | `machinedrum_reports/WP-R3.md` | `ADD X,B` boundary isolated in both captures; needs the user's WP-R4 vendor repin before parity can be repaired |
 | WP-R4 The stale toolchain | blocked | | | | | the user reruns `scripts/setup.sh` |
 | WP-R5 The c47_2 anomaly | done | `machinedrum` | `d27aec4` | 2026-09-24 | `machinedrum_reports/WP-R5.md` | track 7's default EFM-CB is the heaviest voice: 3,946 cycles / 2,983 engine words per render |

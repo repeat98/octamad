@@ -76,7 +76,7 @@ Statuses:
 | WP-R2 The TRX-S2 residual | todo | | | | | decides D3 |
 | WP-R3 The interpreter/JIT mismatch | blocked | `machinedrum` | `94ef689` | 2026-09-24 | `machinedrum_reports/WP-R3.md` | `ADD X,B` boundary isolated in both captures; needs the user's WP-R4 vendor repin before parity can be repaired |
 | WP-R4 The stale toolchain | blocked | | | | | the user reruns `scripts/setup.sh` |
-| WP-R5 The c47_2 anomaly | done | `machinedrum` | `PENDING` | 2026-09-24 | `machinedrum_reports/WP-R5.md` | track 7's default EFM-CB is the heaviest voice: 3,946 cycles / 2,983 engine words per render |
+| WP-R5 The c47_2 anomaly | done | `machinedrum` | `d27aec4` | 2026-09-24 | `machinedrum_reports/WP-R5.md` | track 7's default EFM-CB is the heaviest voice: 3,946 cycles / 2,983 engine words per render |
 | WP-R6 The MD mixer's per-voice section | blocked | | | | | only if D1 = B |
 
 ---

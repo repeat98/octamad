@@ -1,7 +1,7 @@
 # WP-R5 c47_2 default-kit cost: report
 
 - **Status:** done
-- **Branch and commit:** `machinedrum` @ `PENDING`
+- **Branch and commit:** `machinedrum` @ `d27aec4`
 - **Date:** 2026-09-24
 - **Agent:** Codex
 

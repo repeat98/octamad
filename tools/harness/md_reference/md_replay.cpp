@@ -20,7 +20,7 @@
 // MD_REPLAY_KEEP_OLD=1 and MD_REPLAY_WIPE=<start>-<end> (with --reloc) keep
 // the old regions, or wipe only part of them.
 //
-//   md_replay <capture dir> [--reloc] [out.wav slot]
+//   md_replay <capture dir> [--reloc] [--driver] [out.wav slot]
 //
 // --reloc applies <capture dir>/reloc.txt (md_relocate.py) after loading the
 // snapshot: each region is copied to its new place, the patched words are
@@ -153,9 +153,11 @@ int main(int _argc, char** _argv)
 		return 2;
 	}
 	const std::string dir = _argv[1];
-	const bool reloc = _argc > 2 && std::string(_argv[2]) == "--reloc";
-	if(reloc)
+	// Flags right after the capture dir: --reloc, --driver (either order).
+	bool reloc = false, driver = false;
+	while(_argc > 2 && (std::string(_argv[2]) == "--reloc" || std::string(_argv[2]) == "--driver"))
 	{
+		(std::string(_argv[2]) == "--reloc" ? reloc : driver) = true;
 		for(int i = 2; i + 1 < _argc; ++i)
 			_argv[i] = _argv[i + 1];
 		--_argc;
@@ -282,7 +284,34 @@ int main(int _argc, char** _argv)
 			break;
 		}
 	}
-	dsp.setPC(0x6b);
+	// --driver: <capture dir>/driver.bin and driver.sym (md_driver.py) replace
+	// the MD loop. The snapshot stands at a slot-0 loop head, which is the
+	// driver's md_slot with the same loop words; the replay stops at md_slot
+	// and md_done where it stopped at P:6b and P:b5, and there is no I/O to
+	// step past.
+	TWord slotPc = 0x6b, donePc = 0xb5;
+	if(driver)
+	{
+		std::map<std::string, TWord> syms;
+		{
+			std::ifstream in(dir + "/driver.sym");
+			std::string k, v;
+			while(in >> k >> v)
+				syms[k] = static_cast<TWord>(std::stoul(v, nullptr, 16));
+		}
+		std::ifstream in(dir + "/driver.bin");
+		std::string w;
+		TWord at = syms.at("md_period");
+		while(in >> w)
+			memory.set(MemArea_P, at++, static_cast<TWord>(std::stoul(w, nullptr, 16)));
+		slotPc = syms.at("md_slot");
+		donePc = syms.at("md_done");
+		// The MD loop is not used: fill it, so nothing can fall back into it.
+		for(TWord a = 0x64; a < 0xe8; ++a)
+			memory.set(MemArea_P, a, 0xa5a5a5);
+		std::cout << "driver: " << (at - syms.at("md_period")) << " words at " << std::hex << syms.at("md_period") << std::dec << "\n";
+	}
+	dsp.setPC(slotPc);
 
 	const auto log = readLog(dir + "/log.txt");
 	// A capture that logs each slot's words after the render ("S" lines)
@@ -482,7 +511,7 @@ int main(int _argc, char** _argv)
 			std::cerr << "log out of step at block " << i << "\n";
 			return 1;
 		}
-		runTo({0x6b});
+		runTo({slotPc});
 		if(y(0x142) != rec.slot)
 		{
 			std::cerr << "slot mismatch at block " << i << ": emulator " << y(0x142) << ", log " << rec.slot << "\n";
@@ -545,7 +574,7 @@ int main(int _argc, char** _argv)
 			for(size_t k = 0; k < 16 && k < rec.words.size(); ++k)
 				memory.set(MemArea_Y, base + static_cast<TWord>(k), rec.words[k]);
 
-		runTo({0xb5});
+		runTo({donePc});
 		const auto out = y(0x140);
 		bool same = true;
 		for(uint32_t k = 0; k < 32; ++k)
@@ -573,6 +602,8 @@ int main(int _argc, char** _argv)
 		if(!same && firstBad == SIZE_MAX)
 			firstBad = i;
 
+		if(driver)
+			continue;
 		// Past the I/O: slot 0 polls the frame sync (P:bb), every slot waits
 		// for the output DMA (P:cf).
 		if(runTo({0xbb, 0xcf}) == 0xbb)

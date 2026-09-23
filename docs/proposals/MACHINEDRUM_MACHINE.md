@@ -801,6 +801,67 @@ track 1 it logs every host-port word through an assign, a trig, encoder A
 - What it does not prove yet: running at the OT's addresses (next), and any
   engine other than TRX-BD (the capture takes any id).
 
+### Relocating to OT addresses: the inventory (23 September 2026)
+
+This is from `tools/harness/md_reference/md_addrs.py` and the same
+executed-code set as above (all 50 engines plus the 16-voice loads).
+
+- ✅ **The engine code lives only in the external regions**,
+  `P:100000–103c7x` and `P:142100–1475ff`. It never calls into low P;
+  only the MD main loop and vectors, `P:0–e7`, are there, and they are
+  replaced. No PC-relative branch crosses between the two regions, so each
+  can move by its own offset.
+- ✅ **Every external-address operand is a long form**, meaning the address
+  sits in the instruction's second word. That covers:
+  - 112 distinct jump/call/loop targets;
+  - table bases with a register offset (`0x140000`, `0x141000`,
+    `0x145xxx`, `0x148xxx`);
+  - 61 immediates in `0x100000–0x14ffff`, all `#>` forms.
+
+  All of them can be patched in place without changing any instruction's
+  length.
+- ✅ Some of those immediates point at memory the load images do not fill:
+  - `0x103d7b–0x103db7`: tables between the code and the samples;
+  - `0x12e70c` and `0x135600`: inside the sample block, so E12 sample
+    addresses;
+  - `0x148000` and `0x14a000`: past everything loaded, *inferred* to be
+    runtime working buffers in the MD's external RAM. Their size is to be
+    measured.
+- ✅ **The engines' own low memory:**
+  - short-form (one-word, 6-bit) operands on `X:0–0x27` and `Y:0–7` at
+    hundreds of sites, which cannot be repointed without changing
+    instruction lengths;
+  - long-form operands on `X:0x66–0xff`, `Y:0xfa–0xff` and
+    `Y:0x140`/`0x142`;
+  - the records at `Y:0x800–0xbff`, reached through `r6`.
+
+  On the OT, `X:0` is the audio block and stock effects scratch
+  `X:0x20–0xff` every call.
+
+**Design, from these facts:**
+
+1. Copy the MD's external code and data regions into the OT's shared
+   window, one offset per region. Keep each region's alignment, in case the
+   code uses modulo buffers.
+2. Patch every external-address extension word in place, plus the three
+   routine tables (`0x145af5`, `0x145bb6`, `0x145c77`, 193 entries each)
+   and any other pointer data found.
+3. **Swap low memory rather than relocate it.** Around the batch of 16
+   voice renders, save the OT's `X:0–0xff` and `Y:0–0xff`, load the MD's
+   image of them, and after the batch store the MD image and restore the
+   OT's. That is about 1 K moves per 32 samples, roughly 30–60 cycles per
+   sample: *estimated*, not measured.
+4. Replace the MD main loop with an OT-side driver that calls init,
+   trigger and render per slot, with the records filled from the ColdFire.
+5. Validate each step with `md_replay`: the relocated image at the new
+   addresses, the external range left empty, and the swap emulated. It
+   must still be bit-identical. Then run under `dsp_host`.
+
+Space: about 46 K words if both external regions keep their full extent,
+within the 64 K window. Stock's own runtime use of the window
+(`0x30000–0x30047` every frame, the `0x38000` entry stub and what it
+calls) has to be placed around.
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and

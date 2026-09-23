@@ -4,7 +4,7 @@
   complete, but the required heavier eight-track slice/recorder run crashed
   before producing a wordmap twice. The `X:0x2840–0x3fff` result therefore
   remains 🟡 for that workload.
-- **Branch and commit:** `machinedrum` (packet commit recorded in the status table)
+- **Branch and commit:** `machinedrum` (`dea1167`)
 - **Date:** 2026-09-23
 - **Agent:** Claude Opus 5.5
 

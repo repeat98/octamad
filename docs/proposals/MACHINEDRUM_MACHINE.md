@@ -1214,6 +1214,28 @@ disassembles the result back and refuses mis-encodings and label prefixes.
   the same address in both spaces through `r6`) are the open placement
   question.
 
+### Core-0 memory ledger (23 September 2026)
+
+- ✅ The ColdFire-port wordmap ran for 1,000 frames on four stock-project
+  configurations. The union classifies every word of core-0 X
+  `0x0000–0x8fff`, Y `0x0000–0xbfff`, and the shared window for both cores;
+  the exact contiguous ranges and epoch evidence are in
+  [`CORE0_MEMORY.md`](../firmware/CORE0_MEMORY.md) and the two generated
+  ledgers in `machinedrum_reports/WP-A1-ledger-{all,noreverb}.txt`.
+- ✅ The no-reverb B+C ledger confirms `Y:0x795–0xfff` as 2,155 free words.
+  Core-0 X `0x2840–0x3fff` is untouched in all four runs, while the frame
+  contexts occupy `0x1fff–0x283f` and `0x3fff–0x483f`.
+- ✅ In the core-0 shared-window view, `0x30000–0x30047` is per-frame state,
+  `0x38000–0x3800f` is read every frame, and `0x38013–0x3ffff` is untouched
+  in these configurations. The all-effects ledger records the effect-slot
+  ownership that must not be treated as free space.
+- ❌ `DSP.md` §7's old `X:0x01d9f–0x0483f` PLATE/DARK delay-region claim is
+  retracted and now points here. The heavier eight-track slice/recorder
+  acceptance run was attempted twice and the isolated emulator exited `-11`
+  before writing a wordmap, so the `0x2840–0x3fff` result remains 🟡 for
+  that workload and WP-A1 is blocked pending a working fixture or emulator
+  fix.
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and

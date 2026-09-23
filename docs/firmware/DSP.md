@@ -399,7 +399,11 @@ PHASER 207, COMP 180. `do` loops per process routine: SPRING 26, DARK 22,
 PLATE 21, FILTER 12, PHASER 12, LO-FI 11, COMB 9, COMP 8. Two stock reverbs
 at once glitch (`PARAM_PAGES.md` §5e); the cycle budget is in `CHIP.md`.
 
-X: `0x01d9f–0x0483f` (10,913 words) delay region for PLATE/DARK;
+❌ Retracted: X `0x01d9f–0x0483f` is **not** a delay region for PLATE/DARK;
+the core-0 port ledger in [`CORE0_MEMORY.md`](CORE0_MEMORY.md) found frame
+contexts and free space there instead. The heavier slice/recorder workload
+has not yet closed the `0x2840–0x3fff` sub-range. The old claim's remaining
+stock ranges are:
 `0x05840–0x06bff` per-instance state (`x:0x20a` = `0x6000`); `0x07a92–0x0857f`
 2,798 words; `0x08d98–0x0ffff` 29,288 words unreferenced. `X:0x4000`,
 `0xc000`, `0xf000` respond on hardware (single-word probes), but 1024-word

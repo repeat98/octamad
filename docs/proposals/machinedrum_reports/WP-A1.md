@@ -1,10 +1,10 @@
-# WP-A1 Core-0 memory ledger: report (IN PROGRESS, handed over)
+# WP-A1 Core-0 memory ledger: report (BLOCKED after two honest attempts)
 
-- **Status:** claimed, not finished. Frozen on the user's request (23 Sep
-  2026) for another agent to take over. The measurement is done; the
-  write-up (`docs/firmware/CORE0_MEMORY.md`), the section 12 entry and the
-  `DSP.md` retraction are not.
-- **Branch and commit:** `machinedrum` (this commit)
+- **Status:** blocked. The four 1,000-frame ledger runs and write-up are
+  complete, but the required heavier eight-track slice/recorder run crashed
+  before producing a wordmap twice. The `X:0x2840–0x3fff` result therefore
+  remains 🟡 for that workload.
+- **Branch and commit:** `machinedrum` (packet commit recorded in the status table)
 - **Date:** 2026-09-23
 - **Agent:** Claude Opus 5.5
 
@@ -69,9 +69,37 @@ IDENTICAL
 Every run ended with `frames run : 1000 since transport start (target 1000),
 run ended REACHED`. Core 0 took the frame vector 0x18 1,000 times.
 
-The packet's "done when" is not met yet. The words are classified (see
-the ledgers), but `docs/firmware/CORE0_MEMORY.md` with the evidence per
-range is not written.
+The generated ledger rows cover X `0x0000–0x8fff`, Y `0x0000–0xbfff`, and the
+shared window for both cores. `docs/firmware/CORE0_MEMORY.md` now records the
+method, summary counts, ownership ranges, evidence links, and the unresolved
+heavy-run result. The DSP retraction is propagated to `docs/firmware/DSP.md`.
+
+The required heavier fixture was attempted twice with the exact tool
+specified by the packet:
+
+```
+tools/harness/md_reference/core0_wordmap.sh /private/tmp/md-a1-wordmap-20260923 \
+  /private/tmp/md-a1-heavy-20260923/project heavy1000 1000
+# heavy1000 exit -11; no wordmap.bin
+
+tools/harness/md_reference/core0_wordmap.sh /private/tmp/md-a1-wordmap-20260923 \
+  /private/tmp/md-a1-heavy-20260923/project heavy1000b 1000
+# heavy1000b exit -11; no wordmap.bin
+```
+
+The first fixture had an unstaged FLEX sample path. The second supplied the
+existing 440 Hz FLEX sample, used eight FLEX tracks with `SLIC=1` on T1, and
+armed T2's recorder (`INAB=INCD=A+B`, `TRIG=HOLD`, `SRC3=MAIN`); it still
+crashed during boot. Since two honest attempts failed before measurement, the
+packet is blocked rather than calling the range free for the heavier case.
+
+The ledger coverage check passed for both generated outputs:
+
+```
+$ python3 <coverage-check> WP-A1-ledger-all.txt WP-A1-ledger-noreverb.txt
+WP-A1-ledger-all.txt: complete X/Y/window coverage; words 217088
+WP-A1-ledger-noreverb.txt: complete X/Y/window coverage; words 217088
+```
 
 ## Measured (all under the port, stock image; ✅ for these configurations)
 
@@ -86,7 +114,7 @@ range is not written.
 | `0x603–0x1d9e` | table/loaded | The curve bank |
 | `0x1d9f–0x1ffe` | free | Except four 32-word scratch buffers at `0x1e00/1e80/1f00/1f80`: `x:$20b = 0x1e00`, set at `P:0x37d`, a per-track buffer |
 | `0x1fff–0x2836` | state/scratch | **Frame context A**, used on alternate frames: stock's frame handler at `P:0x64` sets `r6=0x2000 r7=0x2080 r2=0x2400 r5=0x2600 r4=0x2800`, and the ColdFire's DMA writes these per-frame blocks. Context A uses up to `0x2836`, with per-track records at a 0xa8 stride from `0x208b` |
-| `0x2840–0x3fff` | **free** in all four configurations | Inside the host-DMA mask: the frame handler patches the `and #>$ffff` at `P:0x58b/58c` to `0x3fff`/`0x5fff`, which bounds the destination the ColdFire can pick, not what it writes. By symmetry with context B (the boot clear stops at `0x4840`, `stock.py` `CURVE_BANK`), context A should end at `0x283f`. 🟡 A heavier project (8 voices, slices, recorders) was **not** tested |
+| `0x2840–0x3fff` | **free** in all four configurations | Inside the host-DMA mask: the frame handler patches the `and #>$ffff` at `P:0x58b/58c` to `0x3fff`/`0x5fff`, which bounds the destination the ColdFire can pick, not what it writes. By symmetry with context B (the boot clear stops at `0x4840`, `stock.py` `CURVE_BANK`), context A should end at `0x283f`. 🟡 Two heavier fixtures were attempted but the isolated emulator exited before writing a map; this range is not closed for that workload |
 | `0x3fff–0x4836` | state/scratch | **Frame context B**: `r6=0x4000`, and the rest as for A with +0x2000 |
 | `0x4840–0x583f` | loaded | The 4,096-word curve bank, DJ EQ's (`stock.py` `CURVE_BANK`). Only a few words were read here, at the knob values tested |
 | `0x5840–0x60ff` | free | 1,984 + 227 words |
@@ -134,20 +162,18 @@ range is not written.
     every configuration, including ones without reverbs;
   - `0x2840–0x3fff` is untouched in all four.
 
-  **Not yet propagated:** `DSP.md` still carries the old line. The next
-  agent should mark it ❌ there, pointing to `CORE0_MEMORY.md`.
+  **Propagated:** `docs/firmware/DSP.md` now marks the old line ❌ and points
+  to `CORE0_MEMORY.md`; the heavier-workload qualification remains 🟡.
 
 ## Open and handover
 
-1. **Write `docs/firmware/CORE0_MEMORY.md`** from the two ledgers and the
-   tables above. Classify every word of X `0–0x8fff`, Y `0–0xbfff` and the
-   window, with the evidence per range. Then add a section 12 entry to
-   `MACHINEDRUM_MACHINE.md`, and set WP-A1 to `done`.
-2. **The one real doubt:** is X `0x2840–0x3fff` safe (6,078 words)?
-   - Run one heavier project: all eight tracks playing, a slice machine,
-     and a recorder armed.
-   - Or find where the ColdFire builds the DMA destination addresses.
-   - If it stays free, it is the MD's largest private-X home.
+1. **Done:** `docs/firmware/CORE0_MEMORY.md` was written from both ledgers
+   and the tables above, the section 12 entry was added, and the `DSP.md`
+   retraction was propagated.
+2. **Blocked acceptance item:** is X `0x2840–0x3fff` safe (6,078 words) for
+   the heavier workload? Two honest fixtures exited `-11` before a wordmap;
+   do not treat the four lighter runs as closure. Fix or isolate the
+   emulator crash, then rerun the specified eight-track slice/recorder test.
 3. **What this means for WP-A2** (*inferred*, not yet written into section
    12):
    - The MD's voice Y block (1 K) fits at `Y:0x800–0xbff`, in the free

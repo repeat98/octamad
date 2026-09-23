@@ -552,20 +552,77 @@ These are ✅ sizes from the load maps, set against `docs/firmware/CHIP.md`.
   an upper bound, because tables are not yet separated from code. X holds
   13.1 K words and Y 1.9 K. The mixer is 18.5 K words of P. The OT's
   default memory map gives P 8 K words, and payload A's code already ends at
-  `0x1fdf`. Hosting either image therefore needs the untested memory-map
-  switch, shared-window placement, or a much smaller extracted subset.
-  That subset is the Phase 1 question.
+  `0x1fdf`. The memory-map switch is ruled out: it halves Y memory, and
+  stock uses all 48 K words of it (`CHIP.md`). ❌ "Hosting either image
+  needs … a much smaller extracted subset": the image sizes are not code
+  sizes. The executed code is ~6.9 K words on the voice DSP and ~2.3 K on
+  the mixer (below), which fits the shared window.
+
+### Measured in the reference (23 September 2026)
+
+The tools are `tools/harness/md_reference/md_profile.cpp`, a JIT build of
+the reference with `tools/patches/gearmulator-md-exechook.patch`, and
+`md_analyze.py`. The profiler boots the user's dump and runs the OS's
+first-run UW initialization and PREPARING FLASH. It then assigns a machine
+to a track with SysEx `0x5B` and presses TRIG keys. It records cycles per
+JIT block on both DSPs.
+
+The cycle figures come from **the emulator's cycle model, not hardware**.
+Code sizes are estimates: each executed block is walked through the
+disassembly to its first flow change.
+
+- ✅ Section 1 is the voice DSP (the producer) and section 2 the mixer: each
+  runs code that only its own image contains.
+- ✅ Most of the voice DSP's time is waiting. A two-`nop` delay loop inside
+  nested `do` loops (`P:100092–100098`) and a port-C poll (`P:bb–bf`)
+  take 2,240 of its 2,304 cycles per sample at idle. The mixer's wait is a
+  DMA poll at `P:3c–44`.
+- ✅ Work, meaning every cycle outside those waits, per sample:
+
+| scenario | voice DSP, avg | voice DSP, busiest 10 ms | mixer, avg |
+|---|---:|---:|---:|
+| idle | 61 | 89 | 1,846 |
+| one engine on track 1, 8 hits in 2 s | 74–182 | 102–212 | 1,846–1,850 |
+| 16 tracks together: the 16 heaviest engines | 1,590 | 1,651 | 1,849 |
+| 16 tracks together: an all-TRX kit | 1,536 | 1,590 | 1,849 |
+| 16 tracks together: an all-E12 kit | 1,484 | 1,508 | 1,849 |
+
+- ✅ All 50 core engines sound when triggered alone. TRX-S2 is nearly
+  silent at its defaults (RMS 0.00004).
+- ✅ The mixer's ~1,850 cycles are constant: independent of voices and of
+  engines. *Inferred*: most of it is the master effects this plan drops.
+  The mixing share is not yet separated out.
+- Estimated code, executed on the voice DSP beyond idle: 6,815 words for
+  all 50 engines. By family: TRX 2,758, P-I 3,789, EFM 152, E12 159,
+  GND 142. EFM and E12 run a shared voice routine plus a handful of words
+  each. Everything the voice DSP executed in any scenario, framework
+  included, is ~6,946 words; the mixer's is ~2,296. Section 12's earlier
+  "~27.5 K words of P" was the whole image, including tables, the
+  ROM/RAM/INP/MID machines and loaders. It is superseded as the code
+  estimate.
+
+What this means for the OT (*inferred*, from the numbers above):
+
+- **Code.** The full voice code, ~7 K words, fits the shared window with
+  room to spare; no overlays are needed.
+- **Cycles.** A full 16-voice instance's voice work peaks near 1,650
+  cycles per sample. That fits one OT core's ~3,120 usable and leaves
+  roughly 1,470 for the other three tracks on that core. This holds only
+  if the OT core runs this code at the reference's cycle counts.
+  Shared-window placement and DSP5636x timing are unmeasured.
+- **Still open:** the data (X/Y tables and per-voice state the engines
+  touch), E12's sample reads (the 207 K-word block cannot sit on the OT
+  DSP), the mixing cost without the master effects, and the ColdFire→DSP
+  command protocol.
 
 ### Open for Phase 1
 
-1. Trace MAIN OS's DSP upload, which confirms which section goes to which
-   DSP and the order of HDI08 traffic.
-2. Measure the MD DSPs' busy cycles per sample in the reference, at idle
-   and with all 16 tracks playing. That is the number that decides how much
-   of the OT one instance costs.
-3. Separate code from tables in the producer's P and find per-engine
-   entry points, starting with GND-SN and TRX-BD. The descriptors' handler
-   pointers are the ColdFire side of that.
+1. Profile data accesses (X/Y) per engine, which gives the tables and
+   per-voice state an extracted engine needs.
+2. Split the mixer's constant ~1,850 cycles into master effects and
+   mixing.
+3. Decode the ColdFire→DSP command stream for a trigger and a parameter
+   change. The profiler already drives both.
 4. Map E12 machines to sample offsets, and listen to the block.
 
 ## References

@@ -1,0 +1,50 @@
+diff --git a/source/dsp56kEmu/dsp.cpp b/source/dsp56kEmu/dsp.cpp
+index 612813b5..f8b935fa 100644
+--- a/source/dsp56kEmu/dsp.cpp
++++ b/source/dsp56kEmu/dsp.cpp
+@@ -42,6 +42,8 @@
+ 
+ namespace dsp56k
+ {
++	TExecHook g_execHook = nullptr;
++
+ 	constexpr bool g_traceSupported = false;
+ 
+ 	Jumptable g_jumptable;
+diff --git a/source/dsp56kEmu/dsp.h b/source/dsp56kEmu/dsp.h
+index 7fa8678e..1bc7147e 100644
+--- a/source/dsp56kEmu/dsp.h
++++ b/source/dsp56kEmu/dsp.h
+@@ -37,6 +37,12 @@ namespace dsp56k
+ 
+ 	static constexpr bool g_useJIT = g_jitSupported;
+ 
++	// Profiling hook (octamad tools/harness/md_reference): called after
++	// interrupt dispatch, before every interpreted instruction and before
++	// every JIT block run by exec() (not by execUntilCycles).
++	using TExecHook = void(*)(DSP*);
++	extern TExecHook g_execHook;
++
+ 	class DSP final
+ 	{
+ 		friend class InterpreterUnitTests;
+@@ -266,6 +272,9 @@ namespace dsp56k
+ 			else
+ 				m_interruptFunc(this);
+ 
++			if(g_execHook)
++				g_execHook(this);
++
+ 			const auto pc = getPC().toWord();
+ 			LOGJITPC(pc);
+ 
+@@ -296,6 +305,9 @@ namespace dsp56k
+ 
+ 			m_interruptFunc(this);
+ 
++			if(g_execHook)
++				g_execHook(this);
++
+ #if DSP56300_DEBUGGER
+ 			if(m_debugger)
+ 				m_debugger->onExec(getPC().var);

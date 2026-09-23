@@ -23,7 +23,10 @@ findings"):
             names][8 defaults][8 flag bytes].
 
 Usage:
-  python3 modules/machinedrum/extraction.py [--syx PATH] [--wav]
+  python3 modules/machinedrum/extraction.py [--syx PATH] [--wav] [--disasm]
+
+--disasm writes dsp_1.asm / dsp_2.asm: every P run of each image except the
+sample block, through the vendored dsp56kDisassemble.
 """
 import argparse
 import hashlib
@@ -61,6 +64,7 @@ DESC_FIRST = 0x4EF55        # GND-EM, the first descriptor, image offset
 FAMILIES = {0x0: "GND", 0x1: "TRX", 0x2: "EFM", 0x3: "E12", 0x4: "P-I",
             0x5: "INP", 0x6: "MID", 0x7: "CTR"}
 SAMPLE_BLOCK = (0x1028C0, 0x135206)   # section 1, P space, 12-bit pairs
+DIS = ROOT / "vendor/dsp56300/build/source/disassemble/dsp56kDisassemble"
 
 
 def sha(p):
@@ -149,6 +153,34 @@ def engines():
     return out
 
 
+def disasm(name, recs, tag):
+    """One .asm per image, P runs in address order, the sample block skipped."""
+    if not DIS.exists():
+        sys.exit(f"{DIS} missing: run scripts/setup.sh")
+    runs = []
+    for sp, ad, words in recs:
+        if sp != 0:
+            continue
+        if runs and runs[-1][0] + len(runs[-1][1]) == ad:
+            runs[-1][1].extend(words)
+        else:
+            runs.append([ad, list(words)])
+    out = OUT / f"dsp_{tag}.asm"
+    with out.open("w") as fh:
+        for ad, words in sorted(runs):
+            if ad <= SAMPLE_BLOCK[0] < ad + len(words):
+                words = words[:SAMPLE_BLOCK[0] - ad]
+            if not words:
+                continue
+            blob = OUT / f"dsp_{tag}_P{ad:06x}.bin"
+            blob.write_bytes(b"".join(w.to_bytes(3, "little") for w in words))
+            r = subprocess.run([str(DIS), "-in", str(blob), "-pc", f"{ad:x}", "-le"],
+                               capture_output=True, text=True)
+            fh.write(f"; ---- P:{ad:06x}, {len(words)} words\n{r.stdout}")
+            blob.unlink()
+    return out
+
+
 def sample_wav(recs):
     p = {}
     for sp, ad, words in recs:
@@ -172,6 +204,8 @@ def main():
     ap.add_argument("--syx")
     ap.add_argument("--wav", action="store_true",
                     help="also write the section-1 sample block as a WAV")
+    ap.add_argument("--disasm", action="store_true",
+                    help="also disassemble both DSP images")
     a = ap.parse_args()
     syx = find_syx(a.syx)
     unpack(syx)
@@ -189,6 +223,8 @@ def main():
               + ", ".join(f"{k} {v}" for k, v in sorted(tot.items())) + " words")
         for run in m:
             print(f"    {run['space']}:{run['start']:06x}..{run['end']:06x} {run['words']:7d}")
+        if a.disasm:
+            print(f"    {disasm(name, recs, name[8]).relative_to(ROOT)}")
         if name == "section_1_DSP.bin" and a.wav:
             n = sample_wav(recs)
             print(f"    e12_candidate_region.wav: {n} samples, {n / 44100:.2f} s")

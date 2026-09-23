@@ -1,7 +1,7 @@
 # WP-R3 The interpreter/JIT mismatch: report
 
 - **Status:** blocked
-- **Branch and commit:** `machinedrum` @ `<pending>`
+- **Branch and commit:** `machinedrum` @ `94ef689`
 - **Date:** 24 September 2026
 - **Agent:** overnight Machinedrum handover
 

@@ -28,6 +28,21 @@ an integer-mode accumulator-extension restoration fix before that comparison
 passed. The full repository gate still has Octakit assembler failures and
 missing-environment skips; see the report for exact details.
 
+**Update, 23 September 2026:** [OPTIMIZATION_LEVERS.md](OPTIMIZATION_LEVERS.md)
+finds that the stock delay runs inside the ColdFire→DSP transfer interrupt
+at IPL 5, and that voice rendering runs inside the frame ISR. It also finds
+that the analysis candidate's work is in a priority-1 background task. It
+adds four exact fast paths on the level-5 path, estimated at ~5,900
+instructions per frame (15%) on the no-FX eight-track fixture:
+
+- L1: the delay's dry-only track;
+- L2: the renderer's unity-rate phase step;
+- L3: a division loop that returns its input;
+- L4: an early exit in `0x400068e4`.
+
+It also adds a DSP map. Assignments D and E below take those as their
+first candidates.
+
 Planning hypothesis: aim for about 5% total CPU instruction reduction, investigate
 3–8%, and treat 10–15% as a stretch—not measured potential, a promise, or a quota.
 Do not manufacture savings to meet a target. Actual deadline headroom outranks
@@ -209,6 +224,13 @@ load/setup removal, or carefully bounded loop unrolling. Do not introduce
 parameter caching or event-driven recomputation in this first task without
 separately proving all writers and invalidation paths.
 
+First candidates (23 Sep 2026): L2, L3 and L4 in
+[OPTIMIZATION_LEVERS.md](OPTIMIZATION_LEVERS.md) §2. Each is an exact
+fast path with a local, checkable precondition in the frame ISR's call
+tree, estimated at 290–1,000 instructions per frame each. None caches
+anything across frames. That document also records why an LFO depth-0
+skip and a smoothing memo are not exact.
+
 Test all tracks/Parts, dirty initial state, control extrema, LFOs, locks, scene
 movement, live MIDI changes and ISR preemption. Compare outgoing parameter
 frames, voice/control state, registers/flags and persistent state—not just audio.
@@ -230,6 +252,20 @@ Start with loop/address overhead around `0x400036xx..0x400037xx`. Preserve
 operation order, fixed-point truncation/saturation, channel ordering, ring
 wrap and state updates. A dry/bypassed track is not necessarily inactive:
 do not omit history writes or calculations that later become audible.
+
+First candidate (23 Sep 2026): L1 in
+[OPTIMIZATION_LEVERS.md](OPTIMIZATION_LEVERS.md) §2, ahead of the unroll.
+Every track pays the full 729-instruction seam per frame, DELAY or not.
+A track qualifies when three things hold:
+
+- its send, wet and feedback ramps are zero;
+- its taps are zero;
+- its filter is at a zero-input fixed point.
+
+For such a track, the shortcut still does every ring write, DMA and
+state update, and computes only the dry product. It gives the same bits
+and saves ~500 per track. It shares Tape Echo's seam, so it must be that
+hook's stock fallback, not a second detour.
 
 Test zero/DC/impulse/noise/full-scale inputs, stereo asymmetry, all ring edges,
 feedback and freeze transitions, parameter/tempo movement, dry-to-wet changes,

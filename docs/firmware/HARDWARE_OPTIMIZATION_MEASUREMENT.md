@@ -22,6 +22,25 @@ resetting/reconfiguring one, claiming a different timer free, or inserting a
 GPIO toggle needs a separate ownership audit and a readback/hardware test.
 No CPU timer frequency or cycles-per-instruction conversion is assumed here.
 
+## A meter that needs no timer: CF BURN
+
+The CF BURN module (`modules/cfburn/`) avoids the timer question. It is a
+knob-set spin of known length at the end of the stock delay routine, at
+IPL 5: 640 instructions per BURN step and 10 per FINE step. Under the port
+it is proven inert and exact against stock. Swept on the unit until the
+audio breaks, it gives the spare level-5 time in a project. Two things
+follow from that:
+
+- **A patch's saving.** The difference in the ceiling between images A
+  and B is the patch's saving on the hardware.
+- **A feature's cost.** The ceiling drops by what a new feature costs.
+
+For the DSP cores, SEND's page-2 BURN plays the same role. The
+`bamsep26-burn` remix carries both. The meter is in burn-loop units:
+cycles, if the loop runs at one cycle per instruction, which is inferred.
+It cannot show a starved background task, or a deadline at a different
+point in the frame. Not swept on hardware yet.
+
 ## Paired images and observer checks
 
 Build stock A and single-candidate B from the same frozen source and

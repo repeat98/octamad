@@ -29,4 +29,11 @@ A remix is a named selection of modules; `make image REMIX=<name>` builds it int
 | [`hello-dram`](hello-dram.md) | one DRAM unit | no |
 | [`restock`](restock.md) | the stock chooser, nothing added | no |
 
+## Meters
+
+| remix | contains | on hardware |
+|---|---|---|
+| [`cfburn`](cfburn.md) | stock + CF BURN: the base firmware's spare ColdFire time | no |
+| [`bamsep26-burn`](bamsep26-burn.md) | the rig + CF BURN (+ SEND's DSP BURN via `make burn`): spare time on all three processors for the stress project | no |
+
 Never share a built image: it contains Elektron's OS.

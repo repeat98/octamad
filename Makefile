@@ -211,6 +211,9 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	@# Restore the selected image before inspecting its chooser tables.
 	$(MAKE) bus REMIX=$(REMIX)
 	REMIX=$(REMIX) python3 tools/verify/verify_menu.py
+	@# CF BURN: the ColdFire burn knob, inert and exact over the complete stock
+	@# delay routine (reads the image just restored above; SKIPs without it).
+	python3 tools/verify/verify_cfburn.py $(REMIX)
 	python3 tools/verify/verify_burn.py $(REMIX)
 	python3 tools/verify/verify_twocore.py
 	python3 tools/verify/verify_onebus.py

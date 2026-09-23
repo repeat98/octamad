@@ -4,6 +4,141 @@
 engine. **Not a hardware capture or a real-time certification.** This pass
 brings the CPU voice closer to Galaxy without moving it back to the DSP.
 
+## EMAC rewrite: stock-style kernels (23 Sep 2026, later the same day)
+
+Same voice, rewritten for the ColdFire EMAC the way stock's delay loops
+(`0x40003664`, `0x40003734`) are written: multiply-with-load, accumulator
+loads (`move.l Rx,ACC`), several accumulators, and the saturating MOVCLR
+read-out (MACSR OMC, which stock sets) in place of explicit clamps. Every
+EMAC form used has sites in stock 1.40C. Five kernels became three:
+
+- **Reader** (`te_read_linear`): a DDA replaces the per-sample phase and
+  address rebuild; interpolation is stock's `a*(1-f) + b*f` accumulator
+  form on raw ring words (the 1/4 operand scales Q1.31 to Q3.29). Same
+  8-bit fraction and the same 17 uncached loads per contiguous block. A
+  BEAT crossfade's outgoing head blends into the incoming one as it is read,
+  replacing the second buffer and the C blend loop.
+- **Filters** (`te_filter_block`): both sections in one pass. Each is
+  `g*(x +/- 2*x1 + x2) + y1 + (a1-1)*y1 + a2*y2`: RBJ low/high-pass
+  numerators are exactly `b0*(1, +/-2, 1)`, so one operand serves all three
+  input taps, and the unit part of `a1` is an exact accumulator load. The
+  tone section's input history is the low cut's output history. Fraction
+  saving (the eight low accumulator bits carried to the next sample) is
+  kept. The wet makeup gain lives in the tone numerator; feedback is
+  divided by it (`te_feedback` is now Q2.30).
+- **Tape** (`te_tape_block`): record sum, `[1,6,1]/8` FIR, curve, stereo DMA
+  staging and output mix in one pass for full wet, MIX, MIX=0 and knob
+  ramps. The record sum is one saturating accumulator; the curve is a
+  signed table of finished ring words (no sign handling). Full wet is
+  `sat(4*wet)`, other MIX values `sat(4*mix*wet + (1-mix)*dry)`.
+
+Playback, filters and the record sum are Q3.29 (+/-4 FS = the old clamp
+points, now the read-out's own saturation); the FIR and curve index stay
+Q6.26. Tables shrank (`te_tone` 5 -> 3 columns), and the runtime went from
+169,144 to 110,648 bytes.
+
+Same stock firmware, DMA model, stereo tone, 1500 warm-up and 1000 measured
+blocks as below. **Executed instructions per complete eight-track
+16-sample routine**, not hardware CPU percentages:
+
+| Configuration | Before (f80f45e) | After | Reduction | vs stock |
+| --- | ---: | ---: | ---: | ---: |
+| Original stock DELAY x8 | 7,628.0 | 7,628.0 | 0.0% | 1.00x |
+| Patched stock DELAY x8 | 7,908.0 | 7,900.0 | 0.1% | 1.04x |
+| Tape x1 WOW=44 + stock x7 | 9,667.1 | 8,821.3 | 8.7% | 1.16x |
+| Tape x3 settled WOW=44 + stock x5 | 13,188.8 | 10,667.5 | 19.1% | 1.40x |
+| Tape x8, settled, WOW=0 | 20,122.6 | 14,244.5 | 29.2% | 1.87x |
+| Tape x8, settled, WOW=44 | 21,989.5 | 15,283.3 | 30.5% | 2.00x |
+| Tape x8, settled MIX=0 | 21,461.5 | 14,531.3 | 32.3% | 1.90x |
+| Tape x8, moving FREE TIME, WOW=44 | 22,351.0 | 15,539.1 | 30.5% | 2.04x |
+| Tape x8, changing BEAT TIME, WOW=44 | 23,556.6 | 16,329.0 | 30.7% | 2.14x |
+| Tape x8, moving FREE TIME, MIX=90 | 25,271.0 | 16,459.1 | 34.9% | 2.16x |
+| Tape x8, all controls moving | 30,019.0 | 20,257.0 | 32.5% | 2.66x |
+| Tape x8, all controls moving, full history | 30,758.3 | 20,677.6 | 32.8% | 2.71x |
+
+Parameter-edit stress (full synthetic history, peak of 1000 blocks):
+
+| Case | Before | After | Reduction |
+| --- | ---: | ---: | ---: |
+| Settled MIX=90 | 25,028 | 16,248 | 35.1% |
+| TIME / FDBK / WOW / AGE / MIX reversals | 25,031-26,272 | 16,270-17,776 | 32-35% |
+| SYNC reversals | 30,238 | 19,624 | 35.1% |
+| All controls, FREE | 26,563 | 18,063 | 32.0% |
+| All controls, BEAT | 31,454 | 21,547 | 31.5% |
+
+Per instance, settled WOW=44 full wet (MIX=90 moving TIME in brackets):
+record/output 663 [778], both filters 401 [401], `te_process` 268 [284],
+reader 221 [224], stock routine 203, `te_cpu_frame` 75, `render_head` 62,
+hook 10, tone update 7 [20]. Before: 1,087 (fused full wet) [952 + 494],
+624, 296 [343], 362 [367], 203, 107, 59, 10. `te_cpu_frame` reads the knob
+bytes directly instead of through a `volatile` halfword pointer (the old
+unpacking spilled to the stack); the stock-declining path also got 8
+instructions per frame cheaper. Inlining `te_process` into `te_cpu_frame`
+was tried and **rejected**: register pressure made the pair 20 instructions
+per instance dearer.
+
+**Same sound, measured.** The native engines before and after, fed the same
+material (5 s chord bursts): residual -115 to -123 dBFS RMS, 86-103 dB
+below the signal, peak difference -98 dBFS (FDBK=100, where the loop
+amplifies lowest-bit differences). Cases: the audition patch with a
+FREE->BEAT switch, the default page, full wet FDBK=100, worn WOW=127 AGE=127.
+Every voice gate passes. Frequency response, wow and pitch values are
+identical to the printed precision; repeat decay and treble loss move by at
+most 0.003 dB; record compression by 0.0003 dB. The measurements that
+included the old engine's DC offset move with it: noise growth from silence
+104.65 -> 105.12 dB, and the AGE floor difference 4.71 -> 12.44 dB (below).
+
+**The old noise floor was mostly a DC offset (measured, retracts the
+OCTACLID3 floor references as "hiss").** The voice gate took plain RMS of a
+silent render: -119.60 / -118.57 / -114.90 dB at AGE 0/64/127. Split into
+DC and AC, the old engine's output carried a constant **-120 dBFS offset**
+(truncation bias in its playback path), which dominated the AGE=0 number;
+its hiss was -128.90 / -123.56 / -116.38 dB. The new engine's hiss is
+-128.80 / -123.49 / -116.36 dB (within 0.11 dB) and its offset -147 dBFS.
+The gate now measures the hiss without DC against the pre-rewrite AC values
+and separately requires the offset below -130 dBFS.
+
+The ColdFire kernels match the native oracle bit-for-bit: eight instances
+over 2300 blocks (all controls, tempo, BEAT, full history, ring wrap), 1024
+filter blocks with both read-outs saturated both ways, 1024 tape blocks
+over all four output modes, 2048 plain and crossfading reader blocks with
+uncached-load counts. Stock DELAY on the neighbouring tracks stays
+bit-identical to 1.40C, which also shows every accumulator is left empty.
+Kernel instruction ceilings: reader 165 fixed / 250 moving (+90 while
+crossfading; measured 152/229, 232/309), filters 420 (401), tape 1000
+(946, knob ramps).
+
+Not measured, and what could falsify it:
+
+- **Cycles.** The rewrite removes most of the old kernels' back-to-back
+  MAC -> MOVCLR pairs on one accumulator (stock never does this), so the
+  hardware saving is plausibly larger than the instruction saving. The
+  meter cannot see EMAC pipeline stalls, and nobody has timed either
+  version on the unit.
+- **Saturation semantics.** Overload behaviour now depends on MOVCLR
+  saturating under MACSR OMC, per the CFPRM pseudocode the emulator
+  follows. It is a backstop only: bounded tape content keeps every read-out
+  inside +/-4 FS in normal use, so a chip that differed would change
+  overload, not the voice.
+- **ACCEXT01 layout (open, unverified).** Fraction saving reads byte 0 of
+  `ACCEXT01`/`ACCEXT23` as the low accumulator byte of acc0/acc2, the
+  emulator's (QEMU-derived) fractional layout. That layout has not been
+  checked against the CFPRM figure here. If the chip puts ACC0/ACC2 in the
+  upper halves, byte 0 is acc1/acc3's, which these kernels leave empty:
+  fraction saving would be inert on the unit (before and after this
+  rewrite alike), and the bit-identity gates could not show it because both
+  sides use the emulator's layout.
+- The ring-seam block (once per four seconds per head) still takes the C
+  per-sample loop, about 18 instructions per sample instead of 12.
+
+`make check REMIX=tapeecho` passes the build, cycle, dirty-state (8
+renders), Tape Echo, selftest, slot and init-register gates, then stops in
+`verify_replaces.py` on the same six Octakit remixes as before
+(`modules/octakit/upstream/runtime/runtime.S:438`). Run separately, the
+loader boot reaches the RTOS handoff with all 110,648 runtime bytes equal to
+the linked image, and label, MIDI-scene and grain gates pass. Hardware
+timing, listening and the reported freezes remain open.
+
 ## Read-head and full-wet optimization (23 Sep 2026)
 
 This pass preserves the native C engine, tables, filters, gain ramps, tape

@@ -104,12 +104,21 @@ int main() {
     // Removing emphasis changes saturation/noise dynamics: allow 1.5 dB
     // versus OCTACLID3, but keep the original reference, not a moving target.
     check("Economy noise build-up stays within 1.5 dB of OCTACLID3",std::abs(last+8.83032)<1.5,last);
+    // The floor is the hiss, measured without DC. Until 23 Sep 2026 this
+    // took the plain RMS against OCTACLID3 (-119.05/-118.03/-114.23 dB), but
+    // that engine's output carried a constant -120 dBFS truncation offset
+    // which dominated the number; the EMAC rewrite removed it (-147 dBFS)
+    // and left the hiss itself within 0.11 dB. References are the AC floors
+    // of the engine before that rewrite (f80f45e).
     double floors[3];
     for(unsigned i=0;i<3;++i) {
         auto x=render(params(0,0,ages[i]),3);
-        floors[i]=db(rms(x,fs,x.size()));
-        const double referenceFloor[]={-119.05208,-118.02709,-114.23416};
-        check("Economy noise floor stays within 1 dB of OCTACLID3",std::abs(floors[i]-referenceFloor[i])<1,floors[i]);
+        double mean=0;for(unsigned n=fs;n<x.size();++n)mean+=x[n];mean/=x.size()-fs;
+        double square=0;for(unsigned n=fs;n<x.size();++n)square+=(x[n]-mean)*(x[n]-mean);
+        floors[i]=db(std::sqrt(square/(x.size()-fs)));
+        const double referenceFloor[]={-128.90197,-123.56168,-116.38375};
+        check("Economy hiss floor stays within 1 dB of the pre-EMAC engine",std::abs(floors[i]-referenceFloor[i])<1,floors[i]);
+        check("Silent tape leaves no DC offset on the output (dBFS)",db(std::abs(mean))<-130,db(std::abs(mean)));
     }
     check("Tape age increases the noise floor",floors[2]-floors[0]>4,floors[2]-floors[0]);
     auto low=render(params(),2,1000,.001),hot=render(params(),2,1000,1);

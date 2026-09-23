@@ -523,7 +523,11 @@ def main():
              "repitch": (), "poly-machine": (), "stock-analysis-fast": (),
              "euclid": ("SPATIALIZER", "FLANGER", "CHORUS", "COMB FILTER"),
              "bamsep26": _rig, "rig-scenes": _rig, "rig-kits": _rig,
-             "rig-mods": _rig}
+             "rig-mods": _rig,
+             # CF BURN's five passthrough words need a harvested run: the
+             # stock-headroom remix gives up only DARK REV (keeping PLATE for
+             # the pilot fixture); the rig's burn twin gives up what the rig does.
+             "cfburn": ("DARK REV",), "bamsep26-burn": _rig}
     for _n in registry.remix_names():
         _r = registry.remix(_n)
         _hv = stock.region_of(stock.harvested(

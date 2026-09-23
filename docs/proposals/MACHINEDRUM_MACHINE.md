@@ -1277,6 +1277,30 @@ disassembles the result back and refuses mis-encodings and label prefixes.
   result. The user must choose the stock-slot sacrifices and one of the
   voice-home options in `layout.py` before WP-A2 can leave `review`.
 
+### WP-R3 interpreter/JIT mismatch (24 September 2026)
+
+- ✅ The normal JIT replay remains bit-identical on `cap4/c01_16`:
+  `33513 identical, 0 differ`. The existing interpreter replay reports
+  `30873 identical, 2640 differ (first difference at block 2340)`.
+- ✅ On `cap4/c1d_16`, the normal JIT has the known TRX-S2 residual:
+  `31555 identical, 1951 differ (first difference at block 2288)`; the
+  interpreter reports `31218 identical, 2288 differ (first difference at
+  block 2272)`. Both commands used the existing binaries and no vendor
+  rebuild.
+- ✅ A block-boundary probe isolates the same operation in both captures.
+  In `c01_16`, `P:0x10078e` is `move b1,r3` and `P:0x10078f` is `add x,b`;
+  with `MD_REPLAY_BLOCK_SIZE=18` the JIT reports 4 differences from block
+  2340, while size 19 reports 0 through block 2399. In `c1d_16`, the
+  corresponding pair is `P:0x102d80` / `P:0x102d81`; sizes 8 and 9 move the
+  first JIT difference from block 2272 to the known block 2288 residual.
+- *inferred* This is an old JIT block-boundary/register-allocation parity
+  problem around `ADD X,B`, not evidence that the standalone opcode decoder
+  is wrong. The newer shared vendor/toolchain is required to establish the
+  corrected implementation; the stale pin was not changed overnight.
+- **blocked:** WP-R3 needs the user to rerun `scripts/setup.sh` (WP-R4) and
+  then repeat this parity check against the repinned vendor. No firmware,
+  sample or extracted bytes were added.
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and

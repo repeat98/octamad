@@ -3,8 +3,9 @@
 
 Run make bus REMIX=stock-analysis-fast and verify_stock_analysis.py first.
 Use --project to stage a COPY as an eight-track FLEX fixture, or --card to
-reuse a previously generated OCTABAM/POLYBENCH card image. A fresh --out is
-required so another run's evidence cannot be silently overwritten.
+reuse a previously generated card image (specify its set/project names).
+A fresh --out is required so another run's evidence cannot be silently
+overwritten.
 """
 import argparse
 import json
@@ -21,6 +22,8 @@ def main():
     source = ap.add_mutually_exclusive_group(required=True)
     source.add_argument("--project", type=Path)
     source.add_argument("--card", type=Path)
+    ap.add_argument("--card-set", default="OCTABAM")
+    ap.add_argument("--card-project", default="POLYBENCH")
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--frames", type=int, default=5600)
     args = ap.parse_args()
@@ -41,7 +44,8 @@ def main():
     placement = ROOT/"out/stock-profile/candidate-map.json"
     emu = ROOT/"out/emu/ot_emu"
     metadata = dict(units="emulator instructions, not hardware cycles", hardware_measured=False,
-                    frames=args.frames, card_sha256=digest(card), emulator_sha256=digest(emu),
+                    frames=args.frames, card_set=args.card_set, card_project=args.card_project,
+                    card_sha256=digest(card), emulator_sha256=digest(emu),
                     git_head=subprocess.check_output(["git","rev-parse","HEAD"],cwd=ROOT,text=True).strip(),
                     source_sha256={str(p.relative_to(ROOT)):digest(p) for p in sorted(
                         [*ROOT.glob("tools/emu/ot_emu/*.*"), *ROOT.glob("modules/stock-analysis-fast/*.*"),
@@ -49,8 +53,8 @@ def main():
                     runs=[])
     for label,image in (("stock-a",stock),("candidate",candidate),("stock-b",stock)):
         prefix=out/label
-        command=[str(emu),"--image",str(image),"--card",str(card),"--set","OCTABAM",
-                 "--project","POLYBENCH","--sequencer","--internal-clock","--frames",str(args.frames),
+        command=[str(emu),"--image",str(image),"--card",str(card),"--set",args.card_set,
+                 "--project",args.card_project,"--sequencer","--internal-clock","--frames",str(args.frames),
                  "--load-ms","20000","--dsp","--main-level","64","--work-profile",str(prefix),
                  "--audio-out",str(prefix)]
         print(f"Running {label} ({args.frames} frames)...",flush=True)

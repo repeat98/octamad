@@ -682,14 +682,47 @@ track 1 it logs every host-port word through an assign, a trig, encoder A
   serializes the record into the host packet; and where the trigger word
   (`0x11`/`0x02`) comes from.
 
+### The handlers' caller (23 September 2026)
+
+- ✅ How it was found: `md_profile trace=<id>` with the ColdFire hook
+  (`g_ucExecHook`, in `gearmulator-md-hosttrace.patch`) records every entry
+  into the handler region together with its return address. TRX-BD and
+  GND-SN show **one caller**, returning to `0x20b398+2`. It calls the
+  empty machine's handler (`0x201128`) about 3,270 times in the run: once
+  per visit to each of the 15 empty tracks.
+- ✅ The caller is a per-frame voice update, `0x20ad9a` to about `0x20b600`
+  (~2 KB), a loop over the 16 tracks (`d7` = 0–15). Per track it:
+  1. computes shared values with multiplies (level, pan and similar;
+     *inferred* from the arithmetic);
+  2. calls the track's handler through a RAM pointer table at `0x29f27c`,
+     filled when a machine is assigned. Arguments: an output record at
+     `0x010015b4 + 84·track` in internal SRAM, and a parameter block that
+     steps 48 bytes per track;
+  3. does trigger bookkeeping (a per-track flag at `0x01001510`).
+
+  It also calls OS functions at `0x2069bc`, `0x204c94` and `0x209e52`
+  (unidentified; *inferred* modulation or LFO) and four routines in
+  internal SRAM.
+- ✅ The internal SRAM code (2,466 bytes, copied there at boot) includes
+  interrupt handlers (`rte`) that access `0x600004`, the voice DSP's host
+  port. *Inferred*: packets are pushed from interrupts, not from the
+  update loop.
+- For the port this means three different treatments:
+  1. The handlers copy over unchanged.
+  2. The voice update's per-track computation is ported with its tables
+     and the three unidentified functions.
+  3. The MD's interrupt-driven host-port plumbing does not port. The OT's
+     own per-frame host path carries the records instead.
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and
    per-voice state an extracted engine needs.
 2. Split the mixer's constant ~1,850 cycles into master effects and
    mixing.
-3. Locate the handlers' caller: modulation, serialization, the trigger word.
-   Then trace the 27 unmapped parameters over time rather than at the trig.
+3. Identify `0x2069bc`, `0x204c94` and `0x209e52`, and the SRAM sender's
+   packet format against the traced stream. Then trace the 27 unmapped
+   parameters over time rather than at the trig.
 4. Map E12 machines to sample offsets, and listen to the block.
 
 ## References

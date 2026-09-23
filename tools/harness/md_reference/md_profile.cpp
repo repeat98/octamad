@@ -21,6 +21,7 @@
 
 #include "mdLib/mddevice.h"
 #include "mdLib/mdhardware.h"
+#include "mdLib/mdmc.h"
 #include "mdLib/mdpanel.h"
 #include "mdLib/mdromloader.h"
 #include "mdLib/mdtypes.h"
@@ -36,6 +37,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -80,6 +82,25 @@ namespace
 	dsp56k::DSP* g_dsp[2] = {nullptr, nullptr};		// 0 = mixer (DSP1), 1 = producer (DSP2)
 	Profile g_prof[2];
 	FILE* g_trace = nullptr;						// host-port trace, while a trace scenario runs
+
+	// ColdFire calls into the descriptor handlers (0x201128..0x204300): the
+	// handler entered and the return address on the stack, counted.
+	std::map<std::pair<uint32_t, uint32_t>, uint64_t> g_handlerCalls;
+	uint32_t g_lastUcPc = 0;
+
+	void onUc(md::Microcontroller& _uc)
+	{
+		const auto pc = _uc.getPC();
+		const bool in = pc >= 0x201128 && pc < 0x204300;
+		const bool wasIn = g_lastUcPc >= 0x201128 && g_lastUcPc < 0x204300;
+		if(in && !wasIn)
+		{
+			const auto sp = _uc.getAReg(7);
+			const uint32_t ret = (static_cast<uint32_t>(_uc.read16(sp)) << 16) | _uc.read16(sp + 2);
+			++g_handlerCalls[{pc, ret}];
+		}
+		g_lastUcPc = pc;
+	}
 
 	// The producer's packet in flight and the last voice record (a packet of
 	// more than the idle tick's four words), for the map scenario.
@@ -463,6 +484,7 @@ int main(int _argc, char** _argv)
 			const auto before = snapshot(*g_dsp[1]);
 			g_trace = std::fopen((outDir + "/" + name + ".host.txt").c_str(), "w");
 			md::g_hostTraceHook = &onHost;
+			md::g_ucExecHook = &onUc;
 			auto mark = [&](const char* _m) { std::fprintf(g_trace, "# %s\n", _m); };
 			mark("assign");
 			rig.sysex({0xf0, 0x00, 0x20, 0x3c, 0x02, 0x00, 0x5b, 0x00, id, 0x00, 0xf7});
@@ -484,6 +506,12 @@ int main(int _argc, char** _argv)
 			mark("end");
 			md::g_hostTraceHook = nullptr;
 			std::fclose(g_trace);
+			md::g_ucExecHook = nullptr;
+			FILE* cf = std::fopen((outDir + "/" + name + ".calls.txt").c_str(), "w");
+			for(const auto& [k, n] : g_handlerCalls)
+				std::fprintf(cf, "%06x %06x %llu\n", k.first, k.second, static_cast<unsigned long long>(n));
+			std::fclose(cf);
+			g_handlerCalls.clear();
 			g_trace = nullptr;
 			const auto after = snapshot(*g_dsp[1]);
 			FILE* f = std::fopen((outDir + "/" + name + ".mem.txt").c_str(), "w");

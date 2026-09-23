@@ -1,7 +1,7 @@
 # WP-A2 The layout: report
 
 - **Status:** review
-- **Branch and commit:** `machinedrum` @ `PENDING`
+- **Branch and commit:** `machinedrum` @ `3573d25`
 - **Date:** 23 September 2026
 - **Agent:** overnight Machinedrum handover
 

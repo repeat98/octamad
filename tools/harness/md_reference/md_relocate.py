@@ -38,6 +38,8 @@ Writes <capture dir>/reloc.txt, which md_replay --reloc applies:
   V <old> <new>                           move a loop word in Y (--loopvars)
   W <new addr> <value>                    a patched P word at its new place
                                           (or in place, below the regions)
+  Q <X|Y> <old start> <old end> <new start>  move the voice records
+  I <new start> <new end>                 relocated P-I init span
   X|Y <addr> <value>                      a patched live-state word
 With profile dirs, it also checks that every word those runs executed was
 found as code (a hole means the descent missed a path).
@@ -67,6 +69,9 @@ def allocation(name):
 HOT_LAYOUT = allocation("hot_code")
 WINDOW_LAYOUT = allocation("window_code_tables")
 SINE_LAYOUT = allocation("sine")
+PI_LAYOUT = allocation("pi_buffers")
+VOICE_X_LAYOUT = allocation("voice_x")
+VOICE_Y_LAYOUT = allocation("voice_y_records")
 
 # old start, old end (exclusive), new start. The new places sit in the
 # emulator's bridged external RAM at 0x30000.., where P, X and Y alias, as
@@ -77,6 +82,10 @@ REGIONS = [
 ]
 LOOP = (0x64, 0xE8)
 TABLES = [(0x145AF5, 193), (0x145BB6, 193), (0x145C77, 193)]
+# The MD calls this straight-line boot sequence before it enters the voice
+# loop.  It is not reachable from the render tables, so it must be an
+# explicit descent root for its #> operands to be relocated.
+INIT_ENTRY = 0x100057
 
 CC = "(cc|hs|ge|ne|pl|nn|ec|lc|gt|cs|lo|lt|eq|mi|nr|es|ls|le)"
 END = re.compile(r"^(rts|rti|jmp|bra|illegal|stop|debug)$")
@@ -91,6 +100,13 @@ HOT = {}
 def moved(a):
     if a in HOT:
         return HOT[a]
+    # These are layout-relative data bases used by the boot init, not code
+    # regions.  in_code_region() below deliberately does not treat them as
+    # descent roots.
+    if a == 0x135600:
+        return PI_LAYOUT["start"]
+    if a == 0x148000:
+        return SINE_LAYOUT["start"]
     for s, e, n in REGIONS:
         if s <= a < e:
             return n + (a - s)
@@ -98,7 +114,8 @@ def moved(a):
 
 
 def in_code_region(a):
-    return moved(a) is not None or LOOP[0] <= a < LOOP[1]
+    return (any(s <= a < e for s, e, _ in REGIONS) or a in HOT or
+            LOOP[0] <= a < LOOP[1])
 
 
 def decode(snapshot):
@@ -230,7 +247,7 @@ def main():
     P = memoryview(snap.read_bytes()).cast("I")
     table = decode(snap)
 
-    entries = {LOOP[0]}
+    entries = {LOOP[0], INIT_ENTRY}
     for base, n in TABLES:
         for i in range(n):
             v = P[base + i]
@@ -320,6 +337,22 @@ def main():
                     patches[a + 1] = ymove[v]
                     kinds["loopvar"] = kinds.get("loopvar", 0) + 1
 
+    # The boot sequence is called after the relocation on the OT.  Keep the
+    # original arithmetic and loop structure, but rebase its absolute
+    # destinations to the proposed voice/sine/P-I allocations.  The P-I
+    # count is the proposed six-voice cap (6 * 0x600), so this is a capacity
+    # relocation, not a second hand-written init implementation.
+    init_patches = {
+        INIT_ENTRY: VOICE_Y_LAYOUT["start"],
+        0x10005F: PI_LAYOUT["start"],
+        0x100063: PI_LAYOUT["words"],
+        0x100069: SINE_LAYOUT["start"],
+    }
+    for a, value in init_patches.items():
+        if a in code and code[a][0] == 2:
+            patches[a + 1] = value
+            kinds["init"] = kinds.get("init", 0) + 1
+
     live = []
     X = P[0x150000:0x170000]
     Y = P[0x170000:0x190000]
@@ -357,6 +390,9 @@ def main():
             f.write(f"M {s:06x} {e:06x} {n:06x}\n")
         for s, e, n in hot_moves:
             f.write(f"M {s:06x} {e:06x} {n:06x}\n")
+        f.write(f"Q X 000800 000c00 {VOICE_X_LAYOUT['start']:06x}\n")
+        f.write(f"Q Y 000800 000c00 {VOICE_Y_LAYOUT['start']:06x}\n")
+        f.write(f"I {PI_LAYOUT['start']:06x} {PI_LAYOUT['start'] + PI_LAYOUT['words']:06x}\n")
         # The region copies of the hot units are dead: wipe them, so a
         # reference that still reaches them shows.
         for s, e, n in hot_moves:

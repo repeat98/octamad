@@ -53,6 +53,7 @@ def main():
     # is not part of the MD snapshot; the replay's poison runs showed the
     # selected scratch ranges are clean.
     driver = LAYOUT["driver"]
+    voice_y = next(r for r in LAYOUT["allocations"] if r["name"] == "voice_y_records")
     vals = {
         "LV140": vmap.get(0x140, driver["LV140"]),
         "LV141": vmap.get(0x141, driver["LV141"]),
@@ -63,6 +64,7 @@ def main():
         "OUTBUF": driver["OUTBUF"],
         "STASH": driver["STASH"],
         "MDSAVE": driver["MDSAVE"],
+        "VOICE": voice_y["start"],
         "INIT": place(TABLES[0]), "TRIG": place(TABLES[1]), "RENDER": place(TABLES[2]),
         "EMPTY": place(0x10008F),
         # 1 when the driver carries the MD's whole low image across calls.

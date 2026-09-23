@@ -20,7 +20,7 @@
 // MD_REPLAY_KEEP_OLD=1 and MD_REPLAY_WIPE=<start>-<end> (with --reloc) keep
 // the old regions, or wipe only part of them.
 //
-//   md_replay <capture dir> [--reloc] [--driver] [out.wav slot]
+//   md_replay <capture dir> [--reloc] [--driver] [--init] [out.wav slot]
 //
 // --reloc applies <capture dir>/reloc.txt (md_relocate.py) after loading the
 // snapshot: each region is copied to its new place, the patched words are
@@ -154,13 +154,26 @@ int main(int _argc, char** _argv)
 	}
 	const std::string dir = _argv[1];
 	// Flags right after the capture dir: --reloc, --driver (either order).
-	bool reloc = false, driver = false;
-	while(_argc > 2 && (std::string(_argv[2]) == "--reloc" || std::string(_argv[2]) == "--driver"))
+	bool reloc = false, driver = false, init = false;
+	while(_argc > 2 && (std::string(_argv[2]) == "--reloc" || std::string(_argv[2]) == "--driver" || std::string(_argv[2]) == "--init"))
 	{
-		(std::string(_argv[2]) == "--reloc" ? reloc : driver) = true;
+		const std::string flag = _argv[2];
+		if(flag == "--reloc") reloc = true;
+		else if(flag == "--driver") driver = true;
+		else init = true;
 		for(int i = 2; i + 1 < _argc; ++i)
 			_argv[i] = _argv[i + 1];
 		--_argc;
+	}
+	if(init && !reloc)
+	{
+		std::cerr << "--init requires --reloc\n";
+		return 2;
+	}
+	if(init && driver)
+	{
+		std::cerr << "--init and --driver are separate modes\n";
+		return 2;
 	}
 
 	DefaultMemoryValidator validator;
@@ -179,7 +192,7 @@ int main(int _argc, char** _argv)
 	dsp.getJit().setConfig(config);
 
 	// Memory: P, then internal X and Y, exactly as md_profile wrote them.
-	std::vector<TWord> snapY(g_snapXY);
+	std::vector<TWord> snapX(g_snapXY), snapY(g_snapXY);
 	{
 		FILE* f = std::fopen((dir + "/snapshot.bin").c_str(), "rb");
 		if(!f)
@@ -204,7 +217,10 @@ int main(int _argc, char** _argv)
 		load(MemArea_X, g_snapXY);
 		load(MemArea_Y, g_snapXY);
 		for(TWord i = 0; i < g_snapXY; ++i)
+		{
+			snapX[i] = memory.get(MemArea_X, i);
 			snapY[i] = memory.get(MemArea_Y, i);
+		}
 		std::fclose(f);
 	}
 	{
@@ -226,6 +242,9 @@ int main(int _argc, char** _argv)
 	}
 	std::vector<std::array<TWord, 3>> moves;
 	std::map<TWord, TWord> vmap;	// the loop's Y words, when moved (V lines)
+	struct XyMove { EMemArea area; TWord oldStart, oldEnd, newStart; };
+	std::vector<XyMove> xyMoves;
+	TWord initPiStart = 0, initPiEnd = 0;
 	if(reloc)
 	{
 		std::ifstream in(dir + "/reloc.txt");
@@ -249,6 +268,27 @@ int main(int _argc, char** _argv)
 				memory.set(MemArea_Y, n, memory.get(MemArea_Y, o));
 				memory.set(MemArea_Y, o, 0xa5a5a5);
 				vmap[o] = n;
+			}
+			else if(kind == "Q")
+			{
+				std::string areaName;
+				in >> areaName >> a >> b >> c;
+				const auto area = areaName == "X" ? MemArea_X : MemArea_Y;
+				const auto oldStart = static_cast<TWord>(std::stoul(a, nullptr, 16));
+				const auto oldEnd = static_cast<TWord>(std::stoul(b, nullptr, 16));
+				const auto newStart = static_cast<TWord>(std::stoul(c, nullptr, 16));
+				xyMoves.push_back({area, oldStart, oldEnd, newStart});
+				for(TWord i = 0; i < oldEnd - oldStart; ++i)
+					memory.set(area, newStart + i, memory.get(area, oldStart + i));
+				for(TWord i = oldStart; i < oldEnd; ++i)
+					memory.set(area, i, 0xa5a5a5);
+				written += oldEnd - oldStart;
+			}
+			else if(kind == "I")
+			{
+				in >> a >> b;
+				initPiStart = static_cast<TWord>(std::stoul(a, nullptr, 16));
+				initPiEnd = static_cast<TWord>(std::stoul(b, nullptr, 16));
 			}
 			else if(kind == "Z")
 			{
@@ -281,6 +321,26 @@ int main(int _argc, char** _argv)
 					memory.set(MemArea_P, i, 0xa5a5a5);
 		std::cout << "relocated " << moves.size() << " regions, " << written << " patched words; old regions wiped\n";
 	}
+	// Map host writes and snapshot record bases when the OT voice records move
+	// from the MD's low Y/X block into the proposed private voice home.
+	auto moveXY = [&](EMemArea area, TWord address)
+	{
+		for(auto it = xyMoves.rbegin(); it != xyMoves.rend(); ++it)
+			if(it->area == area && address >= it->oldStart && address < it->oldEnd)
+				return it->newStart + address - it->oldStart;
+		return address;
+	};
+	auto moveP = [&](TWord address)
+	{
+		for(auto it = moves.rbegin(); it != moves.rend(); ++it)
+			if(address >= (*it)[0] && address < (*it)[1])
+				return (*it)[2] + address - (*it)[0];
+		return address;
+	};
+	for(const auto& m : xyMoves)
+		if(m.area == MemArea_Y)
+			for(TWord i = 0; i < m.oldEnd - m.oldStart; ++i)
+				snapY[m.newStart + i] = snapY[m.oldStart + i];
 	// Where the empty slot's render lives now (a later move, a hot unit,
 	// takes precedence over its region's).
 	for(auto it = moves.rbegin(); it != moves.rend(); ++it)
@@ -477,11 +537,79 @@ int main(int _argc, char** _argv)
 			// nobody reads the host port here, so drain it or the write blocks.
 			while(periphX.getHI08().hasTX())
 				periphX.getHI08().readTX();
-			dsp.exec();
+		dsp.exec();
 		}
 		std::cerr << "no stop reached, pc " << std::hex << dsp.getPC().toWord() << "\n";
 		std::exit(1);
 	};
+
+	if(init)
+	{
+		TWord sineDest = 0;
+		TWord voiceXDest = 0, voiceYDest = 0;
+		for(const auto& m : moves)
+			if(m[0] == 0x140000 && m[1] == 0x148000)
+				sineDest = m[2];
+		for(const auto& m : xyMoves)
+		{
+			if(m.area == MemArea_X && m.oldStart == 0x800 && m.oldEnd == 0xc00)
+				voiceXDest = m.newStart;
+			if(m.area == MemArea_Y && m.oldStart == 0x800 && m.oldEnd == 0xc00)
+				voiceYDest = m.newStart;
+		}
+		if(!sineDest || !voiceXDest || !voiceYDest || initPiEnd <= initPiStart)
+		{
+			std::cerr << "reloc.txt has no complete --init layout ranges\n";
+			return 2;
+		}
+
+		const TWord sineWords = 0x8000, voiceWords = 0x400, piWords = initPiEnd - initPiStart;
+		std::vector<TWord> sineRef(sineWords), piRef(piWords);
+		for(TWord i = 0; i < sineWords; ++i)
+			sineRef[i] = memory.get(MemArea_P, 0x148000 + i);
+		for(TWord i = 0; i < piWords; ++i)
+			piRef[i] = memory.get(MemArea_P, 0x135600 + i);
+		// The relocated init owns these destinations. Start them empty even if
+		// the capture snapshot happened to contain a previous run's state.
+		for(TWord i = 0; i < sineWords; ++i)
+			memory.set(MemArea_P, sineDest + i, 0);
+		for(TWord i = 0; i < piWords; ++i)
+			memory.set(MemArea_P, initPiStart + i, 0);
+		for(TWord i = 0; i < voiceWords; ++i)
+		{
+			memory.set(MemArea_X, voiceXDest + i, 0);
+			memory.set(MemArea_Y, voiceYDest + i, 0);
+		}
+
+		const TWord initPc = moveP(0x100057), initReturn = moveP(0x10008d);
+		// The straight-line init ends in an RTS.  Keep the replay's stop at
+		// that instruction instead of allowing a JIT block to execute the RTS
+		// and return through the snapshot's unrelated stack.
+		auto initConfig = dsp.getJit().getConfig();
+		initConfig.maxInstructionsPerBlock = 1;
+		dsp.getJit().setConfig(initConfig);
+		dsp.setPC(initPc);
+		runTo({initReturn});
+		size_t sineBad = 0, piBad = 0, voiceXBad = 0, voiceYBad = 0;
+		for(TWord i = 0; i < sineWords; ++i)
+			if(memory.get(MemArea_P, sineDest + i) != sineRef[i])
+				++sineBad;
+		for(TWord i = 0; i < piWords; ++i)
+			if(memory.get(MemArea_P, initPiStart + i) != piRef[i])
+				++piBad;
+		for(TWord i = 0; i < voiceWords; ++i)
+		{
+			if(memory.get(MemArea_X, voiceXDest + i) != snapX[0x800 + i])
+				++voiceXBad;
+			if(memory.get(MemArea_Y, voiceYDest + i) != snapY[0x800 + i])
+				++voiceYBad;
+		}
+		std::cout << "init: sine " << (sineWords - sineBad) << "/" << sineWords
+			<< " pi " << (piWords - piBad) << "/" << piWords
+			<< " voice-X " << (voiceWords - voiceXBad) << "/" << voiceWords
+			<< " voice-Y " << (voiceWords - voiceYBad) << "/" << voiceWords << "\n";
+		return sineBad || piBad || voiceXBad || voiceYBad ? 3 : 0;
+	}
 
 	// At every period boundary (slot 0's P:6b, before the host's writes):
 	//
@@ -689,7 +817,7 @@ int main(int _argc, char** _argv)
 		if(hostStream)
 		{
 			for(const auto& [a, v] : g.writes)
-				memory.set(MemArea_Y, a, v);
+				memory.set(MemArea_Y, moveXY(MemArea_Y, a), v);
 		}
 		else if(g.state)
 		{
@@ -707,7 +835,6 @@ int main(int _argc, char** _argv)
 		else
 			for(size_t k = 0; k < 16 && k < rec.words.size(); ++k)
 				memory.set(MemArea_Y, base + static_cast<TWord>(k), rec.words[k]);
-
 		runTo({donePc});
 		const auto out = y(lv(0x140));
 		bool same = true;

@@ -79,7 +79,7 @@ md_a4:
         move    y:>@HALF@,a
         move    a,y:>@LV142@
         asl     #6,a,a
-        add     #>$800,a
+        add     #>@VOICE@,a
         move    a,y:>@LV141@
         bra     md_slot                 ; ends a block, so md_slot starts one
 md_slot:

@@ -298,7 +298,7 @@ int main(int _argc, char** _argv)
 	// driver's md_slot with the same loop words; the replay stops at md_slot
 	// and md_done where it stopped at P:6b and P:b5, and there is no I/O to
 	// step past.
-	TWord slotPc = 0x6b, donePc = 0xb5;
+	TWord slotPc = 0x6b, donePc = 0xb5, enterPc = 0, idlePc = 0xffffff;
 	if(driver)
 	{
 		std::map<std::string, TWord> syms;
@@ -310,17 +310,47 @@ int main(int _argc, char** _argv)
 		}
 		std::ifstream in(dir + "/driver.bin");
 		std::string w;
-		TWord at = syms.at("md_period");
+		TWord at = syms.at("md_enter");
 		while(in >> w)
 			memory.set(MemArea_P, at++, static_cast<TWord>(std::stoul(w, nullptr, 16)));
 		slotPc = syms.at("md_slot");
 		donePc = syms.at("md_done");
+		enterPc = syms.at("md_enter");
+		idlePc = syms.at("md_idle");
+		// The driver's storage (driver.cfg): it starts on the first half,
+		// with the MD's 36 words that outlive a period taken from the
+		// snapshot (X:$a0-$bf, then Y:$1e-$21, as md_leave stores them).
+		std::map<std::string, TWord> cfg;
+		{
+			std::ifstream cin(dir + "/driver.cfg");
+			std::string k, v;
+			while(cin >> k >> v)
+				cfg[k] = static_cast<TWord>(std::stoul(v, nullptr, 16));
+		}
+		memory.set(MemArea_Y, cfg.at("HALF"), 0);
+		// MDSAVE holds the MD's low image as md_leave stores it: the whole
+		// X:0-$ff then Y:0-$13f (576 words) when driver.cfg says MDFULL, else
+		// X:$a0-$bf then Y:$1e-$21 (36).
+		if(cfg.count("MDFULL") && cfg.at("MDFULL"))
+		{
+			for(TWord k = 0; k < 0x100; ++k)
+				memory.set(MemArea_Y, cfg.at("MDSAVE") + k, memory.get(MemArea_X, k));
+			for(TWord k = 0; k < 0x140; ++k)
+				memory.set(MemArea_Y, cfg.at("MDSAVE") + 0x100 + k, memory.get(MemArea_Y, k));
+		}
+		else
+		{
+			for(TWord k = 0; k < 32; ++k)
+				memory.set(MemArea_Y, cfg.at("MDSAVE") + k, memory.get(MemArea_X, 0xa0 + k));
+			for(TWord k = 0; k < 4; ++k)
+				memory.set(MemArea_Y, cfg.at("MDSAVE") + 32 + k, memory.get(MemArea_Y, 0x1e + k));
+		}
 		// The MD loop is not used: fill it, so nothing can fall back into it.
 		for(TWord a = 0x64; a < 0xe8; ++a)
 			memory.set(MemArea_P, a, 0xa5a5a5);
-		std::cout << "driver: " << (at - syms.at("md_period")) << " words at " << std::hex << syms.at("md_period") << std::dec << "\n";
+		std::cout << "driver: " << (at - syms.at("md_enter")) << " words at " << std::hex << syms.at("md_enter") << std::dec << "\n";
 	}
-	dsp.setPC(slotPc);
+	dsp.setPC(driver ? enterPc : slotPc);
 
 	const auto log = readLog(dir + "/log.txt");
 	// A capture that logs each slot's words after the render ("S" lines)
@@ -385,12 +415,61 @@ int main(int _argc, char** _argv)
 	// A loop word's address, moved or not.
 	auto lv = [&](TWord _a) { const auto it = vmap.find(_a); return it == vmap.end() ? _a : it->second; };
 
+	// MD_REPLAY_WATCH=<pc>[,<pc>...] prints every register whenever a block
+	// starts at one of those addresses (a routine's entry is one), with
+	// MD_REPLAY_WATCH_MAX (default 8) prints in all.
+	std::vector<TWord> watch;
+	if(const char* w = std::getenv("MD_REPLAY_WATCH"))
+	{
+		std::stringstream ss(w);
+		std::string item;
+		while(std::getline(ss, item, ','))
+			watch.push_back(static_cast<TWord>(std::stoul(item, nullptr, 16)));
+	}
+	int watchLeft = std::getenv("MD_REPLAY_WATCH_MAX") ? std::atoi(std::getenv("MD_REPLAY_WATCH_MAX")) : 8;
+	auto dumpRegs = [&](TWord _pc)
+	{
+		std::printf("watch %06x:", _pc);
+		for(int e = Reg_X0; e <= Reg_M7; ++e)
+		{
+			TReg24 v;
+			if(e == Reg_A2 || e == Reg_B2 || e == Reg_SSH || e == Reg_SSL)
+				continue;
+			if(dsp.readReg(static_cast<EReg>(e), v))
+				std::printf(" %d=%06x", e, v.toWord());
+		}
+		for(int e : {Reg_A, Reg_B})
+		{
+			TReg56 v;
+			if(dsp.readReg(static_cast<EReg>(e), v))
+				std::printf(" %s=%014llx", e == Reg_A ? "A" : "B", static_cast<unsigned long long>(v.var & 0xffffffffffffffull));
+		}
+		std::printf("\n");
+	};
+
 	// Run until the PC reaches one of _stops (checked at block boundaries).
 	auto runTo = [&](std::initializer_list<TWord> _stops) -> TWord
 	{
 		for(uint64_t n = 0; n < 2'000'000; ++n)
 		{
 			const auto pc = dsp.getPC().toWord();
+			if(watchLeft > 0)
+				for(auto w : watch)
+					if(pc == w)
+					{
+						dumpRegs(pc);
+						--watchLeft;
+						// MD_REPLAY_WATCH_DUMP=<file>: X and Y 0..$1fff at the first hit.
+						static bool dumped = false;
+						if(const char* f = std::getenv("MD_REPLAY_WATCH_DUMP"); f && !dumped)
+						{
+							dumped = true;
+							FILE* o = std::fopen(f, "w");
+							for(TWord a = 0; a < 0x2000; ++a)
+								std::fprintf(o, "%06x %06x\n", memory.get(MemArea_X, a), memory.get(MemArea_Y, a));
+							std::fclose(o);
+						}
+					}
 			for(auto s : _stops)
 				if(pc == s)
 					return pc;
@@ -522,7 +601,51 @@ int main(int _argc, char** _argv)
 			std::cerr << "log out of step at block " << i << "\n";
 			return 1;
 		}
-		runTo({slotPc});
+		// The driver returns to the "dispatcher" after each half: fill low
+		// memory with garbage, as the OT's own code would leave it, and call
+		// it again.
+		// MD_REPLAY_FRAME_KEEP=<area>:<start>-<end>[,...] leaves those words
+		// alone (a bisection aid for what the MD needs across frames).
+		static const std::vector<Range> frameKeep = [&]
+		{
+			std::vector<Range> r;
+			if(const char* spec = std::getenv("MD_REPLAY_FRAME_KEEP"))
+			{
+				std::stringstream ss(spec);
+				std::string item;
+				while(std::getline(ss, item, ','))
+				{
+					const auto colon = item.find(':'), dash = item.find('-');
+					r.push_back({item[0] == 'X' ? MemArea_X : MemArea_Y,
+						static_cast<TWord>(std::stoul(item.substr(colon + 1, dash - colon - 1), nullptr, 16)),
+						static_cast<TWord>(std::stoul(item.substr(dash + 1), nullptr, 16))});
+				}
+			}
+			return r;
+		}();
+		auto kept = [&](EMemArea _a, TWord _w)
+		{
+			for(const auto& k : frameKeep)
+				if(k.area == _a && _w >= k.start && _w < k.end)
+					return true;
+			return false;
+		};
+		while(runTo({slotPc, idlePc}) == idlePc)
+		{
+			for(TWord a = 0; a < 0x100; ++a)
+			{
+				lcg = lcg * 1103515245u + 12345u;
+				if(!kept(MemArea_X, a))
+					memory.set(MemArea_X, a, (lcg >> 8) & 0xffffff);
+			}
+			for(TWord a = 0; a < 0x140; ++a)
+			{
+				lcg = lcg * 1103515245u + 12345u;
+				if(!kept(MemArea_Y, a))
+					memory.set(MemArea_Y, a, (lcg >> 8) & 0xffffff);
+			}
+			dsp.setPC(enterPc);
+		}
 		if(y(lv(0x142)) != rec.slot)
 		{
 			std::cerr << "slot mismatch at block " << i << ": emulator " << y(lv(0x142)) << ", log " << rec.slot << "\n";

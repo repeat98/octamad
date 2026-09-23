@@ -1168,6 +1168,52 @@ Measured with `md_replay` on the six captures of the relocation table
   - Taking CHORUS as well (`0x0eb7`, 329 words, adjacent to the donor
     region) would add room, at the cost of that effect on T5–T8.
 
+### The OT-side driver (23 September 2026)
+
+`modules/machinedrum/md_driver.asm` replaces the MD's voice loop. It is
+assembled per layout by `tools/harness/md_reference/md_driver.py`, which
+disassembles the result back and refuses mis-encodings and label prefixes.
+`md_replay --driver` runs it in place of the MD loop, which is filled with
+`0xa5a5a5`, and compares every voice's blocks with the reference.
+
+- ✅ **Step 1:** the loop's logic without its I/O. Bit-identical on all 12
+  kits, both at the MD's addresses and relocated with the hot split.
+- ✅ **Step 2:** each slot renders into its own 32 words, kept for the mix.
+  The loop's Y words (`y:$140–142`, `y:$153+slot`) move out of OT system Y
+  (`md_relocate --loopvars`), patching 13 engine operands (3 × `y:>$140`,
+  10 × `y:>$142`); the engines touch no other loop word. Bit-identical on
+  all 12.
+- ✅ **Step 3:** the frame driver, one call per 16-sample OT frame:
+  - it renders 8 slots per call, alternating halves;
+  - it saves the OT's `X:0–0xff`/`Y:0–0x13f` around the batch and carries
+    only the MD's 36 words;
+  - it zeroes empty slots' buffers rather than calling the MD's 3,200-fetch
+    pacing routine (81 of 193 engine numbers render through it).
+
+  The replay fills low memory with garbage between calls, as the OT's own
+  code would leave it. Bit-identical on 10 of 12 kits. The other two differ
+  in 1–2 blocks of ~33,500, all TRX-S2's first block after a trigger: that
+  render reads scratch it never wrote, so on the MD it depends on other
+  voices' leftovers.
+  - Carrying the whole low image (576 words each way, ~70 cycles/sample
+    more, *estimated*) fixed c1d_16 but not c10_16.
+  - The rest is *inferred* to come from the replay's still-armed MD
+    interrupt handlers running at other moments relative to the swap, a
+    harness effect. It is left as a documented deviation.
+- `dsp_asm` (the shared build, still at pin `c051afad`: the main checkout
+  was not rebuilt after the 22 Sep repin) does not take the MD loop
+  verbatim:
+  - no `move m0,mN`;
+  - no backward `bcc`;
+  - `jmp`/`jcc` only in the short form, below `$1000`;
+  - `cmp a,b` comes out as `max a,b`.
+
+  Each is written around and noted in the source.
+- Not yet: the stereo mix, and the OT placement (addresses, the hook in
+  core 0's dispatcher). The per-voice X and Y blocks (1 K words each, at
+  the same address in both spaces through `r6`) are the open placement
+  question.
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and

@@ -7,7 +7,7 @@ Without --reloc the routine tables are at the MD's own addresses; with it,
 at the places <capture dir>/reloc.txt moved them to (its M lines, the last
 matching move winning, as md_replay applies them). Writes driver.bin (the
 words, one per line, hex) and driver.sym (label address) into the capture
-dir, and prints the disassembly of what was assembled, since dsp_asm has
+dir, the filled placeholders as driver.cfg, and prints the disassembly of what was assembled, since dsp_asm has
 mis-encoded forms before (CLAUDE.md).
 """
 import re
@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[3]
 ASM = ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_asm"
 DIS = ROOT / "out/md_reference/md_dis"
 SRC = ROOT / "modules/machinedrum/md_driver.asm"
-TABLES = (0x145AF5, 0x145BB6, 0x145C77)
+TABLES = (0x145AF5, 0x145BB6, 0x145C77)   # init, trigger, render
 
 
 def main():
@@ -45,15 +45,32 @@ def main():
                 return n + a - s
         return a
 
+    # The placeholders. Loop words from the V lines (md_relocate --loopvars)
+    # or at the MD's own addresses; the driver's own storage in Y the MD
+    # does not use (the replay's poison runs: X/Y $c00-$1fff are clean).
+    vals = {
+        "LV140": vmap.get(0x140, 0x140), "LV141": vmap.get(0x141, 0x141), "LV142": vmap.get(0x142, 0x142),
+        "ENG": vmap.get(0x153, 0x153),
+        "HALF": vmap.get(0x141, 0xe00) + 2 if 0x141 in vmap else 0xe03,
+        "TMP": (vmap[0x141] + 3) if 0x141 in vmap else 0xe04,
+        "OUTBUF": 0xC00, "STASH": 0x1800, "MDSAVE": 0x1c00,
+        "INIT": place(TABLES[0]), "TRIG": place(TABLES[1]), "RENDER": place(TABLES[2]),
+        "EMPTY": place(0x10008F),
+        # 1 when the driver carries the MD's whole low image across calls.
+        "MDFULL": 1 if "move    #$0,r0\n        move    #>@MDSAVE@,r4" in SRC.read_text() else 0,
+    }
     src = SRC.read_text()
-    for t in TABLES:
-        src = src.replace(f"${t:x}", f"${place(t):x}")
-    # The loop words (V lines, md_relocate --loopvars).
-    for o in (0x140, 0x141, 0x142):
-        if o in vmap:
-            src = src.replace(f"y:>${o:x}", f"y:>${vmap[o]:x}")
-    if 0x153 in vmap:
-        src = src.replace("(r1+$153)", f"(r1+${vmap[0x153]:x})")
+    for k, v in vals.items():
+        src = src.replace(f"@{k}@", f"${v:x}")
+    left = re.findall(r"@[A-Z0-9]+@", src)
+    if left:
+        sys.exit(f"unfilled placeholders: {sorted(set(left))}")
+    # dsp_asm resolves labels by prefix (CLAUDE.md): refuse any label that
+    # is a prefix of another.
+    labels = re.findall(r"^([A-Za-z_][A-Za-z0-9_]*):", src, re.M)
+    clash = [(a, b) for a in labels for b in labels if a != b and b.startswith(a)]
+    if clash:
+        sys.exit(f"label is a prefix of another: {clash}")
     tmp = Path(tempfile.mkdtemp())
     (tmp / "d.asm").write_text(src)
     r = subprocess.run([str(ASM), "-in", str(tmp / "d.asm"), "-org", f"{org:x}", "-out", str(tmp / "d.bin"),
@@ -68,6 +85,7 @@ def main():
         if l.strip():
             k, v = l.split()
             syms[k] = int(v, 16)
+    (cap / "driver.cfg").write_text("".join(f"{k} {v:06x}\n" for k, v in vals.items()))
     (cap / "driver.sym").write_text("".join(f"{k} {v:06x}\n" for k, v in sorted(syms.items(), key=lambda kv: kv[1])))
     print(f"{len(words)} words at {org:04x}; " + ", ".join(f"{k} {v:04x}" for k, v in sorted(syms.items(), key=lambda kv: kv[1])))
 

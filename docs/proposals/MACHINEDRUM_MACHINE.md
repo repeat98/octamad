@@ -469,18 +469,23 @@ a measurement from the file; *inferred* marks what is not.
 - ✅ The DSP images are little-endian 24-bit words: header `3 0x24 4 0`,
   then `(space, address, count, words…)` records (space 0/1/2 = P/X/Y), and
   a closing `3 0x24` pair. Both parse exactly to their last word.
-- ❌ for the reference emulator's needs: the update does not contain flash
-  `0x0000–0x3fff` (the bootloader). The reference at
-  `vendor/gearmulator-md-mm` (`release/md-mm-alpha`, pinned `8cea052`,
-  21 Sep 2026; cloned by hand, not by `scripts/setup.sh`) loads only a full
-  8 MiB flash dump whose FNV-1a fingerprint matches its known OS 1.63
-  image. There are two routes to a reference run. One is a flash dump from
-  an MD the user owns. The other, untested, is a synthetic flash image: a
-  stub loader plus the update stream at `0x4000`, run through a locally
-  patched loader. *Inferred* support for the second route: MAIN OS holds
-  the flash address `0x10004000` twice, so it may read the stream itself.
-  `vendor/mc68k` is already `joelanders/mc68k-md-mm`, the same author's
-  ColdFire core.
+- ✅ The reference runs. A full 8 MiB flash dump
+  (`base_firmware/elektron_sps1-1uw_os1.63.bin`, gitignored; SHA-256
+  `68542e30…4fbca44c8`) matches the fingerprint the reference emulator
+  requires (FNV-1a `33b7c1a9e29f43fd`). The decoded update stream sits in
+  it byte-identical at `0x4000`, and the dump adds the bootloader
+  (`0x0000–0x3fff`) and 6.75 MiB of data at `0x100000–0x7c0000`. The
+  emulator is at `vendor/gearmulator-md-mm` (`release/md-mm-alpha`,
+  pinned `8cea052`, 21 Sep 2026; cloned by hand, not by
+  `scripts/setup.sh`). Its headless `mdAudioFirmwareTest` builds with the
+  plugin and the other synths off (`build-headless/`, about 1 min) and
+  passes against the dump: both DSPs boot, and the MD 1.63 audio soak
+  passes in 5 s. `vendor/mc68k` is already `joelanders/mc68k-md-mm`, the
+  same author's ColdFire core. The MAIN OS carries its own aPLib depacker
+  at `0x248394`; its caller is not yet located.
+- ✅ Clocks as the reference models them: each MD DSP56303 runs at
+  101.6064 MHz, which is 2,304 cycles per 44.1 kHz sample. The OT has 4,532
+  per core, of which `CHIP.md` counts 3,120 as usable.
 
 ### Engine catalog
 
@@ -537,7 +542,9 @@ These are ✅ sizes from the load maps, set against `docs/firmware/CHIP.md`.
 
 1. Trace MAIN OS's DSP upload, which confirms which section goes to which
    DSP and the order of HDI08 traffic.
-2. Choose the reference route: a flash dump, or the synthetic flash image.
+2. Measure the MD DSPs' busy cycles per sample in the reference, at idle
+   and with all 16 tracks playing. That is the number that decides how much
+   of the OT one instance costs.
 3. Separate code from tables in the producer's P and find per-engine
    entry points, starting with GND-SN and TRX-BD. The descriptors' handler
    pointers are the ColdFire side of that.

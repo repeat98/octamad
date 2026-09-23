@@ -29,6 +29,22 @@ one instance; that is a development cap, not evidence that even one complete
 instance fits. Increase it only after measuring the full workload. There is
 no requirement for eight simultaneous Machinedrum instances.
 
+### Decisions (23 September 2026, the user)
+
+- **One Machinedrum per OT Part.** At most one track of a Part is
+  MACHINEDRUM. It may be any track, and it may be a different track in
+  another Part. A Part change moves the instance; its voices restart, as
+  they do on any machine change. Because either core can host it, both
+  cores must afford an MD track. The code lives in the shared window, which
+  both cores reach, so only the voice state moves.
+- **The Machinedrum remix drops the bus servers** (BusVerb, BusDelay and
+  the SEND clients) to free the shared window for MD code and state. The
+  stock FX1/FX2 effects stay. Composing with every other remix is not a
+  goal.
+- **The MD master effects are out of scope**: the delay, reverb, EQ and
+  dynamics that CTR-RE/GB/EQ/DX drive. The parent track's OT FX process the
+  instance's stereo mix. Per-part processing (the MD FX page) stays.
+
 For example, T1 can host MD instance A with a kick on internal part 1, snare
 on part 2, and hats on parts 3/4. T2 can host an independent instance B only
 if the qualified instance cap and resource placement permit it.
@@ -56,8 +72,10 @@ voices. The counts and IDs are read from the OS 1.63 descriptor table
 (section 12); an earlier draft said TRX 13 and 49 engines, ❌.
 
 A complete sound-module target also covers MD per-part processing, routing,
-LFOs, mute/trigger relationships, and the shared MD delay, reverb, EQ, and
-dynamics processing. They belong to each instance. The OT's own FX slots
+LFOs and mute/trigger relationships. They belong to each instance. The MD
+master effects (delay, reverb, EQ, dynamics) are out of scope (section 1,
+decisions); the per-part delay/reverb sends on the ROUTE page have no
+destination and are hidden. The OT's own FX slots
 process the resulting stereo mix and remain available within the qualified
 budget. A synth-only milestone must be labelled as such.
 
@@ -164,7 +182,7 @@ eight-parameter MD group into two views while preserving its original order:
 
 Provide explicit group/view navigation inside the MD editor. Keep MD FX
 pages distinguishable from the parent OT track's FX1/FX2 pages. Add dedicated
-views for MD LFO settings and instance master effects. Sparse engines show
+views for MD LFO settings. Sparse engines show
 only meaningful controls. For TRX-BD, SYN 1 is
 `PTCH DEC RAMP RDEC STRT NOIS`; SYN 2 is `HARM CLIP`.
 
@@ -263,7 +281,7 @@ multiplied into 16 sets.
 ## 7. Runtime ownership and resource limits
 
 An instance owns 16 part configurations, live voice/envelope/filter/RNG
-state, per-part processing and modulation, its mixer, master-effect buffers,
+state, per-part processing and modulation, its mixer,
 event queues, and persistent kit state. Share immutable engine code, tables,
 and sample assets where safe; mutable state must remain private even when
 two parts or instances choose the same engine.

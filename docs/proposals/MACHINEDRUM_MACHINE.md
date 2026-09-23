@@ -1396,27 +1396,49 @@ disassembles the result back and refuses mis-encodings and label prefixes.
 
 - ✅ `md_relocate.py` and `md_driver.py` now import the plain address book in
   [`modules/machinedrum/layout.py`](../../modules/machinedrum/layout.py).
-  The two relocated source spans land at `P:0x38000` (engine code and
-  descriptors) and `P:0x30000` (the 32K sine/table span); hot units default to
-  `P:0x1000`, loop words to `Y:0x0c00`, and the driver assembles at
-  `P:0x3fe00`. The old `--loopvars` flag remains only as an explicit
-  compatibility override; the normal gate uses the layout with no override.
-- ✅ The twelve-kit gate passed the proposed addresses. Ten kits preserve
-  their baseline counts; the only changes are the already-known TRX-S2
-  residuals: `c1d_16` is one extra differing block and `c10_16` is two extra
-  differing blocks. The complete table and commands are in
-  [`WP-A3.md`](machinedrum_reports/WP-A3.md).
-- ✅ `MD_REPLAY_STATEDIFF=5` was run on the relocated driver. The driver
-  loads the voice record base through `r6` from `Y:0x0c01`; no output block
-  changed on the diagnostic `c10` run. Four late word-3 state diagnostics
-  remain the existing low-scratch/state carry-in phenomenon, not a changed
-  voice-block base.
-- *inferred* The gate qualifies address plumbing in the replay harness only;
-  the shared-window ownership conflicts, voice-home choice, and six P-I-voice
-  cap remain the user’s A2 layout decisions. All A3 results are pending the
-  user’s sign-off.
-- **review:** user sign-off is required on the A2 map before this relocation
-  can be treated as an OT implementation result.
+  The source spans land at `P:0x38000` and `P:0x30000`, hot units at
+  `P:0x1000`, loop words at `Y:0x0c00`, scratch at the proposed addresses,
+  and the driver at `P:0x3fe00`. The relocator also emits the proposed
+  `X/Y:0x3400` voice-home move and translates host record writes.
+- ❌ The earlier A3 report claimed a passing gate while the driver still used
+  the replay placeholder voice base `0x800`; that was not a test of the A2
+  proposal and is retracted. The actual `0x3400` voice-home gate is not
+  qualified: c01_16 ends at `22,526/10,987`, c10 at `32,262/1,251`, and
+  c10_3 at `32,257/1,251`, versus exact or known-residual baselines. The
+  complete table and the two diagnostic attempts are in [`WP-A3.md`](machinedrum_reports/WP-A3.md).
+- ✅ `MD_REPLAY_STATEDIFF` confirms the first c10 divergence begins after the
+  relocated voice record is used (`r6=0x3400`); it does not silently fall
+  back to the old `0x800` block. c37_16 and c47_2 retain their prior exact
+  and known-residual results, so the failure is kit/path dependent rather
+  than a parser crash.
+- *inferred* The proposed `0x3400` home changes a state or address-dependent
+  path in most kits; the current evidence does not establish whether the
+  cause is an additional absolute dependency or a stock FX1 collision.
+  This is precisely the A2 voice-home decision cost, not permission to pick
+  another home overnight.
+- **blocked:** the user must choose the selected `A_move_base_fx1` home or
+  one of `B_swap_pi_x_words` / `C_batch_overwrite_curve_table`, then the
+  relocator/driver gate must be rerun. All A3 results are pending the user’s
+  sign-off.
+
+### WP-A4 relocated boot init (24 September 2026)
+
+- ✅ The relocator now descends from the MD boot sequence at `P:0x100057`
+  and patches its voice-record, P-I base/count, and sine-base immediates.
+  `md_replay --init` zeroes the proposed destinations, calls the relocated
+  sequence, and compares its sine, six-voice P-I span, and X/Y voice blocks
+  with the capture snapshot.
+- ✅ On c10 and c37_16 the init check reports `sine 32768/32768`,
+  `pi 9216/9216`, `voice-X 1024/1024`, and `voice-Y 1024/1024`. This validates
+  the six-voice proposal’s initialized span; the stock routine’s original
+  `0x6000` zero count is layout-relocated to `0x2400` because the proposed
+  map caps P-I storage at six voices.
+- *inferred* This does not prove that nine/16 stock P-I buffers fit the
+  proposed shared window. The count reduction and the shared-window stock
+  conflicts remain part of the user’s layout sign-off.
+- **review:** the init harness passes its proposed six-voice acceptance
+  check, pending the A2 voice-home and window decisions. It must not be
+  treated as an OT image qualification while A3 is blocked.
 
 ### Open for Phase 1
 

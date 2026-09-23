@@ -225,6 +225,7 @@ int main(int _argc, char** _argv)
 		}
 	}
 	std::vector<std::array<TWord, 3>> moves;
+	std::map<TWord, TWord> vmap;	// the loop's Y words, when moved (V lines)
 	if(reloc)
 	{
 		std::ifstream in(dir + "/reloc.txt");
@@ -240,6 +241,14 @@ int main(int _argc, char** _argv)
 				const auto& m = moves.back();
 				for(TWord i = 0; i < m[1] - m[0]; ++i)
 					memory.set(MemArea_P, m[2] + i, memory.get(MemArea_P, m[0] + i));
+			}
+			else if(kind == "V")
+			{
+				in >> a >> b;
+				const auto o = static_cast<TWord>(std::stoul(a, nullptr, 16)), n = static_cast<TWord>(std::stoul(b, nullptr, 16));
+				memory.set(MemArea_Y, n, memory.get(MemArea_Y, o));
+				memory.set(MemArea_Y, o, 0xa5a5a5);
+				vmap[o] = n;
 			}
 			else if(kind == "Z")
 			{
@@ -373,6 +382,8 @@ int main(int _argc, char** _argv)
 	}
 	std::map<uint32_t, std::vector<TWord>> after;	// slot -> words after its last render
 	auto y = [&](TWord _a) { return memory.get(MemArea_Y, _a); };
+	// A loop word's address, moved or not.
+	auto lv = [&](TWord _a) { const auto it = vmap.find(_a); return it == vmap.end() ? _a : it->second; };
 
 	// Run until the PC reaches one of _stops (checked at block boundaries).
 	auto runTo = [&](std::initializer_list<TWord> _stops) -> TWord
@@ -472,14 +483,14 @@ int main(int _argc, char** _argv)
 		}
 		if(!poison.empty() && (!poisonOnce || periods == 0))
 		{
-			const std::vector<std::pair<EMemArea, TWord>> keep = {{MemArea_Y, 0x140}, {MemArea_Y, 0x141}, {MemArea_Y, 0x142},
+			const std::vector<std::pair<EMemArea, TWord>> keep = {{MemArea_Y, lv(0x140)}, {MemArea_Y, lv(0x141)}, {MemArea_Y, lv(0x142)},
 				{MemArea_X, 0x202}, {MemArea_X, 0x243}, {MemArea_X, 0x256}};
 			std::vector<TWord> kept;
 			for(const auto& [a, w] : keep)
 				kept.push_back(memory.get(a, w));
 			std::vector<TWord> engines;
 			for(TWord k = 0; k < 16; ++k)
-				engines.push_back(memory.get(MemArea_Y, 0x153 + k));
+				engines.push_back(memory.get(MemArea_Y, lv(0x153 + k)));
 			for(const auto& r : poison)
 				for(TWord a = r.start; a < r.end; ++a)
 				{
@@ -489,7 +500,7 @@ int main(int _argc, char** _argv)
 			for(size_t k = 0; k < keep.size(); ++k)
 				memory.set(keep[k].first, keep[k].second, kept[k]);
 			for(TWord k = 0; k < 16; ++k)
-				memory.set(MemArea_Y, 0x153 + k, engines[k]);
+				memory.set(MemArea_Y, lv(0x153 + k), engines[k]);
 		}
 		++periods;
 	};
@@ -512,16 +523,16 @@ int main(int _argc, char** _argv)
 			return 1;
 		}
 		runTo({slotPc});
-		if(y(0x142) != rec.slot)
+		if(y(lv(0x142)) != rec.slot)
 		{
-			std::cerr << "slot mismatch at block " << i << ": emulator " << y(0x142) << ", log " << rec.slot << "\n";
+			std::cerr << "slot mismatch at block " << i << ": emulator " << y(lv(0x142)) << ", log " << rec.slot << "\n";
 			return 1;
 		}
 		if(rec.slot == 0)
 			atPeriod();
 		// Only what the host wrote goes in; the rest of the slot's 64 words is
 		// the voice's own state, which the emulator carries forward itself.
-		const auto base = y(0x141);
+		const auto base = y(lv(0x141));
 		// MD_REPLAY_STATEDIFF=<n>: before overwriting the record, compare all 64
 		// words with the reference's (a moved address counts as equal to its new
 		// place) and print the first <n> slots whose state differs.
@@ -575,7 +586,7 @@ int main(int _argc, char** _argv)
 				memory.set(MemArea_Y, base + static_cast<TWord>(k), rec.words[k]);
 
 		runTo({donePc});
-		const auto out = y(0x140);
+		const auto out = y(lv(0x140));
 		bool same = true;
 		for(uint32_t k = 0; k < 32; ++k)
 		{

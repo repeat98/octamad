@@ -34,6 +34,7 @@ OT's core-0 donor region would hold them (see hot_units).
 Writes <capture dir>/reloc.txt, which md_replay --reloc applies:
   M <old start> <old end> <new start>     move a region or a hot unit (end exclusive)
   Z <start> <end>                         wipe a region copy of a hot unit
+  V <old> <new>                           move a loop word in Y (--loopvars)
   W <new addr> <value>                    a patched P word at its new place
                                           (or in place, below the regions)
   X|Y <addr> <value>                      a patched live-state word
@@ -188,7 +189,7 @@ def hot_units(code, fetch_dirs, base, size):
 
 def main():
     args = sys.argv[1:]
-    hot_dirs, hot_base, hot_size = [], 0x1000, 2724
+    hot_dirs, hot_base, hot_size, loopvars = [], 0x1000, 2724, None
     while args and args[0].startswith("--"):
         flag = args.pop(0)
         if flag == "--hot":
@@ -197,6 +198,8 @@ def main():
             hot_base = int(args.pop(0), 0)
         elif flag == "--hot-size":
             hot_size = int(args.pop(0), 0)
+        elif flag == "--loopvars":
+            loopvars = int(args.pop(0), 0)
     sys.argv = [sys.argv[0]] + args
     cap = Path(sys.argv[1])
     snap = cap / "snapshot.bin"
@@ -274,6 +277,25 @@ def main():
                 patches[base + i] = m
                 kinds["table"] = kinds.get("table", 0) + 1
 
+    # --loopvars: the loop's own Y words (the render buffer y:$140, the
+    # record base y:$141, the slot y:$142, and each slot's engine at
+    # y:$153+slot) move to base..base+2 and base+$10..; the engines reach
+    # y:$140 and y:$142 through long absolute operands only (checked: 3 and
+    # 10 sites; y:$141 and y:$153+ only from the loop, which the driver
+    # replaces).
+    ymove = {}
+    if loopvars is not None:
+        ymove = {0x140: loopvars, 0x141: loopvars + 1, 0x142: loopvars + 2}
+        ymove.update({0x153 + i: loopvars + 0x10 + i for i in range(16)})
+        for a, (ln, wa, wb, text) in code.items():
+            if ln != 2 or LOOP[0] <= a < LOOP[1]:
+                continue
+            for m in re.findall(r"y:>\$([0-9a-f]+)\b", text):
+                v = int(m, 16)
+                if v in ymove and wb == v:
+                    patches[a + 1] = ymove[v]
+                    kinds["loopvar"] = kinds.get("loopvar", 0) + 1
+
     live = []
     X = P[0x150000:0x170000]
     Y = P[0x170000:0x190000]
@@ -321,6 +343,8 @@ def main():
             f.write(f"W {moved(a) if moved(a) is not None else a:06x} {v:06x}\n")
         for area, a, v in live:
             f.write(f"{area} {a:06x} {v:06x}\n")
+        for old_, new_ in sorted(ymove.items()):
+            f.write(f"V {old_:06x} {new_:06x}\n")
     print(f"wrote {cap / 'reloc.txt'}")
 
 

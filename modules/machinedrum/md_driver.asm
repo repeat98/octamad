@@ -10,8 +10,12 @@
 ; the mixer (P:cf-d3). md_replay --driver runs it in place of the loop and
 ; compares every rendered block with the reference.
 ;
+; Step 2a: each slot renders into its own 32 words at $c00 + $20*slot (the
+; MD alternates two buffers at $100/$120 and DMAs each block out at once; the
+; OT mixes later, so all 16 blocks must survive the batch).
+;
 ; Data the loop keeps (MD addresses, moved in a later step):
-;   y:$140  the render buffer, alternating $100 / $120 (m7 = $1f)
+;   y:$140  the slot's render buffer (m7 = $1f, so 32-aligned)
 ;   y:$141  the slot's record base, $800 + $40*slot
 ;   y:$142  the slot index
 ;   y:$153+slot  the engine the slot was last initialised for
@@ -73,16 +77,11 @@ md_trig:
         jsr     (r1)
 md_render:
         move    y:>$142,r1
-        move    #>$100,x1
-        move    y:>$140,a
-        move    #>$20,x0
-        cmp     x1,a
-        bne     md_bufa
-        add     x0,a
-        bra     md_bufset
-md_bufa:
-        move    x1,a
-md_bufset:
+        move    y:>$142,a               ; each slot renders into its own
+        asl     #5,a,a                  ; 32 words, $c00 + $20*slot, kept
+        add     #>$c00,a                ; for the mix
+        move    #>$100,x1               ; x0/x1 as the loop's buffer
+        move    #>$20,x0                ; toggle left them
         move    y:(r1+$153),r0
         move    a,y:>$140
         move    a,r7

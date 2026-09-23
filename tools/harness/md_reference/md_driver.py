@@ -29,12 +29,15 @@ def main():
     reloc = "--reloc" in args
     org = int(args[args.index("--org") + 1], 0) if "--org" in args else 0x2000
 
-    moves = []
+    moves, vmap = [], {}
     if reloc:
         for l in (cap / "reloc.txt").read_text().splitlines():
             if l.startswith("M "):
                 _, s, e, n = l.split()
                 moves.append((int(s, 16), int(e, 16), int(n, 16)))
+            elif l.startswith("V "):
+                _, o, n = l.split()
+                vmap[int(o, 16)] = int(n, 16)
 
     def place(a):
         for s, e, n in reversed(moves):
@@ -45,6 +48,12 @@ def main():
     src = SRC.read_text()
     for t in TABLES:
         src = src.replace(f"${t:x}", f"${place(t):x}")
+    # The loop words (V lines, md_relocate --loopvars).
+    for o in (0x140, 0x141, 0x142):
+        if o in vmap:
+            src = src.replace(f"y:>${o:x}", f"y:>${vmap[o]:x}")
+    if 0x153 in vmap:
+        src = src.replace("(r1+$153)", f"(r1+${vmap[0x153]:x})")
     tmp = Path(tempfile.mkdtemp())
     (tmp / "d.asm").write_text(src)
     r = subprocess.run([str(ASM), "-in", str(tmp / "d.asm"), "-org", f"{org:x}", "-out", str(tmp / "d.bin"),

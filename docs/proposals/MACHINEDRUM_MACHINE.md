@@ -3,7 +3,7 @@
 Status: revised proposal, 23 September 2026. Based on the local Octamad
 checkout at `3b5a2eb66930225f914a369fbfd499dd763d7dcd`. No Machinedrum
 engine has been extracted, ported, benchmarked, or hardware-qualified by
-this work.
+this work. Phase 0 (inputs and subsystem map) is recorded in section 12.
 
 ## 1. Confirmed target
 
@@ -44,15 +44,16 @@ table, sample asset, initialization path, and shared dependency.
 
 | Family | Sound machines | Available to |
 |---|---:|---|
-| TRX | 13 | Every internal part of every instance |
+| TRX | 14 | Every internal part of every instance |
 | EFM | 8 | Every internal part of every instance |
 | E12 | 16 | Every internal part of every instance |
 | P-I | 9 | Every internal part of every instance |
 | GND | 3 | Every internal part; EMPTY is separate |
 
-These 49 core sound engines form the initial synthesis catalog. They are
-choices for 16 independently configured parts, not 49 mandatory concurrent
-voices. Verify the counts and IDs against the actual firmware.
+These 50 core sound engines form the initial synthesis catalog. They are
+choices for 16 independently configured parts, not 50 mandatory concurrent
+voices. The counts and IDs are read from the OS 1.63 descriptor table
+(section 12); an earlier draft said TRX 13 and 49 engines, ❌.
 
 A complete sound-module target also covers MD per-part processing, routing,
 LFOs, mute/trigger relationships, and the shared MD delay, reverb, EQ, and
@@ -63,7 +64,7 @@ budget. A synth-only milestone must be labelled as such.
 Track UW ROM/RAM, input-processing, MIDI/control machines, and unofficial
 firmware engines separately in a compatibility matrix. Identify their
 additional data, routing, and state requirements explicitly; completing the
-49-engine catalog alone does not establish a complete MD UW implementation.
+50-engine catalog alone does not establish a complete MD UW implementation.
 The sequencing options and their tradeoffs are recorded in section 6.
 Reproducing MD song mode and the original panel workflow is outside the
 current scope.
@@ -80,6 +81,7 @@ current scope.
 - The MD 1.63 update SysEx exists in
   `base_firmware/Elektron_SPS1-1UW_OS1.63/`; OT 1.40C is also present.
   Presence does not establish completeness of MD code or sample assets.
+  Section 12 records what the update does and does not contain.
 - The remixer provides linked ColdFire units, DSP placement, symbol-based
   detours, collision checks, DSP rendering, and the full OT emulator.
   It has no general nested-instrument or runtime instance-admission API.
@@ -358,7 +360,7 @@ that Elektron code/data and built images are derived locally, never committed.
 | Phase | Work | Exit evidence |
 |---|---|---|
 | 0. Inputs and subsystem map | Pin reference revisions; validate firmware/assets; inventory engines, part processing, mixer/master dependencies | Reproducible coverage and dependency map, including present/missing assets |
-| 1. Direct-port proof | Isolate GND-SIN/TRX-BD or a bounded original voice subsystem; compare native relocation with the MD reference | Original behavior reproduced at a defined boundary without relying on an unported MD OS scheduler |
+| 1. Direct-port proof | Isolate GND-SN/TRX-BD or a bounded original voice subsystem; compare native relocation with the MD reference | Original behavior reproduced at a defined boundary without relying on an unported MD OS scheduler |
 | 2. One instance, multiple parts | Add OT machine registration and private part states; start with kick/snare/hats, then exercise 16 concurrent parts | Independent parts mix into one OT track; no cross-part state corruption; initial placement and timing report |
 | 3. Sequencing/MIDI and editor | Confirm A or B; add its pattern/event model, MIDI map, part pads, engine assignment, 6+2 views, scenes/LFO destinations, and save/load | Simultaneous parts follow OT timing; UI selection cannot retarget playback/locks; all eight synth controls work |
 | 4. Complete sound module | Finish all core engines and native per-part/master processing; characterize E12 data delivery | Every declared feature passes reference comparisons and contributes to measured worst-case budgets |
@@ -436,6 +438,110 @@ catalog, can sound together through OT-synchronized sequencing and MIDI,
 retain their own controls
 and automation, survive project operations, and stay within an enforced,
 measured instance/resource limit.
+
+## 12. Phase 0 findings (23 September 2026)
+
+Reproduce with `python3 modules/machinedrum/extraction.py --wav`: it reads
+the user's own update from `base_firmware/`, refuses any input or section
+whose SHA-256 differs from the pinned values, and writes everything to
+`out/machinedrum/os163/` (gitignored), including `inventory.json`. ✅ marks
+a measurement from the file; *inferred* marks what is not.
+
+### Inputs
+
+- ✅ `Elektron_SPS1-1UW_OS1.63.syx`, SHA-256 `a58cd61f…42cabd5`: 14,684
+  data messages of 112 bytes, a short end message and a `7F` trailer.
+  Each message carries 64 bytes as 2+7+7 packed 16-bit words, addressed
+  by a 6-nibble counter from flash offset `0x4000`; the trailer's total,
+  939,744 bytes, equals the decoded length. The vendored
+  `elektron-firmware-tool` already decodes this "pre-ELE" container and
+  its aPLib-variant sections. All checksums verify.
+- ✅ Five sections:
+
+| # | Content | Bytes | Notes |
+|---|---|---:|---|
+| 0 | ColdFire MAIN OS | 404,766 | linked at `0x200000`: startup sets SP `0x300000`, copies 2,466 data bytes to internal SRAM `0x01000088`, clears BSS `0x262400..0x2b7148`, `jmp 0x213a0c` |
+| 1 | DSP load image | 750,369 | engines + sample block, below. *Inferred* to be the voice producer |
+| 2 | DSP load image | 56,469 | P 18,489 words. *Inferred* to be the mixer |
+| 3 | factory data bank | 524,288 | names such as `TRX MD`; *inferred* kits/patterns |
+| 4 | factory data bank | 524,288 | names such as `TRX UW BET…`; *inferred* UW factory content |
+
+- ✅ The DSP images are little-endian 24-bit words: header `3 0x24 4 0`,
+  then `(space, address, count, words…)` records (space 0/1/2 = P/X/Y), and
+  a closing `3 0x24` pair. Both parse exactly to their last word.
+- ❌ for the reference emulator's needs: the update does not contain flash
+  `0x0000–0x3fff` (the bootloader). The reference at
+  `vendor/gearmulator-md-mm` (`release/md-mm-alpha`, pinned `8cea052`,
+  21 Sep 2026; cloned by hand, not by `scripts/setup.sh`) loads only a full
+  8 MiB flash dump whose FNV-1a fingerprint matches its known OS 1.63
+  image. There are two routes to a reference run. One is a flash dump from
+  an MD the user owns. The other, untested, is a synthetic flash image: a
+  stub loader plus the update stream at `0x4000`, run through a locally
+  patched loader. *Inferred* support for the second route: MAIN OS holds
+  the flash address `0x10004000` twice, so it may read the stream itself.
+  `vendor/mc68k` is already `joelanders/mc68k-md-mm`, the same author's
+  ColdFire core.
+
+### Engine catalog
+
+✅ An 86-byte descriptor per machine at MAIN OS offset `0x4ef55`, 135 of
+them: a 24-bit handler pointer into the OS, the machine ID, the family and
+name, eight 4-character parameter names, eight defaults and eight flag
+bytes. The core synthesis catalog has 50 engines, not 49:
+
+| Family | IDs | Machines |
+|---|---|---|
+| GND | `0x00–0x03` | EMPTY, SN, NS, IM |
+| TRX | `0x10–0x1d` | BD SD XT CP RS CB CH OH CY MA CL XC B2 S2 (14) |
+| EFM | `0x20–0x27` | BD SD XT CP RS CB HH CY (8) |
+| E12 | `0x30–0x3f` | BD SD HT LT CP RS CB CH OH RC CC BR TA TR SH BC (16) |
+| P-I | `0x40–0x48` | BD SD MT ML MA RS RC CC HH (9) |
+| INP | `0x50–0x55` | GA GB FA FB EA EB |
+| MID | `0x60–0x6f` | 01–16 |
+| CTR | `0x70 0x71 0x78–0x7b` | AL 8P RE GB EQ DX (RE/GB/EQ/DX drive the master effects) |
+| ROM / RAM | `0x80–0xbf` | ROM 01–48, RAM R1–R4 and P1–P4 (user sample slots) |
+
+TRX-BD's parameters are `PTCH DEC RAMP RDEC STRT NOIS HARM CLIP`, as in
+section 5.
+
+### Assets
+
+- ✅ Section 1 carries a 207,174-word block at `P:1028c0–135205` whose words
+  decode as pairs of signed 12-bit samples. That is 414,348 samples, 9.40 s at
+  44.1 kHz, with 20 sharp onsets and silent gaps between them. It is
+  *inferred* to be the E12 sample ROM: nobody has listened to it
+  (`e12_candidate_region.wav`), and no E12 machine has been mapped to an
+  offset yet. The first ~6 K words may be tables rather than samples.
+- ROM and RAM machines play user samples. Those are user data, so they are
+  not in the update.
+
+### What the sizes mean for the OT
+
+These are ✅ sizes from the load maps, set against `docs/firmware/CHIP.md`.
+
+- The OT's DSP56721 has 92 K words private per core plus a 64 K shared
+  window, and stock uses most of it. The sample block alone is 207 K words,
+  so **E12 cannot be DSP-resident on the OT**. It would have to live in the
+  ColdFire's 128 MB SDRAM, behind a streaming path that has not been
+  measured.
+- The producer's P content outside the sample block is about 27.5 K words
+  (`P:0–3e1`, `P:100000–1028b9`, `P:142100–145d37`, `P:147200–1475ff`). That is
+  an upper bound, because tables are not yet separated from code. X holds
+  13.1 K words and Y 1.9 K. The mixer is 18.5 K words of P. The OT's
+  default memory map gives P 8 K words, and payload A's code already ends at
+  `0x1fdf`. Hosting either image therefore needs the untested memory-map
+  switch, shared-window placement, or a much smaller extracted subset.
+  That subset is the Phase 1 question.
+
+### Open for Phase 1
+
+1. Trace MAIN OS's DSP upload, which confirms which section goes to which
+   DSP and the order of HDI08 traffic.
+2. Choose the reference route: a flash dump, or the synthetic flash image.
+3. Separate code from tables in the producer's P and find per-engine
+   entry points, starting with GND-SN and TRX-BD. The descriptors' handler
+   pointers are the ColdFire side of that.
+4. Map E12 machines to sample offsets, and listen to the block.
 
 ## References
 

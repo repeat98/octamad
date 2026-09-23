@@ -1236,6 +1236,20 @@ disassembles the result back and refuses mis-encodings and label prefixes.
   that workload and WP-A1 is blocked pending a working fixture or emulator
   fix.
 
+### WP-D1 track key plus TRIG (23 September 2026)
+
+- ✅ The panel map sends track keys `0x10–0x17` to `0x40040250` and gives
+  them the held-key sub-map at `0x400d164a`; that sub-map has no trig
+  entries. `0x40060ce0` therefore receives a trig `(code, down)` and only
+  branches on grid-recording state `0x460d1736`, to `0x40060b58` or
+  `0x400501d8`.
+- ✅ The disassembly of both targets contains no read of the panel row state
+  or held-track map. `0x40060b58` reads current part/track and mode state;
+  `0x400501d8` dispatches on `0x460d16f0` and selected-track/mode globals.
+- *inferred* The stock OS 1.40C does not claim “hold track key + TRIG”. The
+  MD page should use FUNC + track as the fallback. This is a static result;
+  no hardware behavior was changed or tested.
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and

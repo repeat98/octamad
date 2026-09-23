@@ -47,7 +47,7 @@ Statuses:
 | Packet | Status | Branch | Commit | Date | Report | Notes |
 |---|---|---|---|---|---|---|
 | WP-00 Phase 0/1 and the driver in the replay | done | `machinedrum` | `f4a93d8` | 2026-09-23 | `MACHINEDRUM_MACHINE.md` §12 | replay, relocation, hot split, driver steps 1–3 |
-| WP-A1 Core-0 memory ledger | todo | | | | | first packet to hand out |
+| WP-A1 Core-0 memory ledger | claimed | `machinedrum` | | 2026-09-23 | | |
 | WP-A2 The layout | todo | | | | | decision gate: user sign-off |
 | WP-A3 Layout-driven relocation and driver | todo | | | | | |
 | WP-A4 Boot-time init on the OT | todo | | | | | |

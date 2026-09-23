@@ -1440,6 +1440,52 @@ disassembles the result back and refuses mis-encodings and label prefixes.
   check, pending the A2 voice-home and window decisions. It must not be
   treated as an OT image qualification while A3 is blocked.
 
+### WP-A6 cycle report at the proposed addresses (24 September 2026)
+
+- ✅ The rebuilt interpreter ran `MD_REPLAY_FETCH=1` with `--reloc --driver`
+  on eleven kits. Its fetch hook counts shared-window code and the relocated
+  driver at `P:0x3fe00`; private hot-P fetches are intentionally outside that
+  hook. The successful measurements are:
+
+  | Capture | Mean cycles/sample | Worst 10 ms cycles/sample | Shared words/sample at worst 10 ms | Adjusted worst (`cycles + words`) |
+  |---|---:|---:|---:|---:|
+  | cap4/c01_16 | 1,074.1 | 1,142.6 | 907.2 | *inferred* 2,049.8 |
+  | cap4/c10 | 326.3 | 333.0 | 207.5 | *inferred* 540.5 |
+  | cap4/c10_3 | 498.5 | 518.0 | 348.0 | *inferred* 866.0 |
+  | cap4/c1d_16 | 1,365.5 | 1,439.8 | 617.4 | *inferred* 2,057.2 |
+  | cap4/c37_16 | 1,209.6 | 1,307.6 | 545.0 | *inferred* 1,852.6 |
+  | cap4/c47_2 | 1,388.5 | 1,391.1 | 533.4 | *inferred* 1,924.5 |
+  | cap5/c10_16 | 1,309.1 | 1,346.0 | 995.5 | *inferred* 2,341.5 |
+  | cap5/c20_16 | 1,666.3 | 1,683.3 | 373.4 | *inferred* 2,056.7 |
+  | cap5/c24_16 | 1,256.9 | 1,515.5 | 609.4 | *inferred* 2,124.9 |
+  | cap5/c30_16 | 1,064.4 | 1,670.5 | 373.0 | *inferred* 2,043.5 |
+  | cap5/c42_16 | 1,462.1 | 1,498.1 | 575.0 | *inferred* 2,073.1 |
+
+  The adjusted column applies the documented one-wait-state-per-shared-fetch
+  model to the measured worst window. It already includes the current driver
+  and its 36-word MD-state carry in the measured emulator cycles; it does not
+  include the unresolved stereo mix.
+- ✅ The driver disassembly at `P:0x3fe00` has 192 words. Its eight `do` loops
+  execute 1,224 word copies per 16-sample call: 576 X/Y words stashed out,
+  36 MD words saved, 36 restored, and 576 X/Y words restored. The two loads or
+  stores per copied word are 2,448 move instructions per call, or 4,896 per
+  32-sample period. The resulting cycle conversion is *inferred* from the
+  instruction count; the hardware wait and parallel-move timing is unmeasured.
+- ✅ `MD_REPLAY_FETCH=2` measured about 201.4–201.9 shared driver words per
+  sample on the eleven completed kits. The full low-image alternative would
+  add 540 saved/restored words in each direction per call; the existing report
+  keeps its earlier `~70 cycles/sample` cost as *estimated*, not hardware
+  measured.
+- 🟡 c40_16 failed twice to produce a fetch table. The interpreter reached
+  the relocated driver and then exited `139` after invalid DSP memory reads;
+  the retry reproduced `rc=139`. Its cycle row is therefore omitted rather
+  than copied from a stale ignored `fetch.txt`.
+- 🟡 The D1 stereo mix is not implemented. Option A would read the 16 × 32
+  slot words and write 16 interleaved stereo frames per 32-sample period;
+  its cycle cost is unmeasured. The packet cannot claim the `~2,500` limit
+  until the user selects D1 and WP-A5 supplies the mix measurement.
+- All A6 measurements are **pending the user's sign-off** on A2 and D1.
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and

@@ -52,7 +52,7 @@ Statuses:
 | WP-A3 Layout-driven relocation and driver | blocked | `machinedrum` | `cab97a3` | 2026-09-24 | `machinedrum_reports/WP-A3.md` | proposed `X/Y:0x3400` gate fails most kits; user must choose the A2 voice-home policy before rerun | |
 | WP-A4 Boot-time init on the OT | review | `machinedrum` | `cab97a3` | 2026-09-24 | `machinedrum_reports/WP-A4.md` | relocated six-voice init spans pass; pending A2 sign-off and the WP-A3 block | |
 | WP-A5 The stereo mix | blocked | | | | | decision D1 |
-| WP-A6 The cycle report at OT addresses | claimed | `machinedrum` | `bce8aec` | 2026-09-24 | | measuring fetches and driver costs at the proposed layout; pending A2/A5 decisions | |
+| WP-A6 The cycle report at OT addresses | blocked | `machinedrum` | `cab97a3` | 2026-09-24 | `machinedrum_reports/WP-A6.md` | eleven fetch runs measured; c40_16 reproduces `rc=139`, and D1/WP-A5 mix cost is still missing | |
 | WP-B1 Module and remix skeleton | todo | | | | | |
 | WP-B2 Build-time extraction | todo | | | | | |
 | WP-B3 The dispatcher hook | todo | | | | | |

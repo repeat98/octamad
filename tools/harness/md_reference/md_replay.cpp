@@ -283,6 +283,87 @@ int main(int _argc, char** _argv)
 		std::exit(1);
 	};
 
+	// At every period boundary (slot 0's P:6b, before the host's writes):
+	//
+	// MD_REPLAY_FOOTPRINT=1 records which words changed since the previous
+	// boundary, in internal X and Y (0..0xfff) and the external RAM past the
+	// samples (P:135206..13ffff, P:148000..14ffff), and prints them as ranges.
+	//
+	// MD_REPLAY_POISON=<area>:<start>-<end>[,...] (hex, end exclusive, areas
+	// X, Y, P) fills those ranges with garbage, as the OT's own code would
+	// leave them. An output that stays bit-identical means no word there
+	// carries anything from one period to the next. The loop's own words
+	// (Y:140-142, Y:153-162, X:202, X:243, X:256) are kept: on the OT they
+	// belong to the driver that replaces the loop. MD_REPLAY_POISON_ONCE=1
+	// poisons only at the first boundary, which tests for tables the
+	// voice code reads but never writes.
+	struct Range { EMemArea area; TWord start, end; };
+	std::vector<Range> poison;
+	if(const char* spec = std::getenv("MD_REPLAY_POISON"))
+	{
+		std::stringstream ss(spec);
+		std::string item;
+		while(std::getline(ss, item, ','))
+		{
+			const auto colon = item.find(':'), dash = item.find('-');
+			const char a = item[0];
+			poison.push_back({a == 'X' ? MemArea_X : a == 'Y' ? MemArea_Y : MemArea_P,
+				static_cast<TWord>(std::stoul(item.substr(colon + 1, dash - colon - 1), nullptr, 16)),
+				static_cast<TWord>(std::stoul(item.substr(dash + 1), nullptr, 16))});
+		}
+	}
+	const bool poisonOnce = std::getenv("MD_REPLAY_POISON_ONCE") != nullptr;
+	const bool footprint = std::getenv("MD_REPLAY_FOOTPRINT") != nullptr;
+	const std::vector<Range> tracked = {{MemArea_X, 0, 0x1000}, {MemArea_Y, 0, 0x1000},
+		{MemArea_P, 0x135206, 0x140000}, {MemArea_P, 0x148000, 0x150000}};
+	std::vector<std::vector<TWord>> lastSeen;
+	std::vector<std::vector<uint8_t>> changed;
+	size_t periods = 0;
+	uint32_t lcg = 0x12345;
+	auto atPeriod = [&]()
+	{
+		if(footprint)
+		{
+			if(lastSeen.empty())
+				for(const auto& r : tracked)
+				{
+					lastSeen.emplace_back(r.end - r.start);
+					changed.emplace_back(r.end - r.start, 0);
+				}
+			for(size_t t = 0; t < tracked.size(); ++t)
+				for(TWord a = tracked[t].start; a < tracked[t].end; ++a)
+				{
+					const auto v = memory.get(tracked[t].area, a);
+					auto& l = lastSeen[t][a - tracked[t].start];
+					if(periods && v != l)
+						changed[t][a - tracked[t].start] = 1;
+					l = v;
+				}
+		}
+		if(!poison.empty() && (!poisonOnce || periods == 0))
+		{
+			const std::vector<std::pair<EMemArea, TWord>> keep = {{MemArea_Y, 0x140}, {MemArea_Y, 0x141}, {MemArea_Y, 0x142},
+				{MemArea_X, 0x202}, {MemArea_X, 0x243}, {MemArea_X, 0x256}};
+			std::vector<TWord> kept;
+			for(const auto& [a, w] : keep)
+				kept.push_back(memory.get(a, w));
+			std::vector<TWord> engines;
+			for(TWord k = 0; k < 16; ++k)
+				engines.push_back(memory.get(MemArea_Y, 0x153 + k));
+			for(const auto& r : poison)
+				for(TWord a = r.start; a < r.end; ++a)
+				{
+					lcg = lcg * 1103515245u + 12345u;
+					memory.set(r.area, a, (lcg >> 8) & 0xffffff);
+				}
+			for(size_t k = 0; k < keep.size(); ++k)
+				memory.set(keep[k].first, keep[k].second, kept[k]);
+			for(TWord k = 0; k < 16; ++k)
+				memory.set(MemArea_Y, 0x153 + k, engines[k]);
+		}
+		++periods;
+	};
+
 	std::map<uint32_t, std::array<uint64_t, 2>> stats;	// slot -> {match, mismatch}
 	size_t firstBad = SIZE_MAX;
 	std::vector<float> wav;
@@ -306,6 +387,8 @@ int main(int _argc, char** _argv)
 			std::cerr << "slot mismatch at block " << i << ": emulator " << y(0x142) << ", log " << rec.slot << "\n";
 			return 1;
 		}
+		if(rec.slot == 0)
+			atPeriod();
 		// Only what the host wrote goes in; the rest of the slot's 64 words is
 		// the voice's own state, which the emulator carries forward itself.
 		const auto base = y(0x141);
@@ -398,6 +481,29 @@ int main(int _argc, char** _argv)
 			runTo({0xcf});
 		}
 		dsp.setPC(0xd5);
+	}
+
+	if(footprint)
+	{
+		for(size_t t = 0; t < tracked.size(); ++t)
+		{
+			const char c = tracked[t].area == MemArea_X ? 'X' : tracked[t].area == MemArea_Y ? 'Y' : 'P';
+			size_t total = 0;
+			std::string runs;
+			for(TWord a = tracked[t].start; a < tracked[t].end;)
+			{
+				if(!changed[t][a - tracked[t].start]) { ++a; continue; }
+				TWord e = a;
+				while(e < tracked[t].end && changed[t][e - tracked[t].start])
+					++e;
+				char b[32];
+				std::snprintf(b, sizeof b, " %x-%x", a, e - 1);
+				runs += b;
+				total += e - a;
+				a = e;
+			}
+			std::printf("footprint %c: %zu words changed between periods:%s\n", c, total, runs.c_str());
+		}
 	}
 
 	// Where the replay wrote memory: every word that now differs from the

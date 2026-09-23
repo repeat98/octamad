@@ -329,7 +329,7 @@ te_record_wet_finish:
         move.l  48(%a6),%d4
         move.l  #100193576,%a5
         move.l  #377433008,%a6
-        .macro TE_WET_FINISH_SAMPLE
+        .macro TE_WET_FINISH_SAMPLE x1,x2
         move.l  #1664525,%d2
         mulu.l  %d2,%d0
         add.l   #1013904223,%d0
@@ -359,16 +359,14 @@ te_record_wet_finish:
         cmp.l   #-268435456,%d3
         blt     .Lwet_rec_lo\@
 .Lwet_rec_ready\@:
-| d3 is current record input; d7/d4 are x1/x2.
-        move.l  %d3,%d1
+| d3 is current record input; rotate FIR histories in the unrolled pair.
         move.l  %d3,%d2
-        sub.l   %d7,%d2
-        sub.l   %d7,%d2
-        add.l   %d4,%d2
+        sub.l   \x1,%d2
+        sub.l   \x1,%d2
+        add.l   \x2,%d2
         asr.l   #3,%d2
-        add.l   %d7,%d2
-        move.l  %d7,%d4
-        move.l  %d1,%d7
+        add.l   \x1,%d2
+        move.l  %d3,\x2
         move.l  %d2,%d3
         bpl     .Lwet_curve_positive\@
         neg.l   %d2
@@ -402,7 +400,6 @@ te_record_wet_finish:
         lsl.l   #8,%d1
         move.l  %d1,(%a0)+
         move.l  %d1,(%a0)+
-        bra     .Lwet_sample_done\@
         .subsection 1
 .Lwet_rec_hi\@:
         move.l  #268435456,%d3
@@ -411,12 +408,10 @@ te_record_wet_finish:
         move.l  #-268435456,%d3
         bra     .Lwet_rec_ready\@
         .subsection 0
-.Lwet_sample_done\@:
         .endm
 .Lwet_finish_loop:
-        .rept 2
-        TE_WET_FINISH_SAMPLE
-        .endr
+        TE_WET_FINISH_SAMPLE %d7,%d4
+        TE_WET_FINISH_SAMPLE %d4,%d7
         cmp.l   %a2,%a3
         bne     .Lwet_finish_loop
         move.l  48(%sp),%a6
@@ -437,55 +432,94 @@ te_read_linear:
         movem.l %d2-%d7/%a2-%a6,(%sp)
         move.l  48(%sp),%a0
         move.l  52(%sp),%a1
-        move.l  56(%sp),%a3
+        move.l  56(%sp),%d0
         move.l  60(%sp),%d1
         move.l  64(%sp),%d2
-        sub.l   %a4,%a4
         lea     64(%a0),%a6
-        .macro TE_READ_SAMPLE
-        add.l   %d2,%d1
-        move.l  %d1,%d4
-        asr.l   #8,%d4
-        move.l  %a3,%d0
-        sub.l   %d4,%d0
+        tst.l   %d2
+        bne     .Lread_moving
+| Constant TIME/WOW offset: the fraction is fixed and every address is
+| adjacent. Read the first endpoint once, then advance one sample at a time.
+        asr.l   #8,%d1
+        sub.l   %d1,%d0
         move.l  %d0,%d7
         moveq   #23,%d4
         lsl.l   %d4,%d7
         and.l   #0x7f800000,%d7
         lsr.l   #8,%d0
-| MCF54454 hardware raised Vec 03 at the scaled-*8 load here even though the
-| effective ring address is long-aligned and the emulator accepts the form.
-| Form the byte offset explicitly, then issue plain address-register loads.
         lsl.l   #3,%d0
-        lea     (%a1,%d0.l),%a2
-| Adjacent interpolated reads share one uncached SDRAM sample. Retain it
-| in a register, never in a persistent cache (the DMA can replace history).
-| Same-address and skipped-address cases still read both samples safely.
-        cmp.l   %a2,%a4
-        bne     .Lread_reload\@
-        move.l  %d3,%d5
-        bra     .Lread_new\@
-.Lread_reload\@:
-        move.l  (%a2),%d5
-        asr.l   #5,%d5
-.Lread_new\@:
-        move.l  8(%a2),%d6
-        lea     8(%a2),%a4
-        asr.l   #5,%d6
-        move.l  %d6,%d3
-        sub.l   %d5,%d6
+        lea     (%a1,%d0.l),%a1
+        move.l  (%a1),%d3
+        asr.l   #5,%d3
+        .macro TE_READ_FIXED older,newer
+        move.l  8(%a1),\newer
+        addq.l  #8,%a1
+        asr.l   #5,\newer
+        move.l  \newer,%d6
+        sub.l   \older,%d6
         mac.l   %d6,%d7,%acc0
         movclr.l %acc0,%d6
-        add.l   %d5,%d6
+        add.l   \older,%d6
         move.l  %d6,(%a0)+
-        add.l   #256,%a3
+        .endm
+.Lread_fixed:
+        TE_READ_FIXED %d3,%d5
+        TE_READ_FIXED %d5,%d3
+        cmp.l   %a0,%a6
+        bne     .Lread_fixed
+        bra     .Lread_done
+.Lread_moving:
+| Anchor the pointer at floor(base/256). Keep only its fractional part
+| in a Q16 read phase: (base&255)*256 - wobble + 255. The +255 preserves
+| base - floor(wobble/256) exactly, including negative offsets. Keeping
+| the integer ring address out of this phase avoids overflow on a 4s ring.
+        neg.l   %d1
+        mvz.b   %d0,%d4
+        lsl.l   #8,%d4
+        add.l   %d4,%d1
+| Subtract one sample so the first preincrement applies only -step.
+        add.l   #-65281,%d1
+        neg.l   %d2
+        add.l   #65536,%d2
+        asr.l   #8,%d0
+        lsl.l   #3,%d0
+        lea     (%a1,%d0.l),%a1
+        moveq   #15,%d4
+        sub.l   %a4,%a4
+        .macro TE_READ_SAMPLE older,newer
+        add.l   %d2,%d1
+        move.l  %d1,%d7
+        lsl.l   %d4,%d7
+        and.l   #0x7f800000,%d7
+        move.l  %d1,%d0
+        swap    %d0
+        ext.l   %d0
+| Form the byte offset explicitly: scaled-*8 loads fault on the hardware.
+        lsl.l   #3,%d0
+        lea     (%a1,%d0.l),%a2
+| Alternating registers already hold the preceding read's newer sample.
+| Repeated/skipped addresses reload; only overlap skips an uncached load.
+        cmp.l   %a2,%a4
+        beq     .Lread_new\@
+        move.l  (%a2),\older
+        asr.l   #5,\older
+.Lread_new\@:
+        move.l  8(%a2),\newer
+        lea     8(%a2),%a4
+        asr.l   #5,\newer
+        move.l  \newer,%d6
+        sub.l   \older,%d6
+        mac.l   %d6,%d7,%acc0
+        movclr.l %acc0,%d6
+        add.l   \older,%d6
+        move.l  %d6,(%a0)+
         .endm
 .Lread_linear:
-        .rept 2
-        TE_READ_SAMPLE
-        .endr
+        TE_READ_SAMPLE %d3,%d5
+        TE_READ_SAMPLE %d5,%d3
         cmp.l   %a0,%a6
         bne     .Lread_linear
+.Lread_done:
         movem.l (%sp),%d2-%d7/%a2-%a6
         lea     44(%sp),%sp
         rts

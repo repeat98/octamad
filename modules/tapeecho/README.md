@@ -105,7 +105,10 @@ only two of eight active instances do that slow control work per block.
 TIME/WOW geometry and gain smoothing are not decimated. The head reader
 reuses the overlapping sample from the preceding read: 17 instead of 32
 uncached word loads for a normal contiguous block. No persistent ring
-cache or cache-coherency assumption is introduced. See [VOICING.md](VOICING.md) for measured
+cache or cache-coherency assumption is introduced. A relative fixed-point
+phase reduces moving-head address work; a stationary head uses a constant
+fraction and consecutive loads. The full-wet FIR alternates history
+registers to avoid per-sample copies. See [VOICING.md](VOICING.md) for measured
 results, deviations from Galaxy and the stock-delay CPU benchmark.
 
 ## CPU integration
@@ -148,9 +151,11 @@ TIME, FDBK, WOW, AGE, SYNC and MIX, plus all six controls together in FREE
 and BEAT. The gate records mean, p95, p99, the maximum, and the actual worst
 block's function profile, with a separate peak ceiling for every case.
 
-The restored one-page engine peaks at 27,091 instructions/block for all
-controls reversing in FREE and 32,466 in BEAT. Settled MIX=90 with full
-history peaks at 25,604. These are executed-instruction counts, not hardware
+After the 23 Sep optimization, the one-page engine peaks at 26,563
+instructions/block for all controls reversing in FREE and 31,454 in BEAT.
+Settled MIX=90 with full history peaks at 25,028. The eight-instance
+full-wet benchmark uses 10.6% fewer instructions with WOW=0 and 4.2% fewer
+with WOW=44, bringing those cases to 2.64x and 2.88x stock DELAY respectively. These are executed-instruction counts, not hardware
 cycles, and hardware UI responsiveness remains unverified.
 
 It consumes the remix image built by `make check`, checks generated-source
@@ -163,7 +168,9 @@ drift, incrementally rebuilds its ColdFire probe, and runs:
   buildup, age-dependent noise and fixed DRIVE=0 compression;
 * eight compiled ColdFire instances sweeping every control, tempo and mode,
   including synthetic full history and an active-history wrap, bit-identical to native arithmetic;
-* direct assembly-kernel boundary/clamp/carry and callee-saved register tests;
+* direct assembly-kernel boundary/clamp/carry and callee-saved register tests,
+  including 2048 fixed/moving reader cases, 256 full-wet FIR/curve cases,
+  and separate fixed/moving-reader instruction ceilings;
 * the complete stock delay routine with modelled DMA transfers, mixed Tape
   Echo / stock DELAY tracks, and stock audio/ring identity against 1.40C.
 * stock-versus-Tape instruction benchmarks through that complete routine,

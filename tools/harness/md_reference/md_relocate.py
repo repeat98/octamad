@@ -25,7 +25,8 @@ address that points into a moved region:
     range, so a live patch is a guess the replay has to confirm.
 
     python3 tools/harness/md_reference/md_relocate.py --hot <capture dirs,...>
-        [--hot-base 0x1000] [--hot-size 2724] <capture dir> [profile dirs...]
+        [--hot-base 0x1000] [--hot-size 2724] [--loopvars 0xc00]
+        <capture dir> [profile dirs...]
 
 --hot also moves the hottest code units (by the fetch.txt counts of those
 captures, md_replay MD_REPLAY_FETCH=2) into private P at --hot-base, as the
@@ -49,12 +50,30 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 DIS = ROOT / "out/md_reference/md_dis"
 
+# Keep the replay harness and the proposed OT image on one address book.  The
+# layout is deliberately plain data, so importing it does not pull in build
+# machinery or any firmware bytes.
+sys.path.insert(0, str(ROOT / "modules/machinedrum"))
+from layout import LAYOUT
+
+
+def allocation(name):
+    for region in LAYOUT["allocations"]:
+        if region["name"] == name:
+            return region
+    raise KeyError(f"layout allocation not found: {name}")
+
+
+HOT_LAYOUT = allocation("hot_code")
+WINDOW_LAYOUT = allocation("window_code_tables")
+SINE_LAYOUT = allocation("sine")
+
 # old start, old end (exclusive), new start. The new places sit in the
 # emulator's bridged external RAM at 0x30000.., where P, X and Y alias, as
 # they do in the OT's shared window.
 REGIONS = [
-    (0x100000, 0x103DBA, 0x3B000),   # engine code, its tables, the E12 sample descriptors (0x103d7b)
-    (0x140000, 0x148000, 0x30000),   # tables, engine code, routine tables
+    (0x100000, 0x103DBA, WINDOW_LAYOUT["start"]),  # engine code and E12 descriptors (0x103d7b)
+    (0x140000, 0x148000, SINE_LAYOUT["start"]),    # the 32K sine/table source span
 ]
 LOOP = (0x64, 0xE8)
 TABLES = [(0x145AF5, 193), (0x145BB6, 193), (0x145C77, 193)]
@@ -189,7 +208,12 @@ def hot_units(code, fetch_dirs, base, size):
 
 def main():
     args = sys.argv[1:]
-    hot_dirs, hot_base, hot_size, loopvars = [], 0x1000, 2724, None
+    hot_dirs = []
+    hot_base = HOT_LAYOUT["start"]
+    hot_size = HOT_LAYOUT["words"]
+    # --loopvars remains as a compatibility override for old experiments;
+    # normal runs consume the proposed layout without needing the flag.
+    loopvars = LAYOUT["driver"]["loopvars"]
     while args and args[0].startswith("--"):
         flag = args.pop(0)
         if flag == "--hot":
@@ -277,7 +301,7 @@ def main():
                 patches[base + i] = m
                 kinds["table"] = kinds.get("table", 0) + 1
 
-    # --loopvars: the loop's own Y words (the render buffer y:$140, the
+    # The layout's loopvars: the loop's own Y words (the render buffer y:$140, the
     # record base y:$141, the slot y:$142, and each slot's engine at
     # y:$153+slot) move to base..base+2 and base+$10..; the engines reach
     # y:$140 and y:$142 through long absolute operands only (checked: 3 and

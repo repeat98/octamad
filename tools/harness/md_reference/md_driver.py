@@ -22,12 +22,15 @@ DIS = ROOT / "out/md_reference/md_dis"
 SRC = ROOT / "modules/machinedrum/md_driver.asm"
 TABLES = (0x145AF5, 0x145BB6, 0x145C77)   # init, trigger, render
 
+sys.path.insert(0, str(ROOT / "modules/machinedrum"))
+from layout import LAYOUT
+
 
 def main():
     args = sys.argv[1:]
     cap = Path(args.pop(0))
     reloc = "--reloc" in args
-    org = int(args[args.index("--org") + 1], 0) if "--org" in args else 0x2000
+    org = int(args[args.index("--org") + 1], 0) if "--org" in args else LAYOUT["driver"]["code"]
 
     moves, vmap = [], {}
     if reloc:
@@ -45,15 +48,21 @@ def main():
                 return n + a - s
         return a
 
-    # The placeholders. Loop words from the V lines (md_relocate --loopvars)
-    # or at the MD's own addresses; the driver's own storage in Y the MD
-    # does not use (the replay's poison runs: X/Y $c00-$1fff are clean).
+    # The placeholders. Loop words from the V lines (md_relocate's layout
+    # mapping) or at the proposed OT addresses. The driver's own storage in Y
+    # is not part of the MD snapshot; the replay's poison runs showed the
+    # selected scratch ranges are clean.
+    driver = LAYOUT["driver"]
     vals = {
-        "LV140": vmap.get(0x140, 0x140), "LV141": vmap.get(0x141, 0x141), "LV142": vmap.get(0x142, 0x142),
-        "ENG": vmap.get(0x153, 0x153),
-        "HALF": vmap.get(0x141, 0xe00) + 2 if 0x141 in vmap else 0xe03,
-        "TMP": (vmap[0x141] + 3) if 0x141 in vmap else 0xe04,
-        "OUTBUF": 0xC00, "STASH": 0x1800, "MDSAVE": 0x1c00,
+        "LV140": vmap.get(0x140, driver["LV140"]),
+        "LV141": vmap.get(0x141, driver["LV141"]),
+        "LV142": vmap.get(0x142, driver["LV142"]),
+        "ENG": vmap.get(0x153, driver["ENG"]),
+        "HALF": driver["HALF"],
+        "TMP": driver["TMP"],
+        "OUTBUF": driver["OUTBUF"],
+        "STASH": driver["STASH"],
+        "MDSAVE": driver["MDSAVE"],
         "INIT": place(TABLES[0]), "TRIG": place(TABLES[1]), "RENDER": place(TABLES[2]),
         "EMPTY": place(0x10008F),
         # 1 when the driver carries the MD's whole low image across calls.

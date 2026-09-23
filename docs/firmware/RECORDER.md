@@ -93,6 +93,15 @@ L       = ( ((steps × 31,752,000) × Q >> 31) + 1 ) >> 1     0x40006dfc..e10
 An exact x.5 quotient rounds down (128/16 → 82,687). The truncating
 `0x4006e3b2`'s consumer is open.
 
+🟡 octalab (MKI, one emulated project, 21 Sep 2026): each of the eight
+recorder buffers held 460 blocks of `0x1800` bytes — 2,826,240 bytes, or
+16.0 seconds of 16-bit stereo at 44.1 kHz. Length and cap arrays at
+`0x461053a8` and `0x461053e8`. This is one default reserve configuration
+under an emulator, not a measurement of every `RESERVED_RECORDER_COUNT` /
+`RESERVED_RECORDER_LENGTH` setting on hardware, and the block size does not
+match this doc's own `0x40A955E0` pool's 6,144-byte blocks — a separate
+reserve, or a different unit, is open.
+
 ❌ Retracted: buffers are not DMA siblings of the delay rings; the recorder
 write path is traced (still project-dependent for the emulator).
 ❌ Corrected from the sessions' reading: `0x40004860–0x40004bd0` on DMA

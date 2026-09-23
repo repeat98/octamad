@@ -3,9 +3,10 @@
 OS 1.40C, ColdFire side, above the ATA stack (`ARCHITECTURE.md` §5): the
 filesystem vtable, the sample-slot loader and its status records, where a
 Part lives, and what the unit writes to the card. Read by nordseele for
-octalab ([`nordseele/octalab-notes`](https://github.com/nordseele/octalab-notes),
-MIT, findings only; read here 13 Sep 2026 at commit `40ffa53`) on an
-Octatrack MKI, and re-read here where marked.
+octalab ([`nordseele/octalab`](https://github.com/nordseele/octalab), MIT,
+findings only, renamed from `octalab-notes`; read here 13 Sep 2026 at commit
+`40ffa53` and again 22 Sep 2026 at `e0dc56d`) on an Octatrack MKI, and
+re-read here where marked.
 
 Status key as `CHIP.md`: ✅ measured on their MKI or read from our image ·
 🟡 adopted on their evidence.
@@ -23,6 +24,16 @@ directory walker `walk(path, *dirs, *files, mode, progress)`, stacks
 care about); it enumerates a whole directory before the callback.
 Buffered primitives `0x40016864` open, `0x400166b8` write, `0x4001677c`
 close (the `.wav` writer above them is `SAMPLE_SAVE.md`).
+
+A directory record (0x140 B, filled by `ot_fat_resolve_path` /
+`ot_fat_next_entry`, octalab, MKI, 22 Sep 2026 ✅): name at `+0x000`, FAT
+attribute at `+0x10d` (0x10 = directory), **first cluster = the long at
+`+0x11e`** — the walker `0x40090a14` hands `(long)rec[0x11e]` to the
+iterator slot `0x46c82442`. The word at `+0x120` is only its low half:
+correct on a small FAT16 card, wrong on a FAT32 card with 512-byte
+clusters for any folder whose first cluster exceeds 65535 (measured: a
+folder copied late to a 32 GB card was not listed). Anything that walks
+the card's tree on a large FAT32 card should read the long, not the word.
 
 ## 2. Slot loading (`SLOT_LOADING.md`, MKI) ✅
 

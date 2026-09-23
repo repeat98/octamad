@@ -131,7 +131,17 @@ override. Hardware-confirmed: +12/+6/0/−5/−12 within 1/4 semitone.
 - A Midihub reverts to its stored preset on power/USB blips: save the
   session pipes (FROM A → drop-realtime-only → OCTATRACK).
 
-## Remote CC reference
+**🟡 Unverified lead, not re-read here (markandrus/octemu, `custom/usb-midi.py`,
+22 Sep 2026):** their RE reports the stock 1.40C image carries dormant,
+otherwise-unreachable USB-MIDI support — `usb_midi_ep2_init` and other
+`usb_midi_*` primitives named in their `re/coldfire.syms`, mirroring the
+DIN ports once a small overlay wires the endpoint init and widens the dQH
+max packet for high speed (their zone `0x400d24d0`, `custom/coldfire/usb-midi.s`).
+`CONTRIBUTIONS.md`'s 22 Sep entry reviewed this as one of three firmware
+customisations and did not adopt it as a module; the underlying claim (stock
+carries dead USB-MIDI code) has not been independently checked against our
+own image and is recorded here only as a lead for whoever next needs USB
+MIDI.
 
 From the official appendices (OT MKII 1.40A Appendix C, AR MKII 1.72
 Appendix C). ✅ = exercised here; 🟡 = manual-only.

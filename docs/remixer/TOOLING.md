@@ -64,7 +64,17 @@ ones — the DSP toolchain itself is plain CMake). It builds:
 
 The disassembler from the same dsp56300 project is the other half:
 disassemble what you assemble, because the assembler's failure mode is
-clean assembly of wrong machine code.
+clean assembly of wrong machine code. This is now automatic, not a manual
+step to remember: every `build_bus.assemble()` call runs `dsp_asm -list`
+(what dsp_asm believes it encoded, mnemonic-only) against an independent
+`dsp56kDisassemble` decode of the exact same bytes, and a MNEMONIC mismatch
+(`tfr`→`rnd`, `cmp`→`max`, any `mpy` variant except the ISA's own
+`mpy`→`mpysu` reduction, which is printed as an audit warning, not failed —
+see CLAUDE.md) fails the build before the bytes ship. `NOROUNDTRIP=1`
+disables it. It cannot see a resolver silently picking the wrong ADDRESS for
+a symbolic operand (both tools decode whichever bytes dsp_asm already
+wrote): that family still needs the "disassemble what you assemble" habit
+by hand, at the operand, not just the opcode.
 
 ## 2. Acquiring and unpacking an OS
 
@@ -93,6 +103,8 @@ Two instruction sets, two toolchains:
 | `tools/build/dsp_disasm_all.py` | DSP | disassembles every P module of both payloads at its load address: one `.asm` per payload plus per-module binaries |
 | `tools/build/dsp_reach.py` | DSP | control-flow reachability sweep from the real entry points (dispatch tables, vectors, bootstraps) |
 | `scripts/disasm.sh` (`make disasm`) | ColdFire | radare2 on the decompressed MAIN OS with the right arch and base (m68k BE @ `0x40000400`); `emac` uses objdump, the only decoder that reads the ColdFire V4e extensions |
+| `tools/build/where.py` (`make where A=<addr> [N=bytes] [NOTE="..."]`) | ColdFire | one lookup instead of re-grepping docs and re-typing an objdump invocation: prints every note `firmware/symbols.toml` already has for that exact address, the nearest OTHER recorded addresses, and a live `scripts/disasm.sh emac` window, in one command. `NOTE=` records a new finding on the spot, so a session that learns what an address does writes one line instead of a paragraph elsewhere that the next session has to re-find |
+| `firmware/symbols.toml` (`tools/build/seed_symbols.py`, `make symbols-seed`) | ColdFire | the ~1,600 addresses already cited across `CLAUDE.md`/`docs/`, indexed by address instead of buried in prose. The seeder pulls the paragraph each address appears in as a note (confidence `doc`); a note added via `where.py --note` after checking under the port or on hardware should be given `--confidence measured`. Re-running the seeder after editing a doc only adds what changed (`(text, source)` pairs already on file are skipped). Addresses and our own names/notes only — same no-Elektron-bytes rule as everywhere else |
 
 ### Disassembling the ColdFire ✅ (Bryan T, 30 Aug 2026; re-read here)
 
@@ -202,3 +214,10 @@ last section), the hardware rig — protocol in `docs/history/CAPTURE_18AUG.md`:
 - Comments cite probes and tools that were pruned from the tree
   (`dsp/baseprobe.asm`, `tools/build/build_menu.py`, …); they live in git
   history as the provenance of measured numbers: `git show <sha>:<path>`.
+- Every DSP module `build_bus.py` assembles is disassembled and compared
+  against its own listing before the build finishes (`make where` is the
+  ColdFire-side equivalent, on demand rather than automatic, because there
+  is no single ColdFire build step to hook it into).
+- What a session learns about an address goes in `firmware/symbols.toml`
+  (`make where A=<addr> NOTE="..."`), not only in a commit message or a
+  paragraph the next session has to re-find.

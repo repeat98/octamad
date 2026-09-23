@@ -167,6 +167,56 @@ LEVEL push `0x3e`. KEYPROBE
 `tools/emu/lcd_view.py --panel FIFO` draws a control surface (`EMU.md`).
 What the OS sends BACK on the same link (LEDs, the plane) is unread.
 
+## 4c. A page of one's own: the held-trig trap, and the SETUP window's calls (octalab, MKI, 15 Sep 2026) ✅
+
+**A trig held under a custom page must be forwarded, or it sticks
+forever.** Holding a trig in grid recording registers the stock's
+trig-held input map (§4b's layer mechanism) over whatever map a custom
+page has registered. If that custom page's own popup is up when LEVEL then
+opens the stock's sample-lock list, the popup engine frees the popup
+underneath it — its cell zeroed — **without calling that popup's closed
+callback**. The trig's release event then goes to whichever map is
+registered when it arrives: if the custom page's map is still the one
+registered (because it never unregistered on its own popup's silent
+teardown) but its popup cell reads 0, the event has nowhere defined to go
+and the release is swallowed. The firmware's held-trig mask `0x460d174a`
+stays set: the trig is held for good ([REC] offers TRIG COPY, grid
+recording cannot be left, the sequencer will not stop). Press and release
+share one handler, `0x40060ce0(code, down)`. **A custom page whose popup
+cell can read 0 must hand trig events to the stock handler and unregister
+its own map when that happens.** Same family as the A2-staleness and
+Tcc-condition-code traps on the DSP side: legal, correct-looking event
+handling, and the failure is a held key, not a crash.
+
+A second, smaller trap in the same area: **the current track's key,
+pressed again** while a popup from a custom page is up, opens the stock's
+slot list over it — which closes the popup. A page that forwards track-key
+events has to swallow the current track's own key itself.
+
+**The SETUP windows' calls**, callable for a page of one's own (opener
+`FUN_40059afc`, descriptor `0x400bc25a`, draw `FUN_4003792c` are
+EFFECT 1 SETUP's; the surface's y runs up from the bottom row):
+
+| call | draws |
+|---|---|
+| `0x4005829c(115, 64, 0, 0, 1, closed)` | the window |
+| `0x400125ac(surface, 0, 1)` | its planes cleared, as the SETUP windows do |
+| `0x400570b8(object, title, "")` | the frame and title band |
+| `0x40011b94(surface, x, y0, y1, 1)` | a solid vertical line |
+| `0x40011a58(surface, x0, y, x1)` | a dotted horizontal line (one pixel in two) |
+| `0x40012004(surface, x0, y0, x1, y1, 1)` | a line drawn pixel by pixel, ink toggling — the grid's dotted verticals |
+| `0x40013904(font, surface, x, y, align, invert, width, fmt, ...)` | formatted text; align 1 centred / 2 right; box cleared first, `width` a template string sizing it (the stock's `"XXXX"` at `0x400b451d`) |
+
+The 3 × 2 grid EFFECT 1 SETUP draws with these: a solid line at x `0x34`,
+dotted verticals at `0x48` and `0x5c`, a dotted horizontal at y `0x1c`,
+cells 20 px wide, labels centred at x `col*0x14 + 0x3e`, y `0x30 −
+row*0x1b`.
+
+**Fonts**: eight records of 0x14 bytes at `0x400ba812 .. 0x400ba89e`
+(`width, height, three glyph pointers`); `0x400ba876` is the small UI font
+(506 references in the image), `0x400ba83a` a large one (13/8 references).
+A text's width: `0x40012f30(font, -1, text)`.
+
 ## 5. The cursor idiom — and the arranger's giant one
 
 A screen highlights a cell by looking up its geometry in a per-type table

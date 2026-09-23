@@ -43,6 +43,35 @@ So a save writes the trimmed region of the slot, not its full contents.
 
 ---
 
+## 1b. A second, more general writer: `0x40024168` (octalab, MKI, 21 Sep 2026)
+
+`0x40024168` is a **different** entry point from `0x40020f04` above: it is
+driven by a **kind** at RAM global `0x460be9e8` and an **object** at
+`0x460be9ec` instead of an explicit slot/trim argument list, and it is the
+one a storage job (SAVE, in octalab's case CAPTURE) reaches. 🟡 Not yet
+disassembled to the same depth as `0x40020f04`; the finding is the calling
+convention, established by CAPTURE's own failure mode.
+
+**These are the same two globals `MAINMENU.md` §7 already names** for the
+MAIN MENU select widget's two-phase commit (phase 1/4 stages the pending
+edit into `0x460be9e8`/`0x460be9ec` before phase 0 commits it). They are
+shared scratch, reused sequentially by unrelated stock subsystems, not a
+dedicated "save object" pair — anything that writes them for one purpose
+and then calls into the other subsystem before the first is consumed would
+collide. No collision has been measured; the two uses have not been shown
+to overlap in time on the unit.
+
+**The trap this cost CAPTURE:** one save path called `0x40024168` without
+first setting these globals, and the stock writer produced a header-only
+WAV — a file that exists, has a correct RIFF/WAVE header, and carries no
+audio, which reads as "the write succeeded" until the file is opened.
+Setting `0x460be9e8` (kind) and `0x460be9ec` (object) before each storage
+job made the stock path write real audio on the MKI. Any module that
+drives a storage job through this entry point, rather than calling
+`0x40020f04` directly, needs to set both first.
+
+---
+
 ## 2. The writer `0x40020f04`
 
 ✅ Signature, from the prologue and the caller:

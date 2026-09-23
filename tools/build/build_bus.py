@@ -43,6 +43,7 @@ from remix import ledger  # noqa: E402
 
 OUT = pathlib.Path("out/mainos_bus.bin")
 DIS = pathlib.Path("vendor/dsp56300/build/source/dsp_host/dsp_asm")
+DISASM = pathlib.Path("vendor/dsp56300/build/source/disassemble/dsp56kDisassemble")
 
 # ---- ColdFire menu tables (task 11, tools/build/build_menu.py, reproduced here) --
 FX2_IDS = 0x400d5fdc
@@ -500,22 +501,92 @@ def _dev_hooks(key, src):
 
 _SCRATCH = None
 
+# "Disassemble what you assemble" (CLAUDE.md: the assembler mis-encodes some
+# instruction forms SILENTLY -- tfr as rnd, several mpy operand orders as
+# mpysu, cmp as max -- every one of those was found by a human noticing a
+# surprising RESULT and disassembling by hand, sometimes days later). `-list`
+# makes dsp_asm echo back its own idea of what each word means; DISASM
+# decodes those same words with no knowledge of what was typed. Comparing the
+# two MNEMONICS (not the full operand text -- a branch's relative displacement
+# and a `do` loop's immediate legitimately render differently between an
+# assembly listing and an independent decoder, with no bug involved) turns a
+# same-operands-wrong-opcode encoding defect into a build failure instead of
+# a surprise. It cannot see a resolver picking the wrong ADDRESS for a
+# symbolic operand (the label-prefix trap): both tools render whatever bytes
+# dsp_asm already wrote, so a corrupted value looks consistent to both. See
+# docs/remixer/TOOLING.md section 4.
+_LISTLINE = re.compile(r"^([0-9a-f]{6}): (\S+)(?:\s+(.*?))?\s*; "
+                       r"[0-9a-f]{6}(?: [0-9a-f]{6})?$")
 
-def assemble(src_text, org):
+# mpy encoded as mpysu is not a defect here -- it is the ISA's encoding for
+# certain mpy operand pairs, and the project's rule (CLAUDE.md) is to AUDIT
+# the second operand's sign at each site, not to avoid the form. 23 such
+# sites already ship, audited safe. Flag it so a new site gets looked at;
+# never fail the build on it alone.
+_MPYSU_OK = {("mpy", "mpysu")}
+
+
+def _listing(text):
+    out = {}
+    for line in text.splitlines():
+        m = _LISTLINE.match(line)
+        if m:
+            out[int(m.group(1), 16)] = (m.group(2), (m.group(3) or "").strip())
+    return out
+
+
+def _roundtrip(list_out, blob, org, label):
+    src = _listing(list_out)
+    if not src:
+        return          # nothing decodable on this call (e.g. an empty stub)
+    tmp = _SCRATCH / "roundtrip.bin"
+    tmp.write_bytes(blob)
+    r = subprocess.run([str(DISASM), "-in", str(tmp), "-pc", f"{org:x}", "-le"],
+                       capture_output=True, text=True)
+    dec = _listing(r.stdout)
+    bad, warn = [], []
+    for a, (sm, sop) in src.items():
+        if a not in dec:
+            continue
+        dm, dop = dec[a]
+        if dm == sm:
+            continue
+        (warn if (sm, dm) in _MPYSU_OK else bad).append((a, sm, sop, dm, dop))
+    if warn:
+        who = f" in {label}" if label else ""
+        for a, sm, sop, dm, dop in warn:
+            print(f"  ⚠ mpysu{who}: P:0x{a:05x}  wrote '{sm} {sop}', "
+                  f"chip runs '{dm} {dop}' -- audit: is the second operand "
+                  f"always non-negative here?")
+    if not bad:
+        return
+    who = f" in {label}" if label else ""
+    detail = "\n".join(f"    P:0x{a:05x}  wrote '{sm} {sop}'  chip runs "
+                       f"'{dm} {dop}'" for a, sm, sop, dm, dop in bad)
+    sys.exit(f"disassemble-what-you-assemble caught a silent mis-encoding"
+             f"{who} -- dsp_asm wrote bytes that do not decode to the "
+             f"mnemonic that was typed:\n{detail}\n"
+             f"  (see CLAUDE.md, 'the assembler mis-encodes instructions, "
+             f"silently' -- this is that trap, before it ships)")
+
+
+def assemble(src_text, org, label=""):
     global _SCRATCH
     if _SCRATCH is None:
         import tempfile
         _SCRATCH = pathlib.Path(tempfile.mkdtemp(prefix="build_bus."))
     tmp, binf, symf = (_SCRATCH / n for n in ("src.asm", "out.bin", "out.sym"))
     tmp.write_text(src_text)
-    subprocess.run([str(DIS), "-in", str(tmp), "-org", f"{org:x}",
-                    "-out", str(binf), "-sym", str(symf)],
-                   check=True, capture_output=True)
+    r = subprocess.run([str(DIS), "-in", str(tmp), "-org", f"{org:x}",
+                        "-out", str(binf), "-sym", str(symf), "-list"],
+                       check=True, capture_output=True, text=True)
     blob = binf.read_bytes()
     words = [blob[i] | (blob[i + 1] << 8) | (blob[i + 2] << 16)
              for i in range(0, len(blob), 3)]
     syms = dict((k, int(v, 16)) for k, v in
                 (l.split() for l in symf.read_text().split("\n") if l))
+    if DISASM.exists() and os.environ.get("NOROUNDTRIP") != "1":
+        _roundtrip(r.stdout, blob, org, label)
     return words, syms["init"], syms["proc"]
 
 
@@ -2539,7 +2610,7 @@ hostquit:
                     print(f"  {'PTABLE':13} P:0x{DEV_DELAY_P:05x}..0x{_at:05x} "
                           f"({len(_ptab):4d} words)  {name}'s table  (DEV: leads "
                           f"the out-of-region record)")
-                words, init_a, proc_a = assemble(src, _at)
+                words, init_a, proc_a = assemble(src, _at, label=name)
                 if _at + len(words) >= 0x20000:
                     sys.exit(f"payload {tag}: DEV delay overruns the "
                              f"entry-point plausibility bound "
@@ -2586,7 +2657,7 @@ hostquit:
                         _s2, _xt_sites[name] = _p2x(_s2, name)
                     else:
                         _c += len(_tab)
-                _w, _ia, _pa = assemble(_s2, _c)
+                _w, _ia, _pa = assemble(_s2, _c, label=name)
                 _last = (_c, len(_w))
                 if _c + len(_w) <= _end:
                     _fit = (_r, _tab, _s2, _c, _w, _ia, _pa)
@@ -2672,7 +2743,8 @@ hostquit:
 
         if probe == "silence":
             words, init_a, proc_a = assemble(
-                pathlib.Path("dsp/silence_stub.asm").read_text(), cursor)
+                pathlib.Path("dsp/silence_stub.asm").read_text(), cursor,
+                label="SILENCE STUB")
             if cursor + len(words) > _end_of_run(cursor):
                 sys.exit("silence stub does not fit the region's free tail")
             place(words, cursor)

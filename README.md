@@ -113,7 +113,7 @@ unit and why. Back up projects before flashing anything that changes them
 (Octakit migrates Parts to Kits on load; downgrading may lose Kit data).
 
 MKI and MKII run the same 1.40C image (hash-verified). sambanks's effects
-have only been tested on an MKII; the DRAM platform has run on an MKI ([octalab](https://github.com/nordseele/octalab-notes), 11 Sep 2026)
+have only been tested on an MKII; the DRAM platform has run on an MKI ([octalab](https://github.com/nordseele/octalab), 11 Sep 2026)
 and on midisc's author's unit (`ok-ms`, 14 Sep 2026).
 
 **No Elektron binary is redistributed here, and none may be.** A built

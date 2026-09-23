@@ -40,7 +40,9 @@ no requirement for eight simultaneous Machinedrum instances.
 - **The Machinedrum remix drops the bus servers** (BusVerb, BusDelay and
   the SEND clients) to free the shared window for MD code and state. The
   stock FX1/FX2 effects stay. Composing with every other remix is not a
-  goal.
+  goal. (Measured later the same day: four tracks' FX2 slots also live in
+  the window, and one instance needs more than the window holds. The
+  placement is open again; see section 12, "Memory one instance needs".)
 - **The MD master effects are out of scope**: the delay, reverb, EQ and
   dynamics that CTR-RE/GB/EQ/DX drive. The parent track's OT FX process the
   instance's stereo mix. Per-part processing (the MD FX page) stays.
@@ -570,7 +572,9 @@ These are ✅ sizes from the load maps, set against `docs/firmware/CHIP.md`.
   stock uses all 48 K words of it (`CHIP.md`). ❌ "Hosting either image
   needs … a much smaller extracted subset": the image sizes are not code
   sizes. The executed code is ~10.5 K words on the voice DSP and ~2.3 K on
-  the mixer (below), which fits the shared window.
+  the mixer (below). ❌ "which fits the shared window": that counted code
+  only; with the tables it reads, one instance needs about 71–76 K words
+  ("Memory one instance needs").
 
 ### Measured in the reference (23 September 2026)
 
@@ -942,6 +946,74 @@ calls) has to be placed around.
 - Not tested yet: the low-memory swap (step 3 of the design), and the OT's
   own window layout. The new addresses here are a test placement, not the
   OT's.
+
+### Memory one instance needs (23 September 2026)
+
+Measured with `md_replay` on the six captures of the relocation table
+(all 50 engines):
+- `MD_REPLAY_FOOTPRINT` lists the words that change between 32-sample
+  periods;
+- `MD_REPLAY_POISON` fills ranges with garbage at every period boundary,
+  or once at the start, and a capture that stays at its baseline shows
+  the range carries nothing the engines read.
+
+| What | Words | Where it comes from | |
+|---|---:|---|---|
+| Engine code | 15,621 | `P:100000–103db9` 9,746, `P:140000–147fff` 5,875 (recursive descent) | ✅ |
+| Tables read inside the code regions | 23,186 to 28,061 | loaded X data (`0x140000–0x1420ff`, `0x146000–0x1471ff`), P data, and the routine tables | ✅, per gap |
+| Sine table | 32,768 | built at boot by `P:100069–10008d` | ✅ every 256-word chunk is read |
+| P-I delay buffers | 1,536 per P-I voice, up to 24,576 | `0x135600 + 0x600·slot`, zeroed at boot | ✅ |
+| Voice blocks | 1,024 X + 1,024 Y | `0x800 + 0x40·slot` in both spaces, through `r6` only | ✅ |
+| Low-memory state | 36 | `X:0xa0–0xbf`, `Y:0x1e–0x21` | ✅ |
+| Scratch within a period | 256 X + 320 Y | the rest of `X:0–0xff` and `Y:0–0x13f` | ✅ |
+
+- **Low memory is scratch apart from 36 words.** Poisoning all of
+  `X:0–0xff` and `Y:0–0x13f` at every period boundary except `X:0xa0–0xbf`
+  and `Y:0x1e–0x21` leaves every capture at its baseline. Without that
+  exception, PI-CC and TRX-S2 break. So the swap of design step 3 is 36
+  words, not 512.
+- **Nothing else in internal memory is read**, apart from the loop's own
+  words: `X:0x100–0x7ff`, `Y:0x140–0x7ff` (including the 1,603 loaded Y
+  words), and X/Y `0xc00–0x1fff` all poison clean.
+- **The sine is the MD's own arithmetic, not image data.** The init seeds
+  0 and `0x648` (sin(2π/32768)), then runs a 48-bit recurrence for `0x7ffe`
+  steps. The "ramps" the retracted live-pointer scan found were this sine
+  near its zero crossings. It is read through `x:(rN+$148000)` (32 sites)
+  and `y:(rN+$148000)` (8 sites). That works on the MD because its
+  external RAM is one memory.
+- **The P-I buffers are used only by P-I voices.** The init writes three
+  0x200-word sub-buffer pointers into voice words `0x14–0x16`, based on
+  `#>$135600` (8 sites).
+- **The tables split by family.** Of the per-gap results:
+  - `0x140000–0x1420ff` (8.4 K) is read by every capture with GND, TRX,
+    EFM, E12 or P-I voices;
+  - `0x142291–0x144efb` (about 8.5 K in seven gaps) is read only by c37_16
+    (E12 and P-I);
+  - `0x100885–0x101881` and `0x101ba2–0x101e9f` (4.9 K) only by c01_16
+    (GND, TRX).
+
+  The per-gap granularity overstates the tables: a gap counts as read if
+  one word is. The one-shot tests ran 4,000 blocks, which covers the first
+  trigger but not the encoder change, so they can also understate.
+- **Unused:** 4,629 words of gaps (`0x100000–0x10008d`,
+  `0x100635–0x10074b`, `0x1025c5–0x1025ff`, `0x146e24–0x1471ff`,
+  `0x147213–0x1473ff`, `0x147414–0x147e7f`).
+
+**Against the OT (`docs/firmware/CHIP.md` §3, `DSP.md`):**
+- One instance needs about 71–76 K words, before any P-I buffer:
+  15.6 K code, 23–28 K tables and the 32 K sine.
+- The shared window is 64 K, and it is not free ground. The FX2 allocator
+  hands out `0x30000` and `0x34000` (and core 1's `0x38000`/`0x3c000`) as
+  FX2 slots, so four of the eight tracks' FX2 slots live in it.
+- ❌ Two earlier statements are retracted:
+  - section 1's "dropping the bus servers frees the shared window" holds
+    only if those four tracks' FX2 is never a memory-hungry effect;
+  - "fits the shared window" (section 12, "What the sizes mean") counted
+    code only.
+- Private Y per core: `0x795–0xfff` is free (2,155 words), and the rest is
+  FX1 and FX2 slots. Private P is full. The engine code has to run from
+  the window, which costs one wait state per fetch as P and zero as X or
+  Y. What that does to the ~1,650 cycles/sample is *unmeasured*.
 
 ### Open for Phase 1
 

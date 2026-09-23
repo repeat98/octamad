@@ -529,12 +529,14 @@ section 5.
 
 ### Assets
 
-- ✅ Section 1 carries a 207,174-word block at `P:1028c0–135205` whose words
-  decode as pairs of signed 12-bit samples. That is 414,348 samples, 9.40 s at
-  44.1 kHz, with 20 sharp onsets and silent gaps between them. It is
+- ✅ Section 1 carries a 200,006-word block at `P:1040c0–135205` whose
+  words decode as pairs of signed 12-bit samples. That is 402,060 samples,
+  9.12 s at 44.1 kHz, with sharp onsets and silent gaps between them. It is
   *inferred* to be the E12 sample ROM: nobody has listened to it
   (`e12_candidate_region.wav`), and no E12 machine has been mapped to an
-  offset yet. The first ~6 K words may be tables rather than samples.
+  offset yet. ❌ "207,174 words at `P:1028c0`, 9.40 s": the run's first
+  ~6 K words are code. The voice DSP executes blocks up to `P:103c71`,
+  among them its hottest per-sample loop.
 - ROM and RAM machines play user samples. Those are user data, so they are
   not in the update.
 
@@ -543,7 +545,7 @@ section 5.
 These are ✅ sizes from the load maps, set against `docs/firmware/CHIP.md`.
 
 - The OT's DSP56721 has 92 K words private per core plus a 64 K shared
-  window, and stock uses most of it. The sample block alone is 207 K words,
+  window, and stock uses most of it. The sample block alone is 200 K words,
   so **E12 cannot be DSP-resident on the OT**. It would have to live in the
   ColdFire's 128 MB SDRAM, behind a streaming path that has not been
   measured.
@@ -555,7 +557,7 @@ These are ✅ sizes from the load maps, set against `docs/firmware/CHIP.md`.
   `0x1fdf`. The memory-map switch is ruled out: it halves Y memory, and
   stock uses all 48 K words of it (`CHIP.md`). ❌ "Hosting either image
   needs … a much smaller extracted subset": the image sizes are not code
-  sizes. The executed code is ~6.9 K words on the voice DSP and ~2.3 K on
+  sizes. The executed code is ~10.5 K words on the voice DSP and ~2.3 K on
   the mixer (below), which fits the shared window.
 
 ### Measured in the reference (23 September 2026)
@@ -592,18 +594,20 @@ disassembly to its first flow change.
 - ✅ The mixer's ~1,850 cycles are constant: independent of voices and of
   engines. *Inferred*: most of it is the master effects this plan drops.
   The mixing share is not yet separated out.
-- Estimated code, executed on the voice DSP beyond idle: 6,815 words for
-  all 50 engines. By family: TRX 2,758, P-I 3,789, EFM 152, E12 159,
-  GND 142. EFM and E12 run a shared voice routine plus a handful of words
-  each. Everything the voice DSP executed in any scenario, framework
-  included, is ~6,946 words; the mixer's is ~2,296. Section 12's earlier
+- Estimated code, executed on the voice DSP beyond idle: 10,326 words for
+  all 50 engines. By family: TRX 3,843, P-I 3,969, EFM 1,841, E12 1,413,
+  GND 142. Everything the voice DSP executed in any scenario, framework
+  included, is ~10,459 words; the mixer's is ~2,296. ❌ These were 6,815
+  and ~6,946 (EFM 152, E12 159, "a shared voice routine") until the code
+  at `P:1028c0–103c7x` was disassembled; it had been skipped as sample
+  data. Section 12's earlier
   "~27.5 K words of P" was the whole image, including tables, the
   ROM/RAM/INP/MID machines and loaders. It is superseded as the code
   estimate.
 
 What this means for the OT (*inferred*, from the numbers above):
 
-- **Code.** The full voice code, ~7 K words, fits the shared window with
+- **Code.** The full voice code, ~10.5 K words, fits the shared window with
   room to spare; no overlays are needed.
 - **Cycles.** A full 16-voice instance's voice work peaks near 1,650
   cycles per sample. That fits one OT core's ~3,120 usable and leaves
@@ -611,7 +615,7 @@ What this means for the OT (*inferred*, from the numbers above):
   if the OT core runs this code at the reference's cycle counts.
   Shared-window placement and DSP5636x timing are unmeasured.
 - **Still open:** the data (X/Y tables and per-voice state the engines
-  touch), E12's sample reads (the 207 K-word block cannot sit on the OT
+  touch), E12's sample reads (the 200 K-word block cannot sit on the OT
   DSP), the mixing cost without the master effects, and the ColdFire→DSP
   command protocol.
 

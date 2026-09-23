@@ -63,7 +63,7 @@ DESC_SIZE = 86
 DESC_FIRST = 0x4EF55        # GND-EM, the first descriptor, image offset
 FAMILIES = {0x0: "GND", 0x1: "TRX", 0x2: "EFM", 0x3: "E12", 0x4: "P-I",
             0x5: "INP", 0x6: "MID", 0x7: "CTR"}
-SAMPLE_BLOCK = (0x1028C0, 0x135206)   # section 1, P space, 12-bit pairs
+SAMPLE_BLOCK = (0x1040C0, 0x135206)   # section 1, P space, 12-bit pairs (code runs to 0x103c7x below it)
 DIS = ROOT / "vendor/dsp56300/build/source/disassemble/dsp56kDisassemble"
 
 

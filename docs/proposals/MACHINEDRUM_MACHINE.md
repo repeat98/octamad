@@ -1056,7 +1056,11 @@ Measured with `md_replay` on the six captures of the relocation table
   | c1d_16 (S2, EFM ×8, E12 ×7) | 1,263 | 1,021 | ~2,280 |
 
   So running from the window adds about 80 % to the engine's cycles.
-  PI-HH alone is ~900 cycles/sample. The Phase 0 profile's heaviest
+  ❌ "PI-HH alone is ~900 cycles/sample": c47_2 assigns only tracks 1–2,
+  so its other 14 voices are the default kit's. It costs ~1,215 from its
+  first block, before any trigger, while the 16-voice all-P-I kit (PI-HH
+  included) costs 1,436. The c47_2 figure is unexplained, not a PI-HH
+  property. The Phase 0 profile's heaviest
   16-voice load (~1,650) would come to ~3,000, beyond core 0's ~3,120
   usable once T5–T8 have any FX.
 - ⚠ The interpreter build is not bit-identical to the reference on
@@ -1099,9 +1103,21 @@ Measured with `md_replay` on the six captures of the relocation table
   - The limit is unit size: the largest unit is 788 words, a long
     straight-line routine of which only part is hot. Splitting inside one
     needs an inserted jump, which is not done.
-  - The hot set was chosen and measured on the same six captures. A kit
-    not captured can be hot elsewhere, so the numbers are optimistic until
-    other kits are measured.
+  - Checked against six new 16-voice kits: all P-I, EFM ×2, all E12,
+    TRX-heavy, and two random mixes (`out/md_profile/cap5`). All replay
+    bit-identically with the hot split. But the P-I kit kept 1,160 of its
+    1,245 window words: the six-capture hot set held little P-I code.
+  - ✅ **Retrained on all twelve kits** (23 units), every kit stays
+    bit-identical. Engine cycles plus remaining window words, worst 10 ms
+    per sample:
+    - all P-I 1,436 + 842 = ~2,280 (worst);
+    - TRX-heavy 1,170 + 746 = ~1,920;
+    - EFM ×2 ~1,790, all E12 ~1,780;
+    - the mixes and the first six ~1,470–1,740.
+
+    Add the driver's low-memory swap (~40–70, *estimated*). That leaves
+    about 800 cycles/sample of core 0's ~3,120 for T5–T8's FX in the worst
+    kit measured.
   - Taking CHORUS as well (`0x0eb7`, 329 words, adjacent to the donor
     region) would add room, at the cost of that effect on T5–T8.
 

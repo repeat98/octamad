@@ -31,12 +31,24 @@ no requirement for eight simultaneous Machinedrum instances.
 
 ### Decisions (23 September 2026, the user)
 
-- **One Machinedrum per OT Part.** At most one track of a Part is
-  MACHINEDRUM. It may be any track, and it may be a different track in
-  another Part. A Part change moves the instance; its voices restart, as
-  they do on any machine change. Because either core can host it, both
-  cores must afford an MD track. The code lives in the shared window, which
-  both cores reach, so only the voice state moves.
+- **One Machinedrum per OT Part, on tracks 5–8 only** (narrowed later the
+  same day, after the memory measurement in section 12). At most one track
+  of a Part is MACHINEDRUM. It may be a different track among 5–8 in
+  another Part. Tracks 5–8 run on core 0 (payload A; `CLAUDE.md`, "the
+  track↔core mapping"). Tracks 1–4 (core 1) stay fully stock in memory and
+  cycles. The layout keeps code and tables shared in the window and
+  per-instance state per core, so a core-1 instance can be added later if
+  the cycle measurements allow it. Core 1 was the technical recommendation:
+  - core 1 has 608 words of private P free, core 0 has 33 (`DSP.md` §3);
+  - core 0 carries stock's non-effect work: the mixdown, the voice
+    playback engine, and the delay's return at `X:0x4400`.
+
+  The user chose core 0. So the driver and every engine run from the
+  window and pay its fetch cost, and core 0's own stock share is probably
+  larger (*inferred*: the ~3,120 usable was measured on one core). A Part change moves the instance; its voices
+  restart, as they do on any machine change. ❌ "Because either core can
+  host it, both cores must afford an MD track": superseded by the core-1
+  limit.
 - **The Machinedrum remix drops the bus servers** (BusVerb, BusDelay and
   the SEND clients) to free the shared window for MD code and state. The
   stock FX1/FX2 effects stay. Composing with every other remix is not a

@@ -100,6 +100,14 @@ channel 0 is the ColdFire→DSP frame transfer (`DSP.md` §6c), not
 control-surface polling; the 198/16 row was a transcription slip (53,454,
 rounded down).
 
+**Reserve size (nordseele, emulator, 22 Sep 2026) 🟡.** In an emulated
+OS 1.40C project at default recorder settings, each of the eight recorder
+buffers held 460 blocks of 0x1800 bytes: 2,826,240 bytes, 16.0 s of 16-bit
+stereo at 44.1 kHz. The length and cap arrays are `0x461053a8` and
+`0x461053e8` (14 and 6 literal references in the image ✅). One
+configuration in an emulator; no `RESERVED_RECORDER_LENGTH` setting (§1's
+keys) has been measured on hardware.
+
 ## 3. The primer and the spreadsheet (Bryan T, 6 Sep 2026)
 
 *Sound-on-Sound Looping with the Octatrack* (PDF) and

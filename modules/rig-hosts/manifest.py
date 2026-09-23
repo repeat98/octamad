@@ -2,19 +2,20 @@
 BusVerb, T8's (the master) = the stock DELAY (Echo Freeze, for its beat
 repeat), every other track's = SEND.
 
-One detour in the part-defaults initialiser (0x40005638), the routine that
-gives a new part FX1 = FILTER and FX2 = DELAY per track: the fourteen bytes
-that load the FX2 default (0x40005688..0x40005695) become a jump to
-righosts.s, which writes the id by track from the manifests' ids and jumps
-back. With the engines hidden from the FX2 chooser (remix `hidden`) and
+Three detours in the part-defaults initialiser (0x40005638), the routine
+that gives a new part FX1 = FILTER and FX2 = DELAY per track with DELAY's
+page bytes: the id writes (0x4000567e..0x40005695) become FX1 = NONE and
+the FX2 id by track, and the two FX2 page-default loads (0x40005830,
+0x40005840) read the track's own descriptor through the id table instead
+of the stock DELAY's (Spectrum's id with FILTER's bytes was "muted and
+quiet and modulated" on the unit, image 52). With the engines hidden from the FX2 chooser (remix `hidden`) and
 locked to their host slot (`locked`), this is what makes a project made on
 the unit host the bus with no stamp; an older project still needs
 `ot_project.py host <project>`.
 
 Measured under the port (22 Sep 2026): loading a project name the card does
 not carry makes the firmware create one; its live FX2 ids read
-6 9 9 9 7 9 9 8. FX1 stays stock's FILTER (Spectrum's id, a bit-exact
-passthrough at its defaults).
+6 9 9 9 7 9 9 8, FX1 0 x8 (NONE).
 """
 
 from remix.schema import Detour, Kind, Linked, Module
@@ -42,7 +43,11 @@ MODULE = Module(
     doc="A new part is born hosted: T1 FX2 = BusDelay, T5 = BusVerb, T8 = the stock DELAY, the rest SEND.",
     linked=(Linked("righosts", "modules/rig-hosts/righosts.s", include=ids_inc),),
     detours=(
-        Detour(0x40005688, H("41f9400d4ad1226f004413500008"), "righosts", "fx2_default",
-               "part-defaults initialiser: the FX2 id per track", kind="jmp", pad_to=14),
+        Detour(0x4000567E, H("41f9400d47ad15903800" "41f9400d4ad1226f004413500008"), "righosts", "fx_ids",
+               "part-defaults initialiser: FX1 = NONE, FX2 by track", kind="jmp", pad_to=24),
+        Detour(0x40005830, H("43f9400d4ace41f1285e"), "righosts", "fx2_page1",
+               "part-defaults initialiser: FX2 page-1 defaults from the track's own descriptor", kind="jmp", pad_to=10),
+        Detour(0x40005840, H("43f9400d4ace43f12864"), "righosts", "fx2_page2",
+               "part-defaults initialiser: FX2 page-2 defaults from the track's own descriptor", kind="jmp", pad_to=10),
     ),
 )

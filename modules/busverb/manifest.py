@@ -92,7 +92,7 @@ MODULE = Module(
         # SEND at slot 0 on every track, hosts included: the host's own dry
         # send into the aux. Default 0 is load-bearing: a non-zero default
         # registers every idle host as a client and dilutes the real senders
-        # (-6.02 dB with one sender).
+        # (-3.0 dB with one sender under the 1/sqrt(N) law, XBUS.md).
         Param(b"SEND", 0, active=True, formatter=_PLAIN,
               doc="this track's send into the one aux bus (delay, then reverb; the wet on each host)"),
         # ---- page 1 (16 Sep 2026): TIME-SIZE and SHMR-SHFT are drawn as
@@ -118,8 +118,8 @@ MODULE = Module(
         # MODE on slot 6: an even slot is the one the panel's page-2 knob
         # editor writes (docs/firmware/MAINMENU.md 9c-ii); the DSP reads $c's
         # KNOB field (bits 16-23). PLATE by default; the three wet levels sit
-        # within 2 dB (ROOM -16.9, PLATE -19.1, BIG -19.0 dBFS at defaults,
-        # SEND 100).
+        # within 2 dB (ROOM -10.9, PLATE -13.1, BIG -13.0 dBFS at defaults,
+        # SEND 100, README.md).
         Param(b"MODE", 1, 3, active=True, formatter=_STEP,
               labels=("ROOM", "PLATE", "BIG"),
               doc="voicing: ROOM / PLATE / BIG; BIG clips first"),

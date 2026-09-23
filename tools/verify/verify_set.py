@@ -291,8 +291,14 @@ def main():
 
     # midi
     aux = recs[64 + 24] << 8 | recs[64 + 25]                     # T2 halfword 12
-    check("midi: CC 40 = 100 on T2's channel reached T2's AUX halfword", (aux >> 8) == 100,
-          f"halfword 12 = {aux:#06x} (knob {aux >> 8}; the lane's slew takes ~30 frames)")
+    t2_fx2 = registry.by_id(part["fx2"][1])
+    if t2_fx2 is not None and t2_fx2.key in mods:
+        check("midi: CC 40 = 100 on T2's channel reached T2's AUX halfword", (aux >> 8) == 100,
+              f"halfword 12 = {aux:#06x} (knob {aux >> 8}; the lane's slew takes ~30 frames)")
+    else:
+        # an unimplemented id runs the fallback, whose page publishes no slot 0
+        print(f"  [skip] midi: CC 40 -> T2 slot 0: the part's T2 FX2 id 0x{part['fx2'][1]:02x} "
+              f"is not a module of this remix")
     if ccpage2:
         # the cave clamps to the slot's count from the descriptor: slot 6 is
         # every effect's MODE since 16 Sep 2026, so 77 lands as count - 1
@@ -349,8 +355,16 @@ def main():
     import json
     cd = json.loads(r.stdout)
     rewritten = [k for k in cd["changed"] if not k.startswith("LOG ")]
-    check("card: the load rewrote no project file", not rewritten,
-          f"{n_writes} WRITE command(s); " + (", ".join(rewritten) if rewritten else "the firmware's LOG only"))
+    if "OCTAKIT" in mods:
+        # Octakit's load migrates Parts into kits*.strd/.work files (modules/octakit)
+        kits = [k for k in rewritten if pathlib.Path(k).name.startswith("kits")]
+        rewritten = [k for k in rewritten if k not in kits]
+        check("card: with Octakit the load rewrote only kits files", not rewritten,
+              f"{n_writes} WRITE command(s); kits: {', '.join(kits) or 'none'}"
+              + (f"; other: {', '.join(rewritten)}" if rewritten else ""))
+    else:
+        check("card: the load rewrote no project file", not rewritten,
+              f"{n_writes} WRITE command(s); " + (", ".join(rewritten) if rewritten else "the firmware's LOG only"))
     unstaged = re.compile(r"Couldn't load (STATIC|FLEX)\[\d+\] with '.*' \('FILE NOT FOUND'\)")
     errors = [l for l in cd["log"].splitlines() if " ERROR " in l and not unstaged.search(l)]
     n_nf = sum(1 for l in cd["log"].splitlines() if unstaged.search(l))

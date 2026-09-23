@@ -5,7 +5,171 @@ main carries beyond the last flashed image. The version the panel shows is
 `BUILD` (`make image BUILD=N`); a git tag `OCTABAM<N>` marks the commit each
 flashed image was built from.
 
-## Unreleased (main after image 43; image 52 built)
+## Unreleased (main after image 43; image 53 built)
+
+- The efficiency / tech-debt pass (23 Sep 2026), the frame around the five
+  per-module entries below: `make verify-bus` grew from 21 to 28 cases
+  (GRAIN, REVERSE, PLATE, BIG, the shimmer and the gate had no
+  bit-identity case), and `make verify-ident MOD=<station>` is one
+  knob-matrix identity gate for any FX1 station (Character and Modulation
+  had none). The new GRAIN cases found the two BusDelay record collisions
+  in its entry below. SEND's loop multiplies through x0 (its mpysu
+  site gone); the rotation flip in all three housekeeping copies cleans A2
+  before its store. CLAUDE.md: the r7 block is a per-module census, and
+  `move a,b` limits where `tfr a,b` does not. Chip cycles of the rewritten
+  loops are unmeasured (the burn sweep on a flashed image is the
+  instrument); every number here is the pricer's words or a source census.
+- Modulation, the station pass (23 Sep 2026): the allpass stage takes x
+  and returns y in x0 (its entry/exit copies and the callers' eight moves
+  per channel went, 20 stages per sample), the LFO, LOFI and MIX bodies
+  inline, the fixed taps' centre split into i and f per block (`mo_itap`),
+  c200 / COMB's period−1 and trim as stream words, mo_herm's index chain,
+  six parallel moves with stock precedent. Pricer words per sample LINE
+  423 → 372, PHSR 489 → 393, COMB 361 → 321; the rig's priced worst core
+  3,121 → 2,737 (four PHSR beside the reverb; 3,120 usable). 13 settings
+  bit-identical on the new `make verify-ident MOD=modulation`. An
+  accumulator-to-accumulator MOVE limits where TFR does not: `tfr a,b` with
+  a parallel store changed the LINE renders and was reverted.
+- BusVerb's sample loop on pointers and registers (23 Sep 2026): the u
+  vectors, the wet sums and the FWHT walk `$16..$19` / `$3a..$3d` through
+  r4/r5/r6; the tank input rides y1 through fbA/fbB, the chain word y1
+  through the four diffusers, g y0 through the in-loop allpasses; M/S and
+  their high-cut values, the shimmer parks and the allpass phase sit in
+  x1/y1/b/n0; the aux write/read pointers in n2/n3. One-word displaced
+  accesses per sample 206 → 111, pricer 1,135 → 1,117; 28 bus-gate cases
+  bit-identical. Dead code out (two spacing loads, a dead `(r4)+`, two
+  redundant m5 writes, the m6 writes around the FWHT). The header's r7 map
+  is a census (sixteen free slots; it said full), the state-table
+  description matches the code (6 + 2 words per line), the parameter list
+  matches the manifest; `REVERB.md`'s TIME law, GATE hold (52–784 ms),
+  memory table (bloom allpasses added) and register note follow the code.
+- Character efficiency pass (23 Sep 2026): the loop's state pointers go
+  through n3 alone (states relaid at `$3e..$45`, the tilt block at r4 +
+  n3), COMP's key read from the untouched frame, the tilt's k / TapeHead's
+  0.7 / TUBE's R loaded once per sample or from the ring, twelve parallel
+  moves, OInflator inlined. Pricer words TAPE 354 → 325, TUBE 339 → 321,
+  INFL 268 → 245; 903 → 888 words per payload. Bit-identical on
+  `verify-ident` (9 settings) and a T8 GLUE render. Stale header slot map
+  and comments (the return, TXTR, the old BUS mode) rewritten.
+
+- BusDelay sample loop on pointers and registers (23 Sep 2026): the aux
+  accumulator read through r3, the chain write at `(r3+n3)`, x_in / lag /
+  fraction / TIME ramp / crossfeed terms / stage outputs in registers, the
+  GRAIN and REVERSE arms after the line writes writing the wet slots
+  themselves (the SHIFTED substitution and its per-block flag removed),
+  GRAIN's trips with s / frac / gain / t0 in registers, the cursor in r6 and
+  the wet sum in n6, REVERSE's lags and windows in registers. Displaced
+  moves per sample CLEAN 91 -> 35, GRAIN 294 -> 102, REVERSE 109 -> 39;
+  pricer 1,126 -> 1,028 (GRAIN) cycles/sample; 1,354 -> 1,300 words.
+  28/28 `verify-bus` bit-identical. Two per-block writes landed in GRAIN's
+  records every block: the PITCH decode's park at raw $49 (grain 3's
+  line-L scatter word; moved to raw $16) and the SIZE decode's copy of the
+  REVERSE lag cap at raw $56 (grain 3's line-R window multiplier; the copy
+  is gone, raw $2a holds the cap). Each moves the two GRAIN cases only. `verify-bus` gained seven cases (the
+  delay's GRAIN, REVERSE and PING/TONE arms, the reverb's PLATE, BIG and
+  GATE) -- until then every case ran CLEAN and the reverb's default mode.
+- Spectrum loop pass (23 Sep 2026): one `do n7` per MODE dispatched once
+  per block (only the selected mode's stream is built), the input peak /
+  LADR's Grun / CAP's rotation count in address registers across the loop,
+  CAP's rings set up per block and written in read order, stock-shaped
+  parallel moves, `max a,b` for the peak, LADR's dead G' clamp removed
+  (G ≤ 0.645 by the table). Pricer words/sample SVF / VOWL / LADR / ISO
+  126 / 216 / 238 / 292 → 107 / 170 / 198 / 250; displaced moves per
+  sample 9 / 7 / 10 / 17 → 4 / 0 / 0 / 1. `verify-ident MOD=spectrum` and
+  `verify-spectrum-ident` bit-identical; payload A FREE 848 → 621.
+
+- Spectrum LADR RES makeup (23 Sep 2026, Sam: "the vol drop desperately
+  needs it"): the ladder's output ×M = min(1 + k/2, 2.3), one per-block
+  word and one multiply per channel. Loop RMS against dry at RES 64 / 127:
+  FREQ 127 −9.4 / −13.5 → −3.5 / −6.3 dB, FREQ 64 −9.1 / −8.6 → −3.1 /
+  −1.4; the 0.3 FS noise gate at RES 127 stays off the rails. Every other
+  mode bit-identical; VOWL's RES 127 loss is left (no headroom at the
+  formant). SEM is flat across RES; ISO within 2 dB open; BP is a bandpass.
+
+- Character DRV drives the curves (23 Sep 2026, Sam: "much too subtle"):
+  the saturator's input is x·G with G = 1 + 3·DRV/128 (+12 dB at 127) on
+  top of each mode's own law, the output scaled per mode (TAPE ×1, TUBE
+  ×(1+d)/G, INFL ×1/G: small-signal +12 / +6 / 0 dB at 127); DRV 0 still
+  skips the stage. THD at −20 dBFS, 1 kHz, before → after: TAPE 64
+  −40 → −23 dB, TAPE 127 −18 → −11, TUBE 127 −22 → −18, INFL 127 −58 → −37.
+  Character 790 → 882 words. Unheard on the unit.
+
+- Disassemble what you assemble, automatically (Jannik Aßfalg, PR #380,
+  22 Sep 2026; hygiene pass 23 Sep): every `build_bus.assemble()` compares
+  `dsp_asm -list` with `dsp56kDisassemble`'s decode of the same bytes and
+  stops on a mnemonic mismatch. Artifacts bit-identical across the 26
+  refhash configurations. The `mpy`→`mpysu` sites are counted per module
+  in `build_bus.MPYSU_AUDITED` (REVERB SERVER 12 + 9 + 4, SEND 1,
+  CHARACTER 1, SPECTRUM 1 per assembly; CLAUDE.md's "23 sites" was stale)
+  and a count that differs from the table stops the build with the site
+  list, so a clean build prints nothing. `make where A=<addr>` prints every
+  doc paragraph citing a ColdFire address plus a disassembly window, by
+  scanning the docs on each call; the PR's `firmware/symbols.toml` (a copy
+  of every such paragraph, 10,829 lines, append-only) and its seeder are
+  not kept. `verify_set` skips the CC-40 check when the fixture's T2 FX2
+  id is not a module of the remix and, with Octakit present, expects the
+  load to rewrite `kits*` files only, so `make check REMIX=octakit`
+  reaches the end.
+
+- Upstream sweep (23 Sep 2026): nordseele's octalab-notes read again at
+  `e0dc56d` (nine commits since `40ffa53`) and its findings placed in
+  `STORAGE.md` §1 (a FAT directory record's first cluster is the long at
+  `+0x11e`, re-read here), `SAMPLE_SAVE.md` §7 (the storage-job entry
+  `0x40024168` reads kind/object from `0x460be9e8`/`ec`; a stock save ran on
+  his MKI), `RECORDER.md` §2, `MAINMENU.md` §6b, `PANEL.md` §2/§3b,
+  `PARAM_PAGES.md` §5g. Octakit's submodule moved to her `c6d3f39` (README
+  only; image byte-identical). `verify_menu`'s FX1 chooser check read 0x40
+  bytes from `0x400d6060`, four words into the FX2 table the build mirrors
+  for Octakit, so `make check` on every Octakit remix had been red since
+  15 Sep 2026; the window is the list's 12 words now. Unchanged upstream:
+  octemu, dsp56300, octamax, octa-bt-pt, JSFXClones. Moved but not
+  re-pinned: midisc 1.40MIDISC8.1 (his CC filter switched off, which this
+  module never carried), elektron-firmware-tool (restructured; upstream now
+  has `--emit-container`, our patch no longer applies), mc68k-md-mm (an
+  HDI08 CVR-read callback).
+
+- Character and Modulation pointer-addressed the same way (22 Sep 2026,
+  PRs #377 and #378): displaced moves per sample Character TAPE 79 / TUBE
+  74 / INFL 62 → 0 and Modulation LINE 107 / PHSR 136 / COMB 116 → 0, every
+  ring a 16-word modulo (stock runs only power-of-two modulos on the chip),
+  nine and fifteen renders bit-identical. One documented non-identity:
+  Modulation's LOFI latches now clear on a MODE change. Pricer words per
+  sample: Character 342 / 327 / 256, Modulation 423 / 489 / 361.
+
+- Spectrum SEM with a SHPE knob (23 Sep 2026): MODE 1 is SEM (was LP), and
+  SHPE on page 2 slot 7 is the SEM's mode pot, 0 lowpass, 64 notch (LP +
+  HP), 127 highpass, as weights on the SVF's taps computed once per block
+  (kHP = min(1, k/64), kLP = min(1, (127 − k)/63)); `---` in every other
+  mode. BP stays its own MODE; ISO and VOWL keep their values, so stored
+  parts need no re-stamp. Harness: SHPE 127 at DC 0 LSB, 4 kHz +0.2 dB,
+  200 Hz −26.9 dB; SHPE 64 cuts its cutoff 28.8 dB and passes DC and
+  8 kHz. HP as a sixth MODE (22 Sep 2026, PR #376) lasted a day; MODE is
+  back on the five-position tick widget.
+
+- Spectrum's sample loop pointer-addressed (22 Sep 2026): the block's
+  coefficients go into streams at r7+$50..$7f once per block and every
+  alternative walks them with `(r1)+`, states with `(r2)+`/`(r3)+`, the
+  per-sample parks in registers; arithmetic unchanged, six renders across
+  every MODE bit-identical. Displaced moves per sample 49 / 78 / 39 / 88
+  (SVF / VOWL / LADR / CAP) to 9 / 6 / 9 / 16. Reason: probe 57 (branch
+  `probe55`, 22 Sep 2026) timed a one-instruction DO loop on the unit at
+  2.00 cycles for a register or pointer move, 3.98 for the one-word
+  displaced move, 6.01 for the two-word form; the pricer counts words.
+
+- The DSP core clock measured: 199.9 MHz, 4,532 cycles a sample (probe 55,
+  branch `probe55`: timer 0 free-running at CLK/2, the per-frame advance
+  printed as an amplitude against a reference, `tools/harness/clock_probe.py`
+  on a capture). The rated maximum: no clock headroom. CHIP.md carried
+  183.456 MHz / 4,160 until then.
+
+- RIG HOSTS, image 53: a new part's FX1 is NONE (image 52's kept stock's
+  FILTER default, which on this image is Spectrum's id with FILTER's page
+  bytes: "muted and quiet and modulated" on the unit until re-selected),
+  and each track's FX2 page defaults come from that track's own
+  descriptor through the id table instead of the stock DELAY's (two more
+  detours, 0x40005830 and 0x40005840). Measured under the port on a
+  project the firmware created: FX1 0 x8, FX2 6 9 9 9 7 9 9 8, T1's page
+  bytes BusDelay's defaults, T5's BusVerb's, T8's the stock delay's.
 
 - Nothing else is selectable on FX2 (image 52, 22 Sep 2026): BusVerb and
   BusDelay are hidden from the chooser (one row, SEND) and keep their

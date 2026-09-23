@@ -2,14 +2,19 @@
 
 Em's Octakit — 256 Kits per Project in place of 64 bank-tied Parts — built
 from [emuyia/ems-octakit](https://github.com/emuyia/ems-octakit) (submodule
-`upstream/`, pinned at `7ba0ad6`, ot-26914-152100). `Kind.CF_PATCH` with a
+`upstream/`, pinned at `c6d3f39`, ot-26914-152100). `Kind.CF_PATCH` with a
 `Runtime`: 735 guarded sparse writes into the OS image plus a 154,766-byte
 runtime in DRAM. No DSP code, no menu row.
 
 Her README (`upstream/README.md`) is the user-facing description: LOAD/SAVE
 KIT on PART / FUNC+PART (MKI: FUNC+MIDI / FUNC+BANK), FUNC+CUE reload,
-7-character names, copy/paste/clear/undo, PTN+FUNC+RIGHT duplicate,
-automatic Parts→Kits migration of old projects. **Back up projects before
+7-character names, copy/paste/clear/undo, LOAD KIT > UNDO KIT (the last
+loaded Kit), FUNC+PASTE+PART (MKI: FUNC+PASTE+MIDI) saving a pasted
+Pattern's Kit to the next free slot, PTN+FUNC+RIGHT (save the Kit, copy
+it and the Pattern to the next free slots, load the pair), PTN+FUNC+TRIG
+copy/paste/clear/undo of inactive Patterns (BANK+TRIG, then
+BANK+FUNC+TRIG for other Banks), automatic Parts→Kits migration of old
+projects. **Back up projects before
 flashing; downgrading to stock may lose Kit data** (her words).
 
 ## How it is built

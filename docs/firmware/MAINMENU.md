@@ -159,6 +159,21 @@ stock sequence; the deferral idiom is the timer callback `FUN_40000c3c`
 (used by `FUN_40063660`). The shortcut module ran on tags 85–90 and was
 retired 13 Sep 2026 (broken on the unit; `docs/history/MAINMENU_BUSSCREEN.md`).
 
+### 6b. A page of one's own over GRID RECORDING (nordseele, MKI, 15 Sep 2026) ✅ theirs
+
+Holding a trig registers the stock's trig-held input map over any other
+(LEVEL → `0x400434d8`). LEVEL then opens the sample-lock list
+(`0x40024bb4`) and the popup engine frees the popup under it, its cell
+zeroed, without calling that popup's closed callback. A map that popup left
+registered receives the trig's release; one that swallows it leaves the
+held mask `0x460d174a` set and the firmware keeps the trig held: [REC]
+offers TRIG COPY, grid recording cannot be left, the sequencer will not
+stop. A page whose popup cell reads 0 must hand trig events (press and
+release share `0x40060ce0(code, down)`) to the stock and unregister its
+map. The current track's key pressed again in grid recording opens the
+slot list over any popup, closing it; a page that forwards the track keys
+has to swallow that one.
+
 ## 7. Editing parameters from a screen ✅
 
 Call the firmware's writers; do not reproduce them. Traced with a write

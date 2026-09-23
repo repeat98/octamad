@@ -588,9 +588,14 @@ with every stored page byte zero.** Under the port (`--dsp-pcwatch` on the
 burn's `do`, core 0) the word the burn read at `x:(r6+$1)` was `0x378f00`
 with every byte 0 and `0x69f400` with one track's byte at 100 — the same
 word on every SEND track, and the same with SEND cloned from DARK REV
-instead of FILTER: the firmware computes page-1 slot 1's word for this
-effect from one place, not from the track's byte. 7,111 loop iterations at
-"0" and the frame never finished. What computes it is not located. The
+instead of FILTER. ❌ "the firmware computes page-1 slot 1's word for this
+effect" (16 Sep 2026): a port page dump on 22 Sep 2026 (`--dsp-peek
+core:X:0x2c0,384` with every page-1 byte of Spectrum, Character and
+Modulation stamped distinct) shows every slot raw, knob << 16 with the
+companion in bits 8–15; a PC watch on a displaced load samples `a` before
+the load lands, so `0x378f00` was the previous instruction's `a`, not the
+word. 7,111 loop iterations at "0" and the frame never finished; the
+loop count's cause is open. The
 burn now reads page-2 slot 6 (`$c`'s knob field, CC 62), the delivery
 `verify_set` proves raw for every track on a real project; unflashed. The
 stamper writes SEND's defaults into every id-0 slot (both FX1 and FX2)

@@ -1513,6 +1513,38 @@ disassembles the result back and refuses mis-encodings and label prefixes.
 - All B1 declarations and the resulting no-bus remix are **pending the user's
   sign-off** and remain a skeleton until B2 supplies the extracted DSP.
 
+### WP-B2 build-time extraction audit (24 September 2026)
+
+- ✅ `modules/machinedrum/extraction.py` accepts only the pinned OS 1.63
+  update (`sha256 a58cd61f…cabd5`). Section 1 contains 135 load records and
+  `234,714` P, `13,130` X and `1,868` Y words; the extraction inventory and
+  all derived files stay under ignored `out/machinedrum/os163/`.
+- ✅ The standalone `tools/build/md_payload.py` audit consumes those records,
+  the common measured hot split of 27 units / `2,724` words at `P:0x1000`,
+  the layout-driven relocation, and the `192`-word driver at `P:0x3fe00`.
+  The twelve existing plans have the same hot-line signature. No derived
+  payload, firmware byte, sample or image was committed.
+- ✅ The pinned source's external span `0x140000–0x147fff` has `29,760`
+  loaded words and `3,008` gaps. This is the source-load inventory, not a
+  claim that the span is free in the OT.
+- 🟡 The current A2 map is not emit-safe: the replay proof's
+  `M 140000 148000 030000` puts those source words in the proposed sine
+  allocation `0x30000–0x37fff`, while relocated init writes all `0x8000`
+  words there. The source Y alias `0x147e00–0x147f07` adds a second stage
+  distinction: 264 pre-boot words are present, and 201 differ from the c10
+  post-boot P view. The audit therefore writes no `payload_A.mem` or
+  manifest and leaves B2 blocked.
+- ❌ A provisional uncommitted audit output that compared this broad test
+  placement to the post-boot c10 snapshot at `P:0x37e00` is retracted. The
+  final tool fails closed until the source/window split and alias load policy
+  are user-approved.
+- **blocked / layout review:** the user must choose whether to (A) add an
+  alias-aware packed code/table relocation across the proposed shared and
+  Y-only ranges, whose existing post-hot budget is up to `40,958` words in
+  `40,960` words with only two words of slack, or (B) reserve a separate 32K
+  shared source span and surrender/relocate another owner. All B2 results are
+  **pending the user's sign-off**.
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and

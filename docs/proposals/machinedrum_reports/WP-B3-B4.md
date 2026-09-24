@@ -89,6 +89,27 @@ $ make bus REMIX=machinedrum
 out/mainos_bus.bin: 1,268,136 bytes, 329 changed (+155,576 B octabam loader + payloads (machinedrum core-1 upload) appended)
 ```
 
+The other gates, run on this commit:
+
+- `make check REMIX=machinedrum`: every gate passes except the six
+  Octakit remix builds (kits, mods, octakit, ok-ms, rig-kits, rig-mods).
+  Those, and `verify_octakit`, fail with `modules/octakit/upstream/runtime/
+  runtime.S:438: Error: value of fffffbbe too large for field of 1 byte`.
+  The error is identical when built from the previous commit's build files,
+  so it predates this commit: that submodule is checked out at a commit
+  other than the recorded one and was left alone. `make verify` stops at
+  that gate, so the gates after it were run one by one: all exit 0.
+- `sh tools/harness/md_reference/md_gate.sh`: exit 0, all twelve moved
+  results equal their plain baselines. `md_init_gate.py`: exit 0, zero
+  differences on all twelve.
+- `scripts/refhash.sh`, baseline from the previous commit's `build_bus.py`,
+  `loader.S` and `platform_build.py` with this commit's module set: **ALL
+  24 CASES BIT-IDENTICAL**. Against the previous commit as a whole, every
+  case differs by the new module's registration only: MACHINEDRUM joins
+  "not in this remix", and its id 0x1e aliases to the remix's fallback (11
+  bytes per image). Every new module has done the same.
+- The port's own tests (`ctest` in `out/emu`): 9 of 9 pass.
+
 ## Measured
 
 All of these are under the ColdFire port. None is hardware. Section 12,

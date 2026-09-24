@@ -30,7 +30,9 @@ it runs `md_glue.asm`, which does three things:
   gain tables (both default to 1/4) at the fixed proof output gain (100/128).
   Mailbox destinations `0xc00–0xc1f` update those tables through the
   ColdFire host-transfer chain; `verify_md_image.py --gain-probe` checks a
-  right-channel mute under Octemu.
+  right-channel mute under Octemu. `md_gain_set` stages a left/right Q23 pair
+  for one internal part; the transport sends one pending pair per frame.
+  `verify_md_image.py --gain-queue-probe` checks that queue under Octemu.
 
 On T5–T8 the id is a passthrough (`md_stub.asm`). `make verify-md`
 (OT_PROJECT with a sample on T1) checks the whole path under the port.
@@ -41,7 +43,9 @@ with a port built from the repo's dsp56300 pin.
 c01_16 host stream through `md_xport.s` and the DSP mailbox. All 33,503
 captured voice blocks match the reference interpreter, including 20,544
 non-silent blocks. The producer is currently a test stream loaded by the
-port's `--load-file` option; live parameter production is WP-C4.
+port's `--load-file` option; live voice and VOL/PAN parameter production is
+WP-C4. The gain queue is ready for that producer but is not yet connected to
+the kit editor.
 The reference uses `md_replay --interpreter`: a firmware-free arithmetic
 probe reproduces a JIT loop defect in the capture emulator. Details and
 reproduction commands: [WP-C1 report](../../docs/proposals/machinedrum_reports/WP-C1.md).

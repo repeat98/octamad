@@ -23,11 +23,12 @@
 | (4 minor loops of 16-byte beats, as every stock block), at most 448
 | halfwords (layout.py mbox_a).
 |
-| THE PRODUCER. For now a test feed (tools/verify/verify_md_transport.py):
+| THE PRODUCER. A test feed (tools/verify/verify_md_transport.py):
 | md_feed points at a stream of chunks, each
 |   flags, npkt, nhw, then nhw halfwords of packets
-| and 0xffff in npkt ends it. The Machinedrum's own voice update (WP-C2..C4)
-| will fill md_tx the same way.
+| and 0xffff in npkt ends it. Without a feed, md_gain_set's dirty part pairs
+| are sent one per frame via the same md_tx DMA path. The Machinedrum's own
+| voice update (WP-C4) still needs to supply live record packets.
 |
 | ISR context: the chain's prologue saved d0-d1/a0-a1 only.
 |
@@ -47,6 +48,7 @@
 
         .text
         .global md_xport, md_feed, md_seq, md_sent, md_blocks, md_over, md_tx
+        .global md_gain_set, md_gain_dirty, md_gain_values
 
 md_xport:
         tst.b   md_sent
@@ -54,13 +56,14 @@ md_xport:
         lea     -8(%sp),%sp
         movem.l %d2-%d3,(%sp)
         move.l  md_feed,%d0
-        beq.w   md_idle
+        beq.w   md_gain_prepare
+md_have:
         move.l  %d0,%a0
         mvz.w   2(%a0),%d1              | npkt
         cmp.l   #FEED_END,%d1
         bne.s   1f
         clr.l   md_feed                 | the stream is over
-        bra.w   md_idle
+        bra.w   md_gain_prepare
 1:      mvz.w   4(%a0),%d2              | halfwords of packets
         move.l  %d2,%d3
         add.l   #3+31,%d3               | + seq, flags, npkt, rounded up to
@@ -123,11 +126,96 @@ md_idle:
         lea     8(%sp),%sp
         jmp     STOCK5
 
+| One dirty part becomes two one-word gain packets. The caller and ISR share
+| one ColdFire core, so md_gain_set clears the dirty bit before replacing
+| the pair and sets it only after both words are ready. The newest value wins.
+md_gain_prepare:
+        move.l  md_gain_dirty,%d0
+        beq.w   md_idle
+        moveq   #0,%d2
+        moveq   #1,%d3
+md_gain_scan:
+        move.l  %d0,%d1
+        and.l   %d3,%d1
+        bne.s   md_gain_found
+        addq.l  #1,%d2
+        lsl.l   #1,%d3
+        cmpi.l  #16,%d2
+        bne.s   md_gain_scan
+        bra.w   md_idle
+md_gain_found:
+        move.l  %d3,%d1
+        not.l   %d1
+        and.l   %d1,md_gain_dirty
+        move.l  %d2,%d0
+        lsl.l   #3,%d0
+        lea     md_gain_values,%a0
+        adda.l  %d0,%a0
+        lea     md_live_chunk,%a1
+        clr.w   (%a1)+                  | flags: no half sync
+        move.w  #2,(%a1)+               | two gain packets
+        move.w  #8,(%a1)+               | eight packet halfwords
+        move.l  %d2,%d0
+        add.l   #0xc00,%d0
+        move.w  %d0,(%a1)+              | left destination
+        move.w  #1,(%a1)+
+        move.l  (%a0)+,%d1
+        move.l  %d1,%d0
+        swap    %d0
+        move.w  %d0,(%a1)+
+        move.w  %d1,(%a1)+
+        move.l  %d2,%d0
+        add.l   #0xc10,%d0
+        move.w  %d0,(%a1)+              | right destination
+        move.w  #1,(%a1)+
+        move.l  (%a0),%d1
+        move.l  %d1,%d0
+        swap    %d0
+        move.w  %d0,(%a1)+
+        move.w  %d1,(%a1)+
+        clr.w   (%a1)+                  | terminator for md_feed
+        move.w  #FEED_END,(%a1)+
+        clr.w   (%a1)+
+        move.l  #md_live_chunk,%d0
+        move.l  %d0,md_feed
+        move.l  md_feed,%d0
+        bra.w   md_have
+
 md_after:
         clr.b   md_sent
         move.l  md_nbytes,%d0
         move.l  %d0,0xfc045008
         jmp     STOCK5
+
+| md_gain_set(d0=part 0..15, d1=left Q23, d2=right Q23). Returns d0=0 on
+| success or 1 for an invalid part/value. The UI/kit producer calls this
+| after translating VOL/PAN. d2 is read, not clobbered (callee-saved ABI).
+md_gain_set:
+        cmpi.l  #16,%d0
+        bcc.s   md_gain_reject
+        cmpi.l  #0x7fffff,%d1
+        bhi.s   md_gain_reject
+        cmpi.l  #0x7fffff,%d2
+        bhi.s   md_gain_reject
+        move.l  %d3,-(%sp)
+        moveq   #1,%d3
+        lsl.l   %d0,%d3
+        move.l  %d3,%a0
+        not.l   %d3
+        and.l   %d3,md_gain_dirty       | old pending pair is superseded
+        lsl.l   #3,%d0
+        lea     md_gain_values,%a1
+        adda.l  %d0,%a1
+        move.l  %d1,(%a1)+
+        move.l  %d2,(%a1)
+        move.l  %a0,%d3
+        or.l    %d3,md_gain_dirty       | publish after both writes
+        move.l  (%sp)+,%d3
+        moveq   #0,%d0
+        rts
+md_gain_reject:
+        moveq   #1,%d0
+        rts
 
         .balign 4
 md_feed:    .long   0                   | the test stream's next chunk (0: none)
@@ -136,5 +224,9 @@ md_blocks:  .long   0                   | blocks sent
 md_over:    .long   0                   | chunks dropped: larger than the mailbox
 md_nbytes:  .long   0                   | the TCD's NBYTES across our burst
 md_sent:    .byte   0                   | our burst is in flight
+        .balign 4
+md_gain_dirty:  .long 0                | one bit per pending part
+md_gain_values: .space 16*8             | left/right Q23 longs, part-major
+md_live_chunk:  .space 28               | 3 + 8 + 3 halfwords
         .balign 16
 md_tx:      .space  MBOX_HW*2           | the block (the DMA's SADDR; 16-byte beats)

@@ -29,7 +29,18 @@ also passed after this parser change: 4,194/4,194 transport blocks sent,
 19,663/19,663 record words accepted, and 33,513/33,513 voice blocks
 bit-identical.
 
-The kit producer must still translate each part's VOL/PAN to those gain
-words and send live updates. The full sixteen-part stereo mix must be priced
+The ColdFire transport now has `md_gain_set` for an internal part's left and
+right Q23 gains, plus a pending mask. The setter publishes a complete pair;
+the host-transfer interrupt formats the next pending part as two gain packets
+and sends it through the existing mailbox. The newest unsent pair wins. The
+`--gain-queue-probe` Octemu gate seeded one pending right mute. After 700
+frames the pending bit was clear, the DSP right gain and all sampled right
+output were zero, 11,119 left samples were nonzero, and 348/348 reference
+periods plus 694/694 post-FX2 blocks matched. The captured transport still
+passed after this change: 4,194/4,194 blocks, 19,663/19,663 words, and
+33,513/33,513 voice blocks. `make check REMIX=machinedrum` passed.
+
+The kit producer must still translate each part's VOL/PAN and call the gain
+setter. The full sixteen-part stereo mix must be priced
 at OT addresses and checked against a reference mix before this packet is
 done.

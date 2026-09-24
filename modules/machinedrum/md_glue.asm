@@ -55,8 +55,8 @@
 ; 0's record at @VOICE@: word 0 is the engine's routine index, which the
 ; driver treats as "trigger".
 ;
-; The mix (decision D1 open; this is option A's shape): out = sum over the
-; sixteen slots of slot x @GAIN@[slot], L = R. The gains default to 1/4.
+; The OT-side stereo mix: L/R each sum sixteen slot samples multiplied by
+; @GAIN@/@GAINR@. Both tables default to 1/4 per slot (centered proof).
 ; Latency: a period is mixed on the frame its second half is rendered and
 ; played over that frame and the next.
 ;
@@ -247,19 +247,25 @@ gdone:                                  ; the gates sample here: the half just r
         move    #>$1ff,m4
         move    #>@GAIN@,r1             ; 16-aligned: m1 = $f
         move    #>$f,m1
+        move    #>@GAINR@,r2            ; independent right gain, m2 = $f
+        move    #>$f,m2
         move    #>@MIX@,r5
         do      #32,gmixlp
         clr     a
+        clr     b
         do      #16,gslotlp             ; ALU op and parallel move kept apart:
         move    x:(r1)+,x0      y:(r4)+n4,y0 ; the pinned dsp_asm turned the
         mac     y0,x0,a                 ; combined form into one unrelated word
+        move    x:(r2)+,x0
+        mac     y0,x0,b
 gslotlp:
         move    (r4)+
         move    a,x:(r5)+
-        move    a,x:(r5)+
+        move    b,x:(r5)+
 gmixlp:
         move    #>$ffffff,x0
         move    x0,m1
+        move    x0,m2
         move    x0,m4
         move    #>@MIX@,x0
         move    x0,x:>@GOUT@

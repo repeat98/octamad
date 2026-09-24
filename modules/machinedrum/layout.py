@@ -85,7 +85,8 @@ LAYOUT = {
         {"name": "mbox_b", "space": "X", "start": 0x5D40, "words": 0x1C0},
     ],
     # md_glue.asm's words (tools/build/md_image.py fills its placeholders).
-    # GAIN is 16-aligned (m1 = $f), MIX holds one 32-sample period, L/R.
+    # GAIN/GAINR are separate 16-part Q23 tables for the OT-side stereo mix.
+    # Each is 16-aligned (m1/m2 = $f); MIX holds a 32-sample stereo period.
     "glue": {
         "code": 0x36000,
         "code_words": 0x300,
@@ -106,6 +107,7 @@ LAYOUT = {
         "ZERO": 0x36320,
         "FIXED": 0x36330,
         "GAIN": 0x36340,
+        "GAINR": 0x36350,
         "MIX": 0x36380,
         "end": 0x363c0,
     },
@@ -214,8 +216,9 @@ def check():
     words = sorted((v, k) for k, v in g.items() if k not in ("code", "code_words", "end"))
     if words[0][0] < g["code"] + g["code_words"]:
         errors.append("glue data overlaps the glue code")
-    if g["GAIN"] % 16 or allocation("outbuf")["start"] % 0x200:
-        errors.append("glue GAIN must be 16-aligned and outbuf 512-aligned (the mix's modulo)")
+    if (g["GAIN"] % 16 or g["GAINR"] != g["GAIN"] + 16
+            or allocation("outbuf")["start"] % 0x200):
+        errors.append("glue gain tables must be consecutive, 16-aligned; outbuf 512-aligned")
     return errors
 
 

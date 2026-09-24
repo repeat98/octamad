@@ -26,8 +26,8 @@ it runs `md_glue.asm`, which does three things:
 - it applies the ColdFire record packets, including word-0 triggers;
   until a packet arrives, the track's trig fires a fixed TRX-BD record;
 - it runs the relocated voice DSP through `md_driver.asm`;
-- it mixes the sixteen slots at 1/4 each into the track at the fixed proof
-  gain (100/128).
+- it mixes the sixteen slots into stereo with separate per-part left/right
+  gain tables (both default to 1/4) at the fixed proof output gain (100/128).
 
 On T5–T8 the id is a passthrough (`md_stub.asm`). `make verify-md`
 (OT_PROJECT with a sample on T1) checks the whole path under the port.
@@ -73,7 +73,7 @@ restoration before they can process the MD mix.
 Not yet done:
 
 - the live record producer that calls the linked parameter handlers;
-- the per-part mix (D1);
+- live VOL/PAN mapping and DSP gain updates for the per-part mix;
 - the sequencer, persistence and MIDI;
 - E12 samples;
 - the full-kit cycle budget;

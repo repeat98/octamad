@@ -187,7 +187,7 @@ def assemble_glue(place):
     g, d = LAYOUT["glue"], LAYOUT["driver"]
     syms = dict(l.split() for l in (SOURCE / "driver.sym").read_text().splitlines() if l.strip())
     vals = {k: g[k] for k in ("OWNER", "GOUT", "ONCE", "SAVER6", "SAVEN7", "TRIGS", "SINE16",
-                              "FIXED", "GAIN", "MIX", "LSEQ", "NAPPLY", "NWORDS", "SLIPS", "GAPS", "BAD")}
+                              "FIXED", "GAIN", "GAINR", "MIX", "LSEQ", "NAPPLY", "NWORDS", "SLIPS", "GAPS", "BAD")}
     alloc = {r["name"]: r for r in LAYOUT["allocations"]}
     voice = alloc["voice_y_records"]["start"]
     state_names = ("stash", "outbuf", "loop_words", "mdsave", "phase_flags")
@@ -324,7 +324,8 @@ def integrate(img, md_id):
     for i, w in enumerate(fixed):
         data[g["FIXED"] - g["code"] + i] = w
     for i in range(16):
-        data[g["GAIN"] - g["code"] + i] = 0x200000       # 1/4 per slot (D1 open)
+        data[g["GAIN"] - g["code"] + i] = 0x200000
+        data[g["GAINR"] - g["code"] + i] = 0x200000  # centered 1/4 per slot
     out += ot_record(0, g["code"], data)
     out += bytes(img[bterm:PAYLOAD_B[0] - BASE + PAYLOAD_B[1]])
     raw = bytes(out)

@@ -41,6 +41,9 @@
         .equ    PART_OFF, 0x8ed80         | bank + this = Part 0
         .equ    SRAM_PART, 0x100a4ece     | the SRAM copy of Part 0
         .equ    SIG_OFF, 0x2a + 18        | + track x 30: NEIGHBOR page-1 slot
+        .equ    PART_FX2, 8               | + track: the Part's FX2 id
+        .equ    LIVE_FX2, 0x80000ecc      | + track: the FX2 id the DSP records carry
+        .equ    MD_FX2, 0x1e              | the MD's DSP dispatch id (manifest fx2_id)
         .equ    FLEX_P, 0x400d31ae        | stock FLEX playback descriptor (P)
         .equ    PB_TABLE, 0x400d5f38
         .equ    KEY_ROWS, 0x46100b18      | the panel's held-key rows (PANEL.md 4b)
@@ -272,11 +275,20 @@ md_src_commit:
         addq.l  #8,%sp
         jmp     (0x4005a61c).l
 
-| The frame builder copies each track's two FX setup bytes into its
-| transient DSP snapshot here. Select the MD dispatch for an MD track
-| without writing id 0x1e to the Part's FX2 setting or its chooser, and
-| tell the control engine which track it is. d3 counts 8..1, a3 points at
-| this track's source record, a0 at its destination. This remains a
+| The frame builder's per-track loop, run every frame: find the MD track,
+| tell the control engine which it is, and select the MD's DSP dispatch
+| for it without writing id 0x1e to the Part's FX2 setting or its chooser.
+| d3 counts 8..1, a3 points at this track's record, a0 at the compact copy
+| this site writes. That copy is not what the DSP reads: each track's DSP
+| record takes its FX2 id from the live byte LIVE_FX2 + track
+| (0x40004d38..0x40004d46), which stock refreshes from the Part's FX2 when
+| a Part is applied (0x4000938e, 0x4000c41e). So the MD track's live byte
+| is set to the MD id here, every frame, and a T1-T4 track that is not MD
+| gets its Part's FX2 back if it still carries the MD id (the FX2 chooser
+| hides that id, so only this code writes it). Until 25 Sep 2026 this site
+| rewrote the compact copy instead, which changes no dispatch: the gates
+| passed because their project stored 0x1e as T1's FX2 (measured under
+| the port: the live byte came from the card's Part). This remains a
 | bridge through the FX2 DSP dispatch until a native machine render seam
 | replaces it.
 md_pack_fx2:
@@ -300,22 +312,25 @@ md_pack_fx2:
         adda.l  #PART_OFF,%a0
         move.l  %d1,%d0
         bsr     md_sig_check
+        movea.l #LIVE_FX2,%a1
+        adda.l  %d1,%a1                  | this track's live FX2 id
         tst.l   %d0
-        beq.s   .pack_stock
+        beq.s   .pack_unmark
+        move.b  #MD_FX2,(%a1)            | the DSP dispatches the MD
         lea     0x22(%a0,%d1.l),%a1       | this signed track's type byte
         move.l  %a1,md_ui_md_type
         move.l  %d1,md_ui_md_track
         move.l  %d1,%d0                  | tell the control engine the MD track
         addq.l  #1,%d0                   | (md_ctl.c: 1 + track, cleared per frame)
         move.l  %d0,md_parent_track
-        moveq   #0,%d0
-        move.w  0x20(%a3),%d0
-        andi.l  #0xff00,%d0
-        ori.l   #0x1e,%d0
-        bra.s   .pack_write
+        bra.s   .pack_stock
+.pack_unmark:
+        move.b  (%a1),%d0
+        cmpi.b  #MD_FX2,%d0
+        bne.s   .pack_stock
+        move.b  PART_FX2(%a0,%d1.l),(%a1) | no longer MD: the Part's own FX2
 .pack_stock:
         move.w  0x20(%a3),%d0
-.pack_write:
         movem.l (%sp),%d1/%a0-%a1
         lea     12(%sp),%sp
         move.w  %d0,(%a0)+

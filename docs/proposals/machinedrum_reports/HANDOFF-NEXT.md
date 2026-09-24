@@ -12,7 +12,9 @@ Use this environment for every gate:
 
 ```sh
 export MD_EMU=$PWD/out/machinedrum/isolated/emu/ot_emu
-export OT_PROJECT=out/machinedrum/testset/OCTABAM/RIG
+export OT_PROJECT=out/machinedrum/testset_nofx/OCTABAM/RIG
+# RIG with T1's FX2 set to 0x08; the old RIG stores 0x1e and hid a
+# dispatch bug until 25 Sep (WP-C3)
 ```
 
 ## State to inherit

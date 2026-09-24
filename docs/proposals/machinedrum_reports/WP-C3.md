@@ -81,3 +81,44 @@ overwrote two bytes of the following stock instruction. Execution ended
 `ILLEGAL` at `0x40060cea`. Changing its `pad_to` from 10 to 8 leaves the
 instruction intact; the same panel sequence then ran through all events
 and recorded step 5. The six required regressions passed after the fix.
+
+## 25 September 2026: the MD was never dispatched from a fresh assignment
+
+❌ Retracted: "the frame builder substitutes internal DSP dispatch id `0x1e`
+into that frame's FX2 setup word". `md_pack_fx2` (site `0x4000d146`) wrote
+the id into a compact per-track copy at `0x80001b80`, which the DSP never
+reads.
+
+✅ Measured under the port and octemu:
+- Each track's DSP record takes its FX2 id from the live byte
+  `0x80000ecc + track` (stock `0x40004d38–0x40004d46`, word `+0x1c` of the
+  track's 32-word block; the DSP copies it at `P:0x089–0x08c` of payload B).
+  Stock refreshes that byte from the Part's FX2, `Part + 8 + track`
+  (`0x4000938e`, `0x4000c41e`).
+- The gates passed only because their project,
+  `out/machinedrum/testset/OCTABAM/RIG`, stores `0x1e` as T1's FX2 in every
+  Part, left over from the FX2-id gates. `ot_emu --watch-mem` traces T1's
+  live `0x1e` to the card load (`pc 0x400165dc`).
+- In octemu, on a card whose T1 FX2 is 0, core 1 never ran the glue
+  (`X:0x36300` owner stayed `0xffffff`) and T1 was silent.
+
+Fix: `md_pack_fx2` sets the MD track's live byte to `0x1e` every frame, and
+gives a T1–T4 track that is no longer MD its Part's FX2 back. The Part's
+FX2 is still never written. octemu then dispatches the MD (owner 0,
+`0x6004` blocks applied, audio on T1).
+
+✅ With `OT_PROJECT=out/machinedrum/testset_nofx/OCTABAM/RIG` (RIG with T1's
+FX2 set to `0x08`), all of these pass: `verify-md`, `--gain-probe`,
+`--gain-queue-probe`, `verify-md-transport`, `verify-md-seq`,
+`verify_md_ui.py`, `verify_md_c3.py` and `make check REMIX=machinedrum`.
+Use that project for MD gates from now on.
+
+Open (octemu, same run):
+- The record transport skips blocks: after 30 s, `gaps 0x9ffc` against
+  `napply 0x6004`. Their sum is exactly `0x10000`, so this may be a single
+  sequence jump rather than steady loss; not yet resolved. The audio has
+  only a few hits.
+- One octemu run froze the UI after boot, with the ColdFire still in its
+  ISRs and main idle loop. It happened while the gates loaded the CPU and
+  has not been reproduced.
+- The MD assignment does not survive an octemu reboot (stock FLEX does).

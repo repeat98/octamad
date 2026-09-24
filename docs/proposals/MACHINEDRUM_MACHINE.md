@@ -77,6 +77,12 @@ no requirement for eight simultaneous Machinedrum instances.
   in more than one space, and all code, stay in the window. Option B, "a
   separate 32K shared span", does not exist: the sine fills core 0's half and
   the rest of the window is already claimed.
+- **Tracks 1–4 may lose or limit their FX; tracks 5–8 must stay close to stock**
+  (the user). In the window, that frees core 1's half (`0x38013–0x3ffff`,
+  T3/T4's FX2 storage, 32,749 words) and keeps T7/T8's (`0x30048–0x37fff`).
+  *inferred* Core 1's private memory (T1/T2 FX2, its FX1 slots, its P) is
+  reachable only from core 1. Under the core-0 decision it frees nothing for
+  the MD. See section 12, "What the T1–T4 decision frees".
 - Still open for the user: the stock storage the window proposal takes away
   (core 0's T7/T8 FX2 storage and core 1's half, `0x38013–0x3ffff`, which
   conflicts with "tracks 1–4 stay fully stock in memory" above), and the cap of
@@ -1617,6 +1623,27 @@ disassembles the result back and refuses mis-encodings and label prefixes.
   across the twelve kits; (2) replace the two whole-span moves with per-table
   moves to those homes, and place the sine and P-I data in the replay where
   the patches point; (3) rerun the twelve-kit gate at voice home `0x3400`.
+
+### What the T1–T4 decision frees (24 September 2026)
+
+- *inferred* from the measured sizes: in the window the MD needs at least the
+  sine (32,768, read through X and Y) plus the post-hot code (12,957) and the
+  driver (192), fetched as P. That is 45,917 words against the 32,749 in core
+  1's half. On core 0, the remaining ~13.2K words have to come from T7/T8's
+  FX2 window storage, since core 0's private P is full apart from the donor
+  span.
+- ✅ (`CHIP.md`, `CORE0_MEMORY.md`) The sine cannot be one contiguous 32K run
+  in either half as stock stands. `0x30000–0x30047` (72 words, per-frame
+  parameter staging, read by both cores) and `0x38000–0x38012` (19 words,
+  payload B's entry and per-frame words) are live. That leaves 32,696 and
+  32,749 words, both short of 32,768. Placing the sine needs one of: a stock
+  patch that moves those words, or a measurement showing that part of the
+  sine's index range is never read.
+- *inferred* What T5–T8 still lose on core 0 under this decision: the FX1
+  memory at `0x3400` (agreed), the three stock reverbs PLATE/SPRING/DARK
+  (their P code is the donor span for the hot MD code), about 13K of one of
+  T7/T8's FX2 slots, and, unless the access audit places more tables in
+  private X, part of T5/T6's private FX2 Y.
 
 ### Open for Phase 1
 

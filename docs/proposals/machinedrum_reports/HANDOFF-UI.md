@@ -175,3 +175,30 @@ before `apply_kit`):
 - WP-D2 needs the user's sign-off.
 - OT p-locks on the mirrored steps are not converted into MD lane locks
   yet. The step records are at `TRAC + 0x78 + s·0x20` (RAM, 🟡).
+
+
+## 24 September 2026 checkpoint (Codex)
+
+- The 450-case C4 rerun passed and is recorded in `WP-C4.md`.
+- C3's drafted machine source and manifest changes are built. The signed
+  fixture's SRC edits change T1's FLEX slot, leaving T2 unchanged
+  (`tools/verify/verify_md_c3.py`). All six required post-C3 regressions
+  passed after a narrow `verify_hidden.py` fix; see `WP-C3.md`.
+- The page-2 offset is confirmed by the stock writer in
+  `docs/firmware/PARAM_PAGES.md`. The trig mask was verified under the
+  port *after* `--sequencer` selected pattern 0: T1 RAM at DB+0 matched
+  file mask `0000000000010001`; T2 at DB+0x91a matched
+  `0000000100000000`. A load-only probe showed zero masks before
+  pattern selection. Probe output is in ignored `out/mdverify/mask/`.
+- `md_ui.c` is copied into the module and compiled separately into
+  `md_ui.s`; `make bus REMIX=machinedrum` succeeds. The C3 SRC isolation
+  gate also passes with this editor build.
+- **Unfinished:** the full UI panel gate and the post-editor six-gate
+  regression have not run. A first double-SRC exploratory panel script
+  delivered all events but did not enter the chooser (Part type remained
+  0; cursor 0). Determine the correct chooser gesture, then verify the
+  selection, part pad, parameter edit, REC grid bit and LCD names. Review
+  the editor's runtime behavior before marking D4/D5/D6 complete.
+- E1 persistence, B5 image/notes, E2 MIDI and A6 cycles were not started.
+  B5 depends on A6, which remains blocked on the documented A5/D1
+  decisions. No hardware action.

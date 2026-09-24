@@ -207,19 +207,26 @@ def main():
               bool(ctl_names & (drew_listed - base_texts)),
               " ".join(sorted(ctl_names & (drew_listed - base_texts))[:4]))
 
-    emu.assign_fx2(boot, track=4, effect_id=hid_id)
-    part = emu.FAKE_PART
-    lo_a, hi_a = part + 0x8e000, part + 0x92000
-    before = bytes(uc.mem_read(lo_a, hi_a - lo_a))
-    try:
-        emu._call(uc, WRITER, (4, 0, 99))
-    except UcError:
-        pass
-    after = bytes(uc.mem_read(lo_a, hi_a - lo_a))
-    moved = [i for i in range(len(before)) if before[i] != after[i]]
-    check(f"the stock writer still lands a value for {key} slot 0",
-          any(after[i] == 99 for i in moved),
-          f"{len(moved)} byte(s) changed")
+    if key == "MACHINEDRUM":
+        # 0x1e is only an internal DSP dispatch id. The track's real
+        # playback editor is FLEX plus an MD signature; no panel path can
+        # invoke the FX2 writer on this hidden id.
+        print("  [SKIP] MACHINEDRUM has no user-facing FX2 writer; "
+              "verify_md_c3 checks its playback SRC store under the port")
+    else:
+        emu.assign_fx2(boot, track=4, effect_id=hid_id)
+        part = emu.FAKE_PART
+        lo_a, hi_a = part + 0x8e000, part + 0x92000
+        before = bytes(uc.mem_read(lo_a, hi_a - lo_a))
+        try:
+            emu._call(uc, WRITER, (4, 0, 99))
+        except UcError:
+            pass
+        after = bytes(uc.mem_read(lo_a, hi_a - lo_a))
+        moved = [i for i in range(len(before)) if before[i] != after[i]]
+        check(f"the stock writer still lands a value for {key} slot 0",
+              any(after[i] == 99 for i in moved),
+              f"{len(moved)} byte(s) changed")
 
     # ---- 4. the code -----------------------------------------------------
     import send_probe

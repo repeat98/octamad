@@ -43,3 +43,32 @@ WP-R4 parity test at period 25; the isolated pinned build is under ignored
 This completes the registration packet's selection and admission exit. The
 16-part kit editor, live record producer, internal sequencer, project
 extension and hardware deadline remain later packets.
+
+
+## 24 September 2026 C3 correction, pending chooser acceptance
+
+❌ The earlier raw type 6 representation above is retracted: stock page
+writers index machine slots by type × 6, so T1 SRC edits reached T2 FLEX.
+The Part now stores FLEX type 1 and an `MD\x01` signature in that track's
+unused NEIGHBOR page-1 slot. The chooser, name, descriptor and dispatch
+detours in `md_machine.s` use that signature; the raw-type pokes were
+removed.
+
+✅ `python3 tools/verify/verify_md_c3.py` under the specified port staged a
+signed T1 Part, turned SRC A/B/F, and measured T1 FLEX
+`[64,0,0,127,0,79] -> [73,5,0,127,0,82]` while T2 FLEX stayed
+`[64,0,0,127,0,79]`. With the compiled editor, the same gate passed:
+T1 `[64,64,0,0,0,0] -> [74,69,0,0,0,3]`, T2 unchanged. The stock
+page-2 store is `Part + 0x1da + track*30 + type*6 + slot`
+(`PARAM_PAGES.md` §5a/§6).
+
+✅ Post-C3 `verify-md`, both gain probes, `verify-md-transport`
+(33,513/33,513 blocks), `verify-md-seq`, and
+`make check REMIX=machinedrum` passed with the required environment.
+The first `make check` exposed a synthetic hidden-FX2 writer probe on the
+internal MD dispatch id; `verify_hidden.py` now skips that inapplicable
+probe. The complete rerun passed.
+
+[ ] The new FLEX-plus-signature chooser selection and admission refusals
+have not been retested through panel actions. Keep WP-C3 claimed until that
+port walk passes. Nothing was flashed.

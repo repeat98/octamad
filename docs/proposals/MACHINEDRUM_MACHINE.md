@@ -2227,3 +2227,17 @@ Report: [WP-C4.md](machinedrum_reports/WP-C4.md).
 - [Upstream Gearmulator](https://github.com/dsp56300/gearmulator).
 - [Elektron MD OS 1.63 manual](https://www.elektron.se/wp-content/uploads/2024/09/machinedrum_manual_OS1.63.pdf),
   Appendix A (machines/parameters) and Appendix C (machine IDs).
+
+
+### 24 September 2026: C3 store correction and editor probe
+
+❌ Raw machine type 6 in a Part is retracted. The stock SRC page writer
+indexes type × 6 and sent T1 MD knob edits into T2 FLEX's page slot.
+✅ A signed FLEX track (`MD\x01` in its otherwise unused NEIGHBOR page-1
+slot) kept T2's six FLEX bytes unchanged while T1 SRC A/B/F changed under
+the isolated ColdFire port. The exact before/after bytes and command are
+in `machinedrum_reports/WP-C3.md`. The chooser/admission panel walk is
+still pending. The editor's page-2 store offset is `Part+0x1da+30t+6+slot`
+from the stock writer; the trig-mask RAM base `DB+pattern*0x8ed8+
+track*0x91a` was measured by matching two distinct file masks after the
+port selected pattern 0. Load-only RAM had zero masks before selection.

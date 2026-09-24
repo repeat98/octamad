@@ -5,7 +5,7 @@
 
 _Static_assert(sizeof(MdPart) == 12, "md_ctl_tail.s kit allocation");
 _Static_assert(sizeof(MdKit) == 192, "md_ctl_tail.s kit allocation");
-_Static_assert(sizeof(MdEngine) == 48, "handler_build.py engine rows");
+_Static_assert(sizeof(MdEngine) == 52, "handler_build.py engine rows");
 _Static_assert(sizeof(MdRun) == 1344 + 192 + 20 + 8 + 4 + 2 * (3 + MD_MBOX_HW + 3),
                "md_ctl_tail.s runtime allocation");
 _Static_assert(sizeof(MdPattern) == 384, "md_ctl_tail.s pattern allocation");
@@ -294,7 +294,7 @@ const uint16_t *md_ctl_chunk(void) {
     if (++r->frames < MD_START_FRAMES) return 0;
     md_handler_sram_word = *(volatile uint32_t *)MD_TEMPO24;
     /* Is a Part's MD track packed? The frame builder's hook says which. */
-    unsigned parent = md_parent_track;
+    unsigned parent = md_ui_frame();
     md_parent_track = 0;
     if (parent) {
         md_lanes.parent = (uint8_t)(parent - 1);

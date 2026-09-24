@@ -5,7 +5,7 @@
     OT_PROJECT=DIR [MD_EMU=path/to/ot_emu] make verify-md-seq
 
 The whole machine path, no test pokes into the kit: T1 of every Part of bank
-1 is MACHINEDRUM (raw machine type 6), so the frame builder's hook names T1
+1 is MACHINEDRUM (FLEX plus an MD signature), so the frame builder's hook names T1
 as the MD track and the control engine loads its default kit; pattern A01
 is LEN 16 at 1X and the project runs at 300 BPM (one step = 137.8 frames).
 The gate pokes one MD pattern into md_patterns[0] (bank A, pattern 1):
@@ -95,7 +95,7 @@ def main():
         shutil.rmtree(proj)
     shutil.copytree(pathlib.Path(a.project).expanduser(), proj)
     for part in range(1, 5):
-        otp.set_machine_type(proj, 1, part, 1, 6, guard=False)
+        otp.set_md_machine(proj, 1, part, 1, guard=False)
     otp.set_pattern_scale(proj, 1, 0, 16, 2, guard=False)
     otp.set_tempo(proj, BPM)
     card = OUT / "card.img"

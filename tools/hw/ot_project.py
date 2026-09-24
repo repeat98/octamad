@@ -149,6 +149,26 @@ def set_machine_type(pdir, banknum, part, track, mtype, mirror=True, guard=True)
     print(f"bank{banknum:02d} part{','.join(str(p) for p in parts)} "
           f"T{track} machine type -> {mtype}")
 
+def set_md_machine(pdir, banknum, part, track, mirror=True, guard=True):
+    """Store the Machinedrum's FLEX type and MD signature in a Part.
+
+    The file's 9-byte PART header precedes each RAM Part. The signature
+    occupies the otherwise unused NEIGHBOR page-1 slot for this track.
+    """
+    if not (1 <= part <= NPARTS and 1 <= track <= 4):
+        sys.exit("md-machine: part 1-4 and track 1-4 required")
+    parts = (part, part + MTYPE_MIRROR) if mirror else (part,)
+    def mut(data):
+        for p in parts:
+            base = PART_BASE + (p - 1) * PART_STRIDE
+            data[base + MTYPE_OFF + track - 1] = 1
+            sig = base + 9 + 0x2a + 30 * (track - 1) + 18
+            data[sig:sig + 3] = b"MD\x01"
+    _bank_write(pdir, banknum, mut, guard=guard)
+    print(f"bank{banknum:02d} part{','.join(str(p) for p in parts)} "
+          f"T{track} MD signature + FLEX type")
+
+
 PTRN0, PTRN_FSTRIDE, TRAC_FSTRIDE, NMASKS = 0x16, 0x8eec, 0x922, 8
 
 def trac_off(pattern, track):

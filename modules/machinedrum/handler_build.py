@@ -71,7 +71,7 @@ PLAYABLE = frozenset(("GND", "TRX", "EFM", "P-I"))
 
 
 def engine_table(img: bytes, engines) -> list[str]:
-    """md_engines (md_ctl.h MdEngine, 48 bytes a row, ids 0x00..0x48):
+    """md_engines (md_ctl.h MdEngine, 52 bytes a row, ids 0x00..0x48):
     live handler, eight defaults, eight 4-character names, flags, family."""
     def long_at(addr):
         off = addr - extraction.OS_BASE
@@ -84,7 +84,7 @@ def engine_table(img: bytes, engines) -> list[str]:
     for i in range(ENGINE_IDS):
         e = by_id.get(i)
         if e is None or (i and e["family"] not in FAMILY_CODE):
-            out.append(f"        .zero 48                | {i:#04x}: no machine")
+            out.append(f"        .zero 52                | {i:#04x}: no machine")
             continue
         live = long_at(long_at(LIVE_TABLE + 4 * i))
         if live not in label:
@@ -95,7 +95,8 @@ def engine_table(img: bytes, engines) -> list[str]:
         out += [f"        .long {label[live]}          | {i:#04x} {e['name']}",
                 "        .byte " + ",".join(str(v) for v in e["defaults"]),
                 "        .byte " + ",".join(str(b) for b in names),
-                f"        .byte {flags},{family},0,0"]
+                f"        .byte {flags},{family}",
+                "        .byte " + ",".join(str(b) for b in e["name"].encode("ascii").ljust(6, b"\0")[:6])]
     return out
 
 

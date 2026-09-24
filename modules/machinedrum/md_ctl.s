@@ -224,7 +224,7 @@ build_record.constprop.0:
 	jne .L30
 	jra .L39
 .L34:
-	moveq #48,%d1
+	moveq #52,%d1
 	muls.l %d1,%d4
 	lea md_engines,%a2
 	tst.l (%a2,%d4.l)
@@ -254,7 +254,7 @@ md_engine_ok:
 	cmp.l 4(%sp),%d0
 	jcs .L43
 	move.l 4(%sp),%d0
-	moveq #48,%d1
+	moveq #52,%d1
 	lea md_engines,%a0
 	muls.l %d1,%d0
 	tst.l (%a0,%d0.l)
@@ -378,7 +378,7 @@ md_default_kit:
 	move.b %d1,-9(%a2)
 	mvz.b %d0,%d1
 	move.w %d1,%d0
-	mulu.w #48,%d0
+	mulu.w #52,%d0
 	move.l %d0,%a1
 	add.l #md_engines,%a1
 .L76:
@@ -398,7 +398,7 @@ md_default_kit:
 	lea (16,%sp),%sp
 	rts
 .L87:
-	moveq #48,%d0
+	moveq #52,%d0
 	muls.l %d0,%d1
 	lea md_engines,%a3
 	lea 44(%a3,%d1.l),%a5
@@ -802,42 +802,106 @@ md_ctl_chunk:
 	jcc .L157
 	move.l #-2147477476,%a0
 	move.l (%a0),md_handler_sram_word
-	move.l md_parent_track,%d0
+	jsr md_ui_frame
 	clr.l md_parent_track
 	tst.l %d0
-	jne .L249
-	move.b md_run+1564,%d1
-	move.l %d1,%d0
+	jeq .L158
 	subq.l #1,%d0
-	mvz.b %d0,%d0
-	cmp.l #253,%d0
-	jhi .L160
-	mvz.b %d1,%d0
-	addq.l #1,%d1
-	move.b %d1,md_run+1564
-	mov3q.l #7,%d1
-	cmp.l %d0,%d1
-	jcc .L159
-.L160:
-	move.l md_kit_active,%d2
-	move.l %d2,-24(%fp)
-	tst.l %d2
-	jne .L161
-	clr.w %d4
-	clr.b %d5
+	move.b %d0,md_lanes+208
+	moveq #1,%d0
+	move.b %d0,md_run+1564
+	tst.b md_run+1565.l
+	jeq .L250
+.L163:
+	move.l md_kit_active,%d0
+.L161:
+	move.l 1175473392,-(%sp)
+	pea md_clock
+	jsr md_clock_update
+	mov3q.l #1,%d6
+	clr.l %d3
+	lea md_run,%a5
+	cmp.l -2147457608.l,%d6
+	seq %d0
+	lea md_run+1344,%a4
+	lea md_run+1348,%a2
+	mvs.b %d0,%d0
+	neg.l %d0
+	move.l %d0,-(%sp)
+	pea md_clock
+	pea md_lanes
+	jsr md_seq_frame
+	lea (20,%sp),%sp
+	move.w md_run+1560,%d0
+	move.b md_run+1563,%d7
+	lea md_kit+12,%a0
+	lea md_kit,%a1
+	move.l %a0,-24(%fp)
+	move.w %d0,-26(%fp)
+	move.l #md_run+84,%d0
+.L180:
+	tst.b %d7
+	jeq .L208
+	move.l %a1,%a0
+	move.l %a1,%d4
+	move.l %a4,%a1
+.L167:
+	mvz.b (%a0),%d2
+	mvz.b (%a1),%d1
+	addq.l #1,%a0
+	addq.l #1,%a1
+	cmp.l %d2,%d1
+	jne .L166
+	cmp.l -24(%fp),%a0
+	jne .L167
+	move.l %d4,%a1
+	moveq #12,%d1
+	addq.l #1,%d3
+	lea (12,%a1),%a1
+	add.l #84,%d0
+	lea (12,%a4),%a4
+	moveq #16,%d2
+	lea (12,%a2),%a2
+	lea (84,%a5),%a5
+	add.l %d1,-24(%fp)
+	cmp.l %d3,%d2
+	jne .L180
+.L253:
+	moveq #1,%d3
+	move.b %d3,md_run+1563
+#APP
+| 210 "modules/machinedrum/md_ctl.c" 1
+	move.w %sr,%d0
+	move.w #0x2700,%sr
+| 0 "" 2
+#NO_APP
+	move.l md_trig_request,%d1
+	clr.l md_trig_request
+#APP
+| 213 "modules/machinedrum/md_ctl.c" 1
+	move.w %d0,%sr
+| 0 "" 2
+#NO_APP
+	move.w md_run+1556,%d2
+	move.w md_run+1566,%d0
 	move.l #md_run+1574,%d6
-	clr.l %d2
-	sub.l %a4,%a4
+	move.w -26(%fp),%d5
+	clr.w %d4
 	move.l %d6,-12(%fp)
-	clr.l md_run+1556
+	mov3q.l #1,-24(%fp)
 	clr.l %d6
 	clr.l -8(%fp)
 	clr.l -4(%fp)
 	lea md_gain_values,%a2
-	move.w %d4,md_run+1560
+	or.l %d2,%d1
+	clr.l %d2
 	lea (-16,%fp),%a5
+	or.l %d5,%d0
+	move.w %d4,md_run+1566
 	lea (part_gains.constprop.0),%a3
-	move.b %d5,md_run+1563
+	move.w %d1,md_run+1556
+	move.w %d0,%a4
+	move.w %d0,md_run+1560
 .L187:
 	mvz.w %a4,%d0
 	mov3q.l #1,%d4
@@ -905,103 +969,33 @@ md_ctl_chunk:
 	move.w md_run+1560,%a4
 	addq.l #8,%a2
 	jra .L187
-.L249:
+.L158:
+	move.b md_run+1564,%d1
+	move.l %d1,%d0
 	subq.l #1,%d0
-	move.b %d0,md_lanes+208
-	moveq #1,%d0
-	move.b %d0,md_run+1564
-.L159:
-	tst.b md_run+1565.l
-	jeq .L250
-	move.l md_kit_active,%d0
-.L161:
-	move.l 1175473392,-(%sp)
-	pea md_clock
-	jsr md_clock_update
-	mov3q.l #1,%d6
-	clr.l %d3
-	lea md_run,%a5
-	cmp.l -2147457608.l,%d6
-	seq %d0
-	lea md_run+1344,%a4
-	lea md_run+1348,%a2
-	mvs.b %d0,%d0
-	neg.l %d0
-	move.l %d0,-(%sp)
-	pea md_clock
-	pea md_lanes
-	jsr md_seq_frame
-	lea (20,%sp),%sp
-	move.w md_run+1560,%d0
-	move.b md_run+1563,%d7
-	lea md_kit+12,%a0
-	lea md_kit,%a1
-	move.l %a0,-24(%fp)
-	move.w %d0,-26(%fp)
-	move.l #md_run+84,%d0
-.L180:
-	tst.b %d7
-	jeq .L208
-	move.l %a1,%a0
-	move.l %a1,%d4
-	move.l %a4,%a1
-.L167:
-	mvz.b (%a0),%d2
-	mvz.b (%a1),%d1
-	addq.l #1,%a0
-	addq.l #1,%a1
-	cmp.l %d2,%d1
-	jne .L166
-	cmp.l -24(%fp),%a0
-	jne .L167
-	move.l %d4,%a1
-	moveq #12,%d1
-	addq.l #1,%d3
-	lea (12,%a1),%a1
-	add.l #84,%d0
-	lea (12,%a4),%a4
-	moveq #16,%d2
-	lea (12,%a2),%a2
-	lea (84,%a5),%a5
-	add.l %d1,-24(%fp)
-	cmp.l %d3,%d2
-	jne .L180
-.L252:
-	moveq #1,%d3
-	move.b %d3,md_run+1563
-#APP
-| 210 "modules/machinedrum/md_ctl.c" 1
-	move.w %sr,%d0
-	move.w #0x2700,%sr
-| 0 "" 2
-#NO_APP
-	move.l md_trig_request,%d1
-	clr.l md_trig_request
-#APP
-| 213 "modules/machinedrum/md_ctl.c" 1
-	move.w %d0,%sr
-| 0 "" 2
-#NO_APP
-	move.w md_run+1556,%d2
-	move.w md_run+1566,%d0
-	move.l #md_run+1574,%d6
-	move.w -26(%fp),%d5
+	mvz.b %d0,%d0
+	cmp.l #253,%d0
+	jls .L251
+.L160:
+	move.l md_kit_active,%d2
+	move.l %d2,-24(%fp)
+	tst.l %d2
+	jne .L161
 	clr.w %d4
+	clr.b %d5
+	move.l #md_run+1574,%d6
+	clr.l %d2
 	move.l %d6,-12(%fp)
-	mov3q.l #1,-24(%fp)
+	sub.l %a4,%a4
+	clr.l md_run+1556
 	clr.l %d6
 	clr.l -8(%fp)
 	clr.l -4(%fp)
 	lea md_gain_values,%a2
-	or.l %d2,%d1
-	clr.l %d2
+	move.w %d4,md_run+1560
 	lea (-16,%fp),%a5
-	or.l %d5,%d0
-	move.w %d4,md_run+1566
 	lea (part_gains.constprop.0),%a3
-	move.w %d1,md_run+1556
-	move.w %d0,%a4
-	move.w %d0,md_run+1560
+	move.b %d5,md_run+1563
 	jra .L187
 .L208:
 	move.l %a5,%a0
@@ -1035,7 +1029,7 @@ md_ctl_chunk:
 	mvz.b 1(%a1),%d2
 	mvz.b 1(%a4),%d1
 	cmp.l %d2,%d1
-	jeq .L251
+	jeq .L252
 .L178:
 	mov3q.l #1,%d1
 	move.w -26(%fp),%d2
@@ -1060,17 +1054,17 @@ md_ctl_chunk:
 	add.l %d1,-24(%fp)
 	cmp.l %d3,%d2
 	jne .L180
-	jra .L252
-.L254:
+	jra .L253
+.L255:
 	addq.l #1,%a0
 	moveq #8,%d4
 	cmp.l %a0,%d4
-	jeq .L253
+	jeq .L254
 .L172:
 	mvz.b 4(%a1,%a0.l),%d5
 	mvz.b (%a2,%a0.l),%d4
 	cmp.l %d5,%d4
-	jeq .L254
+	jeq .L255
 	or.l %d2,%d1
 	addq.l #1,%a0
 	moveq #8,%d5
@@ -1078,7 +1072,7 @@ md_ctl_chunk:
 	jeq .L242
 	moveq #1,%d6
 	jra .L172
-.L251:
+.L252:
 	mvz.b 2(%a1),%d2
 	mvz.b 2(%a4),%d1
 	cmp.l %d2,%d1
@@ -1095,7 +1089,7 @@ md_ctl_chunk:
 	move.w %d1,-26(%fp)
 	move.w %d1,md_run+1560
 	jra .L179
-.L253:
+.L254:
 	tst.b %d6
 	jeq .L177
 	move.w %d1,md_run+1558
@@ -1191,7 +1185,7 @@ md_ctl_chunk:
 	addq.l #8,%sp
 	cmp.l %d1,%d6
 	jcs .L246
-	moveq #48,%d6
+	moveq #52,%d6
 	muls.l %d1,%d6
 	lea md_engines,%a0
 	tst.l (%a0,%d6.l)
@@ -1200,7 +1194,7 @@ md_ctl_chunk:
 	btst #0,%d6
 	jeq .L246
 	tst.l %d4
-	jeq .L255
+	jeq .L256
 .L196:
 	mvz.w %d2,%d1
 	clr.l -(%sp)
@@ -1233,11 +1227,11 @@ md_ctl_chunk:
 	subq.l #1,%d4
 	tst.l %d4
 	jne .L207
-.L257:
+.L258:
 	tst.l -24(%fp)
 	jeq .L201
 	tst.l %d6
-	jeq .L256
+	jeq .L257
 .L202:
 	clr.w %d1
 	move.l -12(%fp),%a0
@@ -1259,7 +1253,7 @@ md_ctl_chunk:
 	clr.l %d1
 	tst.l %d4
 	jne .L196
-.L255:
+.L256:
 	move.l (%a3),%a0
 	tst.l %a0
 	jeq .L197
@@ -1298,14 +1292,14 @@ md_ctl_chunk:
 	lea md_run+1558,%a2
 	subq.l #1,%d4
 	tst.l %d4
-	jeq .L257
+	jeq .L258
 .L207:
 	mov3q.l #1,%d4
 	lea md_run,%a3
 	clr.l %d2
 	lea md_run+1344,%a4
 	jra .L188
-.L256:
+.L257:
 	move.b md_run+1562,%d3
 	moveq #15,%d2
 	pea -16(%fp)
@@ -1373,6 +1367,15 @@ md_ctl_chunk:
 	clr.l %d0
 	unlk %fp
 	rts
+.L251:
+	mvz.b %d1,%d0
+	addq.l #1,%d1
+	move.b %d1,md_run+1564
+	mov3q.l #7,%d1
+	cmp.l %d0,%d1
+	jcs .L160
+	tst.b md_run+1565.l
+	jne .L163
 .L250:
 	moveq #1,%d3
 	pea md_kit

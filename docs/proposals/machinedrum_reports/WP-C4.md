@@ -101,3 +101,15 @@ $ make verify-md-kit CASES=all
   are WP-D3's.
 - Nothing here is on hardware. The added FlexBus burst and the handler
   calls in the host-transfer interrupt are not timed on the unit.
+
+
+## 24 September 2026 rerun
+
+With `MD_EMU=$PWD/out/machinedrum/isolated/emu/ot_emu` and
+`OT_PROJECT=out/machinedrum/testset/OCTABAM/RIG`,
+`make verify-md-kit CASES=all` completed all 29 port runs:
+`verify_md_kit: 450 cases, PASS`. Every reported run matched the MD trig
+records and VOL/PAN gain words. Output:
+`out/machinedrum/logs/verify-md-kit-all-20260924.log` (local, ignored).
+The run staged its image before the C3 source edits; it verifies the
+handed-off kit implementation, not the later editor build.

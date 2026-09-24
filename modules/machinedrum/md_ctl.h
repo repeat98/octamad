@@ -61,7 +61,7 @@ typedef struct {
     char names[MD_SYN][4];           /* four characters, not terminated */
     uint8_t flags;                   /* MD_ENGINE_* */
     uint8_t family;                  /* MD_FAMILY_* */
-    uint8_t reserved[2];
+    char name[6];                  /* engine name, six characters (e.g. TRX-BD) */
 } MdEngine;
 
 #define MD_ENGINE_PLAYABLE 0x01u     /* the OT image can render it */
@@ -119,6 +119,23 @@ typedef struct {
     uint16_t lock_gain;              /* parts whose gain follows a lock */
     uint16_t chunk[3 + MD_MBOX_HW + 3];  /* md_feed format, terminated */
 } MdRun;
+
+/* The stock-page editor's per-frame mirror and descriptor. The first 40
+ * bytes are control and snapshots; the descriptor is copied from FLEX at
+ * run time, so no firmware data is checked into this repository. */
+#define MD_DESC_BYTES 0x1cau
+typedef struct {
+    uint8_t sel, shown_sel, shown_track, shown_part, shown_engine, desc_engine;
+    uint8_t lane_sel, lane_track, lane_bank, lane_pattern;
+    uint8_t snap[12], lane_snap[8], pad[10];
+    uint8_t desc[MD_DESC_BYTES + 2];
+} MdUi;
+
+extern MdUi md_ui;
+extern volatile uint32_t md_desc_p, md_ui_md_track, md_ui_md_type;
+extern char md_ui_name[12];
+unsigned md_ui_frame(void);
+void md_ui_select(unsigned key);
 
 /* The engine table, the kit and the runtime (md_ctl_tail.s, handlers.s). */
 extern const MdEngine md_engines[MD_ENGINE_IDS];

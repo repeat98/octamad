@@ -40,8 +40,10 @@
 ;   [1] flags   bit 0: sync, the block precedes a period's slots 0-7
 ;   [2] npkt    packets that follow, at most 64
 ;   then npkt x [dest] [count] [hi lo] x count
-; dest is the Machinedrum's own Y address of the first word (a voice record,
-; $800 + $40 x slot + k), as the MD's host sends it; each word is hi<<16|lo.
+; dest $800-$bff is the Machinedrum's own Y voice-record address. Dest
+; $c00-$c1f maps to the thirty-two X gain words, sixteen L then sixteen R Q23
+; gain words. Each word is hi<<16|lo. Gain-only packets do not retire the
+; proof's fixed trigger; a voice packet does.
 ; The words go to the relocated records exactly as the MD's DMA5 writes
 ; them: word 0 is the trigger, which the driver clears. A bank whose seq is
 ; not newer than the last one taken is skipped (the ColdFire sent nothing
@@ -164,6 +166,35 @@ xnosync:
         tst     a
         beq     xpnext
         move    a1,x0
+        move    r3,b
+        add     x0,b
+        add     x0,b
+        cmp     y0,b
+        bgt     xpbad                   ; past the mailbox bank
+        move    x1,b
+        sub     #>$c00,b
+        blt     xvoice
+        add     x0,b
+        move    #>$20,y1
+        cmp     y1,b
+        bgt     xpbad                   ; past the 32 gain words
+        move    x1,b
+        add     #>@GAINOFF@,b
+        move    b,r2
+        do      x0,xgainend
+        clr     b
+        move    x:(r3)+,b1
+        and     #>$ff,b
+        asl     #$10,b,b
+        clr     a
+        move    x:(r3)+,a1
+        and     #>$ffff,a
+        move    a1,x1
+        add     x1,b
+        move    b1,x:(r2)+
+xgainend:
+        bra     xwritten
+xvoice:
         move    x1,b
         sub     #>$800,b
         blt     xpbad                   ; below the records
@@ -171,11 +202,9 @@ xnosync:
         move    #>$400,y1
         cmp     y1,b
         bgt     xpbad                   ; past the sixteen records
-        move    r3,b
-        add     x0,b
-        add     x0,b
-        cmp     y0,b
-        bgt     xpbad                   ; past the bank
+        move    x:>@NVOICE@,b
+        add     #<$1,b
+        move    b,x:>@NVOICE@
         move    x1,b
         add     #>@VOICEOFF@,b
         move    b,r2
@@ -191,6 +220,7 @@ xnosync:
         add     x1,b                    ; = or: hi<<16 has no low bits (add, a
         move    b1,y:(r2)+              ; stock form); a1/b1 moves do not limit
 xwend:
+xwritten:
         move    x:>@NWORDS@,b
         add     x0,b
         move    b,x:>@NWORDS@
@@ -209,8 +239,8 @@ xtoomany:
         add     #<$1,b
         move    b,x:>@BAD@
 xnone:
-        move    x:>@NAPPLY@,a           ; the fixed trigger stands in only
-        tst     a                       ; until the ColdFire drives the MD
+        move    x:>@NVOICE@,a           ; gain updates leave the proof
+        tst     a                       ; trigger active until a voice packet
         bne     gnotrg
         move    x:>$419,r1              ; this frame's track state
         move    #>$1e,n1

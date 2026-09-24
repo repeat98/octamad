@@ -19,6 +19,9 @@ symbols). Then:
              it (c10 has no retrigger there);
   audio      T1's post-FX2 read-back (core 1 -> the ColdFire) carries the
              glue's output blocks verbatim.
+  --gain-probe sends a gain-only packet through the ColdFire host chain to
+             mute internal part 0 on the right while the fixed trigger
+             continues. It checks the right gain word and stereo output.
 
 THE EMULATOR PIN MATTERS. The port built from a dsp56300 older than the
 repo's pin (scripts/setup.sh DSP56300_PIN) diverged from the reference at
@@ -55,6 +58,8 @@ def main():
     ap.add_argument("--project", default=os.environ.get("OT_PROJECT", ""))
     ap.add_argument("--frames", type=int, default=700)
     ap.add_argument("--load-ms", type=int, default=20000)
+    ap.add_argument("--gain-probe", action="store_true",
+                    help="send a right-gain mute through md_xport and check stereo output")
     a = ap.parse_args()
     if not a.project:
         print("  [SKIP] verify_md_image: no project (OT_PROJECT=<dir> or --project)")
@@ -126,10 +131,33 @@ def main():
     samples, dump, log = OUT / "glue.txt", OUT / "port.dump", OUT / "port.txt"
     spans = (f"X:{g['TRIGS']:x},1;X:{g['OWNER']:x},1;Y:{d['HALF']:x},1;Y:{d['ENG']:x},1;"
              f"Y:{d['OUTBUF']:x},32;X:0,32")
+    if a.gain_probe:
+        # A gain-only chunk must reach core 1 without disabling the fixed
+        # trigger. Address 0xc10 maps to the right gain for internal part 0.
+        # The second packet deliberately crosses the gain-table boundary.
+        # It must be rejected without touching DSP memory past 0xc1f.
+        chunk = [0, 2, 10, 0xc10, 1, 0, 0,
+                 0xc1f, 2, 0, 0, 0, 0, 0, 0xffff, 0]
+        blob = b"".join(x.to_bytes(2, "big") for x in chunk)
+        feed_file = OUT / "gain_probe.bin"
+        feed_file.write_bytes(blob)
+        import json
+        lay = json.loads((ROOT / "out/platform/layout.json").read_text())
+        at = (lay["stage_end"] + 0x10000) & ~0xffff
+        if at + len(blob) > lay["ceiling"]:
+            sys.exit("verify_md_image: gain probe does not fit platform reserve")
+        nm = subprocess.check_output(["m68k-elf-nm", str(ROOT / "out/platform/runtime/runtime.elf")],
+                                    text=True)
+        cf = {f[2]: int(f[0], 16) for f in (l.split() for l in nm.splitlines()) if len(f) == 3}
+        feed = cf["md_feed"]
+        poke = ";".join(f"{feed + i:#x}={(at >> (24 - 8 * i)) & 0xff:#x}" for i in range(4))
+        spans += f";X:{g['GAINR']:x},1;X:{g['NVOICE']:x},1;X:{g['BAD']:x},1"
     cmd = [str(EMU), "--image", str(image), "--card", str(card), "--set", "OCTABAM", "--project", "RIG",
            "--sequencer", "--internal-clock", "--frames", str(a.frames), "--load-ms", str(a.load_ms),
            "--dsp", "--block-dump", str(dump),
            "--dsp-sample", f"1:{sym['gcpylp']:x}:{samples}:1000000={spans}"]
+    if a.gain_probe:
+        cmd += ["--load-file", f"{at:#x}={feed_file}", "--poke-early", poke]
     with open(log, "w") as f:
         f.write(" ".join(cmd) + "\n"); f.flush()
         r = subprocess.run(cmd, cwd=ROOT, stdout=f, stderr=subprocess.STDOUT)
@@ -201,6 +229,14 @@ def main():
     hit = sum(1 for b in live if b in outs)
     check("audio: T1's post-FX2 read-back is the Machinedrum mix", live and hit == len(live),
           f"{hit} of {len(live)} non-silent read-back blocks are glue output blocks")
+    if a.gain_probe:
+        left = sum(x != 0 for r in rows for x in r[5][0::2])
+        right = sum(x != 0 for r in rows for x in r[5][1::2])
+        check("gain packet: right gain is zero, fixed trigger and left audio survive",
+              rows[-1][6][0] == 0 and rows[-1][7][0] == 0
+              and rows[-1][8][0] == 1 and trigs >= 1 and left > 0 and right == 0,
+              f"gain {rows[-1][6][0]:#x}, voice packets {rows[-1][7][0]}, "
+              f"bad {rows[-1][8][0]}, left {left} nonzero, right {right} nonzero")
     print(f"  verify_md_image: {'PASS' if not fails else f'{fails} FAILED'}")
     return 1 if fails else 0
 

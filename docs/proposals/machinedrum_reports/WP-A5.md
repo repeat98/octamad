@@ -17,7 +17,19 @@ Across 698 sampled glue calls, left output had 11,119 nonzero samples and
 right output had zero. The normal centered gain was restored and the image
 rebuilt. No temporary right-mute change is committed.
 
-The live producer still needs to translate each part's VOL/PAN to these two
-gain words and deliver updates to DSP memory. The full sixteen-part stereo
-mix must be priced at OT addresses and checked against a reference mix
-before this packet can be marked done.
+The mailbox parser now accepts a gain packet with destination `0xc00–0xc1f`,
+maps it to the X gain tables, and keeps the fixed trigger active if no voice
+record has arrived. The focused `--gain-probe` gate sent a right-zero update
+through the ColdFire host-transfer chain: the DSP right gain became zero,
+11,119 left samples were nonzero, all sampled right samples were zero, and
+348/348 voice periods remained bit-identical. A second packet crossed the
+`0xc1f` gain boundary and was refused (BAD=1) without stopping playback.
+The full c01_16 record stream
+also passed after this parser change: 4,194/4,194 transport blocks sent,
+19,663/19,663 record words accepted, and 33,513/33,513 voice blocks
+bit-identical.
+
+The kit producer must still translate each part's VOL/PAN to those gain
+words and send live updates. The full sixteen-part stereo mix must be priced
+at OT addresses and checked against a reference mix before this packet is
+done.

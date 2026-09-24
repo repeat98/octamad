@@ -24,10 +24,13 @@ refuse a second MD within the active Part or assignment on T5–T8. On core 1
 it runs `md_glue.asm`, which does three things:
 
 - it applies the ColdFire record packets, including word-0 triggers;
-  until a packet arrives, the track's trig fires a fixed TRX-BD record;
+  until a voice-record packet arrives, the track's trig fires a fixed TRX-BD record;
 - it runs the relocated voice DSP through `md_driver.asm`;
 - it mixes the sixteen slots into stereo with separate per-part left/right
   gain tables (both default to 1/4) at the fixed proof output gain (100/128).
+  Mailbox destinations `0xc00–0xc1f` update those tables through the
+  ColdFire host-transfer chain; `verify_md_image.py --gain-probe` checks a
+  right-channel mute under Octemu.
 
 On T5–T8 the id is a passthrough (`md_stub.asm`). `make verify-md`
 (OT_PROJECT with a sample on T1) checks the whole path under the port.

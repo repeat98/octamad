@@ -103,6 +103,7 @@ LAYOUT = {
         "SLIPS": 0x36309,    # sync marks that moved the driver's half
         "GAPS": 0x3630a,     # sequence numbers skipped (blocks lost)
         "BAD": 0x3630b,      # packets refused (bounds)
+        "NVOICE": 0x3630c,   # accepted voice packets, excluding gain updates
         "SINE16": 0x36310,
         "ZERO": 0x36320,
         "FIXED": 0x36330,

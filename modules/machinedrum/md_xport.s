@@ -15,6 +15,9 @@
 | it lands at X:0x3d40 or X:0x5d40 -- the bank the DSP reads the next frame,
 | as every stock block does. md_glue.asm (gfxproc) reads it:
 |   seq, flags, npkt, then npkt x [dest] [count] [hi lo] x count
+| Dest $800-$bff addresses Y voice records; $c00-$c1f addresses the
+| thirty-two X gain words (sixteen left, sixteen right). The test stream
+| may carry either kind. The future kit producer owns live gain updates.
 | One DSP word per 16-bit bus cycle (rtos.cpp's host-port mover), so a
 | 24-bit record word travels as two. The burst is whole 64-byte multiples
 | (4 minor loops of 16-byte beats, as every stock block), at most 448

@@ -8,7 +8,7 @@
 #     -Dgearmulator_SYNTH_XENIA=OFF -Dgearmulator_SYNTH_NODALRED2X=OFF \
 #     -Dgearmulator_SYNTH_JE8086=OFF \
 #     -DCMAKE_PROJECT_gearmulator_INCLUDE=$PWD/tools/harness/md_reference/md_profile.cmake
-#   cmake --build out/md_reference --target md_profile -j8
+#   cmake --build out/md_reference --target md_profile md_replay md_dis md_forms -j8
 #
 # The DSP emulator must carry tools/patches/gearmulator-md-exechook.patch
 # (applied in vendor/gearmulator-md-mm/source/dsp56300).
@@ -25,3 +25,8 @@ set_target_properties(md_replay PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED
 add_executable(md_dis ${CMAKE_CURRENT_LIST_DIR}/md_dis.cpp)
 target_link_libraries(md_dis PRIVATE dsp56kEmu)
 set_target_properties(md_dis PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+
+# md_forms: the decoder's instruction form per word, for md_flip.py.
+add_executable(md_forms ${CMAKE_CURRENT_LIST_DIR}/md_forms.cpp)
+target_link_libraries(md_forms PRIVATE dsp56kEmu)
+set_target_properties(md_forms PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)

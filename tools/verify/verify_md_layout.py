@@ -22,6 +22,14 @@ import md_payload as payload  # noqa: E402
 
 
 def reachable_words(snapshot: pathlib.Path, relocator: dict) -> set[int]:
+    words = set()
+    for address, (length, *_rest) in reachable_code(snapshot, relocator).items():
+        words.update(range(address, address + length))
+    return words
+
+
+def reachable_code(snapshot: pathlib.Path, relocator: dict) -> dict:
+    """Instruction start -> (length, word A, word B, text) for the static code set."""
     values = array.array("I", snapshot.read_bytes())
     table = relocator["decode"](snapshot)
     entries = {relocator["LOOP"][0], relocator["INIT_ENTRY"]}
@@ -51,11 +59,7 @@ def reachable_words(snapshot: pathlib.Path, relocator: dict) -> set[int]:
             if relocator["END"].match(op):
                 break
             address += length
-
-    words = set()
-    for address, (length, *_rest) in code.items():
-        words.update(range(address, address + length))
-    return words
+    return code
 
 
 def hot_source_words(path: pathlib.Path, allocation: dict) -> set[int]:

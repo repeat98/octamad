@@ -4,15 +4,21 @@
 #
 #   tools/harness/md_reference/md_reads.sh <scratch dir> <capture dir>...
 #
-# The hook goes into a COPY of vendor/gearmulator-md-mm's dsp56300 (one line in
-# Memory::get, before the address translation, so the space is the one the
-# instruction named). The copy is built with the interpreter: JIT code reads
-# memory without calling Memory::get, so a JIT build would see nothing. The
+# The hooks go into a COPY of vendor/gearmulator-md-mm's dsp56300 (one line in
+# Memory::get and one in Memory::dspWrite, before the address translation, so
+# the space is the one the instruction named). The copy is built with the
+# interpreter: JIT code reads memory without calling Memory::get, so a JIT
+# build would see nothing. The
 # shared vendor tree and out/md_reference stay untouched. Each capture is
 # replayed plain (MD addresses) from a directory of symlinks, since md_replay
 # rewrites written.txt. Then:
 #
 #   python3 tools/harness/md_reference/md_reads.py <scratch dir>/reads/*/reads.txt
+#
+# Each run also writes access.txt (MD_REPLAY_ACCESS: every data access by
+# the PC that made it, reads and writes), for the flip audit:
+#
+#   python3 tools/harness/md_reference/md_flip.py <scratch dir>/reads/*/access.txt
 set -eu
 ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
 S=$1; shift
@@ -28,12 +34,17 @@ c = d / "memory.cpp"; t = c.read_text()
 a = "\tTWord Memory::get( EMemArea _area, TWord _offset ) const\n\t{\n"
 assert a in t
 t = t.replace(a, a + "\t\tif(g_mdReadHook) g_mdReadHook(_area, _offset);\n", 1)
-t = t.replace("namespace dsp56k\n{\n", "namespace dsp56k\n{\n\tvoid (*g_mdReadHook)(EMemArea, TWord) = nullptr;\n", 1)
+a = "\tbool Memory::dspWrite( EMemArea& _area, TWord& _offset, TWord _value )\n\t{\n"
+assert a in t
+t = t.replace(a, a + "\t\tif(g_mdWriteHook) g_mdWriteHook(_area, _offset);\n", 1)
+t = t.replace("namespace dsp56k\n{\n", "namespace dsp56k\n{\n\tvoid (*g_mdReadHook)(EMemArea, TWord) = nullptr;\n"
+              "\tvoid (*g_mdWriteHook)(EMemArea, TWord) = nullptr;\n", 1)
 c.write_text(t)
 h = d / "memory.h"; t = h.read_text()
 a = "\tclass IMemoryValidator\n"
 assert a in t
-h.write_text(t.replace(a, "\textern void (*g_mdReadHook)(EMemArea, TWord);\n\n" + a, 1))
+h.write_text(t.replace(a, "\textern void (*g_mdReadHook)(EMemArea, TWord);\n"
+                          "\textern void (*g_mdWriteHook)(EMemArea, TWord);\n\n" + a, 1))
 EOF
 	cat > "$S/CMakeLists.txt" <<EOF
 cmake_minimum_required(VERSION 3.15)
@@ -43,6 +54,9 @@ set(DSP56K_FORCE_INTERPRETER ON CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 include($S/dsp56300/source/base.cmake)
 add_subdirectory($S/dsp56300/source/asmjit asmjit)
+if(WIN32 OR (UNIX AND NOT APPLE))
+	add_subdirectory($S/dsp56300/source/vtuneSdk vtuneSdk)	# dsp56kEmu links it off macOS
+endif()
 add_subdirectory($S/dsp56300/source/dsp56kBase dsp56kBase)
 add_subdirectory($S/dsp56300/source/dsp56kEmu dsp56kEmu)
 add_executable(md_replay_reads $ROOT/tools/harness/md_reference/md_replay.cpp)
@@ -58,6 +72,6 @@ for src in "$@"; do
 	for f in "$src"/*; do
 		[ "$(basename "$f")" = written.txt ] || ln -s "$(cd "$(dirname "$f")" && pwd)/$(basename "$f")" "$d/"
 	done
-	r=$(MD_REPLAY_READS="$d/reads.txt" "$S/build/md_replay_reads" "$d" 2>&1 | grep blocks: || true)
+	r=$(MD_REPLAY_READS="$d/reads.txt" MD_REPLAY_ACCESS="$d/access.txt" "$S/build/md_replay_reads" "$d" 2>&1 | grep blocks: || true)
 	echo "$src $r"
 done

@@ -25,6 +25,13 @@
 // it through (P, X, Y) while the blocks ran, as runs "<start> <end> <PXY>".
 // Instruction fetches do not go through the hook.
 //
+// MD_REPLAY_ACCESS=<file> (same build): every data read and write, by the PC
+// of the instruction that made it, as runs "<pc> <P|X|Y> <r|w> <lo> <hi>
+// <count>" over internal X/Y and the external RAM, after a "# blocks <n>"
+// line and the executed PCs as "E <lo> <hi>" runs (end exclusive);
+// md_flip.py reads it. With MD_REPLAY_INIT_ONLY=1 it runs only the boot init
+// (P:100057..10008d) at MD addresses, records that, and stops.
+//
 //   md_replay <capture dir> [--reloc] [--driver] [--init] [out.wav slot]
 //
 // --reloc applies <capture dir>/reloc.txt (md_relocate.py) after loading the
@@ -59,11 +66,119 @@ namespace
 {
 	constexpr dsp56k::TWord g_readLo = 0x100000, g_readHi = 0x150000;
 	std::vector<uint8_t> g_readFlags;
+
+	// MD_REPLAY_ACCESS=<file> (same build): every data access the executing
+	// instruction made, by PC, space and direction, for md_flip.py. The PC is
+	// set by the exec hook (one interpreted instruction per dsp.exec()) and
+	// cleared after each exec, so the replay's own snapshot and host-stream
+	// pokes are never charged to an instruction. Internal X/Y (below 0x10000)
+	// and the external RAM (g_readLo..g_readHi) are kept; peripherals are not.
+	// Written as "<pc> <P|X|Y> <r|w> <lo> <hi> <count>" runs (end exclusive),
+	// count being the key's total accesses, repeated on each of its runs.
+	constexpr dsp56k::TWord g_noPc = 0xffffffff, g_intHi = 0x10000;
+	dsp56k::TWord g_curPc = g_noPc;
+	bool g_access = false;
+	struct AccessBits
+	{
+		std::vector<uint64_t> in, ext;	// bitmaps: 0..g_intHi, g_readLo..g_readHi
+		uint64_t count = 0;
+	};
+	std::unordered_map<uint64_t, AccessBits> g_accessMap;	// (pc << 8 | area << 1 | write)
+	std::vector<uint8_t> g_executed;	// every PC the exec hook saw, below g_readHi
+
+	void recordAccess(dsp56k::EMemArea _area, dsp56k::TWord _offset, bool _write)
+	{
+		if(g_curPc == g_noPc)
+			return;
+		const bool internal = _offset < g_intHi;
+		if(!internal && (_offset < g_readLo || _offset >= g_readHi))
+			return;
+		auto& b = g_accessMap[static_cast<uint64_t>(g_curPc) << 8 | static_cast<uint64_t>(_area) << 1 | (_write ? 1 : 0)];
+		auto& bits = internal ? b.in : b.ext;
+		if(bits.empty())
+			bits.assign(((internal ? g_intHi : g_readHi - g_readLo) + 63) / 64, 0);
+		const auto i = internal ? _offset : _offset - g_readLo;
+		bits[i >> 6] |= 1ull << (i & 63);
+		++b.count;
+	}
+
 	void onRead(dsp56k::EMemArea _area, dsp56k::TWord _offset)
 	{
+		if(g_access)
+			recordAccess(_area, _offset, false);
 		if(_offset < g_readLo || _offset >= g_readHi)
 			return;
 		g_readFlags[_offset - g_readLo] |= _area == dsp56k::MemArea_P ? 1 : _area == dsp56k::MemArea_X ? 2 : 4;
+	}
+
+	void onWrite(dsp56k::EMemArea _area, dsp56k::TWord _offset)
+	{
+		if(g_access)
+			recordAccess(_area, _offset, true);
+	}
+
+	void onExecAccess(dsp56k::DSP* _dsp)
+	{
+		g_curPc = _dsp->getPC().toWord();
+		if(g_curPc < g_executed.size())
+			g_executed[g_curPc] = 1;
+	}
+
+	void writeAccess(const char* _path, const std::string& _header)
+	{
+		dsp56k::g_mdReadHook = nullptr;
+		dsp56k::g_mdWriteHook = nullptr;
+		g_access = false;
+		std::vector<uint64_t> keys;
+		for(const auto& [k, b] : g_accessMap)
+			keys.push_back(k);
+		std::sort(keys.begin(), keys.end());
+		FILE* f = std::fopen(_path, "w");
+		if(!f)
+			return;
+		std::fprintf(f, "# %s\n", _header.c_str());
+		// "E <lo> <hi>": the executed PCs (instruction starts), as runs.
+		for(dsp56k::TWord i = 0; i < g_executed.size();)
+		{
+			if(!g_executed[i])
+			{
+				++i;
+				continue;
+			}
+			dsp56k::TWord j = i;
+			while(j < g_executed.size() && g_executed[j])
+				++j;
+			std::fprintf(f, "E %06x %06x\n", i, j);
+			i = j;
+		}
+		static const char* areas[3] = {"P", "X", "Y"};
+		for(const auto k : keys)
+		{
+			const auto& b = g_accessMap[k];
+			const auto pc = static_cast<dsp56k::TWord>(k >> 8);
+			const auto* area = areas[(k >> 1) & 0x7f];
+			const char rw = (k & 1) ? 'w' : 'r';
+			for(const auto* bits : {&b.in, &b.ext})
+			{
+				const dsp56k::TWord base = bits == &b.in ? 0 : g_readLo;
+				const auto n = static_cast<dsp56k::TWord>(bits->size() * 64);
+				for(dsp56k::TWord i = 0; i < n;)
+				{
+					if(!((*bits)[i >> 6] >> (i & 63) & 1))
+					{
+						++i;
+						continue;
+					}
+					dsp56k::TWord j = i;
+					while(j < n && ((*bits)[j >> 6] >> (j & 63) & 1))
+						++j;
+					std::fprintf(f, "%06x %s %c %06x %06x %llu\n", pc, area, rw, base + i, base + j,
+						static_cast<unsigned long long>(b.count));
+					i = j;
+				}
+			}
+		}
+		std::fclose(f);
 	}
 }
 #endif
@@ -557,6 +672,9 @@ int main(int _argc, char** _argv)
 			while(periphX.getHI08().hasTX())
 				periphX.getHI08().readTX();
 		dsp.exec();
+#ifdef MD_REPLAY_READS
+			g_curPc = g_noPc;
+#endif
 		}
 		std::cerr << "no stop reached, pc " << std::hex << dsp.getPC().toWord() << "\n";
 		std::exit(1);
@@ -733,10 +851,38 @@ int main(int _argc, char** _argv)
 
 #ifdef MD_REPLAY_READS
 	const char* readsPath = std::getenv("MD_REPLAY_READS");
-	if(readsPath)
+	const char* accessPath = std::getenv("MD_REPLAY_ACCESS");
+	if(readsPath || accessPath)
 	{
 		g_readFlags.assign(g_readHi - g_readLo, 0);
 		dsp56k::g_mdReadHook = onRead;
+		dsp56k::g_mdWriteHook = onWrite;
+	}
+	if(accessPath)
+	{
+		g_access = true;
+		g_executed.assign(g_readHi, 0);
+		if(g_fetch)
+			g_execHook = [](DSP* _dsp) { onExecAccess(_dsp); onExecFetch(_dsp); };
+		else
+			g_execHook = [](DSP* _dsp) { onExecAccess(_dsp); };
+	}
+	// MD_REPLAY_INIT_ONLY=1 (with MD_REPLAY_ACCESS, at MD addresses): run the
+	// boot init once (P:100057 to its RTS at P:10008d) on the capture's
+	// snapshot, record its accesses and stop. The replay proper never runs
+	// init, so its access file cannot show the space init writes through.
+	if(accessPath && std::getenv("MD_REPLAY_INIT_ONLY"))
+	{
+		if(reloc)
+		{
+			std::cerr << "MD_REPLAY_INIT_ONLY runs at MD addresses; drop --reloc\n";
+			return 2;
+		}
+		dsp.setPC(0x100057);
+		runTo({0x10008d});
+		writeAccess(accessPath, "init");
+		std::cout << "init: accesses recorded\n";
+		return 0;
 	}
 #endif
 	std::map<uint32_t, std::array<uint64_t, 2>> stats;	// slot -> {match, mismatch}
@@ -1001,6 +1147,13 @@ int main(int _argc, char** _argv)
 			}
 			std::fclose(f);
 		}
+	}
+	if(accessPath)
+	{
+		uint64_t blocks = 0;
+		for(const auto& [slot, s] : stats)
+			blocks += s[0] + s[1];
+		writeAccess(accessPath, "blocks " + std::to_string(blocks));
 	}
 #endif
 	// Where the replay wrote memory: every word that now differs from the

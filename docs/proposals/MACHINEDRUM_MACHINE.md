@@ -1670,7 +1670,9 @@ mismatch), so their late reads come from a slightly different run.
 
 - ✅ Tables (maximal runs of loaded, non-code words in the two source spans,
   30,070 words): **X only 23,000** (18 runs), **X and Y 4,122** (3 runs),
-  **Y only 1,706** (13 runs), never read 1,242 (5 runs). The largest X runs
+  **Y only 1,706** (13 runs), never read 1,242 (5 runs). ❌ These classes
+  exclude 939 data words that the static code set counts as code (the flip
+  audit below), so they are low; `md_flip.py` regions come from the accesses. The largest X runs
   are `140000..1420ff` (8,448 words), `146000..146dff` (3,584),
   `143f54..1449c8` (2,677) and `1436d4..143d1c` (1,609); the X-and-Y run
   is mainly `100885..101881` (4,093).
@@ -1683,6 +1685,9 @@ mismatch), so their late reads come from a slightly different run.
 - ✅ The P-I buffers `135600..13b5ff` are read through X only: 16,905 of
   24,576 words, which is more than eleven voices' 1,536 each. The kits play
   more P-I voices at once than the proposed cap of six.
+  ❌ As a placement fact: the buffers are also *written* through Y (all
+  14,848 Y-written words are read back through X) and zeroed at boot
+  through X, so they depend on the X/Y alias. See "The flip audit" below.
 - ❌ The layout's `y_only_tables` (17,920 words of T5/T6's private FX2 Y)
   assumed that much of the table data could live in Y. Only 1,706 words are
   Y-only.
@@ -1742,10 +1747,91 @@ mismatch), so their late reads come from a slightly different run.
    PHASER, LO-FI, COMPRESSOR, DELAY). T5, T6 and T7, and every FX1, stay
    stock.
 
+Measured the same day (the flip audit, next): item 4 holds for all the
+tables and the P-I buffers, at 178 one-bit flips and 14 rewritten
+instructions; the P-I buffers need the rewrites. Item 5 then holds code only.
+
 The next measurement is the flip audit: for each table and P-I read, the
 instruction and whether its X form has a Y twin (a dual X:Y parallel move
 cannot be flipped on one side). If too little can be flipped, the fallback
 is T7's slot as well.
+
+### The flip audit: what can leave the window (24 September 2026)
+
+Measured with `tools/harness/md_reference/md_flip.py`
+(`machinedrum_reports/WP-A7.md`) on the twelve kits, recaptured on the WSL
+machine. `md_replay` recorded every data read and write, by the PC that made
+it, plus the executed PCs (`MD_REPLAY_ACCESS`, interpreter build, via
+`md_reads.sh`). The boot init was run once at MD addresses
+(`MD_REPLAY_INIT_ONLY`). Instruction forms come from the emulator's decode
+tables (`md_forms`). The cycle and rate figures are emulator counts.
+
+- ✅ The MD's external RAM is one memory seen through X, Y and P, and the
+  MD relies on that. The P-I buffers are **written through Y and read
+  through X**: every one of the 14,848 words written through Y (20
+  instructions) is read back through X. The boot init zeroes all 24,576
+  through X (`P:0x100066–0x100067`) and builds the sine through Y. On the OT
+  only the shared window aliases X and Y. A block leaves the window only if
+  every instruction that touches it ends up in one space.
+- ✅ Instruction forms, over the static set: 1,766 X-space instructions have
+  a one-bit Y twin (the ea, displaced and short-absolute moves, and the
+  S-bit forms). 112 are X:R/R:Y, 917 are XY dual moves and 169 are long
+  moves; 162, 18, 498 and 12 of them never ran in any kit. Only a twin can be
+  flipped as it stands; flipping it keeps its length.
+- ✅ Six instructions (`0x142180`, `0x142ddd`, `0x142dde`, `0x143521`,
+  `0x143e84`, `0x144b3e`) read a sample table through a pointer that runs
+  past the table and down through everything below it, internal X included.
+  At `0x143521` the phase is clamped at `0x143d1d`, and 32 interpolation
+  pointers are built in `L:0..31`. Each instruction has one home table with
+  210–1,300 of its words; the rest, at most 63 words per region, are stray.
+  Strays do not constrain placement. After relocation they read different
+  memory whatever the placement; whether that reaches the output is open.
+- ✅ The static code set counts 939 data words in the table spans as code:
+  `0x102600–0x1028f3`, and the zero runs at `0x142859`, `0x1433b6`,
+  `0x143d1d`, `0x1449c9` and `0x144efc`, which are the tails of the tables
+  before them.
+- ✅ The MD's own internal data touched in the kits: X 332 words, Y 1,218.
+- ✅ **The plan.** It packs best fit into core 1's free spans: X 5,824 /
+  1,984 / 1,454 / 1,960 (the core-1 ledger) and Y 47,195 contiguous
+  (`0x07a5–0xbfff`, with T1–T4's FX memory). The MD's internal data and the
+  driver's 1,156 Y words are reserved first. **Everything but the sine
+  leaves the window.** Private X holds 10,636 words, leaving 254 in
+  fragments. Private Y holds 41,111, including all 16 P-I buffers, leaving
+  3,710. The cost:
+  - **178 one-bit flips**;
+  - **14 rewritten instructions**, XY dual moves split into two single-space
+    moves. All are in 32-sample block copies between internal Y and a P-I
+    buffer (`0x142e9f…`, `0x144c0a…`) or between internal X and a table
+    (`0x142eee…`, `0x144c54…`).
+  - Each rewrite adds one instruction per execution: **7.8 per sample in the
+    worst kit (c40_16)**.
+- ✅ Without rewrites, the P-I buffers (24,576) and tables `0x142f33` and
+  `0x144c9a` (1,843) stay in the window under every option.
+- ✅ The flips produce `move y:(Rn+xxxx),D` ×102, `move y:ea,D` ×59 (stock
+  299), `move x:ea,D` ×16 (stock 1,833) and `move S,y:ea` ×1 (stock 353).
+  `md_flip` decodes every flipped word again and gets its twin. The
+  two-word displaced Y read has no stock site, but the MD needs it anyway:
+  its reachable code has 125 such reads and 183 such writes.
+- ✅ Forms in the MD's reachable code that no stock payload uses (the
+  hardware-probe list, `md_flip.py --static`):
+  - `Movey_Rnxxxx`, 308 sites;
+  - short-absolute X reads, 149;
+  - short-absolute long moves, 118;
+  - `rep #`, 17; `dor #`, 15; `lsl #`, 12;
+  - 25 more forms with 3 sites or fewer.
+
+  The one-word displaced Y move is not on the list: stock uses it 33 times
+  (3 in payload A, 30 in payload B, e.g. `move a,y:(r7+$0)` at `P:0xd3`).
+- *inferred* The P-I sub-buffers are 512-word modulo buffers (`m2 = $1ff` at
+  `0x142e07`, `0x144b75`), so the P-I base needs 0x200 alignment.
+- *inferred* E12's 12 reading instructions are X twins. X is full after the
+  plan, so the E12 stream buffer (WP-R1, D4) goes in Y, with 12 flips.
+- *inferred* With this plan the window holds the sine (`0x38000`) and the
+  code beyond private P. T8's FX2 slot then holds code, not tables.
+- Captures made here do not all replay like the Mac's. c10_3 gives
+  `32,804/698`, where the Mac capture gave `33,508/0`. Several block totals
+  differ too (WP-A7 has the table). Each machine's twelve-kit gate needs its
+  own baselines.
 
 ### Open for Phase 1
 

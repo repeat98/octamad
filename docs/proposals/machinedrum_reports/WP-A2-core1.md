@@ -139,8 +139,10 @@ and cycle cost before taking it into the payload.
 - The moved code calls `P:0x0143`. Its 23-word straight-line init routine
   now moves to the shared window at `P:0x34000`; the two callers branch
   there. None of the captured fetch profiles visits the routine, so the
-  replay gate does not prove its runtime behavior. Its `#>$147e00` data
-  pointer still needs an OT home.
+  replay gate does not prove its runtime behavior. Its `#>$147e00`
+  metadata table is now copied to `0x37200..0x373ff`; the pointer and
+  nine other absolute references are patched. Several table entries
+  point into MD sample ROM above `0x150000`; that delivery remains open.
 - The four 128-word writable E12 buffers at `0x135206..0x135405`
   now occupy the shared window at `0x37000..0x371ff`. The four base
   immediates and the exclusive-end comparison at `0x135406` are patched.
@@ -157,6 +159,6 @@ and cycle cost before taking it into the payload.
    `P:102fae..102fc5` for the P-I buffers.
 2. Rerun the twelve-kit gate and separate c1d_16's known one-block
    driver residual from any new relocation mismatch.
-3. Assign a home to the `P:0x0143` routine's `0x147e00` data and
-   exercise the port and E12-tail writes in an init or targeted replay.
-   Then rebuild WP-B2.
+3. Exercise the low-P port, E12-tail writes and sample metadata in an
+   init or targeted replay. Resolve sample-ROM pointers above `0x150000`,
+   then rebuild WP-B2.

@@ -21,7 +21,8 @@ Sources for the free ground (core 1):
     stock words at 0x38000 are already overwritten by the shipping
     BusDelay), and T8's FX2 slot, 0x34000-0x37fff, for the code that does
     not fit private P (T8's FX2 then runs only memoryless effects).
-    The 512-word E12 write buffer also occupies this shared window.
+    The 512-word E12 write buffer and 512-word sample metadata block
+    also occupy this shared window.
 """
 
 
@@ -58,10 +59,11 @@ LAYOUT = {
 
         # The shared window (P/X/Y alias there): the code that does not fit
         # private P, and the tables private X and Y cannot take (no flip is
-        # needed there). The E12 write buffer has its own fixed home.
+        # needed there). The E12 write buffer and sample metadata have fixed homes.
         {"name": "window_code", "space": "shared", "start": 0x34000, "words": 0x2400},
         {"name": "window_tables", "space": "shared", "start": 0x36400, "words": 0x0C00},
         {"name": "e12_tail", "space": "shared", "start": 0x37000, "words": 0x200},
+        {"name": "sample_meta", "space": "shared", "start": 0x37200, "words": 0x200},
         {"name": "sine", "space": "shared", "start": 0x38000, "words": 0x8000},
     ],
     "driver": {

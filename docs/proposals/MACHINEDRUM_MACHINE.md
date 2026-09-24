@@ -1882,7 +1882,10 @@ tables (`md_forms`). The cycle and rate figures are emulator counts.
 - The 23-word init routine at `P:0x0143..0x0159` is included in the
   core-1 relocation map at `P:0x34000`. Both external-code branches to
   it receive new relative displacements. The captured fetch profiles
-  do not visit the routine; its `0x147e00` data pointer has no OT home yet.
+  do not visit the routine. Its `0x147e00..0x147fff` metadata table
+  now sits at `0x37200..0x373ff`; ten absolute references are patched.
+  Several entries point into MD sample ROM above `0x150000`, which
+  still needs a delivery path.
 - The four writable 128-word E12 tail buffers at `0x135206..0x135405`
   now occupy `0x37000..0x371ff` in the shared window. The relocation
   patches their four base immediates and maps the exclusive-end compare

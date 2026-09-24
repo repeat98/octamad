@@ -198,10 +198,9 @@ WP-B2/B3 integration work.
 
 ## Handover
 
-1. Rebuild `tools/build/md_payload.py` for this core-1 plan, emitting
-   payload B from the user's update and checking every owned memory span.
-2. Exercise the relocated low-P init, E12-tail writes, and sample
-   metadata against a targeted reference, including pointers above
-   0x150000.
+1. The core-1 payload-B load-record builder and twelve-capture init
+   comparison now pass; see WP-B2 for the artifact and limits.
+2. Exercise E12-tail writes and sample metadata in targeted renders,
+   including pointers above 0x150000.
 3. Integrate native machine selection, parameters, the driver, and
    payload B in the OT build; measure the complete core-1 workload.

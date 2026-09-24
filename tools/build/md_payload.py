@@ -1,21 +1,11 @@
 #!/usr/bin/env python3
-"""Build the Machinedrum core-0 DSP payload from the user's OS update.
+"""Build and verify the Machinedrum core-1 payload-B load records.
 
-The update is an input, never a repository asset.  This builder unpacks the
-pinned SysEx through ``modules/machinedrum/extraction.py``, constructs the
-same sparse P/X/Y view used by ``md_replay``, asks the layout-driven
-relocator for a plan, and writes only ignored files below
-``out/machinedrum/build``:
-
-* ``payload_A.mem`` is a flat DSP load-record dump;
-* ``source/reloc.txt`` is the relocator's auditable plan;
-* ``source/driver.bin`` is the assembled OT-side driver; and
-* ``manifest.json`` records the input and generated identities.
-
-The native dispatcher hook is deliberately not part of this packet (that is
-WP-B3).  The result is therefore a payload build and dump, not a flashable
-OS image.  ``tools/verify/verify_md_payload.py`` compares its relocated P
-words with the words ``md_replay`` would have after applying the same plan.
+The user's pinned OS update is read at build time. No firmware bytes enter
+Git. The same placement plan and relocation used by the twelve-kit replay
+gate produce sparse P/X/Y records in the core-1 layout. This is a payload
+artifact, not a bootable Octatrack image: the native dispatcher and machine
+registration are separate integration work.
 """
 
 from __future__ import annotations
@@ -37,7 +27,7 @@ SOURCE = OUT / "source"
 RELOCATOR = ROOT / "tools/harness/md_reference/md_relocate.py"
 DRIVER = ROOT / "tools/harness/md_reference/md_driver.py"
 EXTRACTION = ROOT / "modules/machinedrum/extraction.py"
-MEM = OUT / "payload_A.mem"
+MEM = OUT / "payload_B.mem"
 MANIFEST = OUT / "manifest.json"
 
 SPACE = {0: "P", 1: "X", 2: "Y"}
@@ -125,135 +115,104 @@ def write_snapshot(mem: dict[str, dict[int, int]], path: pathlib.Path) -> None:
 
 
 def default_profiles() -> list[pathlib.Path]:
-    # These are the six complete, all-engine cap-4 fetch profiles used by the
-    # overnight measurement.  cap-5 includes the c40 crash/partial fetch, so
-    # it is never silently folded into the hot-unit choice.
-    profiles = sorted((ROOT / "out/md_profile/cap4").glob("*/fetch.txt"))
+    profiles = sorted((ROOT / "out/md_profile/cap4").glob("*/reloc.txt"))
     if not profiles:
-        die("no cap4 fetch profiles; pass --profiles explicitly")
+        die("no cap4 relocation plans; pass --profiles explicitly")
     return [p.parent for p in profiles]
 
 
 def hot_plan_signature(path: pathlib.Path) -> str:
-    hot = allocation("hot_code")
-    lines = []
-    for line in path.read_text().splitlines():
-        parts = line.split()
-        if len(parts) != 4 or parts[0] != "M":
-            continue
-        start, end, new = (int(v, 16) for v in parts[1:])
-        if hot["start"] <= new < hot["start"] + hot["words"]:
-            lines.append(f"M {start:06x} {end:06x} {new:06x}")
+    lines = [line for line in path.read_text().splitlines()
+             if line.startswith("H ")]
     if not lines:
-        die(f"hot plan has no units in {path}")
+        die(f"hot plan has no H units in {path}")
     return sha(("\n".join(lines) + "\n").encode())
 
 
-def run_relocator(source: pathlib.Path, profiles: list[pathlib.Path]) -> tuple[str, str]:
+def run_relocator(source: pathlib.Path, profiles: list[pathlib.Path],
+                  placement: pathlib.Path) -> tuple[str, str]:
     plans = [p / "reloc.txt" for p in profiles]
     missing = [p for p in plans if not p.exists()]
     if missing:
-        die("profile(s) have no measured reloc.txt hot plan: "
+        die("profile(s) have no measured reloc.txt: "
             + ", ".join(map(str, missing)))
     signatures = {hot_plan_signature(p) for p in plans}
     if len(signatures) != 1:
-        die("the twelve-kit hot plans disagree: " + ", ".join(sorted(signatures)))
-    hot_signature = next(iter(signatures))
+        die("the capture hot plans disagree: " + ", ".join(sorted(signatures)))
     command = [sys.executable, str(RELOCATOR), "--hot-plan", str(plans[0]),
-               str(source)]
-    result = subprocess.run(command, cwd=ROOT, text=True,
-                            capture_output=True)
+               "--plan", str(placement), str(source)]
+    result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
     if result.stdout:
         print(result.stdout, end="")
     if result.returncode:
         die(f"relocator failed (exit {result.returncode})\n{result.stderr}")
     if result.stderr:
         print(result.stderr, file=sys.stderr, end="")
-    return file_sha(source / "reloc.txt"), hot_signature
+    return file_sha(source / "reloc.txt"), next(iter(signatures))
 
 
 def run_driver(source: pathlib.Path) -> tuple[list[int], str]:
-    command = [sys.executable, str(DRIVER), str(source), "--reloc",
-               "--org", "0x3fe00"]
-    result = subprocess.run(command, cwd=ROOT, text=True,
-                            capture_output=True)
-    if result.stdout:
-        print(result.stdout, end="")
+    command = [sys.executable, str(DRIVER), str(source), "--reloc"]
+    result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
     if result.returncode:
         die(f"driver assembler failed (exit {result.returncode})\n{result.stderr}")
-    if result.stderr:
-        print(result.stderr, file=sys.stderr, end="")
+    if result.stdout:
+        print(result.stdout.splitlines()[0])
     words = [int(line, 16) for line in
              (source / "driver.bin").read_text().splitlines() if line]
     return words, file_sha(source / "driver.bin")
 
 
-def parse_plan(path: pathlib.Path) -> list[tuple[str, tuple[int, ...]]]:
+def parse_plan(path: pathlib.Path) -> list[tuple[str, tuple]]:
     out = []
     for line in path.read_text().splitlines():
-        if not line or line.startswith("#"):
-            continue
         parts = line.split()
+        if not parts or parts[0].startswith("#"):
+            continue
         kind = parts[0]
-        try:
-            if kind == "Q":
-                if len(parts) != 5 or parts[1] not in ("X", "Y"):
-                    die(f"bad Q relocation line {line!r}")
-                values = (0 if parts[1] == "X" else 1,
-                          *(int(v, 16) for v in parts[2:]))
-            else:
-                values = tuple(int(v, 16) for v in parts[1:])
-            out.append((kind, values))
-        except ValueError as exc:
-            die(f"bad reloc line {line!r}: {exc}")
+        if kind in ("T", "Q"):
+            if len(parts) != 5 or parts[1] not in ("X", "Y"):
+                die(f"bad {kind} relocation line {line!r}")
+            values = (parts[1], *(int(v, 16) for v in parts[2:]))
+        elif kind in ("M", "H", "V", "W", "X", "Y", "I"):
+            values = tuple(int(v, 16) for v in parts[1:])
+        else:
+            die(f"unknown relocation directive {line!r}")
+        out.append((kind, values))
     return out
 
 
 def apply_plan(original: dict[str, dict[int, int]],
-               plan: list[tuple[str, tuple[int, ...]]]):
-    """Apply the same operations and ordering as md_replay.cpp.
-
-    Missing source words are zero in the generated sparse view.  ``Z`` is
-    represented as zero here, because it is a poison operation in the replay
-    harness, not a word that belongs in a load record.
-    """
+               plan: list[tuple[str, tuple]]):
+    """Build the destination words using md_replay's directive order."""
     mem = {space: dict(words) for space, words in original.items()}
     for kind, values in plan:
         if kind == "M":
             start, end, new = values
-            words = [mem["P"].get(start + i, 0)
-                     for i in range(end - start)]
+            words = [mem["P"].get(start + i, 0) for i in range(end - start)]
             for i, word in enumerate(words):
                 mem["P"][new + i] = word
-        elif kind == "Z":
-            start, end = values
-            for address in range(start, end):
-                mem["P"][address] = 0
+        elif kind == "T":
+            area, start, end, new = values
+            for i in range(end - start):
+                mem[area][new + i] = mem["P"].get(start + i, 0)
         elif kind == "Q":
             area, start, end, new = values
-            name = "X" if area == 0 else "Y"
-            words = [mem[name].get(start + i, 0)
-                     for i in range(end - start)]
+            words = [mem[area].get(start + i, 0) for i in range(end - start)]
             for i, word in enumerate(words):
-                mem[name][new + i] = word
+                mem[area][new + i] = word
             for address in range(start, end):
-                mem[name][address] = 0
-        elif kind == "I":
-            start, end = values
-            for i in range(end - start):
-                mem["P"][start + i] = original["P"].get(0x135600 + i, 0)
+                mem[area][address] = 0
         elif kind == "V":
             old, new = values
             mem["Y"][new] = mem["Y"].get(old, 0)
             mem["Y"][old] = 0
-        elif kind == "W":
+        elif kind in ("W", "X", "Y"):
             address, word = values
-            mem["P"][address] = word
-        elif kind in ("X", "Y"):
-            address, word = values
-            mem[kind][address] = word
-        else:
-            die(f"unknown relocation directive {kind!r}")
+            area = "P" if kind == "W" or address >= 0x30000 else kind
+            mem[area][address] = word
+        elif kind in ("H", "I"):
+            pass
     return mem
 
 
@@ -280,116 +239,59 @@ def range_words(mem: dict[str, dict[int, int]], space: str, start: int,
     return [mem[space].get(address, 0) for address in range(start, end)]
 
 
-def validate_proposed_layout(raw: dict[str, dict[int, int]], plan) -> None:
-    """Refuse to emit a payload while A2's source/window split is unresolved.
-
-    The relocation used by the replay proof is intentionally a broad test
-    placement.  A2's proposed map gives the same destination to the sine
-    initializer, so treating that test placement as a loadable payload would
-    overwrite the relocated engine/table span.  Keep this guard before any
-    payload or manifest is written; the layout decision belongs in the packet
-    report, not in an implicit build policy.
-    """
-    sine = allocation("sine")
-    sine_lo, sine_hi = sine["start"], sine["start"] + sine["words"]
-    blockers = []
-    external_loaded = {
-        address for values in raw.values() for address in values
-        if EXTERNAL_LO <= address < EXTERNAL_HI
-    }
+def build_records(raw: dict[str, dict[int, int]], relocated,
+                  plan: list[tuple[str, tuple]], driver_words: list[int]):
+    """Emit every relocation destination and initialized low MD word."""
+    owned = {space: set() for space in ("P", "X", "Y")}
     for kind, values in plan:
-        if kind != "M":
-            continue
-        start, end, new = values
-        if (start, end) == (EXTERNAL_LO, EXTERNAL_HI):
-            if (new < sine_hi and
-                    new + (end - start) > sine_lo):
-                # This is the current map's exact full-span collision.  Keep
-                # the wording explicit so a future layout change can remove
-                # the guard for the right reason.
-                blockers.append(
-                    f"M {start:06x}..{end:06x} -> {new:06x} places "
-                    f"{len(external_loaded):,} source-loaded external words "
-                    f"in the sine allocation {sine_lo:06x}..{sine_hi:06x}; "
-                    "the relocated init writes all 0x8000 sine words there"
-                )
-    if blockers:
-        print("layout audit: proposed A2 map is not yet an emit-safe B2 map")
-        for blocker in blockers:
-            print(f"  BLOCKED: {blocker}")
-        print("  BLOCKED: the source-space alias/load policy for the external "
-              "Y descriptor span must be resolved with the A2 layout sign-off")
-        die("no payload written; move the source code/tables into the "
-            "window allocation (or revise layout.py) before B2 can pass")
-
-
-def build_records(raw: dict[str, dict[int, int]], relocated, plan,
-                  driver_words: list[int]):
-    hot = allocation("hot_code")
-    sine = allocation("sine")
-    window = allocation("window_code_tables")
-    pi = allocation("pi_buffers")
+        if kind == "M":
+            start, end, new = values
+            owned["P"].update(range(new, new + end - start))
+        elif kind in ("T", "Q"):
+            area, start, end, new = values
+            owned[area].update(range(new, new + end - start))
+        elif kind in ("W", "X", "Y"):
+            address, _word = values
+            area = "P" if kind == "W" or address >= 0x30000 else kind
+            owned[area].add(address)
+        elif kind == "V":
+            _old, new = values
+            owned["Y"].add(new)
+    # Only X:0..ff and Y:0..13f are swapped with the stock OT.
+    # The update's higher internal records include MD loop/DMA scratch and
+    # old output buffers; the replacement driver owns their new addresses.
+    owned["X"].update(a for a in raw["X"] if a < 0x100)
+    owned["Y"].update(a for a in raw["Y"] if a < 0x140)
     driver = allocation("driver_code")
-    voice_x = allocation("voice_x")
-    voice_y = allocation("voice_y_records")
-    loop = allocation("loop_words")
-
-    records: list[tuple[str, int, list[int]]] = []
-
-    # md_relocate emits one M per chosen hot unit, after the two broad region
-    # moves.  Keep those as separate records: they are the proof that the
-    # donor region is made of moved code, not a copied firmware blob.
-    hot_moves = [(new, new + (end - start))
-                 for kind, values in plan if kind == "M"
-                 for start, end, new in [values]
-                 if hot["start"] <= new < hot["start"] + hot["words"]]
-    if not hot_moves:
-        die("relocator selected no hot units for payload-A donor space")
-    for start, end in hot_moves:
-        if end > hot["start"] + hot["words"]:
-            die("hot unit exceeds layout hot_code allocation")
-        records.append(("P", start, range_words(relocated, "P", start, end)))
-
-    # These are exact layout allocations.  They are load records rather than
-    # a raw image copy, and the hot ranges above have already been zeroed in
-    # this post-relocation view.
-    for region, space in ((sine, "P"), (window, "P"), (pi, "P")):
-        start = region["start"]
-        records.append((space, start,
-                        range_words(relocated, space, start,
-                                    start + region["words"])))
-
     if len(driver_words) > driver["words"]:
-        die(f"driver is {len(driver_words)} words, larger than its "
-            f"{driver['words']}-word allocation")
-    records.append(("P", driver["start"], driver_words))
-
-    # Keep the update's internal X/Y initialization records (the external
-    # aliases were merged into the relocated P sine view), then add the
-    # relocated voice and loop state ranges used by the driver.
-    for space in ("X", "Y"):
-        for start, end in contiguous_ranges({a for a in raw[space]
-                                             if a < 0x10000}):
-            records.append((space, start,
-                            range_words(relocated, space, start, end)))
-    records.append(("X", voice_x["start"], range_words(
-        relocated, "X", voice_x["start"], voice_x["start"] + voice_x["words"])))
-    records.append(("Y", voice_y["start"], range_words(
-        relocated, "Y", voice_y["start"], voice_y["start"] + voice_y["words"])))
-    records.append(("Y", loop["start"], range_words(
-        relocated, "Y", loop["start"], loop["start"] + loop["words"])))
-
-    # Check every record against the three independent address spaces before
-    # writing it.  This catches an accidental overlap in the output format as
-    # well as a stale layout allocation.
-    occupied = defaultdict(dict)
-    for space, start, words in records:
-        for i, word in enumerate(words):
-            address = start + i
-            previous = occupied[space].get(address)
-            if previous is not None and previous != (word & 0xFFFFFF):
-                die(f"output {space}:{address:06x} has conflicting records")
-            occupied[space][address] = word & 0xFFFFFF
+        die(f"driver has {len(driver_words)} words but only "
+            f"{driver['words']} are allocated")
+    owned["P"].update(range(driver["start"], driver["start"] + len(driver_words)))
+    records = []
+    for area in ("P", "X", "Y"):
+        for start, end in contiguous_ranges(owned[area]):
+            words = []
+            for address in range(start, end):
+                if area == "P" and driver["start"] <= address < driver["start"] + len(driver_words):
+                    word = driver_words[address - driver["start"]]
+                else:
+                    word = relocated[area].get(address, 0)
+                words.append(word)
+            records.append((area, start, words))
+    if not any(area == "P" and start <= driver["start"] < start + len(words)
+               for area, start, words in records):
+        die("driver is absent from payload")
+    layout = runpy.run_path(str(ROOT / "modules/machinedrum/layout.py"))["LAYOUT"]
+    allowed = {area: [] for area in ("P", "X", "Y")}
+    for region in layout["allocations"]:
+        area = "P" if region["space"] == "shared" else region["space"]
+        allowed[area].append((region["start"], region["start"] + region["words"]))
+    allowed["X"].append((0, 0x100))
+    allowed["Y"].append((0, 0x140))
+    for area, start, words in records:
+        for address in range(start, start + len(words)):
+            if not any(lo <= address < hi for lo, hi in allowed[area]):
+                die(f"payload {area}:{address:06x} is outside the core-1 layout")
     return records
 
 
@@ -414,43 +316,33 @@ def _record_digest(words: list[int]) -> str:
 def build(syx: pathlib.Path | None = None,
           profiles: list[pathlib.Path] | None = None,
           reference: pathlib.Path | None = None):
-    profiles = profiles or default_profiles()
-    profiles = [p.resolve() for p in profiles]
-    missing = [p for p in profiles
-               if not (p / "fetch.txt").exists() or not (p / "reloc.txt").exists()]
-    if missing:
-        die("profile(s) have no fetch.txt and measured reloc.txt: "
-            + ", ".join(map(str, missing)))
+    profiles = [p.resolve() for p in (profiles or default_profiles())]
+    placement = ROOT / "out/machinedrum/plan.json"
+    if not placement.exists():
+        die(f"placement plan is missing: {placement}")
     OUT.mkdir(parents=True, exist_ok=True)
     SOURCE.mkdir(parents=True, exist_ok=True)
-
-    ns, update, records = unpack_update(syx)
-    raw, source = source_maps(records)
+    ns, update, extracted = unpack_update(syx)
+    raw, source = source_maps(extracted)
     write_snapshot(source, SOURCE / "snapshot.bin")
-    relocation_sha, hot_signature = run_relocator(SOURCE, profiles)
+    relocation_sha, hot_signature = run_relocator(SOURCE, profiles, placement)
     plan = parse_plan(SOURCE / "reloc.txt")
     relocated = apply_plan(source, plan)
     driver_words, driver_sha = run_driver(SOURCE)
-    validate_proposed_layout(raw, plan)
     output_records = build_records(raw, relocated, plan, driver_words)
     output_records, payload_bytes = write_mem(output_records, MEM)
-
-    if reference is None:
-        reference = profiles[0] / "snapshot.bin"
-    reference = reference.resolve()
-    if not reference.exists():
-        die(f"reference snapshot does not exist: {reference}")
-
     manifest = {
-        "format": 1,
+        "format": 2,
+        "core": 1,
         "input": {
             "syx": str(update),
             "syx_sha256": ns["SYX_SHA256"],
             "section_1_DSP.bin_sha256": ns["SECTIONS"]["section_1_DSP.bin"],
         },
-        "profiles": [{"path": str(p), "fetch_sha256": file_sha(p / "fetch.txt")}
+        "profiles": [{"path": str(p), "reloc_sha256": file_sha(p / "reloc.txt")}
                      for p in profiles],
-        "reference_snapshot": str(reference),
+        "placement_sha256": file_sha(placement),
+        "source_snapshot_sha256": file_sha(SOURCE / "snapshot.bin"),
         "reloc_sha256": relocation_sha,
         "hot_plan_sha256": hot_signature,
         "driver_sha256": driver_sha,
@@ -458,7 +350,7 @@ def build(syx: pathlib.Path | None = None,
         "records": [{"space": space, "start": start,
                      "words": len(words), "sha256": _record_digest(words)}
                     for space, start, words in output_records],
-        "payload_A_mem_sha256": sha(payload_bytes),
+        "payload_B_mem_sha256": sha(payload_bytes),
         "reloc_counts": {kind: sum(1 for k, _ in plan if k == kind)
                          for kind in sorted({k for k, _ in plan})},
     }
@@ -491,47 +383,45 @@ def read_mem(path: pathlib.Path):
 
 def verify(path: pathlib.Path = OUT) -> int:
     manifest = json.loads((path / "manifest.json").read_text())
-    mem_path = path / "payload_A.mem"
+    mem_path = path / "payload_B.mem"
     raw_bytes = mem_path.read_bytes()
-    if sha(raw_bytes) != manifest["payload_A_mem_sha256"]:
-        die("payload_A.mem hash differs from manifest")
+    if sha(raw_bytes) != manifest["payload_B_mem_sha256"]:
+        die("payload_B.mem hash differs from manifest")
     records = read_mem(mem_path)
     got = [{"space": s, "start": a, "words": len(w),
             "sha256": _record_digest(w)} for s, a, w in records]
     if got != manifest["records"]:
-        die("payload_A.mem record map differs from manifest")
-
-    # The reference snapshot is the exact input md_replay loads.  Applying
-    # the generated reloc.txt here mirrors md_replay.cpp's M/Z/W/I handling;
-    # the comparison is therefore against relocated words, not just against
-    # a self-authored output hash.
-    reference = pathlib.Path(manifest["reference_snapshot"])
-    if not reference.exists():
-        die(f"reference snapshot is missing: {reference}")
-    snap = list(array.array("I", reference.read_bytes()))
+        die("payload_B.mem record map differs from manifest")
+    source_path = path / "source/snapshot.bin"
+    if file_sha(source_path) != manifest["source_snapshot_sha256"]:
+        die("source snapshot hash differs from manifest")
+    snap = memoryview(source_path.read_bytes()).cast("I")
     expected = {"P": {}, "X": {}, "Y": {}}
     for address in range(SNAP_X):
-        expected["P"][address] = snap[address]
+        if snap[address]:
+            expected["P"][address] = snap[address]
     for area, base in (("X", SNAP_X), ("Y", SNAP_Y)):
         for address in range(0x20000):
-            expected[area][address] = snap[base + address]
-    plan = parse_plan(path / "source/reloc.txt")
-    expected = apply_plan(expected, plan)
-
+            if snap[base + address]:
+                expected[area][address] = snap[base + address]
+    expected = apply_plan(expected, parse_plan(path / "source/reloc.txt"))
+    driver = [int(line, 16) for line in
+              (path / "source/driver.bin").read_text().splitlines() if line]
+    driver_start = allocation("driver_code")["start"]
     compared = 0
-    for space, start, words in records:
-        if space != "P":
-            continue
+    for area, start, words in records:
         for i, word in enumerate(words):
             address = start + i
-            if expected["P"].get(address, 0) != word:
-                die(f"P:{address:06x} differs from md_replay relocation: "
-                    f"payload {word:06x}, reference "
-                    f"{expected['P'].get(address, 0):06x}")
+            want = (driver[address - driver_start]
+                    if area == "P" and driver_start <= address < driver_start + len(driver)
+                    else expected[area].get(address, 0))
+            if word != want:
+                die(f"{area}:{address:06x} differs from source relocation: "
+                    f"payload {word:06x}, expected {want:06x}")
             compared += 1
-    print(f"PASS: {len(records)} load records, {compared:,} P words match "
-          "md_replay's relocated view")
-    print(f"PASS: payload_A.mem sha256 {sha(raw_bytes)}")
+    print(f"PASS: {len(records)} load records, {compared:,} words match "
+          "the core-1 relocation")
+    print(f"PASS: payload_B.mem sha256 {sha(raw_bytes)}")
     return 0
 
 
@@ -548,7 +438,7 @@ def main() -> int:
     a = ap.parse_args()
     if a.verify:
         return verify()
-    build(a.syx, a.profiles, a.reference)
+    build(a.syx, a.profiles)
     return verify()
 
 

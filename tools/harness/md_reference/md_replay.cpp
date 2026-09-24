@@ -32,6 +32,9 @@
 // md_flip.py reads it. With MD_REPLAY_INIT_ONLY=1 it runs only the boot init
 // (P:100057..10008d) at MD addresses, records that, and stops.
 //
+// --init runs the original or relocated boot-init path from one capture;
+// MD_REPLAY_INIT_DUMP=<file> writes generated sine, P-I and voice words for
+// md_init_gate.py to compare the two paths.
 // MD_REPLAY_VALUES=<file> with MD_REPLAY_VALUE_BLOCK=<n> records RAM read
 // values made by instructions in one block (interpreter build only). Use
 // MD_REPLAY_VALUE_BLOCK=all for every block; MD_REPLAY_VALUE_ADDR=X:15
@@ -329,11 +332,6 @@ int main(int _argc, char** _argv)
 			_argv[i] = _argv[i + 1];
 		--_argc;
 	}
-	if(init && !reloc)
-	{
-		std::cerr << "--init requires --reloc\n";
-		return 2;
-	}
 	if(init && driver)
 	{
 		std::cerr << "--init and --driver are separate modes\n";
@@ -408,7 +406,7 @@ int main(int _argc, char** _argv)
 	std::map<TWord, TWord> vmap;	// the loop's Y words, when moved (V lines)
 	struct XyMove { EMemArea area; TWord oldStart, oldEnd, newStart; };
 	std::vector<XyMove> xyMoves;
-	TWord initPiStart = 0, initPiEnd = 0;
+	TWord initPiStart = 0, initPiEnd = 0, initSineDest = 0;
 	if(reloc)
 	{
 		std::ifstream in(dir + "/reloc.txt");
@@ -423,6 +421,8 @@ int main(int _argc, char** _argv)
 				moves.push_back({static_cast<TWord>(std::stoul(a, nullptr, 16)), static_cast<TWord>(std::stoul(b, nullptr, 16)),
 					static_cast<TWord>(std::stoul(c, nullptr, 16))});
 				const auto& m = moves.back();
+				if(m[0] == 0x148000 && m[1] == 0x150000)
+					initSineDest = m[2];
 				for(TWord i = 0; i < m[1] - m[0]; ++i)
 					memory.set(MemArea_P, m[2] + i, memory.get(MemArea_P, m[0] + i));
 			}
@@ -464,6 +464,11 @@ int main(int _argc, char** _argv)
 				const auto oldStart = static_cast<TWord>(std::stoul(a, nullptr, 16));
 				const auto oldEnd = static_cast<TWord>(std::stoul(b, nullptr, 16));
 				const auto newStart = static_cast<TWord>(std::stoul(c, nullptr, 16));
+				if(oldStart == 0x135600 && oldEnd == 0x13b600)
+				{
+					initPiStart = newStart;
+					initPiEnd = newStart + oldEnd - oldStart;
+				}
 				for(TWord i = 0; i < oldEnd - oldStart; ++i)
 					memory.set(area, newStart + i, memory.get(MemArea_P, oldStart + i));
 				tableMoves.push_back({oldStart, oldEnd});
@@ -738,11 +743,11 @@ int main(int _argc, char** _argv)
 
 	if(init)
 	{
-		TWord sineDest = 0;
-		TWord voiceXDest = 0, voiceYDest = 0;
-		for(const auto& m : moves)
-			if(m[0] == 0x140000 && m[1] == 0x148000)
-				sineDest = m[2];
+		const TWord sineDest = reloc ? initSineDest : 0x148000;
+		const TWord piStart = reloc ? initPiStart : 0x135600;
+		const TWord piEnd = reloc ? initPiEnd : 0x13b600;
+		const auto piArea = reloc ? MemArea_Y : MemArea_P;
+		TWord voiceXDest = reloc ? 0 : 0x800, voiceYDest = reloc ? 0 : 0x800;
 		for(const auto& m : xyMoves)
 		{
 			if(m.area == MemArea_X && m.oldStart == 0x800 && m.oldEnd == 0xc00)
@@ -750,24 +755,24 @@ int main(int _argc, char** _argv)
 			if(m.area == MemArea_Y && m.oldStart == 0x800 && m.oldEnd == 0xc00)
 				voiceYDest = m.newStart;
 		}
-		if(!sineDest || !voiceXDest || !voiceYDest || initPiEnd <= initPiStart)
+		if(!sineDest || !voiceXDest || !voiceYDest || piEnd <= piStart)
 		{
 			std::cerr << "reloc.txt has no complete --init layout ranges\n";
 			return 2;
 		}
 
-		const TWord sineWords = 0x8000, voiceWords = 0x400, piWords = initPiEnd - initPiStart;
+		const TWord sineWords = 0x8000, voiceWords = 0x400, piWords = piEnd - piStart;
 		std::vector<TWord> sineRef(sineWords), piRef(piWords);
 		for(TWord i = 0; i < sineWords; ++i)
-			sineRef[i] = memory.get(MemArea_P, 0x148000 + i);
+			sineRef[i] = memory.get(MemArea_P, sineDest + i);
 		for(TWord i = 0; i < piWords; ++i)
-			piRef[i] = memory.get(MemArea_P, 0x135600 + i);
+			piRef[i] = memory.get(piArea, piStart + i);
 		// The relocated init owns these destinations. Start them empty even if
 		// the capture snapshot happened to contain a previous run's state.
 		for(TWord i = 0; i < sineWords; ++i)
 			memory.set(MemArea_P, sineDest + i, 0);
 		for(TWord i = 0; i < piWords; ++i)
-			memory.set(MemArea_P, initPiStart + i, 0);
+			memory.set(piArea, piStart + i, 0);
 		for(TWord i = 0; i < voiceWords; ++i)
 		{
 			memory.set(MemArea_X, voiceXDest + i, 0);
@@ -788,7 +793,7 @@ int main(int _argc, char** _argv)
 			if(memory.get(MemArea_P, sineDest + i) != sineRef[i])
 				++sineBad;
 		for(TWord i = 0; i < piWords; ++i)
-			if(memory.get(MemArea_P, initPiStart + i) != piRef[i])
+			if(memory.get(piArea, piStart + i) != piRef[i])
 				++piBad;
 		for(TWord i = 0; i < voiceWords; ++i)
 		{
@@ -796,6 +801,19 @@ int main(int _argc, char** _argv)
 				++voiceXBad;
 			if(memory.get(MemArea_Y, voiceYDest + i) != snapY[0x800 + i])
 				++voiceYBad;
+		}
+		if(const char* dump = std::getenv("MD_REPLAY_INIT_DUMP"))
+		{
+			std::ofstream out(dump);
+			for(TWord i = 0; i < sineWords; ++i)
+				out << "S " << i << " " << memory.get(MemArea_P, sineDest + i) << "\n";
+			for(TWord i = 0; i < piWords; ++i)
+				out << "I " << i << " " << memory.get(piArea, piStart + i) << "\n";
+			for(TWord i = 0; i < voiceWords; ++i)
+			{
+				out << "X " << i << " " << memory.get(MemArea_X, voiceXDest + i) << "\n";
+				out << "Y " << i << " " << memory.get(MemArea_Y, voiceYDest + i) << "\n";
+			}
 		}
 		std::cout << "init: sine " << (sineWords - sineBad) << "/" << sineWords
 			<< " pi " << (piWords - piBad) << "/" << piWords

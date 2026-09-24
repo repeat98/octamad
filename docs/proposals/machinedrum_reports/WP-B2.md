@@ -210,3 +210,37 @@ the packed split does not fit unless the MD takes the whole window and runs
 at most one P-I voice. See `MACHINEDRUM_MACHINE.md` §12, "Which space the
 MD reads its data through". B2 stays blocked, now on the choice of core.
 
+
+
+## Core-1 continuation, 24 September 2026
+
+The core-0 blocker and counts above are historical. With the packed core-1
+plan, `python3 tools/build/md_payload.py` now succeeds from the user's
+pinned OS 1.63 update, writing ignored
+`out/machinedrum/build/payload_B.mem` and a source/plan/driver manifest.
+The builder reuses the 49 measured hot units in the twelve-kit plan,
+assembles the 199-word driver at P:0x1f00, and applies the 203 flips,
+14 splits, and one P-I phase expansion. It emits 21 sparse P/X/Y records,
+106,694 words, 426,974 bytes; the verifier matches every word against the
+relocated source snapshot. The payload SHA-256 in this local build is
+`140365542adf3b58f41a0af5f1acdda81200ff97efd04ad69feee8727d99bf30`.
+
+All emitted addresses are checked against `layout.py`. Only X:0..ff and
+Y:0..13f may appear outside owned allocations because the driver swaps
+those ranges. The update's higher internal X/Y records include the MD
+loop's old DMA words and render-buffer state; the new driver does not load
+them over stock OT state. Shared-window Y patches are emitted in the
+single physical P load image.
+
+This is a verified **load-record artifact**, not an OT payload-B integration
+or bootable image. The loader and native dispatcher still have to consume
+the records at the right time, run the relocated MD initialization path,
+make sample-ROM content available, and connect engine/parameter state to
+the track machine. The generated artifact stays outside Git.
+
+The new `python3 tools/harness/md_reference/md_init_gate.py` compares
+original and relocated init from each of the twelve captured states after
+zeroing the destinations. It reports zero differences for all twelve,
+including c37_16, whose second init differs from its own post-boot snapshot.
+That distinction is why the gate compares two executions rather than treating
+an already-running capture as an init oracle.

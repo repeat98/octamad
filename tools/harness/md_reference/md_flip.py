@@ -80,6 +80,7 @@ EXT = (0x100000, 0x150000)
 SINE = (0x148000, 0x150000)
 PI = (0x135600, 0x13B600)
 E12 = (0x103DBA, 0x135206)
+E12_TAIL = (0x135206, 0x135406)  # four writable 128-word E12 buffers
 INTERNAL = 0x10000
 
 TWIN_XY = {"Movex_ea": "Movey_ea", "Movex_aa": "Movey_aa",
@@ -834,8 +835,10 @@ def audit(caps, raw, code, stock, plan_path=None):
             "note": "md_flip.py placement plan (WP-A7 / WP-A2, core 1); generated, not an Elektron byte",
             "regions": [{"id": rid, "lo": regions[rid][0], "hi": regions[rid][1], "home": home[rid],
                          "new": at[rid]} for rid in sorted(home, key=lambda r: regions[r][0])
-                        if rid != "e12"],
-            "note_homes": "X/Y: private, via T lines; W: the window's table area, via M lines",
+                        if rid != "e12"] +
+                       [{"id": "e12_tail", "lo": E12_TAIL[0], "hi": E12_TAIL[1],
+                         "home": "W", "new": md_layout.allocation("e12_tail")["start"]}],
+            "note_homes": "X/Y: private, via T lines; W: shared window, via M lines",
             "sine": {"lo": SINE[0], "hi": SINE[1], "new": md_layout.allocation("sine")["start"]},
             "flips": [{"pc": s[0], "word": flipped(*form[s[0]], P[s[0]])} for s in sorted(flips)]
                      + [{"pc": a, "word": w, "static": True} for a, w in static_flips],

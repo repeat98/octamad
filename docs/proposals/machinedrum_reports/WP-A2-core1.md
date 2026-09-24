@@ -136,12 +136,16 @@ and cycle cost before taking it into the payload.
 
 - The captures on this machine differ from the Mac's (WP-A7), so these
   baselines are this machine's.
-- The moved code calls `P:0x0143`, MD low code that is not relocated. On the
-  OT that address is payload B's own code, so the routine must be ported
-  (open).
-- The immediates `#>$135206…$135386` and `cmp #>$135406` (just past the E12
-  block) point at words no region holds. The replay still reads the old
-  place; the OT needs a home for them.
+- The moved code calls `P:0x0143`. Its 23-word straight-line init routine
+  now moves to the shared window at `P:0x34000`; the two callers branch
+  there. None of the captured fetch profiles visits the routine, so the
+  replay gate does not prove its runtime behavior. Its `#>$147e00` data
+  pointer still needs an OT home.
+- The four 128-word writable E12 buffers at `0x135206..0x135405`
+  now occupy the shared window at `0x37000..0x371ff`. The four base
+  immediates and the exclusive-end comparison at `0x135406` are patched.
+  The gate result is unchanged; these instructions were not observed in
+  the captured fetch profiles.
 - `tools/build/md_payload.py` (WP-B2) still reads the core-0 allocation
   names. It is not in `make`, and it will be redone on this layout.
 
@@ -153,4 +157,6 @@ and cycle cost before taking it into the payload.
    `P:102fae..102fc5` for the P-I buffers.
 2. Rerun the twelve-kit gate and separate c1d_16's known one-block
    driver residual from any new relocation mismatch.
-3. Resolve the `P:0x0143` port and the E12-tail homes before WP-B2.
+3. Assign a home to the `P:0x0143` routine's `0x147e00` data and
+   exercise the port and E12-tail writes in an init or targeted replay.
+   Then rebuild WP-B2.

@@ -73,9 +73,10 @@ PLAN = ROOT / "out/machinedrum/plan.json"
 sys.path.insert(0, str(ROOT / "modules/machinedrum"))
 from layout import LAYOUT, allocation  # noqa: E402
 
-# The MD's code lives in two spans of its unified external RAM (old start,
-# old end exclusive; the third field is kept for callers that unpack three).
+# The MD code lives in two external spans and one called low-P init routine
+# (old start, old end exclusive; the third field is for existing callers).
 REGIONS = [
+    (0x000143, 0x00015A, None),  # low-P engine init reached from P:10009d/1000a1
     (0x100000, 0x103DBA, None),   # engine code, tables, the E12 descriptors (0x103d7b)
     (0x140000, 0x148000, None),   # engine code and tables
 ]
@@ -362,6 +363,7 @@ def main():
                 sys.exit(f"{a:06x} {text}: a one-word absolute target that moves")
 
     patches, kinds = {}, {}
+    tail = next((r for r in plan["regions"] if r["id"] == "e12_tail"), None)
 
     def count(kind):
         kinds[kind] = kinds.get(kind, 0) + 1
@@ -382,6 +384,9 @@ def main():
                 count("rel")
             continue
         m = amap(wb)
+        if m is None and tail and wb == tail["hi"]:
+            # Exclusive end of the four 128-word E12 tail buffers.
+            m = tail["new"] + tail["hi"] - tail["lo"]
         if m is None:
             continue
         if text.startswith("do"):

@@ -1877,6 +1877,19 @@ tables (`md_forms`). The cycle and rate figures are emulator counts.
   That transformation, its cycle cost and the full twelve-kit gate
   remain open. The report has the exact control runs.
 
+### WP-A3 low-P and E12-tail placement (24 September 2026)
+
+- The 23-word init routine at `P:0x0143..0x0159` is included in the
+  core-1 relocation map at `P:0x34000`. Both external-code branches to
+  it receive new relative displacements. The captured fetch profiles
+  do not visit the routine; its `0x147e00` data pointer has no OT home yet.
+- The four writable 128-word E12 tail buffers at `0x135206..0x135405`
+  now occupy `0x37000..0x371ff` in the shared window. The relocation
+  patches their four base immediates and maps the exclusive-end compare
+  from `0x135406` to `0x37200`. The twelve-kit gate remains at six exact
+  matches, the known c10_16 two-block residual and five mismatches.
+  The captured fetch profiles do not exercise these E12-tail sites.
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and

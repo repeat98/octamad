@@ -78,6 +78,35 @@ GATE c42_16 bounded blocks: 1 identical, 0 differ
 The full `c40_16` replay was stopped after roughly 90 seconds with no
 result; `c42_16` was also only bounded. These are not acceptance passes.
 
+The follow-up static packing audit is reproducible and fails on the
+conservative source budget:
+
+```text
+$ python3 tools/verify/verify_md_layout.py
+static reachable code: 15,813 words
+internal low-P loop excluded from packing: 132 words
+external source code: 15,681 words
+measured hot split: 2,724 source words
+post-hot code: 12,957 words
+source 100000..103db9: code 9,801, loaded 15,509, gaps 293
+source 140000..147fff: code 5,880, loaded 29,760, gaps 3,008
+P external records: 16,440; code aliases 5,460; non-code 10,980
+X external records: 13,056; code aliases 36; non-code 13,020
+Y external records: 264; code aliases 136; non-code 128
+post-hot code + existing max table budget: 41,018 words
+proposed window + Y-only capacity: 40,960 words
+FAIL: static code/table budget exceeds capacity by 58 words
+[exit 1]
+```
+
+Review verification on 24 September: `md_replay out/md_profile/cap4/c10`
+returned `33513 identical, 0 differ`; `make check REMIX=bamsep26` and
+`make check REMIX=machinedrum` passed all runnable gates without an
+`OT_PROJECT`. `python3 -B tools/build/md_payload.py` exited 1 at the
+documented sine/source collision and emitted no payload. These checks
+validate the current emulator/tooling behavior, not an Octatrack boot or
+hardware result.
+
 ## Measured
 
 - ✅ The input SysEx hash is the pinned
@@ -92,6 +121,18 @@ result; `c42_16` was also only bounded. These are not acceptance passes.
   points and the current driver assembles to 192 words at `P:0x3fe00`.
 - ✅ The raw external source span `0x140000–0x147fff` contains 29,760 loaded
   words and 3,008 gaps. This is measured from the pinned section-1 records.
+- ✅ The static relocator reachability audit finds 15,813 code words, including
+  the explicit boot-init root. Of these, 132 words belong to the existing
+  low-P loop and are excluded from external packing. After removing the
+  measured hot split, 12,957 external code words remain. It finds 9,801
+  code words in the first external region and 5,880 in the second.
+- 🟡 With the existing maximum table budget of 28,061, that conservative
+  post-hot placement input is 41,018 words against 40,960 proposed shared
+  plus Y-only capacity: a 58-word shortfall. The earlier A2 budget closes at
+  40,958 because it uses a 15,621-word engine-code estimate, 60 fewer than
+  this audit's external source set. The difference must be classified before
+  a packed B2 layout can be claimed. This remains an upper-bound estimate,
+  not proof that every statically reachable word needs a separate slot.
 - 🟡 The relocated init still passes `sine 32768/32768`, `pi 9216/9216`,
   `voice-X 1024/1024`, and `voice-Y 1024/1024` on c10 and c37_16, but that
   success also proves why the current payload placement is unsafe: init owns
@@ -120,9 +161,8 @@ result; `c42_16` was also only bounded. These are not acceptance passes.
 - The safe choices are: (A) revise `layout.py` and the relocator to split and
   pack code/tables into the `0x38000–0x3d9ff` shared range plus the proposed
   Y-only range; or (B) reserve a separate 32K shared span for the source
-  region and move/relinquish another proposed owner. The existing budget puts
-  post-hot code/tables at up to 40,958 words against 40,960 combined words,
-  leaving only two words before alignment and no spare for an implicit alias
-  policy.
+  region and move/relinquish another proposed owner. Even option A must first
+  reconcile the conservative 58-word shortfall and the source-space alias
+  policy; no alignment slack can be assumed.
 - The user must also decide how the pre-boot Y descriptor alias is represented
   in the eventual load records. No new layout decision was made overnight.

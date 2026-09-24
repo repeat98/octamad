@@ -1538,10 +1538,20 @@ disassembles the result back and refuses mis-encodings and label prefixes.
   placement to the post-boot c10 snapshot at `P:0x37e00` is retracted. The
   final tool fails closed until the source/window split and alias load policy
   are user-approved.
+- 🟡 The follow-up static packing audit counts 15,813 reachable code words,
+  including 132 words in the existing low-P loop. The external source set is
+  15,681 words; after the measured 2,724-word hot split, 12,957 remain.
+  Adding the existing 28,061-word maximum table estimate gives 41,018 words
+  against 40,960 proposed shared plus Y-only words, a conservative 58-word
+  shortfall. This corrects an initial audit that counted the 132 low-P words
+  in the packed area and overstated the shortfall as 190 words. The older
+  15,621-word engine estimate is 60 words lower than this static external set;
+  classify that difference and resolve the alias policy before claiming fit.
 - **blocked / layout review:** the user must choose whether to (A) add an
   alias-aware packed code/table relocation across the proposed shared and
-  Y-only ranges, whose existing post-hot budget is up to `40,958` words in
-  `40,960` words with only two words of slack, or (B) reserve a separate 32K
+  Y-only ranges, whose earlier engine-only budget is up to `40,958` words in
+  `40,960` words with only two words of slack but whose conservative static
+  audit is 58 words over, or (B) reserve a separate 32K
   shared source span and surrender/relocate another owner. All B2 results are
   **pending the user's sign-off**.
 

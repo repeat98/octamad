@@ -12,6 +12,9 @@ It is unflashed. Later on 24 September, WP-C3 registered raw machine type
 6 on T1–T4, with the MD DSP id hidden from FX2; Octemu played TRX-BD with
 FX2 at NONE. The internal-part UI, live record producer, sequencer and
 MD-specific persistence remain open (`machinedrum_reports/WP-C3.md`).
+On 24 September the user removed the MD's eight per-track effects from the
+target. The current payload already excludes the original MD mixer DSP, so
+this decision prevents future DSP use; it does not shrink the current image.
 
 Status: revised proposal, 23 September 2026. Based on the local Octamad
 checkout at `3b5a2eb66930225f914a369fbfd499dd763d7dcd`. No Machinedrum
@@ -64,13 +67,13 @@ no requirement for eight simultaneous Machinedrum instances.
   limit.
 - **The Machinedrum remix drops the bus servers** (BusVerb, BusDelay and
   the SEND clients) to free the shared window for MD code and state. The
-  stock FX1/FX2 effects stay. Composing with every other remix is not a
-  goal. (Measured later the same day: four tracks' FX2 slots also live in
-  the window, and one instance needs more than the window holds. The
-  placement is open again; see section 12, "Memory one instance needs".)
+  stock FX1/FX2 effects stay. This was superseded by the core-1 placement:
+  T1–T4's stock FX code is displaced by MD today. Composing with every other
+  remix is not a goal. (Measured later the same day: four tracks' FX2 slots
+  also live in the window; see section 12, "Memory one instance needs".)
 - **The MD master effects are out of scope**: the delay, reverb, EQ and
-  dynamics that CTR-RE/GB/EQ/DX drive. The parent track's OT FX process the
-  instance's stereo mix. Per-part processing (the MD FX page) stays.
+  dynamics that CTR-RE/GB/EQ/DX drive. The parent track's OT FX are intended
+  to process the instance's stereo mix once their core-1 code is restored.
 - **Sequencing is option B, the embedded 16-part pattern sequencer**
   (section 6). Its pattern plays whenever the OT transport runs, with one
   MD pattern per OT pattern. Only its editing view is entered and left,
@@ -78,6 +81,15 @@ no requirement for eight simultaneous Machinedrum instances.
   MD sequencer").
 
 ### Decisions (24 September 2026)
+
+- **Omit the MD TRACK EFFECTS page** (the user, later 24 Sep): AMD, AMF,
+  EQF, EQG, FLTF, FLTW, FLTQ and SRR are not implemented or exposed. The
+  original MD mixer DSP is not loaded by the current build; this decision
+  frees no additional words in the current image, but removes that future
+  DSP code, state and cycle requirement. Keep synthesis, per-part VOL/PAN,
+  mute/trigger relationships and the embedded sequencer. The separate MD
+  ROUTING distortion is also deferred with the MD mixer output stage; no
+  delay/reverb sends are exposed because the MD master effects are absent.
 
 - **The MD runs on core 1, on tracks 1–4** (24 Sep, later the same day). This
   supersedes "tracks 5–8 only (core 0)" above, and the voice-home sign-off
@@ -141,13 +153,13 @@ choices for 16 independently configured parts, not 50 mandatory concurrent
 voices. The counts and IDs are read from the OS 1.63 descriptor table
 (section 12); an earlier draft said TRX 13 and 49 engines, ❌.
 
-A complete sound-module target also covers MD per-part processing, routing,
-LFOs and mute/trigger relationships. They belong to each instance. The MD
-master effects (delay, reverb, EQ, dynamics) are out of scope (section 1,
-decisions); the per-part delay/reverb sends on the ROUTE page have no
-destination and are hidden. The OT's own FX slots
-process the resulting stereo mix and remain available within the qualified
-budget. A synth-only milestone must be labelled as such.
+A complete target covers the 50 synthesis engines, per-part VOL/PAN, LFOs,
+mute/trigger relationships and the embedded sequencer. The eight MD TRACK
+EFFECTS controls and the MD master effects are out of scope (section 1,
+decisions). The MD ROUTING distortion and delay/reverb sends are not exposed.
+The parent OT FX are a separate future integration item: the current core-1
+MD payload displaced their stock code on T1–T4. Label a milestone with the
+actual processing it implements.
 
 Track UW ROM/RAM, input-processing, MIDI/control machines, and unofficial
 firmware engines separately in a compatibility matrix. Identify their
@@ -269,39 +281,36 @@ drawer) as far as possible:
 |---|---|
 | SRC, SYN 1 | the selected part's synth parameters 1–6 on A–F |
 | SYN 2 | synth parameters 7–8 on A–B |
-| SRC setup | engine choice; part level and pan if adopted |
-| AMP, LFO, FX1, FX2 | the OT track's own, acting on the instance's stereo mix |
+| SRC setup | engine choice and per-part VOL/PAN |
+| AMP, LFO | the OT parent track's own controls |
+| FX1, FX2 | the OT parent track's own slots; core-1 DSP code needs restoration |
 | LEVEL | the OT track's level |
 | info box | part and engine (e.g. `P05 E12-SD`), where stock shows the sample |
 
 The user's concept mockup (an image generated outside this repo, kept
 locally, not committed) shows all eight parameters as knobs on one screen.
-The user chose two stock-style pages with the OT's six encoders. Open:
-- whether per-part level and pan live on the setup page;
-- the mix itself: a simple per-part level/pan in the driver, or the MD
-  mixer's own per-voice section.
+The user chose two stock-style synthesis pages with the OT's six encoders.
+The MD TRACK EFFECTS pages are omitted. The planned per-part mix uses VOL/PAN
+in the OT-side driver, without loading the original MD mixer DSP; the current
+proof still mixes all parts with fixed center gains.
 
-The six OT encoders edit the currently selected internal part. Split each
-eight-parameter MD group into two views while preserving its original order:
+The six OT encoders edit the currently selected internal part. Split the
+eight synthesis parameters into two views while preserving their order:
 
 | View | OT A | OT B | OT C | OT D | OT E | OT F |
 |---|---|---|---|---|---|---|
 | SYN 1 | Synth 1 | Synth 2 | Synth 3 | Synth 4 | Synth 5 | Synth 6 |
 | SYN 2 | Synth 7 | Synth 8 | unused | unused | unused | unused |
-| MD FX 1 | FX 1 | FX 2 | FX 3 | FX 4 | FX 5 | FX 6 |
-| MD FX 2 | FX 7 | FX 8 | unused | unused | unused | unused |
-| ROUTE 1 | Route 1 | Route 2 | Route 3 | Route 4 | Route 5 | Route 6 |
-| ROUTE 2 | Route 7 | Route 8 | unused | unused | unused | unused |
 
-Provide explicit group/view navigation inside the MD editor. Keep MD FX
-pages distinguishable from the parent OT track's FX1/FX2 pages. Add dedicated
-views for MD LFO settings. Sparse engines show
+Provide explicit SYN 1/SYN 2 navigation inside the MD editor and a separate
+VOL/PAN and LFO view. Sparse engines show
 only meaningful controls. For TRX-BD, SYN 1 is
 `PTCH DEC RAMP RDEC STRT NOIS`; SYN 2 is `HARM CLIP`.
 
 Use explicit parameter addresses:
-`instance + internal_part + parameter_group + parameter_index`.
-Master parameters use an instance-level address. Engine metadata supplies
+`instance + internal_part + parameter_group + parameter_index` for the
+supported synthesis, mix and LFO controls.
+Parent-track controls use an instance-level address. Engine metadata supplies
 names, ranges, defaults, formatting, and modulation eligibility.
 
 Locks, scenes, and LFO destinations refer to those addresses, never to
@@ -395,7 +404,7 @@ multiplied into 16 sets.
 ## 7. Runtime ownership and resource limits
 
 An instance owns 16 part configurations, live voice/envelope/filter/RNG
-state, per-part processing and modulation, its mixer,
+state, per-part VOL/PAN and modulation, its OT-side mix,
 event queues, and persistent kit state. Share immutable engine code, tables,
 and sample assets where safe; mutable state must remain private even when
 two parts or instances choose the same engine.
@@ -406,7 +415,7 @@ The render path is:
 OT step events / MIDI
         |
         v
-MD instance: 16 internal parts -> MD mixer/master processing -> stereo
+MD instance: 16 internal synth voices -> OT-side VOL/PAN mix -> stereo
         |
         v
 parent OT track processing -> routing / recording / outputs
@@ -431,8 +440,8 @@ in addition to build-time placement checks.
 - Muting an instance does not release its reservation. A later unmute must
   be safe. Release resources only after unloading and finishing the chosen
   bounded tail policy.
-- Price worst-case 16-part activity, per-part processing, master effects,
-  parent OT FX, other tracks, storage activity, and transition overlap.
+- Price worst-case 16-part synthesis, the VOL/PAN mix, any restored parent
+  OT FX, other tracks, storage activity, and transition overlap.
   Idle voices are an optimization, not the admission budget.
 - Enforce both total and per-core/buffer constraints. A count cap alone is
   insufficient if changing effects or placement can exceed the qualified
@@ -491,7 +500,7 @@ that Elektron code/data and built images are derived locally, never committed.
 
 | Phase | Work | Exit evidence |
 |---|---|---|
-| 0. Inputs and subsystem map | Pin reference revisions; validate firmware/assets; inventory engines, part processing, mixer/master dependencies | Reproducible coverage and dependency map, including present/missing assets |
+| 0. Inputs and subsystem map | Pin reference revisions; validate firmware/assets; inventory engines and identify excluded track/master effects | Reproducible coverage and dependency map, including present/missing assets |
 | 1. Direct-port proof | Isolate GND-SN/TRX-BD or a bounded original voice subsystem; compare native relocation with the MD reference | Original behavior reproduced at a defined boundary without relying on an unported MD OS scheduler |
 | 2. One instance, multiple parts | Add OT machine registration and private part states; start with kick/snare/hats, then exercise 16 concurrent parts | Independent parts mix into one OT track; no cross-part state corruption; initial placement and timing report |
 | 3. Sequencing/MIDI and editor | Confirm A or B; add its pattern/event model, MIDI map, part pads, engine assignment, 6+2 views, scenes/LFO destinations, and save/load | Simultaneous parts follow OT timing; UI selection cannot retarget playback/locks; all eight synth controls work |

@@ -13,6 +13,12 @@ section 1 decisions and section 12 before starting any packet.
   recording;
 - saved with the project.
 
+Scope decision, 24 September 2026: omit the MD's per-track AMD/AMF, EQ,
+filter and SRR effects. The original mixer DSP is already absent from the
+current image, so this avoids future DSP allocation rather than shrinking the
+current build. Per-part VOL/PAN are planned for the OT-side mix; MD effect
+pages are gone.
+
 **Milestones.**
 - **M1**, a flashable proof: T1 plays MD voices from a fixed kit, with no
   UI (the core-1 image and fixed trigger exist under the port since 24 Sep;
@@ -54,8 +60,8 @@ Statuses:
 | WP-A7 The X/Y flip audit | done | `machinedrum` | `7c53cb0` | 2026-09-24 | `machinedrum_reports/WP-A7.md` | all tables and the 16 P-I buffers fit core 1's private X/Y at 178 flips + 14 rewrites (+7.8 instr/sample worst); only the sine and code overflow stay in the window; D6 accepts the cost |
 | WP-A3 Layout-driven relocation and driver | review | `machinedrum` | `50ac374` | 2026-09-24 | `machinedrum_reports/WP-A2-core1.md` | all twelve relocated kits equal their plain baselines; `md_gate.sh` and `md_init_gate.py` exit 0 (rerun 24 Sep on the B3/B4 commit) |
 | WP-A4 Boot-time init on the OT | review | `machinedrum` | `cab97a3` | 2026-09-24 | `machinedrum_reports/WP-A4.md` | relocated six-voice init spans pass; pending A2 sign-off and the WP-A3 block | |
-| WP-A5 The stereo mix | blocked | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-B3-B4.md` | decision D1; `md_glue.asm` mixes option A's shape at fixed gains of 1/4 (L = R) so the M1 proof has audio; per-part level/pan waits on D1 |
-| WP-A6 The cycle report at OT addresses | blocked | `machinedrum` | `cab97a3` | 2026-09-24 | `machinedrum_reports/WP-A6.md` | eleven fetch runs measured; c40_16 reproduces `rc=139`, and D1/WP-A5 mix cost is still missing | |
+| WP-A5 The stereo mix | todo | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-B3-B4.md` | D1 resolved to OT-side VOL/PAN mix; `md_glue.asm` still uses fixed gains of 1/4 (L = R) |
+| WP-A6 The cycle report at OT addresses | blocked | `machinedrum` | `cab97a3` | 2026-09-24 | `machinedrum_reports/WP-A6.md` | eleven fetch runs measured; c40_16 reproduces `rc=139`; final VOL/PAN mix cost is still missing | |
 | WP-B1 Module and remix skeleton | review | `machinedrum` | `f383ecc` | 2026-09-24 | `machinedrum_reports/WP-B1.md` | builds, and `make check REMIX=bus` passes with it (24 Sep); its payload-A donor and core-0 claims move to core 1 with the WP-A2 redo |
 | WP-B2 Build-time extraction | review | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-B2.md`, `WP-B3-B4.md` | `payload_B.mem` (core 1) is now in the image: `md_image.py` builds the combined core-1 upload, which `loader.S` depacks before the DSP boot; `verify_dram_boot` reads it back from core 1 |
 | WP-B3 The dispatcher hook | review | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-B3-B4.md` | FX2 id 0x1e (MACHINEDRUM) on core 1 runs `md_glue.asm`; the other ids run the null stub there; `make verify-md` passes on the repo's dsp56300 pin |
@@ -69,7 +75,7 @@ Statuses:
 | WP-D2 The sequencer data model | todo | | | | | user sign-off on the spec |
 | WP-D3 The sequencer engine | todo | | | | | |
 | WP-D4 Grid-record view | todo | | | | | |
-| WP-D5 Parameter pages | todo | | | | | two stock-style pages chosen 24 Sep |
+| WP-D5 Parameter pages | todo | | | | | SYN 1/2 only; MD TRACK EFFECTS pages omitted 24 Sep |
 | WP-D6 The info box | todo | | | | | |
 | WP-E1 Persistence | todo | | | | | |
 | WP-E2 MIDI | todo | | | | | |
@@ -80,7 +86,6 @@ Statuses:
 | WP-R3 The interpreter/JIT mismatch | blocked | `machinedrum` | `94ef689` | 2026-09-24 | `machinedrum_reports/WP-R3.md` | `ADD X,B` boundary isolated in both captures; needs the user's WP-R4 vendor repin before parity can be repaired |
 | WP-R4 The stale toolchain | blocked | | | | `machinedrum_reports/WP-B3-B4.md` | the user reruns `scripts/setup.sh`. Measured 24 Sep: the port built from the stale `c051afad` renders the MD wrongly from period 25 (a sign flip); the repo's pin matches the reference |
 | WP-R5 The c47_2 anomaly | done | `machinedrum` | `d27aec4` | 2026-09-24 | `machinedrum_reports/WP-R5.md` | track 7's default EFM-CB is the heaviest voice: 3,946 cycles / 2,983 engine words per render |
-| WP-R6 The MD mixer's per-voice section | blocked | | | | | only if D1 = B |
 
 ---
 
@@ -224,9 +229,8 @@ Useful `md_replay` switches:
   word fetched, and there is no instruction cache.
 - ⚠ **E12 samples** (201,804 words at `P:103dba–135205`) cannot live on
   the OT DSP. M1 excludes E12; see WP-R1.
-- **Open decisions for the user** (packets that need one say so):
-  - D1, the mix: a simple level/pan per part (A, recommended) or the MD
-    mixer's per-voice section (B);
+- **Decisions and remaining choices:**
+  - D1 resolved 24 Sep: a simple OT-side level/pan per part; no MD mixer DSP;
   - D2 resolved 24 Sep: two stock-style pages on six encoders;
   - D3, whether to carry the full low image (fixes one TRX-S2 residual,
     ~70 cycles/sample);
@@ -307,8 +311,8 @@ under the port.*
   relocated init on zeroed memory, and the sine and buffers equal the
   snapshot's word for word.
 
-**WP-A5 The stereo mix.** *Depends: WP-A3, decision D1.*
-- **Do (option A):** after each call's 8 renders, mix the 16 slot buffers
+**WP-A5 The stereo mix.** *Depends: WP-A3; D1 resolved to option A.*
+- **Do:** after each call's 8 renders, mix the 16 slot buffers
   of the previous complete period into 16 stereo frames at `X:0`, the
   interleaved L/R audio block the dispatcher passes as `r0 = 0`. Use a
   per-part level and pan read from a 16 × 2-word table in the layout.
@@ -442,9 +446,9 @@ part's lane; hold the track key to select a part; `TRK` is the 17th entry;
 PAGE and locks work (§4, "Entering and leaving").
 
 **WP-D5 Parameter pages.** SYN 1 gives parameters 1–6 on A–F; SYN 2 gives
-parameters 7–8 on A–B. Apply the same split to MD FX and ROUTE groups,
-separate from the parent FX pages. Use the stock-style drawer and descriptors
-(§5). Engine choice stays in SRC setup; level/pan placement remains open.
+parameters 7–8 on A–B. Use the stock-style drawer and descriptors (§5).
+Engine choice and per-part VOL/PAN are in SRC setup. Do not add MD TRACK
+EFFECTS or master-effect pages. The parent OT FX pages remain separate.
 
 **WP-D6 The info box.** It shows the part and engine (e.g. `P05 E12-SD`),
 using the `PANEL.md` primitives.
@@ -479,6 +483,3 @@ using the `PANEL.md` primitives.
   Do not rebuild the shared `vendor/` yourself: other sessions use it.
 - **WP-R5 The c47_2 anomaly:** ~1,215 cycles/sample from the first block,
   with only 2 tracks assigned. Find which default-kit voice costs it.
-- **WP-R6 The MD mixer's per-voice section (if D1 = B):** locate level and
-  pan in the mixer DSP (section 2 of the update) and separate them from
-  the master effects.

@@ -16,6 +16,8 @@ Not yet: the live record producer (the transport is fed by a test stream
 only), the sequencer, MD-specific persistence, MIDI, E12
 sample delivery and the hardware qualification
 (docs/proposals/MACHINEDRUM_WORKPACKETS.md).
+The MD's eight per-track effects and original mixer DSP are excluded from
+the target; the current payload already loads only the voice DSP.
 """
 
 from pathlib import Path

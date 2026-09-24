@@ -60,6 +60,8 @@ def unpack_update(syx: pathlib.Path | None):
     ns = extraction_namespace()
     path = ns["find_syx"](str(syx) if syx else None)
     ns["unpack"](path)
+    # Only the voice DSP is shipped. The MD mixer DSP contains the original
+    # per-track effects and master processing, excluded from this remix.
     records = ns["dsp_records"]("section_1_DSP.bin")
     return ns, pathlib.Path(path), records
 

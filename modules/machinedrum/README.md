@@ -61,6 +61,15 @@ list no longer shows MACHINEDRUM. This still runs at the FX2 DSP dispatch
 stage internally. T1–T4's stock FX code is displaced by the MD payload, so
 the visible FX choices on those tracks are not functional yet.
 
+The user excluded the eight original MD TRACK EFFECTS controls (amplitude
+modulation, EQ, filter and sample-rate reduction) on 24 September 2026.
+The current payload already loads only the MD voice DSP (`section_1_DSP`),
+not its mixer DSP (`section_2_DSP`), so this decision does not reduce the
+current image's DSP footprint. The planned interface now has SYN 1/2 and
+per-part VOL/PAN; it has no MD FX pages. The original MD distortion and
+master effects are also absent. OT FX on T1–T4 still need a separate code
+restoration before they can process the MD mix.
+
 Not yet done:
 
 - the live record producer that calls the linked parameter handlers;

@@ -75,7 +75,7 @@ Statuses:
 | WP-D2 The sequencer data model | review | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-D2.md` | lanes follow the parent track's clock, length, scale and swing; 64 locks per pattern; no accent in v1; needs the user's sign-off |
 | WP-D3 The sequencer engine | done | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-D3.md` | machine type 6 on T1 plays the default kit from `md_patterns`; lanes within 0.6 frames of the grid, SYN/VOL locks, audio on T1 (`make verify-md-seq`) |
 | WP-D4 Grid-record view | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/HANDOFF-UI.md` | panel gate proves part select and REC+TRIG 5 lane bit; broader page/lock walk pending |
-| WP-D5 Parameter pages | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/HANDOFF-UI.md` | panel gate proves A knob reaches selected part and page-2 VOL/ENG descriptor; page-2 knob/engine actions pending |
+| WP-D5 Parameter pages | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/HANDOFF-UI.md` | panel gate proves page-1 SYN 1 and page-2 SYN 7 knob edits; ENG choice action pending |
 | WP-D6 The info box | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/HANDOFF-UI.md` | panel RAM shows `P02 TRX-SD` and name detours; visible LCD result pending |
 | WP-E1 Persistence | todo | | | | | |
 | WP-E2 MIDI | todo | | | | | |

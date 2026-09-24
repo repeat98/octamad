@@ -131,6 +131,16 @@ def main():
     assert desc[0x4e + 6 * 10:0x4e + 6 * 10 + 3] == b"ENG"
     assert int.from_bytes(state["desc_ptr"], "big") == sym["md_ui"] + 40 + 0x38
     print("editor: part 2 selected, SYN 1 = 69, step 5 recorded, name and page 2 present")
+
+    page2 = [(1.0, "key 0x10 down"), (0.3, "key 0x10 up"),
+             (0.3, "key 0x2d down"), (0.3, "key 0x22 down"),
+             (0.3, "key 0x22 up"), (0.3, "key 0x2d up"),
+             (0.5, "enc 0 5"), (1.0, "quit")]
+    state2 = run("page2", signed_card, emu, image,
+                 {"kit": (sym["md_kit"], 192), "part": (PART, 0x300)}, page2)
+    assert state2["kit"][4 + 6] == 5
+    assert state2["part"][0x1da + 6] == 5
+    print("page 2: A knob changes part 1 SYN 7 and its FLEX page-2 slot to 5")
     print("verify_md_ui: PASS")
 
 

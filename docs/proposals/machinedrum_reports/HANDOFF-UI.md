@@ -224,5 +224,10 @@ before `apply_kit`):
   gate and the required post-fix `verify-md`, both gain probes,
   `verify-md-transport`, `verify-md-seq`, and
   `make check REMIX=machinedrum` passed.
-- Next: WP-E1 persistence. Page-2 knob and engine-choice actions, and an
-  actual LCD render of the info name, remain editor acceptance work.
+- Next: WP-E1 persistence. ENG choice and an actual LCD render of the info
+  name remain editor acceptance work.
+
+The panel gate now also enters SRC page 2 with FUNC+SRC and verifies that
+encoder A +5 changes part 1 SYN 7 and T1's FLEX page-2 slot from 0 to 5.
+A plain page-2 encoder E +1 did not change ENG; that stock interaction
+still needs tracing. The gate uses RAM throughout.

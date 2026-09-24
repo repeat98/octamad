@@ -2244,5 +2244,6 @@ track*0x91a` was measured by matching two distinct file masks after the
 port selected pattern 0. Load-only RAM had zero masks before selection.
 The same panel gate proves track-held trig selection, A-knob SYN edit,
 REC grid step, descriptor fields and the dynamic part/engine name in RAM.
+SRC page-2 encoder A also reaches SYN 7 and the proper FLEX slot.
 It exposed and corrected a two-byte overrun in the trig-key detour. The
 LCD presentation of the name is still unverified.

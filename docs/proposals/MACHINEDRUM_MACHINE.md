@@ -1694,6 +1694,59 @@ mismatch), so their late reads come from a slightly different run.
   not fit at all. Keeping T5–T8's FX memory and running the MD on core 0
   are incompatible.
 
+### Core 1's memory and the MD's full footprint (24 September 2026)
+
+- ✅ Core-1 ledger (`machinedrum_reports/WP-A2-ledger-core1.txt`; the A1
+  configurations A–D rebuilt from Template Live, `core0_wordmap.sh`, 1,000
+  frames each, `core0_ledger.py --core 1 --payload B`). Free private X:
+  13,837, of which 11,222 is in spans of at least 256 words (`0x2840–0x3eff`
+  5,824, `0x5840–0x5fff` 1,984, `0x7a92–0x803f` 1,454, `0x8858–0x8fff`
+  1,960). Free private Y beyond the FX slots: 2,139 at `0x07a5–0x0fff`.
+  T1–T4's FX memory (FX1 `Y:0x1000–0x3fff`, FX2 `Y:0x4000–0xbfff`) adds
+  about 45K words once T1–T4's FX are limited.
+- ✅ Stock FX2 footprints in a 16K slot, from the same maps (core 0, T5–T8):
+  DARK up to offset 15,779, PLATE 14,336, SPRING 9,523, FLANGER 8,709,
+  COMB 3,084, CHORUS 3,070; FILTER, LO-FI, DJ EQ and COMPRESSOR touch
+  nothing; DELAY touches nothing (its line runs on the ColdFire). Only the
+  top ~600 words of T7/T8's slots are free when a reverb runs there.
+- ✅ The sine's X read at `P:0x102ca8` is `x:(r2+n2)` with `m2 = $7fff`: a
+  32K modulo buffer. Its base must be 32K-aligned, so the sine can live only
+  at `0x30000` or `0x38000` in the window. The shipping BusDelay already
+  overwrites `0x38000–0x38012` (its LineL covers all of `Y:0x38000–0x3ffff`),
+  so those 19 stock words are dead after boot in practice.
+- *inferred* Private P is 8K words per core (`0x0000–0x1fff`): NXP gives the
+  DSP56721 248K words of RAM, which is 64K shared + 2 × (36K X + 48K Y + 8K
+  P). Payload B tops out at `P:0x1d9f`, so core 1 can give 608 words plus
+  its stock FX code (at most 6,158, all thirteen effects): about 6.8K.
+- ✅ Executed MD code, union of the twelve kits: 11,394 words (static
+  reachable: 15,681). Per kit: up to 7,321 code words, 23,972 X-table words
+  (c42_16) and 16,384 P-I buffer words (c20_16, c40_16).
+- *inferred* A full MD (sine 32.8K, code 11.4–15.7K, tables 30K, 16 P-I voices
+  24.6K, voice records 2K) is about 105K words. Core 1 alone offers about
+  97K without touching T5–T8, in the wrong proportions (only 11K of it is X,
+  and the sine takes a whole window half). Full fidelity therefore needs part
+  of T7/T8's window half.
+
+**Direction (decided on architecture, efficiency and parity):**
+
+1. MD on core 1 (T1–T4). T1–T4 give up their stock FX, both code and memory.
+2. Sine at `0x38000` (the only aligned half not already owned by T5–T8).
+3. Hot and as much other code as fits in core 1's private P (about 6.8K);
+   no window fetch penalty for that part.
+4. Tables and P-I buffers read through X move to core 1's private Y by
+   flipping those reads from X to Y in the relocated code, where the
+   instruction form allows it. That puts them in T1–T4's former FX memory.
+5. Only the rest (code beyond private P, the X+Y tables, anything that can't
+   be flipped) goes in **T8's FX2 window slot** (`0x34000–0x37fff`). T8's FX2
+   is then limited to effects that use no slot memory (FILTER, EQ, DJ EQ,
+   PHASER, LO-FI, COMPRESSOR, DELAY). T5, T6 and T7, and every FX1, stay
+   stock.
+
+The next measurement is the flip audit: for each table and P-I read, the
+instruction and whether its X form has a Y twin (a dual X:Y parallel move
+cannot be flipped on one side). If too little can be flipped, the fallback
+is T7's slot as well.
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and

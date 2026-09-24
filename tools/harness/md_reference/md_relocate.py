@@ -28,9 +28,15 @@ address that points into a moved region:
         [--hot-base 0x1000] [--hot-size 2724] [--loopvars 0xc00]
         <capture dir> [profile dirs...]
 
+    python3 tools/harness/md_reference/md_relocate.py --hot-plan <reloc.txt>
+        <capture dir> [profile dirs...]
+
 --hot also moves the hottest code units (by the fetch.txt counts of those
 captures, md_replay MD_REPLAY_FETCH=2) into private P at --hot-base, as the
 OT's core-0 donor region would hold them (see hot_units).
+--hot-plan reuses the measured M-line split from an earlier run.  This is
+needed when fetch.txt was produced after relocation, because those counts
+name the destination window rather than the source code region.
 
 Writes <capture dir>/reloc.txt, which md_replay --reloc applies:
   M <old start> <old end> <new start>     move a region or a hot unit (end exclusive)
@@ -223,9 +229,46 @@ def hot_units(code, fetch_dirs, base, size):
     return moves
 
 
+def pinned_hot_units(path, base, size):
+    """Load the hot split from a completed, measured relocation run.
+
+    ``fetch.txt`` from a relocated run deliberately excludes private P below
+    0x30000 (the cycle hook prices only shared-window fetches), so it cannot
+    be fed back into ``hot_units``.  The measured relocation already records
+    the selected source spans as M lines; accepting that plan explicitly
+    keeps the build reproducible without pretending those fetches were
+    observed at their old addresses.
+    """
+    path = Path(path)
+    if not path.exists():
+        sys.exit(f"hot plan missing: {path}")
+    moves = []
+    used = set()
+    for line in path.read_text().splitlines():
+        parts = line.split()
+        if len(parts) != 4 or parts[0] != "M":
+            continue
+        start, end, new = (int(v, 16) for v in parts[1:])
+        if not (base <= new < base + size):
+            continue
+        if end <= start or new + end - start > base + size:
+            sys.exit(f"hot plan {path}: span {start:06x}..{end:06x} "
+                     f"does not fit {base:06x}..{base + size:06x}")
+        if any(a in used for a in range(start, end)):
+            sys.exit(f"hot plan {path}: source spans overlap at {start:06x}")
+        for a in range(start, end):
+            HOT[a] = new + a - start
+            used.add(a)
+        moves.append((start, end, new))
+    if not moves:
+        sys.exit(f"hot plan {path}: no M lines land in the hot allocation")
+    return moves
+
+
 def main():
     args = sys.argv[1:]
     hot_dirs = []
+    hot_plan = None
     hot_base = HOT_LAYOUT["start"]
     hot_size = HOT_LAYOUT["words"]
     # --loopvars remains as a compatibility override for old experiments;
@@ -235,6 +278,8 @@ def main():
         flag = args.pop(0)
         if flag == "--hot":
             hot_dirs = args.pop(0).split(",")
+        elif flag == "--hot-plan":
+            hot_plan = args.pop(0)
         elif flag == "--hot-base":
             hot_base = int(args.pop(0), 0)
         elif flag == "--hot-size":
@@ -245,6 +290,9 @@ def main():
     cap = Path(sys.argv[1])
     snap = cap / "snapshot.bin"
     P = memoryview(snap.read_bytes()).cast("I")
+    if hot_plan and hot_dirs:
+        sys.exit("use either --hot or --hot-plan, not both")
+    pinned_moves = pinned_hot_units(hot_plan, hot_base, hot_size) if hot_plan else []
     table = decode(snap)
 
     entries = {LOOP[0], INIT_ENTRY}
@@ -274,7 +322,12 @@ def main():
                 break
             a += ln
 
-    hot_moves = hot_units(code, hot_dirs, hot_base, hot_size) if hot_dirs else []
+    if pinned_moves:
+        hot_moves = pinned_moves
+        print(f"hot: pinned {len(hot_moves)} measured units, "
+              f"{sum(e - s for s, e, _ in hot_moves)} words at {hot_base:04x}")
+    else:
+        hot_moves = hot_units(code, hot_dirs, hot_base, hot_size) if hot_dirs else []
 
     patches = {}
     kinds = {}

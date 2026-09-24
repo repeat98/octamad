@@ -30,3 +30,8 @@ set_target_properties(md_dis PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON
 add_executable(md_forms ${CMAKE_CURRENT_LIST_DIR}/md_forms.cpp)
 target_link_libraries(md_forms PRIVATE dsp56kEmu)
 set_target_properties(md_forms PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+
+# Firmware-free arithmetic guard for the replay execution mode (WP-C1).
+add_executable(md_phase_probe ${CMAKE_CURRENT_LIST_DIR}/md_phase_probe.cpp)
+target_link_libraries(md_phase_probe PRIVATE dsp56kEmu)
+set_target_properties(md_phase_probe PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)

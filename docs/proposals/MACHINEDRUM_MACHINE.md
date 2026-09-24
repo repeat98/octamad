@@ -6,7 +6,10 @@ Later the same day `make bus REMIX=machinedrum` began loading the MD into
 core 1 and running it as FX2 id 0x1e on T1–T4. A fixed TRX-BD record plays
 on the track's trig, bit-identical to the MD reference under the port
 (`machinedrum_reports/WP-B3-B4.md`, section 12 "Core 1 in the OT image").
-It is unflashed, with no record transport, UI, sequencer or persistence.
+The ColdFire record transport now passes the full c01_16 stream under the
+port (WP-C1: 33,503 bit-identical blocks against the interpreter replay).
+It is unflashed; the live record producer, UI, sequencer and persistence
+remain open.
 
 Status: revised proposal, 23 September 2026. Based on the local Octamad
 checkout at `3b5a2eb66930225f914a369fbfd499dd763d7dcd`. No Machinedrum
@@ -2005,6 +2008,39 @@ port. Nothing is hardware.
   refuses `clr a` with an XY move. The glue keeps them apart, and
   `md_image.py` refuses max/dc/illegal and su/uu `mac`/`mpy` in its
   disassembly.
+
+### WP-C1 record transport (24 September 2026)
+
+- ✅ `make verify-md-transport`, using the repo's pinned port, ran 4,200
+  frames and sent 4,192 blocks: four empty startup chunks plus the complete
+  4,188-chunk c01_16 stream. No chunk was dropped. The first startup block
+  is not consumed; every stream block is consumed once, in order.
+- ✅ The glue applied all 19,335 record words, refused no packets, and made
+  one startup half-sync adjustment. All 33,503 reference blocks over 2,094
+  periods match bit for bit, including 20,544 non-silent blocks. The last
+  period's slot 15 has no captured output; it is not counted as verified.
+- ✅ `md_xport.s` inserts one eDMA burst to core 1 before stock transfer
+  state 5 and restores NBYTES before continuing stock. Its destination
+  X:0x7d40 is banked to X:0x3d40 / X:0x5d40. The glue maps packet record
+  addresses to relocated Y records and treats word 0 as the trigger.
+- ✅ The 15 differences in the earlier 300-frame handoff were reference
+  JIT behavior, not packet loss. The firmware-free `md_phase_probe` expects
+  `(0x1800 >> 1 >> 4) * 32 = 0x1800`. The reference fork's normal JIT
+  returns `0x00c0`; its interpreter and single-instruction JIT return
+  `0x1800`. This adds arithmetic evidence to the WP-R3 boundary finding.
+- ✅ The transport reference explicitly uses `--interpreter`. All of its
+  full-capture blocks also matched single-instruction JIT during diagnosis.
+  Captured audio was produced with the affected JIT and is diagnostic only:
+  the boot replay differs on 2,492 captured blocks (also including the
+  different initial voice state). This does not repair the vendor JIT or
+  qualify every engine on hardware.
+- 🟡 The producer is a preloaded test stream; live handlers, sequencing,
+  E12 sample delivery and the added FlexBus burst's hardware cost remain
+  open. Four empty startup chunks are a test-fixture accommodation, not a
+  production handshake.
+
+Commands, reference pins and validation limits are in
+[`WP-C1.md`](machinedrum_reports/WP-C1.md).
 
 ### Open for Phase 1
 

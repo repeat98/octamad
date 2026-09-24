@@ -1,4 +1,10 @@
-# Handoff: WP-C1 record transport (24 Sep 2026, WIP, gate not green)
+# Handoff: WP-C1 record transport (24 Sep 2026, historical WIP)
+
+**Superseded:** [WP-C1.md](WP-C1.md) records the completed full-stream gate.
+The 15-block residual was traced to the reference JIT's 48-bit X/DO-loop
+behavior; the interpreter reference matches all 33,503 available blocks.
+The idle-prefix edit described below as rejected was actually present in
+commit 1f2245b. Its stalled stepping loop has now been fixed.
 
 Branch `machinedrum`, main checkout. Push to `origin` only, never `upstream`. No firmware bytes in Git.
 Leave `modules/octakit/upstream` (dirty) and `base_firmware/` alone. Commits end with the Co-Authored-By line.

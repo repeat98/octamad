@@ -7,8 +7,8 @@
 A captured kit's host stream goes through the image's own path, ColdFire to
 core 1, and core 1's voice blocks are compared with the replay's:
 
-  1. the reference: md_replay --reloc --driver --boot on the payload's own
-     memory image (out/machinedrum/build/source) with the capture's log, so
+  1. the reference: md_replay --reloc --driver --boot --interpreter on
+     the payload's own memory image (out/machinedrum/build/source) with the capture's log, so
      the replay starts where core 1 starts (the relocated boot init) and
      takes the same writes (MD_REPLAY_OUT, every block);
   2. the stream: the capture's host writes, cut into one chunk per OT frame.
@@ -29,7 +29,8 @@ every block (no sequence gap, no refused packet, one sync slip at most);
 and every slot's block in every period core 1 rendered equals the
 reference's, bit for bit. It also prints how many of the reference's blocks
 equal the Machinedrum's own output (the capture's "O" lines), which differ
-only where the capture's snapshot held a voice sounding before it started.
+with a different startup state and the capture emulator's JIT loop defect
+(see machinedrum_reports/WP-C1.md). Captured audio is not this gate's oracle.
 
 THE EMULATOR PIN MATTERS, as for verify_md_image.py: MD_EMU names a port
 built from the repo's dsp56300 pin. SKIPs without a project, the port, the
@@ -177,11 +178,16 @@ def main():
         shutil.copy2(f, ref_dir / f.name)
     for name in ("log.txt", "regs.txt"):
         shutil.copy2(cap / name, ref_dir / name)
-    r = subprocess.run([str(REPLAY), str(ref_dir), "--reloc", "--driver", "--boot"],
-                       env=dict(os.environ, MD_REPLAY_OUT=str(ref_dir / "blocks.txt")),
+    # Ambient diagnostic overrides (partial runs, poisoned memory, idle
+    # prefixes) must not silently change the comparison oracle.
+    ref_env = {k: v for k, v in os.environ.items() if not k.startswith("MD_REPLAY_")}
+    ref_env["MD_REPLAY_OUT"] = str(ref_dir / "blocks.txt")
+    r = subprocess.run([str(REPLAY), str(ref_dir), "--reloc", "--driver", "--boot", "--interpreter"],
+                       env=ref_env,
                        capture_output=True, text=True, cwd=ROOT)
     summary = next((l for l in r.stdout.splitlines() if l.startswith("blocks:")), "")
-    if not summary or not (ref_dir / "blocks.txt").exists():
+    if (r.returncode not in (0, 3) or "execution: interpreter" not in r.stdout
+            or not summary or not (ref_dir / "blocks.txt").exists()):
         sys.exit(f"verify_md_transport: md_replay --boot failed:\n{(r.stdout + r.stderr)[-1500:]}")
     ref, period = {}, -1
     for line in (ref_dir / "blocks.txt").read_text().splitlines():
@@ -270,11 +276,17 @@ def main():
     lseq, napply, nwords, slips, gaps, bad = rows[-1][0]
     # the calls that took a stream block: seq - 1 - PAD is the chunk
     taken = [(r_[0][0] - 1 - PAD, r_) for r_ in rows if r_[0][0] >= PAD + 1]
+    # Once the feed ends, rendering continues with the last LSEQ. Only
+    # the first n samples belong to the n stream chunks; the tail is audio
+    # decay, not repeated application of the last packet.
+    if whole:
+        taken = taken[:n]
     seqs = [c for c, _ in taken]
     total = sum(len(v) for c, v in chunks.items() if not seqs or c <= seqs[-1])
     check("glue: every stream block taken once, in order, every word written",
           bool(seqs) and seqs == list(range(len(seqs))) and gaps <= PAD and bad == 0 and slips <= 1
-          and nwords == total and (len(seqs) == n or not whole),
+          and nwords == total and napply == lseq - gaps
+          and (len(seqs) == n or not whole),
           f"chunks 0..{seqs[-1] if seqs else -1} of {n}, {nwords}/{total} words, "
           f"{gaps} gap(s) in the padding, refused {bad}, sync slips {slips}")
     check("owner: the instance is T1's", rows[-1][3][0] == 0, f"owner offset {rows[-1][3][0]:#x}")
@@ -293,7 +305,8 @@ def main():
     same = [key for key in common if ours[key] == ref[key]]
     first = next((key for key in common if ours[key] != ref[key]), None)
     live = sum(1 for key in common if any(ref[key]))
-    check("voices: core 1's blocks equal the replay's", common and len(same) == len(common),
+    check("voices: core 1's blocks equal the replay's", bool(common) and len(same) == len(common)
+          and (not whole or set(ref) <= set(ours)),
           f"{len(same)} of {len(common)} blocks bit-identical ({live} non-silent), "
           f"{len({p for p, _ in common})} of {periods} periods"
           + (f"; first difference period {first[0]} slot {first[1]}" if first else ""))

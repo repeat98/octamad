@@ -61,7 +61,7 @@ Statuses:
 | WP-B3 The dispatcher hook | review | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-B3-B4.md` | FX2 id 0x1e (MACHINEDRUM) on core 1 runs `md_glue.asm`; the other ids run the null stub there; `make verify-md` passes on the repo's dsp56300 pin |
 | WP-B4 The fixed trigger path | review | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-B3-B4.md` | trig = bit 16 of the track state's word $1e (a sample voice starting); slot 0 plays c10's TRX-BD, bit-identical to the MD reference for 171 periods under the port |
 | WP-B5 Gates and the M1 image | todo | | | | | the user flashes |
-| WP-C1 The record transport | todo | | | | | |
+| WP-C1 The record transport | done | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-C1.md` | full c01_16 stream: 33,503/33,503 voice blocks bit-identical to the interpreter replay; 19,335 words, no stream loss; test producer only, hardware timing unmeasured |
 | WP-C2 Port the parameter handlers | todo | | | | | |
 | WP-C3 Machine registration | todo | | | | | |
 | WP-C4 Kits and parameters | todo | | | | | |
@@ -394,7 +394,7 @@ under the port.*
 ### Phase C: the ColdFire side (M2)
 
 **WP-C1 The record transport.** *Depends: WP-B3.*
-- **Do:** add an MD block to core 0's per-frame host transfer
+- **Do:** add an MD block to core 1's per-frame host transfer
   (`DSP.md` §6c): 16 records × the words the host writes (see section 12,
   "The ColdFire→voice-DSP interface"). The DSP side writes them into the
   voice blocks with the MD's own semantics: word 0 is a trigger.

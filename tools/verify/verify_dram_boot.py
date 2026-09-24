@@ -19,7 +19,8 @@ For the current REMIX (the image at out/mainos_bus.bin):
 
 SKIPs when the port is not built (`make emu-cf`) or the remix carries no
 DRAM payload. What this cannot see: caches (the port has none), the
-recorder, and anything after the handoff.
+recorder, and anything after the handoff. For the Machinedrum remix,
+MD_EMU may select an isolated port built from the repo's DSP pin.
 """
 import os
 import pathlib
@@ -37,6 +38,8 @@ mods = [registry.modules()[k] for k in remix.modules]
 dram = any(u.dram for m in mods for u in getattr(m, "linked", ()))
 octakit = "OCTAKIT" in remix.modules
 md = "MACHINEDRUM" in remix.modules
+if md and os.environ.get("MD_EMU"):
+    EMU = pathlib.Path(os.environ["MD_EMU"])
 if not (dram or octakit or md):
     print(f"  [ -- ] verify_dram_boot: {remix.name} carries no DRAM payload")
     sys.exit(0)

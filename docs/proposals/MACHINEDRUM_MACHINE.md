@@ -801,8 +801,10 @@ track 1 it logs every host-port word through an assign, a trig, encoder A
   named parameters move a record word**, usually one word per parameter.
   Some rows also list a word that drifted between trigs (E12's word 4);
   the first word listed is the parameter's own.
-- Two engines sent no trigger record in this harness: GND-NS and TRX-S2.
-  Their trigger must travel another way.
+- ❌ Two engines sent no trigger record in this harness: GND-NS and TRX-S2.
+  Their trigger must travel another way. (Retracted 24 Sep 2026: both
+  send a two-word trig record, which the map hook's four-word filter
+  dropped; see "How the MD sends a record".)
 - The other 19 unmapped parameters: GND-IM UVAL, TRX-BD RAMP, TRX-CP HARD,
   EFM-BD MFB, EFM-XT CLIC, EFM-CP MDEC, EFM-HH FB, EFM-CY HPF, E12-OH DEC,
   E12-SH DEC, E12-BC BC, the P-I HARDs (BD, MT, ML), P-I-SD RVOL, and the
@@ -820,9 +822,10 @@ track 1 it logs every host-port word through an assign, a trig, encoder A
   instructions. The MD's CPU is MCF5206e (ISA_A), the OT's MCF54454
   (ISA_B). The code bytes remain unchanged except for 148 absolute
   operands (128 tables, 20 SRAM).
-- Not yet located: the caller that runs a handler, adds modulation and
+- ❌ Not yet located: the caller that runs a handler, adds modulation and
   serializes the record into the host packet; and where the trigger word
-  (`0x11`/`0x02`) comes from.
+  (`0x11`/`0x02`) comes from. (Located 24 Sep 2026: "How the MD sends a
+  record".)
 
 ### The handlers' caller (23 September 2026)
 
@@ -2075,12 +2078,129 @@ Commands, reference pins and validation limits are in
   record; its descriptor handler was separately compared source versus
   port on those nine captured parameter vectors. GND-NS also sent no
   trigger record but its descriptor handler was invoked and compared.
+  (❌ "sent no trigger record": both send a two-word one, dropped by the
+  map hook's filter; see "How the MD sends a record".)
 - 🟡 No OT control path calls the linked unit yet. WP-C4 must supply the
   SRAM word and parameters, invoke the selected handler and serialize
   its output through WP-C1. This gate uses the reference MCF5206e
   emulator for both copies; it is not a hardware run.
 
 Commands and output are in [WP-C2.md](machinedrum_reports/WP-C2.md).
+
+### How the MD sends a record (24 September 2026, from disassembly)
+
+- ✅ **The count is the handler's return value.** Every descriptor handler
+  returns in d0 the number of record words to send (the empty handler
+  `moveq #2`, GND-SN `moveq #5`). The voice update at `0x20b39a` stores it in
+  the per-track count array `0x1001574 + 4·t`. It is `sp@(68)` before the
+  two argument pushes, `sp@(76)` after them, which is why the store looks as
+  if it were aimed at `0x1001b98`.
+- ✅ **The sender** is the SRAM routine `0x1000756(addr, count, buf)`. It
+  writes `addr` to the host port, host vector `0x12` (CVR `0x89`), `count - 1`,
+  then `count` longs of the record, 24 bits each. The frame interrupt
+  `0x100043a` calls it for every track whose count is non-zero and then
+  clears the count. `addr` comes from the table `0x24ef14`:
+  `0x800 + 0x40·t`. The SRAM image is the 2,466 bytes that the startup copies
+  from `0x26237c` to `0x01000088`.
+- ✅ **The trigger word.** Before calling the handler, the voice update puts
+  the track's trig flag in record word 0 (`0x262470 + 4·t`, 1 on a trig).
+  At `0x1000550` the sender replaces a non-zero word 0 with the machine id
+  + 1 (`0x29f454 + 4·t`). So a trig record's word 0 is the engine's routine
+  index: TRX-BD `0x11`, GND-SN `0x02`.
+- ✅ **The live handler table** is `0x252092[id]`, which points at a
+  descriptor whose first long is the handler (`0x206b1a`). It equals the
+  descriptor table's handler for every playable id except TRX-S2 (`0x1d`),
+  which MD OS 1.63 points at the empty handler (descriptor `0x24ef54`). Its
+  trig record is two words: `0x1e` and a word it does not write (capture
+  `c1d_16`, packets at renders 2255 and 22350).
+- ✅ **Parameters reach the handler** as eight 16-bit words, the kit byte
+  << 7 (`0x20afac`). An engine assignment loads the descriptor defaults:
+  the 49 non-TRX-S2 baseline cases in `out/machinedrum/c2_maps` equal
+  them.
+- ✅ **Cadence.** In `c01_16` every voice gets a packet about every 12
+  periods (384 samples), and 2–6 periods apart around a trig. Record words
+  0..count−1 are not changed by the DSP between sends (R and S lines of
+  the capture).
+- ✅ The E12 handlers' SRAM word `0x0100150c` is the tempo, BPM × 24: MIDI
+  clock sets it at `0x20c25c` clamped to 720..7199, and the sysex tempo
+  at `0x2057f8`. The captured `0xbb8` is 125 BPM. The OT's `0x8000181c` is in
+  the same units.
+- ❌ Retracted: "Two engines sent no trigger record in this harness:
+  GND-NS and TRX-S2. Their trigger must travel another way" (section
+  "Record words and the ColdFire handlers"). Both send a two-word trig
+  record. The `map=` hook keeps only packets longer than four words, so
+  it dropped them.
+- ❌ Retracted: "Not yet located: the caller that ... serializes the
+  record into the host packet; and where the trigger word comes from" (same
+  section). Both are above.
+
+### WP-C4 the kit and the record producer (24 September 2026)
+
+- ✅ `md_ctl.c` (C, compiled to the checked-in `md_ctl.s` by
+  `generate_ctl.py`) holds a 16-part kit: engine, VOL, PAN, mute, SYN 1–8.
+  Once a frame `md_xport.s` asks it for a chunk. It then:
+  - calls each triggered or edited part's handler through `md_engines` (the
+    live table above, generated into `handlers.s` at build time);
+  - sends the returned count of words with word 0 = id + 1 on a trig;
+  - sends the VOL/PAN gain pair;
+  - refreshes one idle part a frame (words and gains), so a lost block heals.
+- ✅ Under the port (`make verify-md-kit`, pinned isolated build) a
+  16-part kit poked from the MD's own captured cases gave these results:
+  - every part's trig record equals the MD's trig packet word for word;
+  - each part triggered once;
+  - the gain words equal `md_gain(VOL, PAN)`.
+
+  This holds for all 50 baseline cases (4 runs). Of the 450 encoder-detent
+  cases, the first 16 of 29 runs (256 cases) pass; 🟡 the rest were cut
+  off at the handoff. The expected words are `map.txt`'s trig packets, and
+  the kit takes the case's snapshot rounded to a step: TRX-CP / B was
+  captured on a non-trig update with B still easing (`0x23eb` toward
+  `0x2400`). E12 is refused on the OT (WP-R1): an E12 part plays as
+  GND---, `[1, 0]`.
+- ✅ **The first blocks after boot are lost.** A kit active from boot lost
+  its first chunks, gains and 13 trigs, because the glue does not run
+  before the DSP's frame dispatch starts. The producer now holds its first
+  16 frames (`MD_START_FRAMES`). On the unit a kit becomes active at project
+  load, long after boot.
+- VOL follows the MD's squared law (`0x20b2c0`: vol² >> 17). PAN is
+  constant-power, √2·cos. The pan law is a choice: the MD's mixer DSP is not
+  read. Full VOL at centre is the proof mix's 1/4 per part.
+- 🟡 This checks the words the DSP receives. That the same words render the
+  same blocks is WP-C1's transport gate (33,503/33,503 blocks). No hardware
+  run.
+
+Report: [WP-C4.md](machinedrum_reports/WP-C4.md).
+
+### WP-D3 the embedded sequencer (24 September 2026)
+
+- ✅ The spec is WP-D2's. The lanes use the parent track's clock, length,
+  scale and swing. Each frame, `md_ctl.c` does three things:
+  - it reads which T1–T4 track is MACHINEDRUM, from a store in the frame
+    builder's MD hook (`md_machine.s` `md_pack_fx2` → `md_parent_track`);
+  - on the first frame with an MD track it loads the default kit;
+  - it runs the lanes on Euclid's clock.
+
+  The clock is the frame clock `0x46104cf0`, anchored at both stock PLAY
+  paths (`0x4009c3d4`, `0x4009c4d4`) to the step clock `0x4610757c`.
+- ✅ **Default kit:** eight TRX voices (BD SD CH OH CP RS CB CY) and eight
+  empty parts. It is kept at half until a full kit's core-1 cost is measured
+  on the unit.
+- ✅ `make verify-md-seq`, under the port:
+  - the setup: T1 of every Part is machine type 6, at 300 BPM, A01 LEN 16
+    at 1X, with a poked MD pattern of three lanes, a SYN lock and a VOL
+    lock;
+  - the default kit's engines trigger (`0x11`, `0x12`, `0x17`);
+  - every lane's trigs land on its programmed steps across the wrap,
+    within 0.6 frames of the 137.8-frame step grid (8, 5 and 2 trigs);
+  - the SYN-locked trig's record differs from the unlocked one;
+  - part 2's gains are 0 after its VOL-locked trig and back to
+    `md_gain(100, 64)` after the next;
+  - T1's post-FX2 read-back is non-silent on 2,380 of 2,400 frames (peak
+    4,250 in its upper 16 bits).
+- 🟡 Step 1 is due at PLAY. In a run from boot it falls inside the startup
+  hold and arrives when the hold ends. Swing, per-track scale mode, and
+  timing against another OT track's trigs are not in the fixture. No
+  hardware run.
 
 ### Open for Phase 1
 

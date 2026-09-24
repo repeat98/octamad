@@ -188,6 +188,9 @@ md_pack_fx2:
         move.b  (%a1),%d2
         cmpi.l  #MD_TYPE,%d2
         bne.s   .pack_stock
+        move.l  %d1,%d0                  | tell the control engine the MD track
+        addq.l  #1,%d0                   | (md_ctl.c: 1 + track, cleared per frame)
+        move.l  %d0,md_parent_track
         moveq   #0,%d0
         move.w  0x20(%a3),%d0
         andi.l  #0xff00,%d0

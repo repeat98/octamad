@@ -23,7 +23,11 @@ handlers against the same input. TRX-S2's live map= assignment stays
 on the empty handler, so its descriptor is separately compared source
 versus port on the nine captured parameter vectors; that comparison
 has no live record oracle. GND-NS sends no trigger record but does
-invoke its descriptor, which is compared normally.
+invoke its descriptor, which is compared normally. (❌ 24 Sep 2026, WP-C4:
+both send a two-word trig record that the map hook's four-word filter
+dropped. TRX-S2 stays on the empty handler because MD OS 1.63's live
+handler table points it there; see MACHINEDRUM_MACHINE.md section 12, "How
+the MD sends a record".)
 
 ## Acceptance check
 

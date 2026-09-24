@@ -16,19 +16,20 @@
 | as every stock block does. md_glue.asm (gfxproc) reads it:
 |   seq, flags, npkt, then npkt x [dest] [count] [hi lo] x count
 | Dest $800-$bff addresses Y voice records; $c00-$c1f addresses the
-| thirty-two X gain words (sixteen left, sixteen right). The test stream
-| may carry either kind. The future kit producer owns live gain updates.
+| thirty-two X gain words (sixteen left, sixteen right). Either source
+| below may carry either kind.
 | One DSP word per 16-bit bus cycle (rtos.cpp's host-port mover), so a
 | 24-bit record word travels as two. The burst is whole 64-byte multiples
 | (4 minor loops of 16-byte beats, as every stock block), at most 448
 | halfwords (layout.py mbox_a).
 |
-| THE PRODUCER. A test feed (tools/verify/verify_md_transport.py):
-| md_feed points at a stream of chunks, each
+| THE PRODUCERS. md_feed points at a stream of chunks, each
 |   flags, npkt, nhw, then nhw halfwords of packets
-| and 0xffff in npkt ends it. Without a feed, md_gain_set's dirty part pairs
-| are sent one per frame via the same md_tx DMA path. The Machinedrum's own
-| voice update (WP-C4) still needs to supply live record packets.
+| and 0xffff in npkt ends it. A test feed (verify_md_transport.py) is a
+| whole stream loaded before the frame engine starts. Without one, the
+| control engine (md_ctl.c, WP-C4) is asked once a frame: it runs the kit
+| parts' MD handlers, sends md_gain_set's pending pairs and the kit's
+| VOL/PAN gains, and returns one chunk with its own end marker.
 |
 | ISR context: the chain's prologue saved d0-d1/a0-a1 only.
 |
@@ -56,14 +57,14 @@ md_xport:
         lea     -8(%sp),%sp
         movem.l %d2-%d3,(%sp)
         move.l  md_feed,%d0
-        beq.w   md_gain_prepare
+        beq.w   md_live
 md_have:
         move.l  %d0,%a0
         mvz.w   2(%a0),%d1              | npkt
         cmp.l   #FEED_END,%d1
         bne.s   1f
         clr.l   md_feed                 | the stream is over
-        bra.w   md_gain_prepare
+        bra.w   md_live
 1:      mvz.w   4(%a0),%d2              | halfwords of packets
         move.l  %d2,%d3
         add.l   #3+31,%d3               | + seq, flags, npkt, rounded up to
@@ -126,59 +127,14 @@ md_idle:
         lea     8(%sp),%sp
         jmp     STOCK5
 
-| One dirty part becomes two one-word gain packets. The caller and ISR share
-| one ColdFire core, so md_gain_set clears the dirty bit before replacing
-| the pair and sets it only after both words are ready. The newest value wins.
-md_gain_prepare:
-        move.l  md_gain_dirty,%d0
+| No test stream: the control engine (md_ctl.c, WP-C4) runs the kit's
+| handlers and returns this frame's chunk, or 0. It is C: d0-d1/a0-a1 are
+| its scratch (the chain's prologue saved them), d2-d7/a2-a6 it saves.
+md_live:
+        jsr     md_ctl_chunk
+        tst.l   %d0
         beq.w   md_idle
-        moveq   #0,%d2
-        moveq   #1,%d3
-md_gain_scan:
-        move.l  %d0,%d1
-        and.l   %d3,%d1
-        bne.s   md_gain_found
-        addq.l  #1,%d2
-        lsl.l   #1,%d3
-        cmpi.l  #16,%d2
-        bne.s   md_gain_scan
-        bra.w   md_idle
-md_gain_found:
-        move.l  %d3,%d1
-        not.l   %d1
-        and.l   %d1,md_gain_dirty
-        move.l  %d2,%d0
-        lsl.l   #3,%d0
-        lea     md_gain_values,%a0
-        adda.l  %d0,%a0
-        lea     md_live_chunk,%a1
-        clr.w   (%a1)+                  | flags: no half sync
-        move.w  #2,(%a1)+               | two gain packets
-        move.w  #8,(%a1)+               | eight packet halfwords
-        move.l  %d2,%d0
-        add.l   #0xc00,%d0
-        move.w  %d0,(%a1)+              | left destination
-        move.w  #1,(%a1)+
-        move.l  (%a0)+,%d1
-        move.l  %d1,%d0
-        swap    %d0
-        move.w  %d0,(%a1)+
-        move.w  %d1,(%a1)+
-        move.l  %d2,%d0
-        add.l   #0xc10,%d0
-        move.w  %d0,(%a1)+              | right destination
-        move.w  #1,(%a1)+
-        move.l  (%a0),%d1
-        move.l  %d1,%d0
-        swap    %d0
-        move.w  %d0,(%a1)+
-        move.w  %d1,(%a1)+
-        clr.w   (%a1)+                  | terminator for md_feed
-        move.w  #FEED_END,(%a1)+
-        clr.w   (%a1)+
-        move.l  #md_live_chunk,%d0
-        move.l  %d0,md_feed
-        move.l  md_feed,%d0
+        move.l  %d0,md_feed             | its end marker clears md_feed again
         bra.w   md_have
 
 md_after:
@@ -227,6 +183,5 @@ md_sent:    .byte   0                   | our burst is in flight
         .balign 4
 md_gain_dirty:  .long 0                | one bit per pending part
 md_gain_values: .space 16*8             | left/right Q23 longs, part-major
-md_live_chunk:  .space 28               | 3 + 8 + 3 halfwords
         .balign 16
 md_tx:      .space  MBOX_HW*2           | the block (the DMA's SADDR; 16-byte beats)

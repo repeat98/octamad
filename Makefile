@@ -237,6 +237,14 @@ verify-md: ## The Machinedrum on core 1 under the port: owner, OT trig -> slot 0
 verify-md-transport: ## Replay the captured kit through the ColdFire record transport (needs OT_PROJECT and MD_EMU)
 	python3 tools/verify/verify_md_transport.py
 
+.PHONY: verify-md-kit
+verify-md-kit: ## The Machinedrum kit producer vs the MD's own captured trig records (needs OT_PROJECT and MD_EMU; CASES=all for every detent)
+	python3 tools/verify/verify_md_kit.py --cases $(or $(CASES),base)
+
+.PHONY: verify-md-seq
+verify-md-seq: ## The Machinedrum's embedded sequencer: lanes on the parent track's grid, locks, audio (needs OT_PROJECT and MD_EMU)
+	python3 tools/verify/verify_md_seq.py
+
 .PHONY: verify-roll
 verify-roll: ## Prove an alternate REVERB engine is bit-identical: make verify-roll CAND=cand.asm [REF=modules/busverb/reverb_server.asm]
 	@test -n "$(CAND)" || { echo "usage: make verify-roll CAND=<candidate.asm> [REF=modules/busverb/reverb_server.asm]"; exit 1; }

@@ -249,8 +249,15 @@ def main():
     check("audio: T1's post-FX2 read-back is the Machinedrum mix", live and hit == len(live),
           f"{hit} of {len(live)} non-silent read-back blocks are glue output blocks")
     if a.gain_probe or a.gain_queue_probe:
+        # Right must be silent once the mute has landed. The queued pair
+        # leaves after the control engine's startup hold (md_ctl.c
+        # MD_START_FRAMES), later than the fixed trigger's first audio at
+        # frame 3, and a period mixed before the gain word changed plays
+        # over that frame and the next (md_glue.asm): count from the second
+        # call after the right gain word first reads 0.
         left = sum(x != 0 for r in rows for x in r[5][0::2])
-        right = sum(x != 0 for r in rows for x in r[5][1::2])
+        flip = next((k for k, r in enumerate(rows) if r[6][0] == 0), len(rows))
+        right = sum(x != 0 for r in rows[flip + 2:] for x in r[5][1::2])
         bad_expected = 1 if a.gain_probe else 0
         check("gain packet: right gain is zero, fixed trigger and left audio survive",
               rows[-1][6][0] == 0 and rows[-1][7][0] == 0

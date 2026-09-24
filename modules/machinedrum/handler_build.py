@@ -57,6 +57,48 @@ def relocations(img: bytes) -> dict[int, int]:
     return out
 
 
+# The MD's live handler for machine id i is the first long of the
+# descriptor that 0x252092[i] points at (0x206b1a, machine assignment).
+# It equals the descriptor table's handler for every playable id except
+# TRX-S2, which MD OS 1.63 runs on the empty handler (two words: the trig
+# and a stale word; measured in capture c1d_16).
+LIVE_TABLE = 0x252092
+ENGINE_IDS = 0x49
+FAMILY_CODE = {"GND": 1, "TRX": 2, "EFM": 3, "E12": 4, "P-I": 5}
+# The OT image renders every family but E12, whose samples are not on the
+# OT DSP (WP-R1); an E12 id in a kit plays as GND--- (silent).
+PLAYABLE = frozenset(("GND", "TRX", "EFM", "P-I"))
+
+
+def engine_table(img: bytes, engines) -> list[str]:
+    """md_engines (md_ctl.h MdEngine, 48 bytes a row, ids 0x00..0x48):
+    live handler, eight defaults, eight 4-character names, flags, family."""
+    def long_at(addr):
+        off = addr - extraction.OS_BASE
+        return int.from_bytes(img[off:off + 4], "big")
+    label = {CODE[0]: "md_handler_empty"}
+    for e in engines:
+        label.setdefault(e["handler"], f"md_handler_{e['id']:02x}")
+    by_id = {e["id"]: e for e in extraction.engines()}
+    out = ["        .balign 4", "        .global md_engines", "md_engines:"]
+    for i in range(ENGINE_IDS):
+        e = by_id.get(i)
+        if e is None or (i and e["family"] not in FAMILY_CODE):
+            out.append(f"        .zero 48                | {i:#04x}: no machine")
+            continue
+        live = long_at(long_at(LIVE_TABLE + 4 * i))
+        if live not in label:
+            raise ValueError(f"{e['name']} live handler {live:#x} is not a linked entry")
+        names = b"".join(n.encode("ascii").ljust(4, b"\0")[:4] for n in e["params"])
+        flags = 1 if (i == 0 or e["family"] in PLAYABLE) else 0
+        family = FAMILY_CODE.get(e["family"], 0)
+        out += [f"        .long {label[live]}          | {i:#04x} {e['name']}",
+                "        .byte " + ",".join(str(v) for v in e["defaults"]),
+                "        .byte " + ",".join(str(b) for b in names),
+                f"        .byte {flags},{family},0,0"]
+    return out
+
+
 def build(dest: Path) -> None:
     img = image()
     engines = [e for e in extraction.engines()
@@ -98,6 +140,7 @@ def build(dest: Path) -> None:
     for (lo, hi), name in zip(TABLES, ("md_table_low", "md_table_high")):
         lines += ["        .balign 4", f"{name}:",
                   f'        .incbin "{SOURCE}", {lo - extraction.OS_BASE}, {hi - lo}']
+    lines += engine_table(img, engines)
     # WP-C4's producer supplies the source SRAM value before each E12 call.
     # It is a writable long in the DRAM unit, shared by the E12 handlers.
     lines += ["        .balign 4", "        .global md_handler_sram_word",

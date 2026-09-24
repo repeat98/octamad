@@ -16,8 +16,12 @@ import handler_build  # noqa: E402
 OUT = ROOT / "out/machinedrum/c2_maps"
 PROFILE = ROOT / "out/md_reference/md_profile"
 GATE = ROOT / "out/md_reference/md_handler_gate"
-FLASH = (ROOT / "base_firmware/Elektron_SPS1-1UW_OS1.63"
-         / "elektron_sps1-1uw_os1.63.bin")
+# The user's full MD flash dump (WORKPACKETS section 1 names the top-level
+# copy; the WP-C2 run used one inside the update folder).
+FLASH = next((p for p in (ROOT / "base_firmware/elektron_sps1-1uw_os1.63.bin",
+                          ROOT / "base_firmware/Elektron_SPS1-1UW_OS1.63"
+                          / "elektron_sps1-1uw_os1.63.bin") if p.exists()),
+             ROOT / "base_firmware/elektron_sps1-1uw_os1.63.bin")
 RUNTIME = ROOT / "out/platform/runtime"
 
 

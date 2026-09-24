@@ -12,10 +12,12 @@ trig instead. On core 0 the same id is a passthrough stub. The MD's code
 and tables come from the user's pinned MD OS 1.63 update at build time
 (tools/build/md_payload.py); no firmware byte enters the repository.
 
-Not yet: the live record producer (the transport is fed by a test stream
-only), the sequencer, MD-specific persistence, MIDI, E12
-sample delivery and the hardware qualification
-(docs/proposals/MACHINEDRUM_WORKPACKETS.md).
+The ColdFire control engine (md_ctl.c, compiled to md_ctl.s) holds the
+kit and the embedded 16-lane sequencer: it runs the MD's own handlers for
+each part and plays the lanes on the parent track's step grid (WP-C4,
+WP-D3). Not yet: the editor (part selection, grid view, pages),
+MD-specific persistence, MIDI, E12 sample delivery and the hardware
+qualification (docs/proposals/MACHINEDRUM_WORKPACKETS.md).
 The MD's eight per-track effects and original mixer DSP are excluded from
 the target; the current payload already loads only the voice DSP.
 """
@@ -91,8 +93,8 @@ MODULE = Module(
     name="machinedrum",
     key="MACHINEDRUM",
     kind=Kind.HYBRID,
-    doc=("Machinedrum machine type 6 on T1-T4: fixed TRX-BD trigger on the "
-         "OT trig, 16-slot mix. Machine registration proof."),
+    doc=("Machinedrum machine type 6 on T1-T4: a 16-part kit and an "
+         "embedded 16-lane sequencer on the parent track's grid."),
 
     menu=MenuEntry(
         # Internal DSP dispatch id, hidden from FX2 by the remix. The
@@ -131,6 +133,9 @@ MODULE = Module(
     # to core 1, before stock state 5 (docs/firmware/DSP.md section 6c).
     linked=(
         Linked("mdxport", "modules/machinedrum/md_xport.s", dram=True),
+        # WP-C4: the kit and its record producer, C compiled to md_ctl.s
+        # (generate_ctl.py). md_xport asks it for a chunk once a frame.
+        Linked("mdctl", "modules/machinedrum/md_ctl.s", dram=True),
         Linked("mdmachine", "modules/machinedrum/md_machine.s", dram=True),
         # Generated under out/ from the user's pinned MD OS before linking.
         # Labels expose each descriptor's unchanged ISA_A handler.
@@ -161,6 +166,12 @@ MODULE = Module(
         Detour(0x4000D146, H("30eb0020d5fc0000003a"), "mdmachine", "md_pack_fx2",
                "select MD DSP dispatch from the machine byte in transient frame setup",
                pad_to=10),
+        # WP-D3: the lanes restart on PLAY at stock's anchor (as Euclid's do;
+        # the two modules therefore never share a remix).
+        Detour(0x4009c3d4, H("23c0800065b8"), "mdctl", "md_start_hook",
+               "restart the MD lanes at the stock PLAY anchor"),
+        Detour(0x4009c4d4, H("23c0800065b8"), "mdctl", "md_resume_hook",
+               "restart the MD lanes on the second PLAY path"),
     ),
     pokes=(
         Poke(0x4000244E, H("7204"), H("7206"),

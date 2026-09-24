@@ -42,10 +42,8 @@ with a port built from the repo's dsp56300 pin.
 `make verify-md-transport` (same OT_PROJECT/MD_EMU inputs) feeds the full
 c01_16 host stream through `md_xport.s` and the DSP mailbox. All 33,503
 captured voice blocks match the reference interpreter, including 20,544
-non-silent blocks. The producer is currently a test stream loaded by the
-port's `--load-file` option; live voice and VOL/PAN parameter production is
-WP-C4. The gain queue is ready for that producer but is not yet connected to
-the kit editor.
+non-silent blocks. That gate's producer is a test stream loaded by the port's
+`--load-file` option; the live producer is the control engine below.
 The reference uses `md_replay --interpreter`: a firmware-free arithmetic
 probe reproduces a JIT loop defect in the capture emulator. Details and
 reproduction commands: [WP-C1 report](../../docs/proposals/machinedrum_reports/WP-C1.md).
@@ -59,7 +57,37 @@ byte-compares 450 handler outputs against the linked unit. TRX-S2's live
 map scenario stays on the empty handler; its descriptor is compared
 separately on the nine captured parameter vectors. See the
 [WP-C2 report](../../docs/proposals/machinedrum_reports/WP-C2.md).
-The handler unit is present but no live OT control path calls it yet.
+
+## The control engine (WP-C4, WP-D3)
+
+`md_ctl.c` is C compiled to the checked-in `md_ctl.s` by `generate_ctl.py`
+(`--check` reports drift). It holds the kit (16 parts: engine, VOL, PAN,
+mute, SYN 1–8) and one MD pattern per OT pattern (16 lanes of 64 steps and
+64 locks each). It plays the lanes on the parent track's step grid, and
+runs the MD's own handlers to produce the records. Once a frame,
+`md_xport.s` asks it for a chunk:
+
+- the frame builder's MD hook tells it which of T1–T4 is the MACHINEDRUM
+  track;
+- on the first frame with an MD track it loads the default kit: eight TRX
+  voices and eight empty parts;
+- the lanes follow the parent track's length, scale and swing, on the clock
+  the stock PLAY paths anchor (the same two sites as Euclid, so the two
+  modules never share a remix);
+- a step's trigs are sent one frame ahead. Its locks (SYN 1–8, VOL, PAN)
+  hold for that trig;
+- VOL and PAN become the glue's gain pair (the MD's VOL² law, constant-power
+  PAN);
+- each frame one idle part's words and gains are sent again.
+
+The MD's send path this reproduces is in `MACHINEDRUM_MACHINE.md` section
+12, "How the MD sends a record". Gates, under the port:
+
+- `make verify-md-kit [CASES=all]`: the captured cases of every engine
+  (450 with `all`) reach core 1 as the MD's own trig records, and the gains
+  are right;
+- `make verify-md-seq`: T1 as MACHINEDRUM plays a poked pattern on the
+  grid, with locks, and T1's output carries the mix.
 
 The registration proof was walked in headless Octemu with FX2 at NONE:
 MACHINEDRUM appeared in SRC SETUP and on the main track view, TRX-BD played
@@ -79,11 +107,11 @@ restoration before they can process the MD mix.
 
 Not yet done:
 
-- the live record producer that calls the linked parameter handlers;
-- live VOL/PAN mapping and DSP gain updates for the per-part mix;
-- the sequencer, persistence and MIDI;
-- E12 samples;
-- the full-kit cycle budget;
+- the editor: part selection, the grid view of a part's lane, the SYN
+  pages (WP-D4, WP-D5, WP-D6); lanes are poked in the gates only;
+- persistence of kits and patterns (WP-E1), MIDI (WP-E2);
+- E12 samples (E12 parts play as GND---);
+- the full-kit cycle budget on the unit;
 - any hardware run.
 
 No flash image, sample, `.syx`, or extracted firmware blob belongs in Git.

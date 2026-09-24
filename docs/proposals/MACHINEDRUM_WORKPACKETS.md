@@ -60,7 +60,7 @@ Statuses:
 | WP-A7 The X/Y flip audit | done | `machinedrum` | `7c53cb0` | 2026-09-24 | `machinedrum_reports/WP-A7.md` | all tables and the 16 P-I buffers fit core 1's private X/Y at 178 flips + 14 rewrites (+7.8 instr/sample worst); only the sine and code overflow stay in the window; D6 accepts the cost |
 | WP-A3 Layout-driven relocation and driver | review | `machinedrum` | `50ac374` | 2026-09-24 | `machinedrum_reports/WP-A2-core1.md` | all twelve relocated kits equal their plain baselines; `md_gate.sh` and `md_init_gate.py` exit 0 (rerun 24 Sep on the B3/B4 commit) |
 | WP-A4 Boot-time init on the OT | review | `machinedrum` | `cab97a3` | 2026-09-24 | `machinedrum_reports/WP-A4.md` | relocated six-voice init spans pass; pending A2 sign-off and the WP-A3 block | |
-| WP-A5 The stereo mix | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-A5.md` | separate L/R gain tables and stereo accumulation pass Octemu; live VOL/PAN mapping and full-kit cycle gate remain |
+| WP-A5 The stereo mix | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-A5.md` | separate L/R gain tables and stereo accumulation pass Octemu; live VOL/PAN now comes from the kit (WP-C4, `md_gain`); the Python reference-mix check and the full-kit cycle gate remain |
 | WP-A6 The cycle report at OT addresses | blocked | `machinedrum` | `cab97a3` | 2026-09-24 | `machinedrum_reports/WP-A6.md` | eleven fetch runs measured; c40_16 reproduces `rc=139`; final VOL/PAN mix cost is still missing | |
 | WP-B1 Module and remix skeleton | review | `machinedrum` | `f383ecc` | 2026-09-24 | `machinedrum_reports/WP-B1.md` | builds, and `make check REMIX=bus` passes with it (24 Sep); its payload-A donor and core-0 claims move to core 1 with the WP-A2 redo |
 | WP-B2 Build-time extraction | review | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-B2.md`, `WP-B3-B4.md` | `payload_B.mem` (core 1) is now in the image: `md_image.py` builds the combined core-1 upload, which `loader.S` depacks before the DSP boot; `verify_dram_boot` reads it back from core 1 |
@@ -69,14 +69,14 @@ Statuses:
 | WP-B5 Gates and the M1 image | todo | | | | | the user flashes |
 | WP-C1 The record transport | done | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-C1.md` | full c01_16 stream: 33,503/33,503 voice blocks bit-identical to the interpreter replay; 19,335 words, no stream loss; test producer only, hardware timing unmeasured |
 | WP-C2 Port the parameter handlers | done | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-C2.md` | 450 map cases / 50 engines, 84 record bytes each match; 148 source operands relocated; TRX-S2 descriptor compared offline (live map uses empty handler) |
-| WP-C3 Machine registration | done | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-C3.md` | type 6 appears in SRC SETUP/main view; T1 plays with FX2 NONE; T2/T5 refused with a visible message; FX2 chooser hides MD |
-| WP-C4 Kits and parameters | todo | | | | | |
+| WP-C3 Machine registration | blocked | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-C3.md`, `HANDOFF-UI.md` | BUG found 24 Sep: raw type 6 makes SRC-page knob edits on the MD track land in T2's FLEX slot (store index type×6); fix drafted (MD = FLEX + signature, `drafts/md_machine_v2.s`), not built |
+| WP-C4 Kits and parameters | done | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-C4.md` | `md_ctl.c` runs the MD's handlers per part; 50/50 baseline cases and 16/29 runs of the 450-case set reach core 1 as the MD's own trig records (`make verify-md-kit [CASES=all]`; full rerun pending); VOL/PAN gains; E12 plays as GND--- |
 | WP-D1 Is the chord free? | done | `machinedrum` | `d4a626b` | 2026-09-23 | `machinedrum_reports/WP-D1.md` | neither target tests the held track key; use FUNC + track as fallback |
-| WP-D2 The sequencer data model | todo | | | | | user sign-off on the spec |
-| WP-D3 The sequencer engine | todo | | | | | |
-| WP-D4 Grid-record view | todo | | | | | |
-| WP-D5 Parameter pages | todo | | | | | SYN 1/2 only; MD TRACK EFFECTS pages omitted 24 Sep |
-| WP-D6 The info box | todo | | | | | |
+| WP-D2 The sequencer data model | review | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-D2.md` | lanes follow the parent track's clock, length, scale and swing; 64 locks per pattern; no accent in v1; needs the user's sign-off |
+| WP-D3 The sequencer engine | done | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-D3.md` | machine type 6 on T1 plays the default kit from `md_patterns`; lanes within 0.6 frames of the grid, SYN/VOL locks, audio on T1 (`make verify-md-seq`) |
+| WP-D4 Grid-record view | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/HANDOFF-UI.md` | draft `drafts/md_ui.c` (lane mirror into the MD track's OT trig mask); not built |
+| WP-D5 Parameter pages | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/HANDOFF-UI.md` | draft MD page (FLEX descriptor clone) + page mirror in `drafts/md_ui.c`; blocked first on the C3 store bug (see handoff) |
+| WP-D6 The info box | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/HANDOFF-UI.md` | draft: name lookups show `P05 TRX-SD` (`drafts/md_machine_v2.s`, `md_ui.c`) |
 | WP-E1 Persistence | todo | | | | | |
 | WP-E2 MIDI | todo | | | | | |
 | WP-E3 Admission | todo | | | | | |

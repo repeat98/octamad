@@ -48,13 +48,13 @@ Statuses:
 |---|---|---|---|---|---|---|
 | WP-00 Phase 0/1 and the driver in the replay | done | `machinedrum` | `f4a93d8` | 2026-09-23 | `MACHINEDRUM_MACHINE.md` §12 | replay, relocation, hot split, driver steps 1–3 |
 | WP-A1 Core-0 memory ledger | blocked | `machinedrum` | `dea1167` | 2026-09-23 | `machinedrum_reports/WP-A1.md` | four ledgers and write-up done; two heavy slice/recorder fixtures exited -11 before a wordmap, so X `0x2840–0x3fff` remains 🟡 |
-| WP-A2 The layout | review | `machinedrum` | `3573d25` | 2026-09-23 | `machinedrum_reports/WP-A2.md` | concrete non-overlapping MD map; user must choose stock-slot and voice-home trade-offs |
-| WP-A3 Layout-driven relocation and driver | blocked | `machinedrum` | `cab97a3` | 2026-09-24 | `machinedrum_reports/WP-A3.md` | proposed `X/Y:0x3400` gate fails most kits; user must choose the A2 voice-home policy before rerun | |
+| WP-A2 The layout | review | `machinedrum` | `3573d25` | 2026-09-23 | `machinedrum_reports/WP-A2.md` | voice home A (`X/Y:0x3400`, FX1 slot given up) signed off by the user 24 Sep; still open: the shared-window stock sacrifices (incl. core 1's half) and the six-P-I cap |
+| WP-A3 Layout-driven relocation and driver | blocked | `machinedrum` | `cab97a3` | 2026-09-24 | `machinedrum_reports/WP-A3.md` | cause found 24 Sep: not the voice home (same failure at `0x1000`; still fails with the block unmoved) but the sine and the `0x140000` tables both mapped to `0x30000`; waits on the B2 packing |
 | WP-A4 Boot-time init on the OT | review | `machinedrum` | `cab97a3` | 2026-09-24 | `machinedrum_reports/WP-A4.md` | relocated six-voice init spans pass; pending A2 sign-off and the WP-A3 block | |
 | WP-A5 The stereo mix | blocked | | | | | decision D1 |
 | WP-A6 The cycle report at OT addresses | blocked | `machinedrum` | `cab97a3` | 2026-09-24 | `machinedrum_reports/WP-A6.md` | eleven fetch runs measured; c40_16 reproduces `rc=139`, and D1/WP-A5 mix cost is still missing | |
 | WP-B1 Module and remix skeleton | review | `machinedrum` | `f383ecc` | 2026-09-24 | `machinedrum_reports/WP-B1.md` | manifest/remix compose and build; shared-window claims await B2 integration, all results pending user sign-off | |
-| WP-B2 Build-time extraction | blocked | `machinedrum` | `50ecf58` | 2026-09-24 | `machinedrum_reports/WP-B2.md` | proposed sine/source span collides; follow-up static packing audit is conservatively 58 words over; user must sign off a packed split or revised owner map | |
+| WP-B2 Build-time extraction | blocked | `machinedrum` | `50ecf58` | 2026-09-24 | `machinedrum_reports/WP-B2.md` | decided 24 Sep (delegated by the user): packed split, option A, with single-space tables in private X/Y; next: the per-table access-space audit, then per-table moves |
 | WP-B3 The dispatcher hook | todo | | | | | |
 | WP-B4 The fixed trigger path | todo | | | | | |
 | WP-B5 Gates and the M1 image | todo | | | | | the user flashes |

@@ -64,6 +64,24 @@ no requirement for eight simultaneous Machinedrum instances.
   through the OT's own grid recording (section 4, "Entering and leaving the
   MD sequencer").
 
+### Decisions (24 September 2026)
+
+- **Voice home A** (the user): the MD voice records live at `X/Y:0x3400–0x37ff`,
+  and core 0's FX1 slot there (`0x3400–0x3fff`) is given up. Options B and C in
+  `layout.py` are not taken.
+- **B2 packing: option A, the packed split** (decided by the agent; the user
+  delegated it). Code and tables are packed into the MD's share of the window
+  and into private memory. A table read in one space only goes to private
+  memory: Y-only tables to `Y:0x4000–0x85ff` as proposed, X-only tables to
+  core 0's free private X (section 12, "Diagnosis of the A3 gate"). Tables read
+  in more than one space, and all code, stay in the window. Option B, "a
+  separate 32K shared span", does not exist: the sine fills core 0's half and
+  the rest of the window is already claimed.
+- Still open for the user: the stock storage the window proposal takes away
+  (core 0's T7/T8 FX2 storage and core 1's half, `0x38013–0x3ffff`, which
+  conflicts with "tracks 1–4 stay fully stock in memory" above), and the cap of
+  six P-I voices.
+
 For example, T5 can host the Part's MD instance with a kick on internal part
 1, snare on part 2, and hats on parts 3/4. A second instance in the same
 Part is not planned (section 1, decisions).
@@ -1411,8 +1429,8 @@ disassembles the result back and refuses mis-encodings and label prefixes.
   back to the old `0x800` block. c37_16 and c47_2 retain their prior exact
   and known-residual results, so the failure is kit/path dependent rather
   than a parser crash.
-- *inferred* The proposed `0x3400` home changes a state or address-dependent
-  path in most kits; the current evidence does not establish whether the
+- ❌ (superseded 24 Sep, see "Diagnosis of the A3 gate" below) *inferred* The
+  proposed `0x3400` home changes a state or address-dependent path in most kits; the current evidence does not establish whether the
   cause is an additional absolute dependency or a stock FX1 collision.
   This is precisely the A2 voice-home decision cost, not permission to pick
   another home overnight.
@@ -1554,6 +1572,51 @@ disassembles the result back and refuses mis-encodings and label prefixes.
   audit is 58 words over, or (B) reserve a separate 32K
   shared source span and surrender/relocate another owner. All B2 results are
   **pending the user's sign-off**.
+
+### Diagnosis of the A3 gate (24 September 2026)
+
+- ✅ The A3 failure does not depend on the voice home. On c20_16, with the
+  committed hot plan and driver, voice home `0x1000` and voice home `0x3400`
+  both give `8,253 identical, 25,246 differ`. With the voice block left at
+  `0x800` (no `Q` lines, driver `VOICE = 0x800`) it still fails:
+  `9,424 identical, 24,075 differ (first difference at block 2240)`. The
+  plain replay is `33,499/0`.
+- ✅ The MD itself does not use `X/Y:0x3400–0x37ff`: the c20_16 snapshot is
+  zero there and the plain replay writes nothing there. (The `0x34xx` runs in a
+  capture's `written.txt` come from the overnight relocated run; every replay
+  rewrites that file.)
+- ✅ The cause: `md_relocate.moved()` sends the sine base `0x148000` to the
+  sine allocation `0x30000`, and `REGIONS` sends the `0x140000–0x147fff` table
+  span to the same `0x30000`. 44 engine reads have the form
+  `x:(rN+$148000)` (32) or `y:(rN+$148000)` (12), counted in a linear
+  disassembly of both code regions (for example, `P:0x1000c6`,
+  `0x100794`, `0x102f38`, `0x103468`), plus `#>$148000` at `0x102c6d` and
+  `0x1033f8`; after relocation, they read the table span instead of the sine.
+  The 8 `#>$135600` P-I base loads (`0x14210d` … `0x145855`) point at
+  `0x3da00`, where the replay has no P-I data. This is the same collision
+  WP-B2 reported for the build. No voice home can pass the gate until the sine
+  and the tables have separate homes.
+- ✅ The sine is read through both X and Y (the 44 sites above), so it must
+  stay in the shared window (or be held twice, 64K words, which does not fit).
+- ✅ The four `#>$800` immediates are not all voice-block bases. Only
+  `P:0x100057` (boot init, patched) and `P:0x64` (the loop, replaced by the
+  driver) are. `0x10365c` (`add #>$800,b` under `ifge`) and `0x10368a`
+  (`mpyi #>$800,x0,a`) are arithmetic. No snapshot word in `X/Y:0–0x1fff`
+  points into `0x800–0xbff`, apart from the loop word `Y:0x141`.
+- *inferred* Capacity for the packed split, after the 32K sine in
+  `0x30000–0x37fff`: the window's other half holds the 12,957 post-hot code
+  words, the 192-word driver and 9,216 words of P-I buffers, which leaves
+  about 10,400 words for tables. Private Y `0x4000–0x85ff` holds 17,920.
+  Core 0's free private X (`CORE0_MEMORY.md`) adds about 9,870 more:
+  `0x2840–0x33ff` (3,008, 🟡 under the heavy fixture), `0x3800–0x3ffe` (2,047,
+  🟡 likewise), `0x5840–0x60ff` (2,240), `0x7a92–0x7fff` (1,390),
+  `0x8343–0x857f` (573) and `0x8d98–0x8fff` (616). Against the 28,061-word
+  maximum table estimate, that leaves about 10K words spare, if enough tables
+  are read in one space only. That is not measured yet.
+- Next: (1) measure which space (P, X, Y) each table span is read through,
+  across the twelve kits; (2) replace the two whole-span moves with per-table
+  moves to those homes, and place the sine and P-I data in the replay where
+  the patches point; (3) rerun the twelve-kit gate at voice home `0x3400`.
 
 ### Open for Phase 1
 

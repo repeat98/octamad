@@ -82,3 +82,24 @@ base had moved to `0x3400`, rather than a relocation parser failure.
   user decisions. No alternate layout was selected overnight.
 - WP-A4’s independent relocated-init check passes the proposed six-voice
   initialized spans, but it is review-only while this A3 gate is blocked.
+
+## Follow-up, 24 September 2026 (morning)
+
+The user signed off voice home A (`X/Y:0x3400`). Bisecting on c20_16
+showed that the gate failure does not come from the voice home:
+
+```text
+voice home 0x1000:             blocks: 8253 identical, 25246 differ (first difference at block 0)
+voice home 0x3400:             blocks: 8253 identical, 25246 differ (first difference at block 0)
+voice block unmoved (no Q):    blocks: 9424 identical, 24075 differ (first difference at block 2240)
+plain replay:                  blocks: 33499 identical, 0 differ
+```
+
+The cause is that `md_relocate.moved()` maps both the sine base
+`0x148000` and the `0x140000–0x147fff` table span to `0x30000`, and
+44 engine reads index the sine as `x:/y:(rN+$148000)`. The details are
+in `MACHINEDRUM_MACHINE.md` §12, "Diagnosis of the A3 gate". A3 now
+waits on the B2 packing (per-table moves, with the sine and the P-I
+data placed where the patches point). It no longer waits on the voice
+home.
+

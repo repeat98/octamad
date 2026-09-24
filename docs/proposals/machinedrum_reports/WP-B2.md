@@ -166,3 +166,26 @@ hardware result.
   policy; no alignment slack can be assumed.
 - The user must also decide how the pre-boot Y descriptor alias is represented
   in the eventual load records. No new layout decision was made overnight.
+
+## Decision, 24 September 2026
+
+The user delegated this choice. **Option A, the packed split**, with
+one extension: a table that is read in one space only goes to private
+memory. Y-only tables go to `Y:0x4000–0x85ff`, as proposed. X-only
+tables go to core 0's free private X (about 9,870 words, listed in
+`MACHINEDRUM_MACHINE.md` §12, "Diagnosis of the A3 gate"). The sine
+is read through both X and Y, so it stays in the window. Option B is
+not taken: the window has no second free 32K span.
+
+The inferred capacity leaves about 10K words spare against the
+28,061-word maximum table estimate, so the 58-word shortfall above does
+not apply once X-only tables can leave the window. That depends on a
+measurement not yet made: which space each table span is read through.
+
+Next:
+1. Measure the access space per table span across the twelve kits.
+2. Replace the two whole-span moves with per-table moves, and give the
+   sine its own destination.
+3. Rerun the twelve-kit gate (this also unblocks WP-A3).
+4. Make `md_payload.py` emit from the packed map.
+

@@ -130,18 +130,18 @@ OPTIONS = {
     "A_move_base_fx1": {
         "voice_base": 0x3400,
         "cost": "forfeit the 3,072-word FX1 slot 0x3400..0x3fff; no per-batch copy",
-        "status": "selected proposal",
+        "status": "signed off by the user, 24 Sep 2026",
     },
     "B_swap_pi_x_words": {
         "voice_y_base": 0x800,
         "voice_x_base": 0x2840,
         "cost": "preserve FX1, but move/copy about 17 X words per P-I voice per batch; runtime cost is unmeasured",
-        "status": "user choice",
+        "status": "not chosen (24 Sep 2026)",
     },
     "C_batch_overwrite_curve_table": {
         "voice_base": 0x800,
         "cost": "save/restore the overlapping X curve bank around the MD batch; stock-table timing and cycle cost are unmeasured",
-        "status": "user choice; unsafe until a scheduler proof",
+        "status": "not chosen (24 Sep 2026); unsafe until a scheduler proof",
     },
 }
 

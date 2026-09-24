@@ -1842,15 +1842,40 @@ tables (`md_forms`). The cycle and rate figures are emulator counts.
 - ✅ Gate (`md_gate.sh`, this machine's captures): six kits are exact, and
   c10_16 keeps its known 2-block residual. c1d_16, c37_16, c20_16, c40_16
   and c42_16 differ from about block 2,273 on.
-- ✅ With every table kept in place, all twelve pass. The failures follow
-  the P-I move (c20_16) and table `0x142f33` (c37_16, c40_16). Through the
-  first bad block the accessed addresses are identical, so a value differs.
-  Open: `machinedrum_reports/WP-A2-core1.md`.
+- Correction: The frozen statement that every kit is exact with all tables kept
+  omitted c1d_16's known one-block driver residual. Its keep-all result is
+  31,562/1,950 versus the plain 31,563/1,949. c20_16 follows the P-I
+  buffer move; c37_16, c40_16 and c42_16 follow table `0x142f33`.
+  The read-value diagnosis is in `machinedrum_reports/WP-A2-core1.md`.
 - ❌ The WP-A7 plan figures (X 10,636 / Y 41,111, 14 splits, +7.8 per sample)
   assumed a lump reservation and unfragmented tables. The current plan,
   with the real voice block, merged fragments and window fallback, is X
   9,247 / Y 44,381 / window 2,675, with 22 splits at +12.1 per sample
   (c40_16).
+
+### WP-A3 first value divergences (24 September 2026)
+
+- Measured: The interpreter read-value trace, `MD_REPLAY_VALUES` with
+  `MD_REPLAY_VALUE_BLOCK`, and `md_values.py` align reads across the
+  relocation map. The trace runs without changing the plain or moved
+  result at the inspected blocks. The normal and interpreter replay
+  builds both compile.
+- Measured: c37_16 at block 2458, c40_16 at 2273 and c42_16 at 2357
+  first read a different non-pointer value at `P:142dd3 Y:0x20`:
+  `0x800001` plain versus `0x000001` relocated. The same table word
+  `0x0027a6` was read immediately before. The 32 X pointer words
+  generated in `L:0..31` shift by the table-address delta; four Y
+  phase words differ by `0x800000`.
+- Measured: c20_16 at 2289 and c1d_16 at its first *new* block 2290
+  share the P-I buffer path. `P:102fae` reads an equivalent moved
+  buffer pointer from `X:0x15`, then `P:102faf` adds it to
+  accumulator A; `P:102fc5 X:0x1a` is the first changed non-pointer
+  read. Keeping the P-I buffer region removes those new differences.
+  c1d_16 still has the separate driver block at 2288.
+- Inferred: Both paths require preserving the original numerical pointer
+  value while translating actual memory accesses to the core-1 home.
+  That transformation, its cycle cost and the full twelve-kit gate
+  remain open. The report has the exact control runs.
 
 ### Open for Phase 1
 

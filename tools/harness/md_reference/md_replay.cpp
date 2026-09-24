@@ -32,6 +32,9 @@
 // md_flip.py reads it. With MD_REPLAY_INIT_ONLY=1 it runs only the boot init
 // (P:100057..10008d) at MD addresses, records that, and stops.
 //
+// MD_REPLAY_VALUES=<file> with MD_REPLAY_VALUE_BLOCK=<n> records RAM read
+// values made by instructions in one block (interpreter build only).
+//
 //   md_replay <capture dir> [--reloc] [--driver] [--init] [out.wav slot]
 //
 // --reloc applies <capture dir>/reloc.txt (md_relocate.py) after loading the
@@ -79,6 +82,9 @@ namespace
 	// count being the key's total accesses, repeated on each of its runs.
 	constexpr dsp56k::TWord g_noPc = 0xffffffff, g_intHi = 0x10000, g_winLo = 0x30000, g_winHi = 0x40000;
 	dsp56k::TWord g_curPc = g_noPc;
+	dsp56k::Memory* g_valueMemory = nullptr;
+	FILE* g_valueFile = nullptr;
+	size_t g_valueBlock = SIZE_MAX, g_valueTarget = SIZE_MAX;
 	bool g_access = false;
 	struct AccessBits
 	{
@@ -111,6 +117,18 @@ namespace
 	{
 		if(g_access)
 			recordAccess(_area, _offset, false);
+		if(g_valueFile && g_curPc != g_noPc && g_valueBlock == g_valueTarget &&
+			(_offset < g_intHi || (_offset >= g_winLo && _offset < g_winHi) ||
+			 (_offset >= g_readLo && _offset < g_readHi)))
+		{
+			// The hook precedes Memory::get's return. Mirror only RAM reads
+			// with the hook disabled, so the lookup cannot recurse.
+			dsp56k::g_mdReadHook = nullptr;
+			const auto value = g_valueMemory->get(_area, _offset);
+			dsp56k::g_mdReadHook = onRead;
+			const char area = _area == dsp56k::MemArea_P ? 'P' : _area == dsp56k::MemArea_X ? 'X' : 'Y';
+			std::fprintf(g_valueFile, "%zu %06x %c %06x %06x\n", g_valueBlock, g_curPc, area, _offset, value);
+		}
 		if(_offset < g_readLo || _offset >= g_readHi)
 			return;
 		g_readFlags[_offset - g_readLo] |= _area == dsp56k::MemArea_P ? 1 : _area == dsp56k::MemArea_X ? 2 : 4;
@@ -880,16 +898,29 @@ int main(int _argc, char** _argv)
 #ifdef MD_REPLAY_READS
 	const char* readsPath = std::getenv("MD_REPLAY_READS");
 	const char* accessPath = std::getenv("MD_REPLAY_ACCESS");
-	if(readsPath || accessPath)
+	const char* valuesPath = std::getenv("MD_REPLAY_VALUES");
+	if(valuesPath)
+	{
+		const char* block = std::getenv("MD_REPLAY_VALUE_BLOCK");
+		if(!block || !(g_valueFile = std::fopen(valuesPath, "w")))
+		{
+			std::cerr << "MD_REPLAY_VALUES needs a writable path and MD_REPLAY_VALUE_BLOCK\n";
+			return 2;
+		}
+		g_valueTarget = std::stoull(block);
+		g_valueMemory = &memory;
+	}
+	if(readsPath || accessPath || valuesPath)
 	{
 		g_readFlags.assign(g_readHi - g_readLo, 0);
 		dsp56k::g_mdReadHook = onRead;
 		dsp56k::g_mdWriteHook = onWrite;
 	}
-	if(accessPath)
+	if(accessPath || valuesPath)
 	{
-		g_access = true;
-		g_executed.assign(g_readHi, 0);
+		g_access = accessPath != nullptr;
+		if(g_access)
+			g_executed.assign(g_readHi, 0);
 		if(g_fetch)
 			g_execHook = [](DSP* _dsp) { onExecAccess(_dsp); onExecFetch(_dsp); };
 		else
@@ -922,6 +953,11 @@ int main(int _argc, char** _argv)
 	const size_t maxBlocks = std::getenv("MD_REPLAY_BLOCKS") ? std::stoul(std::getenv("MD_REPLAY_BLOCKS")) : groups.size();
 	for(size_t i = 0; i < groups.size() && i < maxBlocks; ++i)
 	{
+		if(std::getenv("MD_REPLAY_PROGRESS") && i % 256 == 0)
+			std::cerr << "replay block " << i << "/" << std::min(maxBlocks, groups.size()) << "\n";
+#ifdef MD_REPLAY_READS
+		g_valueBlock = i;
+#endif
 		const auto& g = groups[i];
 		const auto& rec = *g.rec;
 		const auto& ref = *g.ref;
@@ -1158,6 +1194,9 @@ int main(int _argc, char** _argv)
 	}
 
 #ifdef MD_REPLAY_READS
+	if(g_valueFile)
+		std::fclose(g_valueFile);
+	g_valueFile = nullptr;
 	if(readsPath)
 	{
 		dsp56k::g_mdReadHook = nullptr;

@@ -70,27 +70,67 @@ Hot code is 6,511 words; the window code is about 8,250.
 
 ## What is known about the five failing kits
 
-- ✅ With every table kept in place (`--keep all`), all five are exact. So
-  the code relocation, the hot split, the flips, the splits and the sine move
-  are correct.
-- ✅ c20_16 breaks only when the P-I buffers move. Up to its first bad block,
-  the only instructions whose accesses differ are the stray readers:
-  `0x142180`, `0x142ddd`/`0x142dde`, `0x143521`, `0x143e84`. Their pointers
-  run through the P-I buffers' old addresses.
-- ✅ c37_16 and c40_16 break only when table `0x142f33` moves, to private X
-  or to the window alike. Through the first bad block every instruction
-  accesses the same addresses in both runs, window included, so a *value*
-  differs.
-- ✅ Poisoning the plain run's low X scratch (`MD_REPLAY_POISON=X:0-100`)
-  changes nothing in c37_16. Stale low-X scratch is not the carrier.
-- *Open, the next step.* Find the value that differs in c37_16 slot 10
-  (P-I SD) at block 2458. Candidates:
-  - an address held in a register or in Y scratch and used as data (the
-    32-pointer phase table the sample readers build in `L:0..31` is one);
-  - the stray readers' values.
+- Correction: The frozen claim that `--keep all` makes every kit exact was too
+  strong. c1d_16 retains one known driver-residual block at 2288 even
+  with every table kept; the other table-driven failures disappear.
+- Measured: c20_16 breaks when the P-I buffers move. Its first non-pointer
+  value difference is in the generated low-X phase sequence.
+- Measured: c37_16, c40_16 and c42_16 break when table `0x142f33` moves.
+  The table word read by the renderer is unchanged; the numerical phase
+  values derived from its new pointer are not.
+- Measured: Poisoning the plain run's low X scratch
+  (`MD_REPLAY_POISON=X:0-100`) changes nothing in c37_16.
 
-  A value-level diff (record the values read, not only the addresses) would
-  settle it.
+## 24 September continuation: read values at the first failing blocks
+
+The interpreter replay now accepts `MD_REPLAY_VALUES=<file>` and
+`MD_REPLAY_VALUE_BLOCK=<zero-based block>`; `md_values.py` maps moved
+PCs, data addresses and pointer-looking values back through `reloc.txt`.
+The trace records instruction RAM reads in execution order. Build with
+`cmake --build out/md_reads/build --target md_replay_reads -j8`.
+For c37_16, set `MD_REPLAY_BLOCKS=2459` and
+`MD_REPLAY_VALUE_BLOCK=2458`, run once plain and once with
+`--reloc --driver`, then compare the trace files with
+`python3 tools/harness/md_reference/md_values.py <plain> <moved> <reloc.txt>`.
+The scratch traces contain capture-derived values and stay outside Git.
+
+- Measured: c37_16 (block 2458), c40_16 (2273) and c42_16 (2357):
+  the first non-pointer difference is `P:142dd3` reading `Y:0x20`.
+  The matching keep-`142f33` control reads `0x800001`; the current X
+  placement reads `0x000001`. The preceding sample read has the same
+  word (`X:142f4b` or `X:007aaa`, both `0x0027a6`).
+  At the phase loop's relocated `P:0x1938`, the accumulator high words
+  contain the old versus new table pointer. A dump immediately after
+  the 32-pointer table is built shows all 32 X words shifted by the
+  address delta, while Y:0, Y:1, Y:0x20 and Y:0x21 differ by
+  `0x800000`. Keeping only `142f33` makes c37_16's first 2,459
+  blocks match; moving it to X or the window fails.
+- Measured: c20_16 (block 2289) and c1d_16 (first *new* block 2290):
+  `P:102fae` reads a P-I buffer pointer from `X:0x15`. Its moved
+  value is an equivalent physical pointer, but the first non-pointer
+  difference is at `P:102fc5`, reading `X:0x1a` (c20_16:
+  `0x8bfa7c` versus `0x78ac7c`; c1d_16:
+  `0x8c003c` versus `0x78b23c`). The disassembly at
+  `P:102faf` adds that pointer to accumulator A before generating
+  the scratch sequence. Keeping the P-I buffers at their old addresses
+  removes c20_16's first mismatch and c1d_16's new mismatch at 2290.
+- Measured: c1d_16 has a separate driver residual: even with `--keep all`,
+  its full result is 31,562 identical / 1,950 different, against the
+  plain 31,563 / 1,949. The extra block is 2288, where
+  `P:102ee5` reads `X:0xa2` as `0x7fffff` instead of zero.
+  The current plan adds 662 more differing blocks; the first is 2290.
+- Measured: `--no-live` is not a useful broad control: c37_16 jumps to
+  wiped `P:0xa5a5a5` after 1,280 instructions without required live
+  pointers. No low X/Y snapshot word lies in
+  `0x142f33..0x1433d6` in c37_16, so an accidental live-pointer
+  rewrite in that range is not its cause.
+
+*Inferred fix direction:* these engines use address values in numerical
+phase calculations as well as for memory access. A simple pointer
+rewrite changes the math. Relocation needs separate logical MD pointer
+values and physical OT access addresses at these two P-I sequences;
+verify the transformation on all twelve kits and count its instruction
+and cycle cost before taking it into the payload.
 
 ## Caveats
 
@@ -107,7 +147,10 @@ Hot code is 6,511 words; the window code is about 8,250.
 
 ## Handover
 
-1. The value-level diff for c37_16/c40_16 (P-I, table `0x142f33`) and for
-   c20_16.
-2. Then c1d_16 and c42_16, which likely share a cause.
+1. Make the P-I code preserve logical MD pointer arithmetic while
+   translating memory accesses to the physical core-1 homes. The two
+   measured sites are `P:142db4..142dd3` for table `142f33` and
+   `P:102fae..102fc5` for the P-I buffers.
+2. Rerun the twelve-kit gate and separate c1d_16's known one-block
+   driver residual from any new relocation mismatch.
 3. Resolve the `P:0x0143` port and the E12-tail homes before WP-B2.

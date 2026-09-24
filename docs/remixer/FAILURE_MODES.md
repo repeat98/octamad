@@ -829,9 +829,89 @@ beat (take 7) they stayed at that phase against T1's audio, so they follow
 T1's trigs or T1's audio, not the beat. Where that transient sits against
 the trig is not known (it depends on the sample). Bursts are 23-53 samples.
 
-**Open.** Whether stock 1.40C bursts in a six-minute take (the stock row
-above is two minutes). Then: whether the trig or T1's audio sets them (T1
-AMP VOL 0, trigs running), and which layer (image 69, no engines, six
-minutes). The record's "dead words at 0x360d3-5" (send_client.asm) are
-unexplained and not tied to this any more.
+**24 Sep 2026: bisected on the unit** (a new project per image, the same
+setup; T1 on input 3 and T5 on input 4 this time; 6-minute takes unless
+marked, 12-minute takes marked 12). Sam: stock 1.40C does not burst.
 
+| image / take | what | bursts on T5 |
+|---|---|---|
+| 91 take 8 | T1 AMP VOL 0, trigs running | 0 |
+| 69 | SEND + stations, no engines (FX1 NONE, T1-7 SEND, T8 DELAY) | 0 |
+| 91 take 10 | T5 = SEND: the delay on T1, no reverb | 3 |
+| 91 take 11 | T1 = SEND: the reverb on T5, no delay | 0 |
+| 91 take 14 | no delay; SEND on T2-4 burning ~300 cycles/sample each | 0 |
+| 92 | the delay's write-back of T1's frame moved to X:$20.. | 4 |
+| 93 (WOW cut 3) | the delay stops after its warm-up and live stamp | 1 |
+| 93 (WOW cut 1) | the delay stops after its preamble and role lock | 5 |
+| 94 | no role lock, the delay in full | 7 (12) |
+| 95 | the delay's DSP proc returns at its first instruction; ColdFire side of id 6 unchanged | 0 (12) |
+| 96 (WOW stop 3) | the delay stops after its preamble (host check, frame offset, rotation tracker); no shared write | 0 (12) |
+| 97 | 94 with no absolute-address store from core 1 into the shared window | 4 (12) |
+| 98 | 97 with no live stamp and no warm-up `y:$981` store: no word written by both cores | 2 (8.4, capture dropped) |
+| 99 | every bus word in core 1's half (`XBUS_BASE` 3c000), both delay lines private 16K: core 1 never writes core 0's half | 1 (12) |
+
+At the bursting rate (about 3.5 per six minutes) a six-minute 0 occurs by
+chance 5-9% of the time and a twelve-minute 0 about 0.1%. Take 8 is read
+as one of the chance zeros: nothing the delay runs before its sample loop
+touches T1's audio, and 93/94 burst without it.
+
+**What that leaves.** The bursts need the delay's DSP code running on T1
+past its preamble (95 and 96 against every other delay image). Ruled out
+on the unit: the ColdFire side of id 6 (descriptor, page-2 delivery, CC
+PAGE 2, MODE DEFAULTS, RIG HOSTS; TEMPO SYNC by image 70's two-minute
+capture, 10 bursts), CPU load on core 1, the reverb, the frame write-back,
+the role lock alone, absolute-address stores, a word written by both
+cores, and which half of the shared window the bus scratch sits in.
+
+**Burst content.** 38 bursts from ten takes: two waveforms repeat with
+|corr| > 0.97 across images 91-94 and both days (7 and 6 copies), plus
+pairs, so the garbage comes from a fixed source. They do not match T1's
+recorded audio, T1's sample file (`Acdrum.wav`, both channels,
+interleaved, every second sample) or any window of the DSP payloads' P/X/Y
+data (best |corr| 0.70 each, not a match). The codec's filtering smears a
+broadband burst, so a raw-data search is weak evidence either way.
+
+**Open.** Which part of the delay's per-block decodes or sample loop
+(the aux read, the chain write, the per-block bus reads, the line work)
+the bursts need. Branches: `diag91`..`diag98`, `core1scratch99`,
+`nolock94`, `fix97`; captures in `out/hw/v9*.wav` (machine-local). The
+record's "dead words at 0x360d3-5" (send_client.asm) are unexplained.
+
+**24 Sep 2026, the takes re-read and three zero-flash takes (image 99 on
+the card, census with the aligned-copy check, `tools/harness/burst_census.py`).**
+The event detector had only looked at the channel that crossed 0.35 FS.
+Aligning the OTHER channel against its own copy one or two trigs earlier
+(the audio repeats every trig; corr 0.99-1.00) shows T1's print deviating
+in the SAME 16-sample block in 29 of 32 bursts across images 91-99, by
+0.03-0.35 FS, below the threshold. The burst on the other side is one
+block of broadband words that clip (-1.00 twice in one burst), near full
+scale, while that channel is otherwise at -64 dBFS rms. The same T1 audio
+instant gives the same burst waveform every time (12 copies of one
+cluster across 91, 92, 93, 94, 99), so the content is a function of T1's
+audio. Two earlier readings did not survive: "the T1 block is
+sign-flipped" (the swap take put deviations of the same sign as T1's
+audio) and "T1's gain/pan are torn in the 64-word block core 0 hands core 1
+at X:0x30004" (under the port that block is input audio A-D x 16 samples
+for THRU machines; a STATIC T1 does not pass through it). The AMP VOL 0
+zero of take 8 was a true zero, not a chance one.
+
+| take (12 min each) | change | bursts | T1's side deviates |
+|---|---|---|---|
+| v99_23_swap | T1 BAL hard right, T5 hard left | 4, on the side opposite T1 | 3 of 4 (one alignment poor) |
+| v99_24_t5lvl0 | + T5 LEVEL 0 | 6, same side | 5 of 6 |
+| v99_25_cue | CUE L/R recorded instead of MAIN, T1 cued | 5, same side | 4 of 5 |
+
+So: the junk is in T1's stereo block, on both channels of it, full scale
+on the side T1 is panned away from; it is there before the main mix (the
+CUE mix shows it) and it is not T5's block (LEVEL 0 changes nothing).
+With the 23 Sep bisect (the lock-only delay that writes no audio bursts,
+the preamble-only delay does not) it is not the delay's audio output
+either. The dispatcher re-sets r0, r1, n1, r3, x1 and y1 before the
+read-back packer (`P:0x303-0x35e` on B), so a data-register left by proc
+is not a path; m0-m6 were saved on image 83 and it still burst. Where
+between T1's audio block after proc and the read-back words at
+`X:0x2600` the junk appears is the open question. The pan swap does NOT
+discriminate T1's block from T5's (both put the burst opposite T1); T5
+LEVEL 0 does. The CUE outs carry nothing until the track is cued.
+`tools/rec` needs the device name as its third argument (without it it
+looks for EVO4 and exits at once).

@@ -46,7 +46,7 @@ with or without rewriting its split/dual sites into single-space moves, which
 costs one instruction per execution); groups are placed largest first, taking
 the option with the fewest window words, then the lowest rewrite rate, then
 the fewest flips, whose regions pack best fit into core 1's free spans
-(X_SPANS, Y_SPANS) after the MD's internal data and the driver's Y.
+(layout.table_spans), each at its old alignment.
 
 A verdict is only as good as the captures: an instruction no capture ran says
 nothing about its targets. The static census at the end counts the reachable
@@ -92,16 +92,18 @@ DUAL = {"Movexy"}
 LONG = {"Movel_ea", "Movel_aa"}
 REP_NO_OPERAND = {"Rep_xxx", "Rep_S"}
 STRAY_WORDS, STRAY_RATIO = 64, 8
-# Core 1's private memory for the MD (MACHINEDRUM_MACHINE.md section 12, "Core
-# 1's memory and the MD's full footprint"; WP-A2-ledger-core1.txt): free X in
-# spans of at least 256 words, and T1-T4's FX Y (FX1 Y:0x1000-0x3fff, FX2
-# Y:0x4000-0xbfff) plus the free Y:0x07a5-0x0fff.
-# A table is addressed as base plus index, so it needs one contiguous span.
-X_SPANS = [0x3f00 - 0x2840, 0x6000 - 0x5840, 0x8040 - 0x7a92, 0x9000 - 0x8858]   # 5,824 1,984 1,454 1,960
-Y_SPANS = [0xc000 - 0x07a5]                                                      # 47,195: 0x07a5-0xbfff
-# The OT-side driver's own private Y (modules/machinedrum/layout.py: loop
-# words, output buffer, save area, stash), reserved beside the MD's internal Y.
-DRIVER_Y = 0x20 + 0x200 + 0x24 + 0x240
+# Core 1's table ground comes from the layout (modules/machinedrum/layout.py):
+# the voice records and the driver's storage are allocations of their own, so
+# the spans here are what is left for tables. A table is addressed as base
+# plus index, so it needs one contiguous span; it keeps its old alignment
+# (see align_of) in case it is also a modulo buffer.
+sys.path.insert(0, str(ROOT / "modules" / "machinedrum"))
+import layout as md_layout  # noqa: E402
+# 0x200: the P-I buffers' measured modulo (m2 = $1ff); the sine's 32K is
+# placed by the layout, not packed.
+ALIGN_MAX_BITS = 9
+MERGE_GAP = 0x200
+ASM = ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_asm"
 
 NAMES = {}
 PATTERN = {}
@@ -207,6 +209,81 @@ def runs(addresses):
     return out
 
 
+def align_of(address):
+    """The alignment a moved region keeps: the largest power of two dividing
+    its old start, up to 2^ALIGN_MAX_BITS (a modulo buffer needs its base
+    aligned to the power of two above its size)."""
+    if address == 0:
+        return 1 << ALIGN_MAX_BITS
+    return 1 << min((address & -address).bit_length() - 1, ALIGN_MAX_BITS)
+
+
+def assemble(lines):
+    """dsp_asm the lines at P:0, one word each; returns the words."""
+    with tempfile.TemporaryDirectory(prefix="md-flip-asm-") as d:
+        src, out = pathlib.Path(d) / "s.asm", pathlib.Path(d) / "s.bin"
+        src.write_text("".join(line + "\n" for line in lines))
+        r = subprocess.run([str(ASM), "-in", str(src), "-org", "0", "-out", str(out)],
+                           capture_output=True, text=True)
+        if r.returncode or not out.exists():
+            die("dsp_asm failed: " + r.stdout + r.stderr)
+        blob = out.read_bytes()
+    words = [blob[i] | blob[i + 1] << 8 | blob[i + 2] << 16 for i in range(0, len(blob), 3)]
+    if len(words) != len(lines):
+        die(f"dsp_asm gave {len(words)} words for {len(lines)} one-word moves")
+    return words
+
+
+REGS = {"a": {"a"}, "a0": {"a"}, "a1": {"a"}, "a2": {"a"}, "b": {"b"}, "b0": {"b"}, "b1": {"b"},
+        "b2": {"b"}, "x": {"x0", "x1"}, "y": {"y0", "y1"}, "x0": {"x0"}, "x1": {"x1"},
+        "y0": {"y0"}, "y1": {"y1"}}
+
+
+def regs(text):
+    """The data-ALU registers named in an operand list (address registers
+    of an ea are not data)."""
+    out = set()
+    for tok in re.split(r"[,\s]+", re.sub(r"[xyl]:\([^)]*\)[+-]?(n\d)?", "", text)):
+        out |= REGS.get(tok.strip("-"), set())
+    return out
+
+
+def split_dual(word, text, target):
+    """A parallel move of two halves (XY dual, or X:R/R:Y) as two
+    instructions, each memory half in the space its data now lives in
+    (target: {"X": space, "Y": space}). In the original every read sees the
+    old registers; so the half that goes first may write nothing the second
+    instruction reads, and the half that goes second may read nothing the
+    first one wrote. The ALU op rides with one half. Returns the two moves
+    (as "move" operand text, the ALU op re-attached by the caller), which
+    half carries the ALU, and dies when no order keeps the semantics."""
+    ops = text.split()
+    alu = None if ops[0] == "move" else ops[:2]
+    moves = ops[1:] if alu is None else ops[2:]
+    if len(moves) != 2:
+        die(f"not a two-half parallel move: {text}")
+    halves = []
+    for m in moves:
+        src, dst = m.split(",", 1)
+        if ":" in m:
+            space = "X" if m.lower().startswith("x:") or ",x:" in m else "Y"
+            m = m.replace(space.lower() + ":", target[space].lower() + ":")
+        halves.append({"text": m, "reads": regs(src) if ":" not in src else set(),
+                       "writes": regs(dst) if ":" not in dst else set()})
+    alu_reads = regs(alu[1]) if alu else set()
+    alu_writes = regs(alu[1].split(",")[-1]) if alu else set()
+    for alone in (0, 1):
+        other = halves[1 - alone]
+        with_alu = {"reads": alu_reads | other["reads"], "writes": alu_writes | other["writes"]}
+        # alone first, then ALU + other
+        if not halves[alone]["writes"] & with_alu["reads"]:
+            return [halves[alone]["text"], other["text"]], 1
+        # ALU + other first, then alone
+        if not halves[alone]["reads"] & with_alu["writes"]:
+            return [other["text"], halves[alone]["text"]], 0
+    die(f"no order of the two halves keeps the semantics: {text}")
+
+
 def disassemble(snapshot, pcs):
     out = {}
     ranges = [f"{s:x}-{e:x}" for s, e in runs(pcs)]
@@ -217,6 +294,78 @@ def disassemble(snapshot, pcs):
             a, ln, wa, _wb, t = line.split(" ", 4)
             out[int(a, 16)] = (int(ln), int(wa, 16), t.strip())
     return out
+
+
+def widen(words, code, dis, executed, code_words):
+    """The table words, widened where the evidence says a table goes on.
+
+    The static descent reads some table words as code, so a table can come
+    out as fragments with never-executed "code" between them, and an engine
+    can address a table from a base that sits in such words (add #>$145224,a
+    with the reads from 0x145324 on). Moved apart, fragments and bases lose
+    their offsets. So: merge two runs when every word between them is
+    never executed (at most MERGE_GAP), and take in a base that code which
+    runs names in word B (an immediate, a displacement, an absolute address)
+    when every word between it and the table is never executed (the same
+    limit). Nothing that ran is ever taken in. What a widening swallows that
+    the descent called an instruction start and some code branches to is
+    listed: a path the kits did not take would be data here."""
+    words = set(words)
+    table_spans = [(lo, hi) for lo, hi in SPANS]
+
+    def spans_of(a):
+        return next(((lo, hi) for lo, hi in table_spans if lo <= a < hi), None)
+
+    def quiet(lo, hi):
+        return hi - lo <= MERGE_GAP and not any(a in code_words for a in range(lo, hi))
+
+    added = set()
+    rs = runs(words)
+    for (a, b), (c, d) in zip(rs, rs[1:]):
+        if spans_of(a) and spans_of(a) == spans_of(c) and quiet(b, c):
+            added.update(range(b, c))
+    words |= added
+    bases = set()
+    for pc in executed:
+        if pc not in code or code[pc][0] != 2:
+            continue
+        text, wb = code[pc][3], code[pc][2]
+        op = text.split()[0] if text else ""
+        if text.startswith("do") or re.match(r"^(j|b)", op) or wb in words or not spans_of(wb):
+            continue
+        bases.add(wb)
+    for v in sorted(bases):
+        rs = runs(words)
+        above = next(((lo, hi) for lo, hi in rs if lo > v and spans_of(lo) == spans_of(v)), None)
+        below = next(((lo, hi) for lo, hi in reversed(rs) if hi <= v and spans_of(lo) == spans_of(v)), None)
+        if above and quiet(v, above[0]):
+            words.update(range(v, above[0]))
+            added.update(range(v, above[0]))
+        elif below and quiet(below[1], v + 1):
+            words.update(range(below[1], v + 1))
+            added.update(range(below[1], v + 1))
+    swallowed = sorted(a for a in added if a in code)
+    branched = {t for a, (ln, wa, wb, text) in code.items() for t in
+                [int(m, 16) for m in re.findall(r"(?:func|int|label|loc)_([0-9a-f]{6})", text)]}
+    print(f"table widening: {len(added):,} never-executed words taken in "
+          f"({len(swallowed):,} instruction starts of the static descent)")
+    hit = [a for a in swallowed if a in branched]
+    if hit:
+        print("  WARNING: branch targets taken in as data: " + " ".join(f"{a:06x}" for a in hit[:16]))
+    return sorted(words)
+
+
+def disassemble_words(snapshot_like, words):
+    """The disassembler's text for loose words (placed at P:0 of a scratch
+    snapshot)."""
+    import array
+    with tempfile.TemporaryDirectory(prefix="md-flip-dis-") as d:
+        snap = pathlib.Path(d) / "s.bin"
+        mem = [0] * 0x150000
+        mem[:len(words)] = words
+        snap.write_bytes(array.array("I", mem).tobytes())
+        out = disassemble(snap, set(range(len(words))))
+    return [out[i][2] for i in range(len(words))]
 
 
 class Captures:
@@ -257,6 +406,11 @@ def main() -> int:
         i = args.index("--init")
         init_path = args[i + 1]
         del args[i:i + 2]
+    plan_path = None
+    if "--plan" in args:
+        i = args.index("--plan")
+        plan_path = args[i + 1]
+        del args[i:i + 2]
     static_only = "--static" in args
     paths = [a for a in args if not a.startswith("--")]
     if not paths and not static_only:
@@ -277,12 +431,12 @@ def main() -> int:
     ran = set()
     if paths:
         caps = Captures(paths, init_path)
-        ran = audit(caps, raw, code, stock)
+        ran = audit(caps, raw, code, stock, plan_path)
     census(code, static, stock, ran, bool(paths))
     return 0
 
 
-def audit(caps, raw, code, stock):
+def audit(caps, raw, code, stock, plan_path=None):
     P = memoryview(caps.snapshot.read_bytes()).cast("I")
     pcs = {pc for pc, _s, _rw in caps.keys} | caps.executed
     dis = disassemble(caps.snapshot, pcs)
@@ -335,6 +489,7 @@ def audit(caps, raw, code, stock):
             if lo <= a < hi:
                 region_of[a] = name
     rest = sorted(a for a in data if a not in region_of and a not in code_as_data)
+    rest = widen(rest, code, dis, caps.executed, code_words)
     for lo, hi in runs(rest):
         rid = f"{lo:06x}"
         regions[rid] = (lo, hi, "table" if any(s <= lo < e for s, e in SPANS) else "other")
@@ -436,43 +591,66 @@ def audit(caps, raw, code, stock):
                 "flips": flips, "rewrites": rewrites,
                 "rate": sum(rate(s) for s in rewrites)}
 
-    def pack(free, sizes):
-        """Best fit, largest first: each region into the smallest span that
-        holds it. Returns the new free list, or None."""
-        free = sorted(free)
-        for n in sorted(sizes, reverse=True):
-            for i, f in enumerate(free):
-                if f >= n:
-                    free[i] -= n
-                    break
-            else:
+    def place(free, items):
+        """Best fit, largest first, each item at its old alignment. free is a
+        list of [start, end) spans; items are (region, old start, words).
+        Returns (the spans left, {region: new start}), or None."""
+        free = [list(f) for f in free]
+        at = {}
+        for rid, lo, n in sorted(items, key=lambda it: (-it[2], it[1])):
+            a = align_of(lo)
+            best = None
+            for i, (s, e) in enumerate(free):
+                start = s + ((lo - s) % a)
+                if start + n <= e and (best is None or e - s - n < best[0]):
+                    best = (e - s - n, i, start)
+            if best is None:
                 return None
-            free.sort()
-        return free
+            _w, i, start = best
+            s, e = free.pop(i)
+            free += [f for f in ([s, start], [start + n, e]) if f[1] > f[0]]
+            at[rid] = start
+        return sorted(free), at
 
     def choose(free):
         """Greedy, largest group first: fewest window words, then the lowest
-        rewrite rate, then the fewest flips, packed into the free spans."""
-        chosen = []
+        rewrite rate, then the fewest flips, placed into the free spans."""
+        chosen, at = [], {}
+
         ordered = sorted((g for g in groups.values() if any(not n.startswith("int") for n in g)),
                          key=group_key)
         for g in ordered:
             options = [option(g, t, r) for r in (False, True) for t in ("X", "Y")]
-            options.sort(key=lambda o: (o["window_words"], o["rate"], len(o["flips"]), o["target"] == "X"))
+            options.sort(key=lambda o: (o["window_words"], o["rate"], len(o["flips"]) > 0, o["target"] == "X",
+                                        len(o["flips"])))
             pick = None
             for o in options:
-                left = pack(free[o["target"]], [size(n) for n in o["kept"] if n != "e12"])
-                if left is not None:
+                if o["window_words"]:
+                    continue    # it would leave a region out; the window is tried next
+                got = place(free[o["target"]], [(n, regions[n][0], size(n)) for n in o["kept"] if n != "e12"])
+                if got is not None:
                     pick = o
-                    free[o["target"]] = left
+                    free[o["target"]], placed = got
+                    at.update(placed)
                     break
+            if pick is None:
+                # The window's table area: P, X and Y alias there, so the
+                # group needs no flip and no rewrite.
+                ext = {n for n in g if not n.startswith("int")}
+                got = place(free["W"], [(n, regions[n][0], size(n)) for n in ext if n != "e12"])
+                if got is not None:
+                    free["W"], placed = got
+                    at.update(placed)
+                    pick = {"target": "W", "rewrite": False, "window": set(), "kept": ext,
+                            "words": sum(size(n) for n in ext if n != "e12"), "window_words": 0,
+                            "flips": set(), "rewrites": set(), "rate": 0.0}
             if pick is None:
                 ext = {n for n in g if not n.startswith("int")}
                 pick = {"target": "window", "rewrite": False, "window": ext, "kept": set(), "words": 0,
                         "window_words": sum(size(n) for n in ext if n != "e12"),
                         "flips": set(), "rewrites": set(), "rate": 0.0}
             chosen.append((g, pick))
-        return chosen, free
+        return chosen, free, at
 
     print(f"captures: {len(samples)} ({sum(samples.values()) // 32 * 32:,} samples)"
           + (", plus the boot init" if "init" in caps.blocks or any("init" in k["count"] for k in keys.values()) else ""))
@@ -534,12 +712,8 @@ def audit(caps, raw, code, stock):
                              + (f", {len(o['rewrites'])} rewrites {o['rate']:.1f}/smp" if r else ""))
             print(f"    {'rewrite' if r else 'flips  '}  " + " | ".join(parts))
 
-    # Reserve the MD's internal data and the driver's Y first, in one lump per
-    # space (an estimate: the internal words are scattered, and the core-1
-    # layout is not drawn yet).
-    reserve = {"X": len(internal["X"]), "Y": len(internal["Y"]) + DRIVER_Y}
-    free = {"X": pack(X_SPANS, [reserve["X"]]), "Y": pack(Y_SPANS, [reserve["Y"]])}
-    chosen, free = choose(free)
+    spans = {s: md_layout.table_spans(s) for s in ("X", "Y", "W")}
+    chosen, free, at = choose({s: list(v) for s, v in spans.items()})
     home = {}
     for g, o in chosen:
         for n in o["kept"]:
@@ -547,11 +721,11 @@ def audit(caps, raw, code, stock):
         for n in o["window"]:
             home[n] = "window"
     print()
-    print(f"plan within core 1's private memory: X spans {', '.join(f'{s:,}' for s in X_SPANS)},"
-          f" Y span {Y_SPANS[0]:,}; reserved first: X {reserve['X']:,} (MD internal),"
-          f" Y {reserve['Y']:,} (MD internal {len(internal['Y']):,} + driver {DRIVER_Y:,})")
-    print(f"  left free: X {', '.join(f'{s:,}' for s in sorted(free['X'], reverse=True))};"
-          f" Y {', '.join(f'{s:,}' for s in sorted(free['Y'], reverse=True))}")
+    print("plan within core 1's private memory (layout.table_spans): "
+          + "; ".join(f"{s} " + ", ".join(f"{a:04x}..{b - 1:04x} ({b - a:,})" for a, b in v)
+                      for s, v in spans.items()))
+    print("  left free: " + "; ".join(f"{s} " + ", ".join(f"{b - a:,}" for a, b in sorted(v, key=lambda f: f[0] - f[1]))
+                                      for s, v in free.items()))
     total = collections.Counter()
     for n, h in home.items():
         if n != "e12":
@@ -561,7 +735,8 @@ def audit(caps, raw, code, stock):
     for rid in sorted(home, key=lambda r: regions[r][0]):
         lo, hi, kind = regions[rid]
         if kind in ("pi", "e12") or size(rid) >= 256:
-            print(f"    {rid:6s} {lo:06x}..{hi - 1:06x} {hi - lo:7,} -> {home[rid]}")
+            print(f"    {rid:6s} {lo:06x}..{hi - 1:06x} {hi - lo:7,} -> {home[rid]}"
+                  + (f" {at[rid]:04x}" if rid in at else ""))
     small = collections.Counter()
     for rid, h in home.items():
         if regions[rid][2] not in ("pi", "e12") and size(rid) < 256:
@@ -594,6 +769,82 @@ def audit(caps, raw, code, stock):
         print(f"    {k:24s} {v:4d}; stock A+B {stock[k]:5d}" + ("" if stock[k] else "  <-- no stock precedent"))
     for pc, name, got in bad:
         print(f"    FAIL {pc:06x}: {name} flipped decodes as {got}")
+
+    # Instructions no capture ran but whose operand names a moved region
+    # outright (a displacement or an absolute address in word B): flip them
+    # too, or say they cannot be.
+    moved_space = {}
+    for rid, h in home.items():
+        if h in ("X", "Y") and rid != "e12":
+            lo, hi, _k = regions[rid]
+            for a in range(lo, hi):
+                moved_space[a] = h
+    ran_pcs = {s[0] for s in site_words}
+    static_flips, unresolved = [], []
+    for a, (ln, wa, wb, text) in sorted(code.items()):
+        if a in ran_pcs or ln != 2 or wb not in moved_space:
+            continue
+        name, pat = forms({a: wa})[a]
+        c = classify(name)
+        if c is None:
+            continue
+        if name in TWIN_XY:
+            space = "X" if name.startswith("Movex") else "Y"
+        elif S_SPACE.match(name):
+            space = "Y" if field(pat, wa, "S") else "X"
+        else:
+            space = None
+        if space == moved_space[wb]:
+            continue
+        if c == "twin":
+            static_flips.append((a, flipped(name, pat, wa)))
+        else:
+            unresolved.append((a, text))
+    print(f"  flips of instructions no capture ran (operand names a moved region): {len(static_flips)}")
+    for a, text in unresolved:
+        print(f"    UNRESOLVED {a:06x} {text}: names a moved region, no one-bit twin")
+
+    # The splits, assembled (dsp_asm) with the original ALU byte, and decoded.
+    splits = []
+    for s in sorted(rewrites):
+        pc = s[0]
+        target = {}
+        for side in ("X", "Y"):
+            nodes_ = site_nodes.get((pc, side), set())
+            homes = {home[n] for n in nodes_ if n in home and home[n] in ("X", "Y")}
+            target[side] = homes.pop() if len(homes) == 1 else side
+        texts, alu_half = split_dual(P[pc], dis[pc][2], target)
+        words = assemble(["move " + m for m in texts])
+        words[alu_half] = (words[alu_half] & 0xFFFF00) | (P[pc] & 0xFF)
+        got = forms({i: w for i, w in enumerate(words)})
+        for i, w in enumerate(words):
+            name = got[i][0]
+            if name not in ("Movex_ea", "Movey_ea", "Mover"):
+                die(f"split {pc:06x}: half {i} decodes as {name}")
+            if (w & 0xFF) != (P[pc] & 0xFF if i == alu_half else 0):
+                die(f"split {pc:06x}: half {i} carries the wrong ALU byte")
+        shown = disassemble_words(caps.snapshot, words)
+        splits.append({"pc": pc, "words": words, "text": shown, "was": dis[pc][2]})
+        print(f"    split {pc:06x} {dis[pc][2]:52s} -> {shown[0]} | {shown[1]}")
+
+    if plan_path:
+        if any(h == "window" for h in home.values()):
+            die("--plan: the plan leaves regions in the window; only the sine may be there")
+        plan = {
+            "note": "md_flip.py placement plan (WP-A7 / WP-A2, core 1); generated, not an Elektron byte",
+            "regions": [{"id": rid, "lo": regions[rid][0], "hi": regions[rid][1], "home": home[rid],
+                         "new": at[rid]} for rid in sorted(home, key=lambda r: regions[r][0])
+                        if rid != "e12"],
+            "note_homes": "X/Y: private, via T lines; W: the window's table area, via M lines",
+            "sine": {"lo": SINE[0], "hi": SINE[1], "new": md_layout.allocation("sine")["start"]},
+            "flips": [{"pc": s[0], "word": flipped(*form[s[0]], P[s[0]])} for s in sorted(flips)]
+                     + [{"pc": a, "word": w, "static": True} for a, w in static_flips],
+            "splits": splits,
+            "unresolved": [{"pc": a, "text": t_} for a, t_ in unresolved],
+        }
+        import json
+        pathlib.Path(plan_path).write_text(json.dumps(plan, indent=1))
+        print(f"  wrote {plan_path}")
 
     # Every non-twin site that touches external data, for the record.
     print()

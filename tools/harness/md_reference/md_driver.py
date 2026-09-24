@@ -4,8 +4,8 @@
     python3 tools/harness/md_reference/md_driver.py <capture dir> [--reloc] [--org 0x2000]
 
 Without --reloc the routine tables are at the MD's own addresses; with it,
-at the places <capture dir>/reloc.txt moved them to (its M lines, the last
-matching move winning, as md_replay applies them). Writes driver.bin (the
+at the places <capture dir>/reloc.txt moved them to (its M and T lines, the
+last matching move winning, as md_replay applies them). Writes driver.bin (the
 words, one per line, hex) and driver.sym (label address) into the capture
 dir, the filled placeholders as driver.cfg, and prints the disassembly of what was assembled, since dsp_asm has
 mis-encoded forms before (CLAUDE.md).
@@ -37,6 +37,9 @@ def main():
         for l in (cap / "reloc.txt").read_text().splitlines():
             if l.startswith("M "):
                 _, s, e, n = l.split()
+                moves.append((int(s, 16), int(e, 16), int(n, 16)))
+            elif l.startswith("T "):
+                _, _space, s, e, n = l.split()
                 moves.append((int(s, 16), int(e, 16), int(n, 16)))
             elif l.startswith("V "):
                 _, o, n = l.split()

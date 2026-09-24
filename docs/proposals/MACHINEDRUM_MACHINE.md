@@ -1833,6 +1833,25 @@ tables (`md_forms`). The cycle and rate figures are emulator counts.
   differ too (WP-A7 has the table). Each machine's twelve-kit gate needs its
   own baselines.
 
+### Core-1 relocation, first gate (24 September 2026, frozen)
+
+- ✅ With `layout.py` for core 1 and `md_flip.py --plan`, `md_relocate.py`
+  moves the code unit by unit (hot to `P:0x0591`, the rest to the window),
+  the tables to private X/Y or the window's table area, and the sine to
+  `0x38000`. It applies 161 flips and 22 splits.
+- ✅ Gate (`md_gate.sh`, this machine's captures): six kits are exact, and
+  c10_16 keeps its known 2-block residual. c1d_16, c37_16, c20_16, c40_16
+  and c42_16 differ from about block 2,273 on.
+- ✅ With every table kept in place, all twelve pass. The failures follow
+  the P-I move (c20_16) and table `0x142f33` (c37_16, c40_16). Through the
+  first bad block the accessed addresses are identical, so a value differs.
+  Open: `machinedrum_reports/WP-A2-core1.md`.
+- ❌ The WP-A7 plan figures (X 10,636 / Y 41,111, 14 splits, +7.8 per sample)
+  assumed a lump reservation and unfragmented tables. The current plan,
+  with the real voice block, merged fragments and window fallback, is X
+  9,247 / Y 44,381 / window 2,675, with 22 splits at +12.1 per sample
+  (c40_16).
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and

@@ -35,9 +35,10 @@
 //   md_replay <capture dir> [--reloc] [--driver] [--init] [out.wav slot]
 //
 // --reloc applies <capture dir>/reloc.txt (md_relocate.py) after loading the
-// snapshot: each region is copied to its new place, the patched words are
-// written, and the old region is filled with 0xa5a5a5, so any address the
-// relocation missed reads garbage or jumps into it.
+// snapshot: each region is copied to its new place (M within P, T from the
+// external RAM into private X or Y), the patched words are written, and the
+// old region is filled with 0xa5a5a5, so any address the relocation missed
+// reads garbage or jumps into it.
 //
 // Prints matching/mismatching blocks per slot. Exit 0 when every block of
 // every slot is bit-identical.
@@ -71,16 +72,17 @@ namespace
 	// instruction made, by PC, space and direction, for md_flip.py. The PC is
 	// set by the exec hook (one interpreted instruction per dsp.exec()) and
 	// cleared after each exec, so the replay's own snapshot and host-stream
-	// pokes are never charged to an instruction. Internal X/Y (below 0x10000)
-	// and the external RAM (g_readLo..g_readHi) are kept; peripherals are not.
+	// pokes are never charged to an instruction. Internal X/Y (below 0x10000),
+	// the OT window (g_winLo..g_winHi) and the external RAM (g_readLo..g_readHi)
+	// are kept; peripherals are not.
 	// Written as "<pc> <P|X|Y> <r|w> <lo> <hi> <count>" runs (end exclusive),
 	// count being the key's total accesses, repeated on each of its runs.
-	constexpr dsp56k::TWord g_noPc = 0xffffffff, g_intHi = 0x10000;
+	constexpr dsp56k::TWord g_noPc = 0xffffffff, g_intHi = 0x10000, g_winLo = 0x30000, g_winHi = 0x40000;
 	dsp56k::TWord g_curPc = g_noPc;
 	bool g_access = false;
 	struct AccessBits
 	{
-		std::vector<uint64_t> in, ext;	// bitmaps: 0..g_intHi, g_readLo..g_readHi
+		std::vector<uint64_t> in, ext, win;	// bitmaps: 0..g_intHi, g_readLo..g_readHi, g_winLo..g_winHi
 		uint64_t count = 0;
 	};
 	std::unordered_map<uint64_t, AccessBits> g_accessMap;	// (pc << 8 | area << 1 | write)
@@ -91,13 +93,16 @@ namespace
 		if(g_curPc == g_noPc)
 			return;
 		const bool internal = _offset < g_intHi;
-		if(!internal && (_offset < g_readLo || _offset >= g_readHi))
+		// The OT-side window (0x30000..0x3ffff) is where a relocated run keeps
+		// the sine, code and some tables; it is kept with the external RAM.
+		const bool window = _offset >= g_winLo && _offset < g_winHi;
+		if(!internal && !window && (_offset < g_readLo || _offset >= g_readHi))
 			return;
 		auto& b = g_accessMap[static_cast<uint64_t>(g_curPc) << 8 | static_cast<uint64_t>(_area) << 1 | (_write ? 1 : 0)];
-		auto& bits = internal ? b.in : b.ext;
+		auto& bits = internal ? b.in : window ? b.win : b.ext;
 		if(bits.empty())
-			bits.assign(((internal ? g_intHi : g_readHi - g_readLo) + 63) / 64, 0);
-		const auto i = internal ? _offset : _offset - g_readLo;
+			bits.assign(((internal ? g_intHi : window ? g_winHi - g_winLo : g_readHi - g_readLo) + 63) / 64, 0);
+		const auto i = internal ? _offset : window ? _offset - g_winLo : _offset - g_readLo;
 		bits[i >> 6] |= 1ull << (i & 63);
 		++b.count;
 	}
@@ -158,9 +163,9 @@ namespace
 			const auto pc = static_cast<dsp56k::TWord>(k >> 8);
 			const auto* area = areas[(k >> 1) & 0x7f];
 			const char rw = (k & 1) ? 'w' : 'r';
-			for(const auto* bits : {&b.in, &b.ext})
+			for(const auto* bits : {&b.in, &b.win, &b.ext})
 			{
-				const dsp56k::TWord base = bits == &b.in ? 0 : g_readLo;
+				const dsp56k::TWord base = bits == &b.in ? 0 : bits == &b.win ? g_winLo : g_readLo;
 				const auto n = static_cast<dsp56k::TWord>(bits->size() * 64);
 				for(dsp56k::TWord i = 0; i < n;)
 				{
@@ -383,6 +388,7 @@ int main(int _argc, char** _argv)
 	{
 		std::ifstream in(dir + "/reloc.txt");
 		std::string kind, a, b, c;
+		std::vector<std::array<TWord, 2>> tableMoves;	// T sources, wiped like M's
 		size_t written = 0;
 		while(in >> kind)
 		{
@@ -424,6 +430,22 @@ int main(int _argc, char** _argv)
 				initPiStart = static_cast<TWord>(std::stoul(a, nullptr, 16));
 				initPiEnd = static_cast<TWord>(std::stoul(b, nullptr, 16));
 			}
+			else if(kind == "T")
+			{
+				// A table from the MD's external RAM into private X or Y.
+				std::string areaName;
+				in >> areaName >> a >> b >> c;
+				const auto area = areaName == "X" ? MemArea_X : MemArea_Y;
+				const auto oldStart = static_cast<TWord>(std::stoul(a, nullptr, 16));
+				const auto oldEnd = static_cast<TWord>(std::stoul(b, nullptr, 16));
+				const auto newStart = static_cast<TWord>(std::stoul(c, nullptr, 16));
+				for(TWord i = 0; i < oldEnd - oldStart; ++i)
+					memory.set(area, newStart + i, memory.get(MemArea_P, oldStart + i));
+				tableMoves.push_back({oldStart, oldEnd});
+				written += oldEnd - oldStart;
+			}
+			else if(kind == "H")
+				in >> a >> b;
 			else if(kind == "Z")
 			{
 				in >> a >> b;
@@ -450,10 +472,16 @@ int main(int _argc, char** _argv)
 				memory.set(MemArea_P, i, 0xa5a5a5);
 		}
 		else if(!std::getenv("MD_REPLAY_KEEP_OLD"))
+		{
 			for(const auto& m : moves)
 				for(TWord i = m[0]; i < m[1]; ++i)
 					memory.set(MemArea_P, i, 0xa5a5a5);
-		std::cout << "relocated " << moves.size() << " regions, " << written << " patched words; old regions wiped\n";
+			for(const auto& m : tableMoves)
+				for(TWord i = m[0]; i < m[1]; ++i)
+					memory.set(MemArea_P, i, 0xa5a5a5);
+		}
+		std::cout << "relocated " << moves.size() << " code spans and " << tableMoves.size() << " tables, "
+			<< written << " patched words; old regions wiped\n";
 	}
 	// Map host writes and snapshot record bases when the OT voice records move
 	// from the MD's low Y/X block into the proposed private voice home.

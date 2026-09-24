@@ -1,9 +1,10 @@
 """Machinedrum native-machine skeleton.
 
-WP-B1 declares the ownership envelope for the first core-0 MD image.  The
-DSP source and ColdFire registration are intentionally not claimed yet:
-WP-B2 will connect the user's build-time extraction to this manifest without
-copying any firmware into the repository.
+WP-B1 declares the ownership envelope for the first MD image; since the
+24 September decision it is core 1's (payload B, tracks 1-4). The DSP source
+and ColdFire registration are intentionally not claimed yet: WP-B2 will
+connect the user's build-time extraction to this manifest without copying
+any firmware into the repository.
 """
 
 from pathlib import Path
@@ -37,19 +38,17 @@ def _span(name):
 # The generic remixer ledger does not yet arbitrate the shared physical window;
 # B2 is where these claims become build placement and collision checks.
 RESOURCE_CLAIMS = {
-    "payload": "A",
+    "payload": "B",
     "donor": {
-        "name": "PLATE/SPRING/DARK donor",
+        "name": "payload-B stock effects and the P above them",
         "space": "P",
         "start": _allocation("hot_code")["start"],
-        "end": (_allocation("hot_code")["start"]
-                + _allocation("hot_code")["words"]),
-        "words": _allocation("hot_code")["words"],
+        "end": (_allocation("driver_code")["start"]
+                + _allocation("driver_code")["words"]),
+        "words": (_allocation("hot_code")["words"]
+                  + _allocation("driver_code")["words"]),
     },
-    "shared": tuple(
-        _span(name) for name in
-        ("sine", "window_code_tables", "pi_buffers", "driver_code")
-    ),
+    "shared": tuple(_span(name) for name in ("window_code", "window_tables", "sine")),
 }
 
 
@@ -70,6 +69,6 @@ MODULE = Module(
     name="machinedrum",
     key="MACHINEDRUM",
     kind=Kind.CF_PATCH,
-    doc=("Native Machinedrum core-0 machine skeleton: payload-A donor and "
+    doc=("Native Machinedrum core-1 machine skeleton: payload-B donor and "
          "shared-window ownership from the proposed layout."),
 )

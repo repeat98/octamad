@@ -114,10 +114,18 @@ FX2 set to `0x08`), all of these pass: `verify-md`, `--gain-probe`,
 Use that project for MD gates from now on.
 
 Open (octemu, same run):
-- The record transport skips blocks: after 30 s, `gaps 0x9ffc` against
-  `napply 0x6004`. Their sum is exactly `0x10000`, so this may be a single
-  sequence jump rather than steady loss; not yet resolved. The audio has
-  only a few hits.
+- ✅ Resolved (octemu, not the remix): the record transport skipped one
+  block in four. Two frames of every sixteen, the mailbox arrived with
+  the halves of alternate 32-bit words swapped, so the glue saw seq 0 and
+  skipped it. octemu's eDMA model swaps halfword pairs in any 32-byte
+  minor loop sent to the DSP port with a 4-byte DSIZE, a rule tuned for
+  the stock control block. That block always comes from SRAM
+  (`0x80005460–0x8000565f`, logged); the MD mailbox streams from SDRAM
+  and is 32 bytes per minor loop whenever a block is 64 halfwords. With
+  the rule limited to SRAM sources (the isolated octemu build under
+  `out/machinedrum/octemu/isolated/`, `ot-board.c`), a 30 s groove run
+  takes `0xf6e0` blocks with 3 gaps, 0 refused and 0 slips, and the
+  groove plays. Nothing in the image changed.
 - One octemu run froze the UI after boot, with the ColdFire still in its
   ISRs and main idle loop. It happened while the gates loaded the CPU and
   has not been reproduced.

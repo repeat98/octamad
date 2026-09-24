@@ -68,7 +68,7 @@ Plan numbers (`out/machinedrum/plan.json`):
 
 Hot code is 6,511 words; the window code is about 8,250.
 
-## What is known about the five failing kits
+## Five failures in the frozen placement
 
 - Correction: The frozen claim that `--keep all` makes every kit exact was too
   strong. c1d_16 retains one known driver-residual block at 2288 even
@@ -125,12 +125,26 @@ The scratch traces contain capture-derived values and stay outside Git.
   `0x142f33..0x1433d6` in c37_16, so an accidental live-pointer
   rewrite in that range is not its cause.
 
-*Inferred fix direction:* these engines use address values in numerical
-phase calculations as well as for memory access. A simple pointer
-rewrite changes the math. Relocation needs separate logical MD pointer
-values and physical OT access addresses at these two P-I sequences;
-verify the transformation on all twelve kits and count its instruction
-and cycle cost before taking it into the payload.
+*Initial inference:* these engines use address values in numerical phase
+calculations as well as for memory access. The low16-compatible table
+placement below resolves the `142f33` path. The P-I buffer path still
+needs a matching physical layout or a logical/physical pointer split.
+
+## 24 September continuation: low16-compatible table placement
+
+- Measured: placing `142f33` at `X:0x2f33` preserves the low 16 bits
+  of its MD pointer (`0x142f33`). c37_16 matches for its first 2,459
+  blocks with that move. A first full-run experiment differed at block
+  2,874 because the old `143f38` X placement overlapped the relocated
+  table; a read at `P:142dda` saw another table's word.
+- Measured: with `142279` at `X:0x3400` and `143f38` in the shared
+  window at `0x37400`, the complete c37_16 replay is exact. The
+  generated placement planner now reserves all three homes. The full
+  gate also makes c40_16 and c42_16 exact. Its remaining new
+  mismatches are c1d_16 and c20_16, both on the P-I buffer path.
+- The new plan has 215 flips and 22 splits. The original 192-flip count
+  above describes the frozen placement, not this one. The three fixed
+  table homes are allocated without overlap in `layout.py`.
 
 ## Caveats
 
@@ -153,10 +167,9 @@ and cycle cost before taking it into the payload.
 
 ## Handover
 
-1. Make the P-I code preserve logical MD pointer arithmetic while
-   translating memory accesses to the physical core-1 homes. The two
-   measured sites are `P:142db4..142dd3` for table `142f33` and
-   `P:102fae..102fc5` for the P-I buffers.
+1. Make the P-I buffer pointer at `P:102fae..102fc5` preserve its
+   numerical phase behavior. The `142f33` table path is now exact with
+   a low16-compatible X home.
 2. Rerun the twelve-kit gate and separate c1d_16's known one-block
    driver residual from any new relocation mismatch.
 3. Exercise the low-P port, E12-tail writes and sample metadata in an

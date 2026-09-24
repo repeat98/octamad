@@ -64,6 +64,7 @@ LAYOUT = {
         {"name": "window_tables", "space": "shared", "start": 0x36400, "words": 0x0C00},
         {"name": "e12_tail", "space": "shared", "start": 0x37000, "words": 0x200},
         {"name": "sample_meta", "space": "shared", "start": 0x37200, "words": 0x200},
+        {"name": "window_tables_b", "space": "shared", "start": 0x37400, "words": 0x0C00},
         {"name": "sine", "space": "shared", "start": 0x38000, "words": 0x8000},
     ],
     "driver": {

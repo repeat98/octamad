@@ -1893,6 +1893,17 @@ tables (`md_forms`). The cycle and rate figures are emulator counts.
   matches, the known c10_16 two-block residual and five mismatches.
   The captured fetch profiles do not exercise these E12-tail sites.
 
+### WP-A3 low16-compatible P-I table placement (24 September 2026)
+
+- A pinned X home at `0x2f33` preserves the low 16 bits of the
+  `0x142f33` oscillator table pointer. The two overlapping X tables
+  were placed at `X:0x3400` and shared-window `0x37400`. The placement
+  planner reserves these homes and emits 215 flips and 22 splits.
+- The full gate now matches c37_16, c40_16 and c42_16 exactly. Six
+  previously matching kits remain at their baselines. c10_16 retains
+  its known two-block driver residual; c1d_16 and c20_16 still have
+  new differences from the P-I buffer pointer path.
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and

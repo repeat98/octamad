@@ -614,14 +614,51 @@ def audit(caps, raw, code, stock, plan_path=None):
             at[rid] = start
         return sorted(free), at
 
+    # The P-I oscillator uses the numerical low 16 bits of its table
+    # pointer as phase. X:2f33 preserves those bits; the two other large
+    # X tables move around it, with 143f38 in the shared window. A full
+    # c37_16 replay is exact with this arrangement.
+    pinned = {
+        "142279": ("X", 0x3400, False),
+        "142f33": ("X", 0x2f33, True),
+        "143f38": ("W", md_layout.allocation("window_tables_b")["start"], False),
+    }
+
     def choose(free):
         """Greedy, largest group first: fewest window words, then the lowest
         rewrite rate, then the fewest flips, placed into the free spans."""
         chosen, at = [], {}
 
+        for rid, (space, start, _rewrite) in pinned.items():
+            end = start + size(rid)
+            containing = next(((a, b) for a, b in free[space] if a <= start and end <= b), None)
+            if containing is None:
+                die(f"pinned {rid} at {space}:{start:04x} does not fit")
+            free[space].remove(containing)
+            a, b = containing
+            free[space] += [(x, y) for x, y in ((a, start), (end, b)) if x < y]
+            free[space].sort()
+
         ordered = sorted((g for g in groups.values() if any(not n.startswith("int") for n in g)),
                          key=group_key)
         for g in ordered:
+            pins = set(g) & set(pinned)
+            if pins:
+                if len(pins) != 1 or set(g) != pins:
+                    die(f"pinned table group is no longer independent: {sorted(g)}")
+                rid = next(iter(pins))
+                target, new, rewrite = pinned[rid]
+                if target == "W":
+                    pick = {"target": "W", "rewrite": False, "window": set(),
+                            "kept": {rid}, "words": size(rid), "window_words": 0,
+                            "flips": set(), "rewrites": set(), "rate": 0.0}
+                else:
+                    pick = option(g, target, rewrite)
+                    if pick["window"] or pick["kept"] != {rid}:
+                        die(f"pinned {rid} cannot use {target} without another home")
+                at[rid] = new
+                chosen.append((g, pick))
+                continue
             options = [option(g, t, r) for r in (False, True) for t in ("X", "Y")]
             options.sort(key=lambda o: (o["window_words"], o["rate"], len(o["flips"]) > 0, o["target"] == "X",
                                         len(o["flips"])))

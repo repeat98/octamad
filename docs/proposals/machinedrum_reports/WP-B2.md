@@ -219,11 +219,11 @@ plan, `python3 tools/build/md_payload.py` now succeeds from the user's
 pinned OS 1.63 update, writing ignored
 `out/machinedrum/build/payload_B.mem` and a source/plan/driver manifest.
 The builder reuses the 49 measured hot units in the twelve-kit plan,
-assembles the 199-word driver at P:0x1f00, and applies the 203 flips,
-14 splits, and one P-I phase expansion. It emits 21 sparse P/X/Y records,
-106,694 words, 426,974 bytes; the verifier matches every word against the
+assembles the 203-word driver at P:0x1f00, and applies the 203 flips,
+14 splits, and one P-I phase expansion. It emits 19 sparse P/X/Y records,
+106,158 words, 424,812 bytes; the verifier matches every word against the
 relocated source snapshot. The payload SHA-256 in this local build is
-`140365542adf3b58f41a0af5f1acdda81200ff97efd04ad69feee8727d99bf30`.
+`bdab273a62a11ab9d14326cbe11facce642a87335bf7f769343fa142d2cc35fa`.
 
 All emitted addresses are checked against `layout.py`. Only X:0..ff and
 Y:0..13f may appear outside owned allocations because the driver swaps

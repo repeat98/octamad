@@ -12,10 +12,11 @@
 ; position (P:e2-e7). The only engines that read the last one are the input
 ; and control machines, which are not ported.
 ;
-; Around the batch it swaps low memory. The OT's X:0-$ff and Y:0-$13f are
-; saved to @STASH@ and put back afterwards. The MD's complete low image
-; (X:0-$ff, Y:0-$13f) is kept at @MDSAVE@ across OT frame calls. This
-; preserves the TRX-S2 scratch that survives between MD periods.
+; Around the batch it swaps the OT's low X:0-$ff and Y:0-$13f into
+; @STASH@ and restores them afterwards. The MD's 36 persistent scratch words
+; (X:$a0-$bf, Y:$1e-$21) live at @MDSAVE@. Both copy directions set M0/M4
+; to linear addressing: an engine may leave M4 in modulo mode, which wrapped
+; the save buffer and caused the earlier c1d/c10 replay residuals.
 ;
 ; Addresses are placeholders between at-signs that md_driver.py fills per
 ; layout:
@@ -49,7 +50,7 @@
 md_enter:
         move    #>$ffffff,m0
         move    #>$ffffff,m4
-; ---- swap in: the OT's low memory out, the MD's full low image in
+; ---- swap in: the OT's low memory out, the MD's 36 words in
         move    #$0,r0
         move    #>@STASH@,r4
         do      #256,md_a1
@@ -61,14 +62,14 @@ md_a1:
         move    y:(r0)+,x0
         move    x0,y:(r4)+
 md_a2:
-        move    #$0,r0
+        move    #>$a0,r0
         move    #>@MDSAVE@,r4
-        do      #256,md_a3
+        do      #32,md_a3
         move    y:(r4)+,x0
         move    x0,x:(r0)+
 md_a3:
-        move    #$0,r0
-        do      #320,md_a4
+        move    #>$1e,r0
+        do      #4,md_a4
         move    y:(r4)+,x0
         move    x0,y:(r0)+
 md_a4:
@@ -160,15 +161,15 @@ md_done:
 md_leave:
         move    #>$ffffff,m0
         move    #>$ffffff,m4
-; ---- swap out: the MD's full low image kept, the OT's low memory back
-        move    #$0,r0
+; ---- swap out: the MD's 36 words kept, the OT's low memory back
+        move    #>$a0,r0
         move    #>@MDSAVE@,r4
-        do      #256,md_a5
+        do      #32,md_a5
         move    x:(r0)+,x0
         move    x0,y:(r4)+
 md_a5:
-        move    #$0,r0
-        do      #320,md_a6
+        move    #>$1e,r0
+        do      #4,md_a6
         move    y:(r0)+,x0
         move    x0,y:(r4)+
 md_a6:

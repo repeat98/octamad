@@ -1909,6 +1909,26 @@ tables (`md_forms`). The cycle and rate figures are emulator counts.
   its known two-block driver residual; c1d_16 and c20_16 still have
   new differences from the P-I buffer pointer path.
 
+### Core-1 replay and payload checkpoint (24 September 2026)
+
+- The current core-1 plan uses 203 X/Y flips, 14 instruction splits,
+  and one P-I phase expansion. `md_gate.sh` exits zero: all twelve
+  relocated results equal their own plain baselines. Ten kits are
+  exact against the recorded reference; c10_3 and c1d_16 retain
+  identical plain/moved reference deviations.
+- The MD driver's compact 36-word scratch save is sufficient when M0
+  and M4 are set to linear addressing in both swap directions. This
+  corrects the c1d_16 and c10_16 residuals formerly attributed to
+  missing scratch. The full-save requirement and its estimated cost
+  are retracted; see WP-R2's correction.
+- The core-1 payload-B load-record builder emits 19 records and
+  106,158 words from the user's pinned MD update. Its verifier checks
+  every word against the source relocation and every address against
+  `layout.py`. The original and relocated boot-init paths produce
+  identical sine, P-I and voice data on all twelve captured states.
+  The build still lacks native OT machine registration, DSP loading,
+  record transport, sample delivery, mix, and the UI/sequencer.
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and

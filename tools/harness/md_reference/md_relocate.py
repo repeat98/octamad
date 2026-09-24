@@ -442,14 +442,14 @@ def main():
                 xy_patches.append(("P" if space == "W" else space, base + i if where is None else where, m))
                 count("table")
 
-    # Seed the MD low image that the driver swaps in on the first call.
-    # Preserve the relocated pointers there as in the live X/Y image.
-    mdsave = allocation("mdsave_full")
-    assert mdsave["words"] == 0x240
-    for offset, base, n in ((0, 0x150000, 0x100),
-                            (0x100, 0x170000, 0x140)):
+    # Seed the MD scratch that survives a frame. The driver carries only
+    # these 36 words; M0/M4 are made linear before the save and restore.
+    mdsave = allocation("mdsave")
+    assert mdsave["words"] == 0x24
+    for offset, base, start, n in ((0, 0x150000, 0xA0, 0x20),
+                                   (0x20, 0x170000, 0x1E, 4)):
         for i in range(n):
-            value = P[base + i]
+            value = P[base + start + i]
             mapped = amap(value)
             xy_patches.append(("Y", mdsave["start"] + offset + i,
                                value if mapped is None else mapped))

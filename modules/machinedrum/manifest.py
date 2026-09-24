@@ -49,7 +49,7 @@ RESOURCE_CLAIMS = {
                   + _allocation("driver_code")["words"]),
     },
     "shared": tuple(_span(name) for name in (
-        "window_code", "mdsave_full", "window_tables", "e12_tail",
+        "window_code", "window_tables", "e12_tail",
         "sample_meta", "window_tables_b", "sine")),
 }
 

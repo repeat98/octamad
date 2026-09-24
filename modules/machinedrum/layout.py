@@ -46,6 +46,7 @@ LAYOUT = {
         {"name": "stash", "space": "Y", "start": 0xB9C0, "words": 0x240},
         {"name": "outbuf", "space": "Y", "start": 0xBC00, "words": 0x200},
         {"name": "loop_words", "space": "Y", "start": 0xBE00, "words": 0x20},
+        {"name": "mdsave", "space": "Y", "start": 0xBE20, "words": 0x24},
         {"name": "phase_flags", "space": "Y", "start": 0xBE44, "words": 0x10},
 
         # Table ground: what md_flip.py --plan packs the tables and the P-I
@@ -64,7 +65,6 @@ LAYOUT = {
         # private P, and the tables private X and Y cannot take (no flip is
         # needed there). The E12 write buffer and sample metadata have fixed homes.
         {"name": "window_code", "space": "shared", "start": 0x34000, "words": 0x2000},
-        {"name": "mdsave_full", "space": "shared", "start": 0x36000, "words": 0x240},
         {"name": "window_tables", "space": "shared", "start": 0x36400, "words": 0x0C00},
         {"name": "e12_tail", "space": "shared", "start": 0x37000, "words": 0x200},
         {"name": "sample_meta", "space": "shared", "start": 0x37200, "words": 0x200},
@@ -80,7 +80,7 @@ LAYOUT = {
         "ENG": 0xBE10,
         "loopvars": 0xBE00,
         "OUTBUF": 0xBC00,
-        "MDSAVE": 0x36000,
+        "MDSAVE": 0xBE20,
         "PHASE": 0xBE44,
         "STASH": 0xB9C0,
         "code": 0x1F00,
@@ -148,7 +148,7 @@ def check():
     if allocation("outbuf")["start"] % 0x20:
         errors.append("outbuf: must be 32-aligned (m7 = $1f)")
     d = LAYOUT["driver"]
-    for key, name in (("OUTBUF", "outbuf"), ("MDSAVE", "mdsave_full"), ("STASH", "stash"),
+    for key, name in (("OUTBUF", "outbuf"), ("MDSAVE", "mdsave"), ("STASH", "stash"),
                       ("loopvars", "loop_words"), ("PHASE", "phase_flags"), ("code", "driver_code")):
         if d[key] != allocation(name)["start"]:
             errors.append(f"driver {key} {d[key]:#x} is not {name}'s start")

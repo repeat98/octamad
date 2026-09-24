@@ -91,3 +91,18 @@ measurement was withdrawn.
   about 70 cycles/sample, estimated rather than hardware measured.
 - The next packet is WP-R1. The temporary watch and poison changes are not
   part of the source tree.
+
+## Correction after the core-1 gate, 24 September 2026
+
+The 36-word save was sufficient. The old driver did not force M4 to
+linear addressing before its save and restore loops. An engine can leave
+M4 in modulo mode, which made those loops wrap their save pointer and
+corrupt the words they intended to preserve. Setting M0 and M4 linear
+on entry and exit makes **all twelve relocated runs match their own
+plain baselines**, including c1d_16 and c10_16. The full 576-word MD
+save is retracted as a requirement; the earlier A/B changed both the
+save extent and this addressing behavior, so it did not isolate the
+cause. With silent voices, a 1,600-block c40_16 interpreter run
+measures about 244.5 cycles/sample for the compact moved driver
+versus 379.0 for the full save and 51.3 for the plain loop. These are
+emulator counts, not hardware timing.

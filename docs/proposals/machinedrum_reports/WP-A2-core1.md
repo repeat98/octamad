@@ -174,13 +174,14 @@ physical buffer pointer back into the MD numerical phase by adding
 translation at startup and again on a trigger. It is consumed once per
 slot; later phase values may look like aligned pointers by chance.
 
-The driver's low-memory exchange now carries all X:0..0xff and
-Y:0..0x13f across calls. The MD copy lives in the shared window at
-0x36000..0x3623f, and the stock copy remains at Y:0xb9c0..0xbbff.
-Both swap directions set M0 and M4 to linear addressing before copying.
-Without the M4 reset, an engine's modulo setting made the save buffer
-wrap after five words, causing c47_2 and c24_16 to diverge immediately
-on their first active blocks.
+The driver saves the OT's X:0..ff and Y:0..13f across each call, but
+only carries the MD's 36 persistent scratch words (X:a0..bf and Y:1e..21)
+in private Y:0xbe20..0xbe43. Both save and restore set M0 and M4 to
+linear addressing. An engine can leave M4 in modulo mode; without the
+reset, the scratch save wraps after five words. That was the actual
+cause of the c1d_16 and c10_16 residuals. A full 576-word MD image
+also passed, but was unnecessary and cost roughly 134 additional
+emulator cycles per sample in the silent first 1,600 blocks of c40_16.
 
 With the regenerated plan (203 flips, 14 splits, no unresolved sites),
 `make modules` passes and `sh tools/harness/md_reference/md_gate.sh`
@@ -189,7 +190,7 @@ baseline counts. Ten are bit-identical to the reference for all
 approximately 33,500 blocks. c10_3 has the same 698 late blocks
 different in both runs; c1d_16 has the same 1,949 blocks different
 from block 2320 in both runs. The previous c10_16 two-block driver
-residual has also disappeared with the corrected full swap.
+residual has also disappeared with the corrected address modifiers.
 
 This establishes replay parity for the observed host streams. It does
 not test the hardware load sequence, stock FX collision behavior, or

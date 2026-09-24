@@ -1,29 +1,15 @@
-The layout direction is settled. It needs a small, limited cost on T8 and nothing else on T5–T8. Everything is pushed as c321aeb.
+Continue the Machinedrum implementation in `/home/jannikassfalg/octamad` on `machinedrum`, starting from the current pushed HEAD on `origin/machinedrum`. The Machinedrum goal is still unfinished. Work in the main checkout as `CLAUDE.md` directs for this branch. Never commit firmware, snapshots, samples, or generated payloads. Leave the unrelated dirty `modules/octakit/upstream` submodule and untracked `base_firmware/` alone. WSL GitHub authentication is working; push commits only to `origin`, never `upstream`.
 
-What I found:
+Read `docs/proposals/machinedrum_reports/WP-A2-core1.md`, `WP-B2.md`, `WP-R2.md`, `modules/machinedrum/README.md`, and the current source before editing. The workpackets status table still contains older core-0 wording; the newer report sections and current source are authoritative.
 
-The sine must sit at 0x38000. It is read as a 32K "modulo" buffer (an addressing mode that wraps within the block), so it needs a whole 32K-aligned block. In the window that means 0x30000 (T7/T8's half) or 0x38000 (T3/T4's half). The shipping BusDelay already overwrites the 19 stock words at 0x38000, so that's safe.
-Core 1's private memory: 11.2K words of usable free X, plus about 45K of Y once T1–T4 give up their FX memory.
-Private P is 8K per core. This is inferred from NXP's figure of 248K words of RAM on the DSP56721, split as 64K shared plus two cores' X, Y and P. Core 1 can give about 6.8K of it, and only by dropping T1–T4's stock FX code.
-How much of a T5–T8 FX2 slot each stock effect uses: DARK and PLATE use almost the whole 16K slot. FLANGER and SPRING use about half, COMB and CHORUS about 3K. FILTER, EQ, DJ EQ, PHASER, LO-FI and COMPRESSOR use none, and neither does DELAY, which runs on the ColdFire.
-A full MD with 16 P-I voices is about 105K words. Core 1 alone offers about 97K, and too little of it is X memory. So full fidelity needs one T7/T8 slot.
-Where everything goes:
+Current verified state:
+- The MD code, tables, sine and 16 P-I buffers use the core-1 layout. The low-P routine at P:0x0143, E12 tail, and sample metadata have relocated homes. The placement has 203 X/Y flips, 14 split instructions, and one per-slot P-I phase correction.
+- The driver saves the OT's low X/Y image during a call and retains only 36 MD scratch words at Y:0xbe20..0xbe43 between calls. It forces M0 and M4 to linear addressing before both save and restore. Missing that M4 reset caused the old c1d_16 and c10_16 residuals; a 576-word MD save is unnecessary.
+- `sh tools/harness/md_reference/md_gate.sh` exits 0: all twelve relocated kits equal their own plain reference baselines. Ten are exact to the reference. c10_3 has 698 reference differences in both plain and relocated runs; c1d_16 has 1,949 in both. Neither is a relocation regression.
+- `python3 tools/harness/md_reference/md_init_gate.py` exits 0: original and relocated boot init produce identical sine, P-I and X/Y voice data on all twelve captured states. The second init of some already-running captures differs from their snapshot, so compare the two executions, not an execution against the snapshot.
+- `python3 tools/build/md_payload.py` builds and verifies ignored `out/machinedrum/build/payload_B.mem` from the user's pinned MD update: 19 sparse load records, 106,158 words, 424,812 bytes, SHA-256 `bdab273a62a11ab9d14326cbe11facce642a87335bf7f769343fa142d2cc35fa`. It checks every emitted address against `layout.py`. `make modules` passes. This is a load-record artifact, not an OT image.
+- The compact driver costs about 244.5 emulator cycles/sample in the first 1,600 silent c40_16 blocks versus 51.3 for the plain loop. The full MD save cost about 379.0. In active 5,000-block probes, moved minus plain is about 181-189 cycles/sample for c20_16, c47_2 and c40_16. These are interpreter counts, not hardware timing.
 
-Part	Placement
-MD instance	Core 1, playable on T1–T4. T1–T4 lose their stock FX.
-Sine	Core 1's half of the window, 0x38000
-Code	As much as fits in core 1's private P (about 6.8K), which also avoids the slower window fetches
-Tables and P-I buffers read through X	Core 1's private Y, by patching those reads from X to Y where the instruction form allows it
-Everything else	T8's FX2 memory (16K of the window)
-The cost on T5–T8: T8's FX2 can only run effects that use no slot memory (FILTER, EQ, DJ EQ, PHASER, LO-FI, COMPRESSOR, DELAY). T5, T6 and T7, and every FX1, stay stock.
+Next work: integrate payload B into the OT image/load path; add a core-1 dispatcher hook and fixed trigger proof; implement the stereo mixer, MD record/parameter transport, machine selection, embedded sequencer, persistence and MIDI; qualify the complete workload and hardware. Sample-ROM delivery and targeted E12-tail writes remain unproved. `make bus REMIX=machinedrum` still builds a skeleton, not a usable MD machine. Do not claim implementation complete from replay parity or the standalone payload.
 
-Next: an audit of the table and P-I reads, to check that each can be patched from X to Y. It covers the placement's one real risk: some reads may be paired X-and-Y instructions that can't be converted on one side. If too many are, the fallback is to take T7's FX2 memory as well.
-
-Caveats:
-
-Six of the twelve kits drift from the reference under the interpreter build I used for measuring (the known WP-R3 mismatch), so their late reads come from a slightly different run.
-The 8K private P is inferred from NXP's total, not probed on the unit.
-Sources:
-
-NXP DSP56721 product page
-DSP56720/DSP56721 datasheet
+Run the existing gates after changes and keep reports/current status honest. The user asked another model to continue from this freeze.

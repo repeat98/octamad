@@ -38,29 +38,33 @@ LAYOUT = {
 
         # The voice records: the engines reach X and Y through one base
         # register (r6), so both halves sit at one address.
-        {"name": "voice_x", "space": "X", "start": 0x8C00, "words": 0x400},
-        {"name": "voice_y_records", "space": "Y", "start": 0x8C00, "words": 0x400},
+        {"name": "voice_x", "space": "X", "start": 0x3940, "words": 0x400},
+        {"name": "voice_y_records", "space": "Y", "start": 0x3940, "words": 0x400},
 
         # The driver's own Y (loop words, the 16 x 32 output blocks, the MD's
         # kept words, the stock low-memory stash).
         {"name": "stash", "space": "Y", "start": 0xB9C0, "words": 0x240},
         {"name": "outbuf", "space": "Y", "start": 0xBC00, "words": 0x200},
         {"name": "loop_words", "space": "Y", "start": 0xBE00, "words": 0x20},
-        {"name": "mdsave", "space": "Y", "start": 0xBE20, "words": 0x24},
+        {"name": "phase_flags", "space": "Y", "start": 0xBE44, "words": 0x10},
 
         # Table ground: what md_flip.py --plan packs the tables and the P-I
         # buffers into (best fit, each keeping its old alignment).
-        {"name": "x_tables_a", "space": "X", "start": 0x2840, "words": 0x3F00 - 0x2840},
+        {"name": "x_tables_a", "space": "X", "start": 0x2840, "words": 0x3940 - 0x2840},
+        {"name": "x_tables_e", "space": "X", "start": 0x3D40, "words": 0x3F00 - 0x3D40},
         {"name": "x_tables_b", "space": "X", "start": 0x5840, "words": 0x6000 - 0x5840},
         {"name": "x_tables_c", "space": "X", "start": 0x7A92, "words": 0x8040 - 0x7A92},
-        {"name": "x_tables_d", "space": "X", "start": 0x8858, "words": 0x8C00 - 0x8858},
-        {"name": "y_tables_a", "space": "Y", "start": 0x07A5, "words": 0x8C00 - 0x07A5},
-        {"name": "y_tables_b", "space": "Y", "start": 0x9000, "words": 0xB9C0 - 0x9000},
+        {"name": "x_tables_d", "space": "X", "start": 0x8858, "words": 0x9000 - 0x8858},
+        {"name": "y_tables_a", "space": "Y", "start": 0x07A5, "words": 0x3940 - 0x07A5},
+        {"name": "y_tables_b", "space": "Y", "start": 0x3D40, "words": 0x5600 - 0x3D40},
+        {"name": "pi_buffers", "space": "Y", "start": 0x5600, "words": 0x6000},
+        {"name": "y_tables_c", "space": "Y", "start": 0xB600, "words": 0xB9C0 - 0xB600},
 
         # The shared window (P/X/Y alias there): the code that does not fit
         # private P, and the tables private X and Y cannot take (no flip is
         # needed there). The E12 write buffer and sample metadata have fixed homes.
-        {"name": "window_code", "space": "shared", "start": 0x34000, "words": 0x2400},
+        {"name": "window_code", "space": "shared", "start": 0x34000, "words": 0x2000},
+        {"name": "mdsave_full", "space": "shared", "start": 0x36000, "words": 0x240},
         {"name": "window_tables", "space": "shared", "start": 0x36400, "words": 0x0C00},
         {"name": "e12_tail", "space": "shared", "start": 0x37000, "words": 0x200},
         {"name": "sample_meta", "space": "shared", "start": 0x37200, "words": 0x200},
@@ -76,7 +80,8 @@ LAYOUT = {
         "ENG": 0xBE10,
         "loopvars": 0xBE00,
         "OUTBUF": 0xBC00,
-        "MDSAVE": 0xBE20,
+        "MDSAVE": 0x36000,
+        "PHASE": 0xBE44,
         "STASH": 0xB9C0,
         "code": 0x1F00,
     },
@@ -143,8 +148,8 @@ def check():
     if allocation("outbuf")["start"] % 0x20:
         errors.append("outbuf: must be 32-aligned (m7 = $1f)")
     d = LAYOUT["driver"]
-    for key, name in (("OUTBUF", "outbuf"), ("MDSAVE", "mdsave"), ("STASH", "stash"),
-                      ("loopvars", "loop_words"), ("code", "driver_code")):
+    for key, name in (("OUTBUF", "outbuf"), ("MDSAVE", "mdsave_full"), ("STASH", "stash"),
+                      ("loopvars", "loop_words"), ("PHASE", "phase_flags"), ("code", "driver_code")):
         if d[key] != allocation(name)["start"]:
             errors.append(f"driver {key} {d[key]:#x} is not {name}'s start")
     lw = allocation("loop_words")

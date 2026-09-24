@@ -619,7 +619,8 @@ def audit(caps, raw, code, stock, plan_path=None):
     # X tables move around it, with 143f38 in the shared window. A full
     # c37_16 replay is exact with this arrangement.
     pinned = {
-        "142279": ("X", 0x3400, False),
+        "pi": ("Y", md_layout.allocation("pi_buffers")["start"], True),
+        "142279": ("W", md_layout.allocation("window_tables")["start"], False),
         "142f33": ("X", 0x2f33, True),
         "143f38": ("W", md_layout.allocation("window_tables_b")["start"], False),
     }
@@ -630,6 +631,11 @@ def audit(caps, raw, code, stock, plan_path=None):
         chosen, at = [], {}
 
         for rid, (space, start, _rewrite) in pinned.items():
+            if rid == "pi":
+                alloc = md_layout.allocation("pi_buffers")
+                if space != "Y" or start != alloc["start"] or size(rid) != alloc["words"]:
+                    die("pinned P-I buffer does not match its dedicated allocation")
+                continue
             end = start + size(rid)
             containing = next(((a, b) for a, b in free[space] if a <= start and end <= b), None)
             if containing is None:

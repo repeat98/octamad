@@ -67,6 +67,7 @@ def main():
         "OUTBUF": driver["OUTBUF"],
         "STASH": driver["STASH"],
         "MDSAVE": driver["MDSAVE"],
+        "PHASE": driver["PHASE"],
         "VOICE": voice_y["start"],
         "INIT": place(TABLES[0]), "TRIG": place(TABLES[1]), "RENDER": place(TABLES[2]),
         "EMPTY": place(0x10008F),

@@ -13,14 +13,9 @@
 ; and control machines, which are not ported.
 ;
 ; Around the batch it swaps low memory. The OT's X:0-$ff and Y:0-$13f are
-; saved to @STASH@ and put back afterwards. Only the MD's own 36 words that
-; outlive a period (X:$a0-$bf, Y:$1e-$21, measured with md_replay's poison
-; runs) are kept, at @MDSAVE@; the rest of that range is MD scratch.
-; Known deviation: TRX-S2's first block after a trigger reads scratch it
-; never wrote, so on the MD it depends on other voices' leftovers. With 36
-; words kept, 1-2 such blocks in ~33,500 differ on 2 of 12 kits. Carrying
-; the whole low image (576 words each way) fixed one kit, and costs ~70
-; cycles/sample more (estimated).
+; saved to @STASH@ and put back afterwards. The MD's complete low image
+; (X:0-$ff, Y:0-$13f) is kept at @MDSAVE@ across OT frame calls. This
+; preserves the TRX-S2 scratch that survives between MD periods.
 ;
 ; Addresses are placeholders between at-signs that md_driver.py fills per
 ; layout:
@@ -52,7 +47,9 @@
 ; ---------------------------------------------------------------------------
 
 md_enter:
-; ---- swap in: the OT's low memory out, the MD's 36 words in
+        move    #>$ffffff,m0
+        move    #>$ffffff,m4
+; ---- swap in: the OT's low memory out, the MD's full low image in
         move    #$0,r0
         move    #>@STASH@,r4
         do      #256,md_a1
@@ -64,14 +61,14 @@ md_a1:
         move    y:(r0)+,x0
         move    x0,y:(r4)+
 md_a2:
-        move    #>$a0,r0
+        move    #$0,r0
         move    #>@MDSAVE@,r4
-        do      #32,md_a3
+        do      #256,md_a3
         move    y:(r4)+,x0
         move    x0,x:(r0)+
 md_a3:
-        move    #>$1e,r0
-        do      #4,md_a4
+        move    #$0,r0
+        do      #320,md_a4
         move    y:(r4)+,x0
         move    x0,y:(r0)+
 md_a4:
@@ -110,6 +107,8 @@ md_slot:
 md_trig:
         move    y:>@LV142@,r1
         move    y:>@LV141@,r6
+        move    #$1,x0
+        move    x0,y:(r1+@PHASE@)
         move    y:(r1+@ENG@),r0
         move    y:(r0+@TRIG@),r1
         move    #$0,x0
@@ -159,15 +158,17 @@ md_done:
         move    #>md_slot,r0
         jmp     (r0)
 md_leave:
-; ---- swap out: the MD's 36 words kept, the OT's low memory back
-        move    #>$a0,r0
+        move    #>$ffffff,m0
+        move    #>$ffffff,m4
+; ---- swap out: the MD's full low image kept, the OT's low memory back
+        move    #$0,r0
         move    #>@MDSAVE@,r4
-        do      #32,md_a5
+        do      #256,md_a5
         move    x:(r0)+,x0
         move    x0,y:(r4)+
 md_a5:
-        move    #>$1e,r0
-        do      #4,md_a6
+        move    #$0,r0
+        do      #320,md_a6
         move    y:(r0)+,x0
         move    x0,y:(r4)+
 md_a6:

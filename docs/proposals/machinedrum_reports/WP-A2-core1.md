@@ -165,13 +165,43 @@ needs a matching physical layout or a logical/physical pointer split.
 - `tools/build/md_payload.py` (WP-B2) still reads the core-0 allocation
   names. It is not in `make`, and it will be redone on this layout.
 
+## 24 September continuation: all twelve relocated baselines agree
+
+The P-I buffer stays in Y:0x5600..0xb5ff, preserving its old low 16
+address bits. At P:102fae the first P-I phase setup now translates the
+physical buffer pointer back into the MD numerical phase by adding
+0x130000. A 16-word driver flag array at Y:0xbe44..0xbe53 arms this
+translation at startup and again on a trigger. It is consumed once per
+slot; later phase values may look like aligned pointers by chance.
+
+The driver's low-memory exchange now carries all X:0..0xff and
+Y:0..0x13f across calls. The MD copy lives in the shared window at
+0x36000..0x3623f, and the stock copy remains at Y:0xb9c0..0xbbff.
+Both swap directions set M0 and M4 to linear addressing before copying.
+Without the M4 reset, an engine's modulo setting made the save buffer
+wrap after five words, causing c47_2 and c24_16 to diverge immediately
+on their first active blocks.
+
+With the regenerated plan (203 flips, 14 splits, no unresolved sites),
+`make modules` passes and `sh tools/harness/md_reference/md_gate.sh`
+exits zero. All twelve relocated runs have exactly their own plain
+baseline counts. Ten are bit-identical to the reference for all
+approximately 33,500 blocks. c10_3 has the same 698 late blocks
+different in both runs; c1d_16 has the same 1,949 blocks different
+from block 2320 in both runs. The previous c10_16 two-block driver
+residual has also disappeared with the corrected full swap.
+
+This establishes replay parity for the observed host streams. It does
+not test the hardware load sequence, stock FX collision behavior, or
+the full MD update's engine initialization and sample ROM. Those remain
+WP-B2/B3 integration work.
+
 ## Handover
 
-1. Make the P-I buffer pointer at `P:102fae..102fc5` preserve its
-   numerical phase behavior. The `142f33` table path is now exact with
-   a low16-compatible X home.
-2. Rerun the twelve-kit gate and separate c1d_16's known one-block
-   driver residual from any new relocation mismatch.
-3. Exercise the low-P port, E12-tail writes and sample metadata in an
-   init or targeted replay. Resolve sample-ROM pointers above `0x150000`,
-   then rebuild WP-B2.
+1. Rebuild `tools/build/md_payload.py` for this core-1 plan, emitting
+   payload B from the user's update and checking every owned memory span.
+2. Exercise the relocated low-P init, E12-tail writes, and sample
+   metadata against a targeted reference, including pointers above
+   0x150000.
+3. Integrate native machine selection, parameters, the driver, and
+   payload B in the OT build; measure the complete core-1 workload.

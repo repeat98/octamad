@@ -293,6 +293,34 @@ def main():
         del code[a]
     splits = {s["pc"]: s for s in plan["splits"]}
     flips = {f["pc"]: f["word"] for f in plan["flips"]}
+    # The P-I render setup uses the buffer pointer as a number in its
+    # phase recurrence. Keep the physical pointer in the voice record,
+    # then restore the MD numerical value in x1 at this one use. B is
+    # dead here and the next mpy overwrites it.
+    pi_region = next((r for r in plan["regions"] if r["id"] == "pi"), None)
+    expansions = {}
+    if pi_region:
+        pc = 0x102FAE
+        if pc not in code or code[pc][0] != 1 or code[pc][1] != 0x459500:
+            sys.exit("P-I phase correction: unexpected instruction at 102fae")
+        delta = (pi_region["lo"] - pi_region["new"]) & 0xFFFFFF
+        if delta:
+            # A driver-owned per-slot flag is set at startup and on each
+            # trigger. Consume it on the first P-I phase setup; subsequent
+            # phase values can equal aligned buffer addresses by chance.
+            flags = allocation("phase_flags")["start"]
+            slot = LAYOUT["driver"]["LV142"]
+            expansions[pc] = [0x459500, 0x6CF000, slot, 0x0B74CF, flags,
+                              0x20000B, 0x0D104A, 0x000011, 0x20001B,
+                              0x0B748F, flags, 0x20AF00, 0x0140CD,
+                              pi_region["new"], 0x0D1049, 0x000009,
+                              0x0140CD, pi_region["new"] + pi_region["hi"] - pi_region["lo"],
+                              0x0D1041, 0x000005, 0x0140C8, delta, 0x21A500]
+    extra = {a: 1 for a in splits}
+    for a, words in expansions.items():
+        if a in extra or a in flips:
+            sys.exit(f"P-I phase correction conflicts with plan at {a:06x}")
+        extra[a] = len(words) - code[a][0]
     missing = sorted(a for a in list(splits) + list(flips) if a not in code and not LOOP[0] <= a < LOOP[1])
     if missing:
         sys.exit("plan names instructions the descent did not find: " + " ".join(f"{a:06x}" for a in missing))
@@ -303,7 +331,7 @@ def main():
     # Units, sized with their splits, and where each goes.
     moving = {a: v for a, v in code.items() if not LOOP[0] <= a < LOOP[1]}
     units = units_of(moving)
-    sizes = [max(a + moving[a][0] for a in u) - u[0] + sum(1 for a in u if a in splits) for u in units]
+    sizes = [max(a + moving[a][0] for a in u) - u[0] + sum(extra.get(a, 0) for a in u) for u in units]
     hot_alloc, win_alloc = allocation("hot_code"), allocation("window_code")
     if hot_plan:
         pinned = set()
@@ -323,7 +351,7 @@ def main():
         u = units[i]
         where = "hot" if i in hot else "win"
         lo, hi = u[0], max(a + moving[a][0] for a in u)
-        amap.add(lo, hi, at[where], [a for a in u if a in splits])
+        amap.add(lo, hi, at[where], [a for a in u for _ in range(extra.get(a, 0))])
         placed.append((lo, hi, at[where], where))
         at[where] += sizes[i]
     for where, alloc in (("hot", hot_alloc), ("win", win_alloc)):
@@ -346,7 +374,7 @@ def main():
 
     def loop_end(la):
         # A loop ends at its last word; a split last instruction ends one later.
-        return amap(la) + (1 if la in splits else 0)
+        return amap(la) + extra.get(la, 0)
 
     # The refusals: one-word targets the map would have to change.
     for a, (ln, wa, wb, text) in moving.items():
@@ -414,6 +442,24 @@ def main():
                 xy_patches.append(("P" if space == "W" else space, base + i if where is None else where, m))
                 count("table")
 
+    # Seed the MD low image that the driver swaps in on the first call.
+    # Preserve the relocated pointers there as in the live X/Y image.
+    mdsave = allocation("mdsave_full")
+    assert mdsave["words"] == 0x240
+    for offset, base, n in ((0, 0x150000, 0x100),
+                            (0x100, 0x170000, 0x140)):
+        for i in range(n):
+            value = P[base + i]
+            mapped = amap(value)
+            xy_patches.append(("Y", mdsave["start"] + offset + i,
+                               value if mapped is None else mapped))
+
+    # Each slot gets one chance to translate an initial physical P-I
+    # pointer to the MD numerical phase. The driver re-arms it on a trigger.
+    phase_flags = allocation("phase_flags")
+    for i in range(16):
+        xy_patches.append(("Y", phase_flags["start"] + i, 1))
+
     # The loop's Y words (the render buffer y:$140, the record base y:$141,
     # the slot y:$142, and each slot's engine at y:$153+slot) move to the
     # layout's loop words; the engines reach y:$140 and y:$142 through long
@@ -459,7 +505,7 @@ def main():
     print(f"placed: hot {at['hot'] - hot_alloc['start']} of {hot_alloc['words']} words at "
           f"{hot_alloc['start']:04x}, window {at['win'] - win_alloc['start']} of {win_alloc['words']} at "
           f"{win_alloc['start']:05x}; {len(plan['regions'])} data regions, "
-          f"{len(flips)} flips, {len(splits)} splits")
+          f"{len(flips)} flips, {len(splits)} splits, {len(expansions)} phase expansions")
     print("patches: " + ", ".join(f"{k} {v}" for k, v in sorted(kinds.items())))
     if low:
         print("targets in the MD's low P outside the loop: " + " ".join(f"{t:04x}" for t in low))
@@ -476,12 +522,12 @@ def main():
             f.write(f"M {sine['lo']:06x} {sine['hi']:06x} {sine['new']:06x}\n")
         for lo, hi, new, where in placed:
             # The unit's words, in segments around its split points.
-            cut = [a for a in sorted(splits) if lo <= a < hi]
+            cut = [a for a in sorted(set(splits) | set(expansions)) if lo <= a < hi]
             seg = lo
             for a in cut + [hi]:
                 if a > seg:
                     f.write(f"M {seg:06x} {a:06x} {amap(seg):06x}\n")
-                seg = a + 1
+                seg = a + moving[a][0] if a < hi else a
             if where == "hot":
                 f.write(f"H {lo:06x} {hi:06x}\n")
         for a, v in sorted(patches.items()):
@@ -491,6 +537,9 @@ def main():
         for a, s in sorted(splits.items()):
             f.write(f"W {amap(a):06x} {s['words'][0]:06x}\n")
             f.write(f"W {amap(a) + 1:06x} {s['words'][1]:06x}\n")
+        for a, words in sorted(expansions.items()):
+            for i, word in enumerate(words):
+                f.write(f"W {amap(a) + i:06x} {word:06x}\n")
         for space, a, v in xy_patches:
             f.write(f"{space if space in 'XY' else 'W'} {a:06x} {v:06x}\n")
         for space, a, v in live:

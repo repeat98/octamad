@@ -1,5 +1,10 @@
 # Machinedrum Machine: implementation plan
 
+Implementation update (24 September 2026): the core-1 twelve-kit relocation
+replay now matches each plain baseline. See
+`docs/proposals/machinedrum_reports/WP-A2-core1.md` for the gate and
+remaining payload and OT integration work.
+
 Status: revised proposal, 23 September 2026. Based on the local Octamad
 checkout at `3b5a2eb66930225f914a369fbfd499dd763d7dcd`. No Machinedrum
 engine has been extracted, ported, benchmarked, or hardware-qualified by

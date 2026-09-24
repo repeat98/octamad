@@ -33,7 +33,9 @@
 // (P:100057..10008d) at MD addresses, records that, and stops.
 //
 // MD_REPLAY_VALUES=<file> with MD_REPLAY_VALUE_BLOCK=<n> records RAM read
-// values made by instructions in one block (interpreter build only).
+// values made by instructions in one block (interpreter build only). Use
+// MD_REPLAY_VALUE_BLOCK=all for every block; MD_REPLAY_VALUE_ADDR=X:15
+// limits the trace to one RAM address.
 //
 //   md_replay <capture dir> [--reloc] [--driver] [--init] [out.wav slot]
 //
@@ -85,6 +87,9 @@ namespace
 	dsp56k::Memory* g_valueMemory = nullptr;
 	FILE* g_valueFile = nullptr;
 	size_t g_valueBlock = SIZE_MAX, g_valueTarget = SIZE_MAX;
+	bool g_valueFilter = false;
+	dsp56k::EMemArea g_valueFilterArea = dsp56k::MemArea_X;
+	dsp56k::TWord g_valueFilterAddr = 0;
 	bool g_access = false;
 	struct AccessBits
 	{
@@ -117,7 +122,9 @@ namespace
 	{
 		if(g_access)
 			recordAccess(_area, _offset, false);
-		if(g_valueFile && g_curPc != g_noPc && g_valueBlock == g_valueTarget &&
+		if(g_valueFile && g_curPc != g_noPc && g_valueBlock != SIZE_MAX &&
+			(g_valueTarget == SIZE_MAX || g_valueBlock == g_valueTarget) &&
+			(!g_valueFilter || (_area == g_valueFilterArea && _offset == g_valueFilterAddr)) &&
 			(_offset < g_intHi || (_offset >= g_winLo && _offset < g_winHi) ||
 			 (_offset >= g_readLo && _offset < g_readHi)))
 		{
@@ -667,6 +674,9 @@ int main(int _argc, char** _argv)
 			watch.push_back(static_cast<TWord>(std::stoul(item, nullptr, 16)));
 	}
 	int watchLeft = std::getenv("MD_REPLAY_WATCH_MAX") ? std::atoi(std::getenv("MD_REPLAY_WATCH_MAX")) : 8;
+	const size_t watchTargetBlock = std::getenv("MD_REPLAY_WATCH_BLOCK") ?
+		std::stoull(std::getenv("MD_REPLAY_WATCH_BLOCK")) : SIZE_MAX;
+	size_t watchCurrentBlock = SIZE_MAX;
 	auto dumpRegs = [&](TWord _pc)
 	{
 		std::printf("watch %06x:", _pc);
@@ -693,7 +703,7 @@ int main(int _argc, char** _argv)
 		for(uint64_t n = 0; n < 2'000'000; ++n)
 		{
 			const auto pc = dsp.getPC().toWord();
-			if(watchLeft > 0)
+			if(watchLeft > 0 && (watchTargetBlock == SIZE_MAX || watchCurrentBlock == watchTargetBlock))
 				for(auto w : watch)
 					if(pc == w)
 					{
@@ -907,7 +917,22 @@ int main(int _argc, char** _argv)
 			std::cerr << "MD_REPLAY_VALUES needs a writable path and MD_REPLAY_VALUE_BLOCK\n";
 			return 2;
 		}
-		g_valueTarget = std::stoull(block);
+		g_valueTarget = std::string(block) == "all" ? SIZE_MAX : std::stoull(block);
+		if(const char* addr = std::getenv("MD_REPLAY_VALUE_ADDR"))
+		{
+			char area = 0;
+			unsigned value = 0;
+			if(std::sscanf(addr, "%c:%x", &area, &value) != 2 ||
+			   (area != 'P' && area != 'X' && area != 'Y'))
+			{
+				std::cerr << "MD_REPLAY_VALUE_ADDR must be P|X|Y:hex-address\n";
+				return 2;
+			}
+			g_valueFilter = true;
+			g_valueFilterArea = area == 'P' ? dsp56k::MemArea_P :
+			                    area == 'X' ? dsp56k::MemArea_X : dsp56k::MemArea_Y;
+			g_valueFilterAddr = value;
+		}
 		g_valueMemory = &memory;
 	}
 	if(readsPath || accessPath || valuesPath)
@@ -953,6 +978,7 @@ int main(int _argc, char** _argv)
 	const size_t maxBlocks = std::getenv("MD_REPLAY_BLOCKS") ? std::stoul(std::getenv("MD_REPLAY_BLOCKS")) : groups.size();
 	for(size_t i = 0; i < groups.size() && i < maxBlocks; ++i)
 	{
+		watchCurrentBlock = i;
 		if(std::getenv("MD_REPLAY_PROGRESS") && i % 256 == 0)
 			std::cerr << "replay block " << i << "/" << std::min(maxBlocks, groups.size()) << "\n";
 #ifdef MD_REPLAY_READS

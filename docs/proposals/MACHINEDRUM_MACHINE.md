@@ -66,6 +66,20 @@ no requirement for eight simultaneous Machinedrum instances.
 
 ### Decisions (24 September 2026)
 
+- **The MD runs on core 1, on tracks 1–4** (24 Sep, later the same day). This
+  supersedes "tracks 5–8 only (core 0)" above, and the voice-home sign-off
+  below. The user had core 0 and core 1 swapped (core 0 is payload A,
+  T5–T8). What the user wants is that T5–T8 stay stock and T1–T4's FX may be
+  limited. The rule for choices like this (the user): take the option that is
+  best for the architecture, for efficiency and for parity with the stock OT
+  firmware. Core 1 wins on all three:
+  - architecture: it is the only placement that fits (section 12, "Which
+    space the MD reads its data through");
+  - efficiency: core 1 has 608 free private P words to core 0's 33, and does
+    not carry the stock mixdown and voice playback;
+  - parity: T5–T8 keep all of their FX.
+  The layout (WP-A2) is redone for core 1. The core-0 findings stay as the
+  record of why.
 - **Voice home A** (the user): the MD voice records live at `X/Y:0x3400–0x37ff`,
   and core 0's FX1 slot there (`0x3400–0x3fff`) is given up. Options B and C in
   `layout.py` are not taken.

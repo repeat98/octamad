@@ -10,7 +10,7 @@ proposal can become a shipping remix.
 
 
 LAYOUT = {
-    "status": "review",
+    "status": "superseded: the MD moves to core 1, tracks 1-4 (24 Sep 2026); redo WP-A2",
     "core": 0,
     "track_range": (5, 8),
     "voice_home": "A_fx1_slot_0x3400",

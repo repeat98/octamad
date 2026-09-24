@@ -189,3 +189,24 @@ Next:
 3. Rerun the twelve-kit gate (this also unblocks WP-A3).
 4. Make `md_payload.py` emit from the packed map.
 
+## Access-space measurement, 24 September 2026
+
+```text
+$ tools/harness/md_reference/md_reads.sh <scratch> <the twelve captures>
+$ python3 tools/harness/md_reference/md_reads.py <scratch>/reads/*/reads.txt
+captures: 12
+tables (maximal runs of loaded non-code words), words by class:
+  X      23,000 words in 18 runs
+  XY      4,122 words in 3 runs
+  Y       1,706 words in 13 runs
+  unread  1,242 words in 5 runs
+  single-space (X or Y only): 24,706; needs the window: 4,122; unread: 1,242
+sine 148000..14ffff: read 32,768 of 32,768 words, first..last read 148000..14ffff; by class XY 32,768
+P-I buffers 135600..13b5ff: read 16,905 of 24,576 words, first..last read 135600..13b4e6; by class X 16,905, unread 7,671
+```
+
+Tables are mostly X-only, not Y-only, so private Y barely helps. On core 0
+the packed split does not fit unless the MD takes the whole window and runs
+at most one P-I voice. See `MACHINEDRUM_MACHINE.md` §12, "Which space the
+MD reads its data through". B2 stays blocked, now on the choice of core.
+

@@ -19,6 +19,11 @@
 // first <n> differing records and blocks; MD_REPLAY_BLOCKS=<n> stops early;
 // MD_REPLAY_KEEP_OLD=1 and MD_REPLAY_WIPE=<start>-<end> (with --reloc) keep
 // the old regions, or wipe only part of them.
+// MD_REPLAY_READS=<file> (only in a build with -DMD_REPLAY_READS, whose
+// emulator carries the g_mdReadHook read hook; see md_reads.sh): for every
+// word of the MD's external RAM 0x100000-0x14ffff, the spaces the DSP read
+// it through (P, X, Y) while the blocks ran, as runs "<start> <end> <PXY>".
+// Instruction fetches do not go through the hook.
 //
 //   md_replay <capture dir> [--reloc] [--driver] [--init] [out.wav slot]
 //
@@ -48,6 +53,20 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#ifdef MD_REPLAY_READS
+namespace
+{
+	constexpr dsp56k::TWord g_readLo = 0x100000, g_readHi = 0x150000;
+	std::vector<uint8_t> g_readFlags;
+	void onRead(dsp56k::EMemArea _area, dsp56k::TWord _offset)
+	{
+		if(_offset < g_readLo || _offset >= g_readHi)
+			return;
+		g_readFlags[_offset - g_readLo] |= _area == dsp56k::MemArea_P ? 1 : _area == dsp56k::MemArea_X ? 2 : 4;
+	}
+}
+#endif
 
 using namespace dsp56k;
 
@@ -712,6 +731,14 @@ int main(int _argc, char** _argv)
 		++periods;
 	};
 
+#ifdef MD_REPLAY_READS
+	const char* readsPath = std::getenv("MD_REPLAY_READS");
+	if(readsPath)
+	{
+		g_readFlags.assign(g_readHi - g_readLo, 0);
+		dsp56k::g_mdReadHook = onRead;
+	}
+#endif
 	std::map<uint32_t, std::array<uint64_t, 2>> stats;	// slot -> {match, mismatch}
 	size_t firstBad = SIZE_MAX;
 	std::vector<float> wav;
@@ -956,6 +983,26 @@ int main(int _argc, char** _argv)
 		}
 	}
 
+#ifdef MD_REPLAY_READS
+	if(readsPath)
+	{
+		dsp56k::g_mdReadHook = nullptr;
+		if(FILE* f = std::fopen(readsPath, "w"))
+		{
+			static const char* names[8] = {"-", "P", "X", "PX", "Y", "PY", "XY", "PXY"};
+			for(TWord i = 0; i < g_readFlags.size();)
+			{
+				TWord j = i;
+				while(j < g_readFlags.size() && g_readFlags[j] == g_readFlags[i])
+					++j;
+				if(g_readFlags[i])
+					std::fprintf(f, "%06x %06x %s\n", g_readLo + i, g_readLo + j, names[g_readFlags[i]]);
+				i = j;
+			}
+			std::fclose(f);
+		}
+	}
+#endif
 	// Where the replay wrote memory: every word that now differs from the
 	// snapshot, as runs, to <capture dir>/written.txt.
 	{

@@ -1645,6 +1645,41 @@ disassembles the result back and refuses mis-encodings and label prefixes.
   T7/T8's FX2 slots, and, unless the access audit places more tables in
   private X, part of T5/T6's private FX2 Y.
 
+### Which space the MD reads its data through (24 September 2026)
+
+Measured with `tools/harness/md_reference/md_reads.sh` (an isolated
+interpreter build of `md_replay` with a read hook) on the twelve kits, plain
+replay, and classified with `md_reads.py`. Six kits match the reference
+exactly or at their known baseline. c01_16, c1d_16, c10_16, c20_16, c24_16
+and c42_16 diverge from about block 2,300 on (the WP-R3 interpreter
+mismatch), so their late reads come from a slightly different run.
+
+- ✅ Tables (maximal runs of loaded, non-code words in the two source spans,
+  30,070 words): **X only 23,000** (18 runs), **X and Y 4,122** (3 runs),
+  **Y only 1,706** (13 runs), never read 1,242 (5 runs). The largest X runs
+  are `140000..1420ff` (8,448 words), `146000..146dff` (3,584),
+  `143f54..1449c8` (2,677) and `1436d4..143d1c` (1,609); the X-and-Y run
+  is mainly `100885..101881` (4,093).
+- ✅ Several runs are read sparsely (`140000..1420ff`: 92 words read in 71
+  separate places), in the pattern of parameter-indexed lookups. A word no
+  kit reads is not proof the table is unused, so the classes above keep each
+  run whole.
+- ✅ The sine `148000..14ffff` is read in full, all 32,768 words, through
+  both X and Y.
+- ✅ The P-I buffers `135600..13b5ff` are read through X only: 16,905 of
+  24,576 words, which is more than eleven voices' 1,536 each. The kits play
+  more P-I voices at once than the proposed cap of six.
+- ❌ The layout's `y_only_tables` (17,920 words of T5/T6's private FX2 Y)
+  assumed that much of the table data could live in Y. Only 1,706 words are
+  Y-only.
+- *inferred* On core 0 the window must hold the sine, the post-hot code, the
+  driver and the X-and-Y tables: 50,039 words. The X-only tables and the P-I
+  buffers (23,000 + 1,536 per voice) exceed core 0's ~9,870 free private X
+  by 13,130 + 1,536 per voice. With the whole window (65,445 usable) the MD
+  fits with at most one P-I voice. With only core 1's half (32,749) it does
+  not fit at all. Keeping T5–T8's FX memory and running the MD on core 0
+  are incompatible.
+
 ### Open for Phase 1
 
 1. Profile data accesses (X/Y) per engine, which gives the tables and

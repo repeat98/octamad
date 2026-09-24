@@ -2150,9 +2150,8 @@ Commands and output are in [WP-C2.md](machinedrum_reports/WP-C2.md).
   - each part triggered once;
   - the gain words equal `md_gain(VOL, PAN)`.
 
-  This holds for all 50 baseline cases (4 runs). Of the 450 encoder-detent
-  cases, the first 16 of 29 runs (256 cases) pass; 🟡 the rest were cut
-  off at the handoff. The expected words are `map.txt`'s trig packets, and
+  This holds for all 50 baseline cases (4 runs) and all 450 encoder-detent
+  cases (29 runs). The expected words are `map.txt`'s trig packets, and
   the kit takes the case's snapshot rounded to a step: TRX-CP / B was
   captured on a non-trig update with B still easing (`0x23eb` toward
   `0x2400`). E12 is refused on the OT (WP-R1): an E12 part plays as

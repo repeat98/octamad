@@ -14,9 +14,8 @@ Written for the next agent, who continues the Machinedrum work on branch
   frame. `md_xport.s` calls `md_ctl_chunk` once a frame.
   - The MD send path is decoded in `MACHINEDRUM_MACHINE.md` §12, "How the MD
     sends a record".
-  - Gate: `make verify-md-kit [CASES=all]`. Baseline 50/50 pass. The
-    450-case run was **cut off at 16/29 runs, all passing**. Rerun it (about
-    25 min, in the background).
+  - Gate: `make verify-md-kit [CASES=all]`: all 450 cases PASS (finished
+    after the handoff commit).
 - **WP-D2 (spec, review)** and **WP-D3 (sequencer).** One MD pattern per OT
   pattern, 16 lanes × 64 steps and 64 locks, on the parent track's clock,
   length, scale and swing.

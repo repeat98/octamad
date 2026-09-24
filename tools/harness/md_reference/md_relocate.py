@@ -209,6 +209,16 @@ def hot_choice(units, sizes, fetch_dirs, budget):
         candidates.discard(best)
         used += sizes[best]
         rem = [rem[k] - f.get(best, 0) for k, f in enumerate(per)]
+    # A fetch profile does not visit every reachable code unit. The units
+    # with no measured fetches still need a home; leave private P unused and
+    # they can overflow the bounded shared-window code allocation. Fill the
+    # remaining P space with whole unobserved units, largest first so the
+    # placement is deterministic and avoids stranding a large unit.
+    for i in sorted(set(range(len(units))) - chosen,
+                    key=lambda index: (-sizes[index], units[index][0])):
+        if used + sizes[i] <= budget:
+            chosen.add(i)
+            used += sizes[i]
     print(f"hot: chose {len(chosen)} of {len(units)} units, {used} words; fetches left per capture: "
           + ", ".join(f"{100 * r / max(s, 1):.0f}%" for r, s in zip(rem, start)))
     return chosen

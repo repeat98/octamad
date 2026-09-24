@@ -5,6 +5,14 @@ all twelve captured kits (`md_gate.sh`, `md_init_gate.py`).
 `tools/build/md_payload.py` builds a verified payload-B load-record artifact
 from the user's pinned MD OS 1.63 update, under ignored
 `out/machinedrum/build/`.
+The payload also needs the generated `out/machinedrum/plan.json` and capture
+relocation plans. Rebuild the access traces with `md_reads.sh`, run
+`md_flip.py <access files> --init <init access> --plan out/machinedrum/plan.json`,
+then run `md_gate.sh` with the `MD_REPLAY_FETCH=2` profiles in `out/md_fetch/`
+to regenerate the twelve relocation plans before
+`md_payload.py`. The relocator fills private P with whole unobserved code
+units after the measured hot units; this keeps the shared-window code inside
+its allocation when profiles omit reachable boot or rare-engine code.
 
 `make bus REMIX=machinedrum` loads that artifact into core 1 at boot
 (`tools/build/md_image.py`: a pre-boot payload of octabam's loader, uploaded

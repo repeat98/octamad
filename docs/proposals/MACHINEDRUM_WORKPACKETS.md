@@ -355,14 +355,10 @@ under the port.*
 
 **WP-B3 The dispatcher hook.** *Depends: WP-B2.*
 - **Do:**
-  1. Find the core-0 dispatcher site where a track's audio block is ready
-     before FX1 (`docs/firmware/DSP.md` §5–6, `P:0x41e` module, the FX1
-     call `P:0x4c8–0x4d7`).
-  2. Add a hook that calls the driver when the track is the Part's MD
-     track. The track index comes from the per-track record; how
-     ColdFire marks the MD track is WP-B4.
-  3. Preserve every register the dispatcher relies on (`CLAUDE.md`: "AN
-     EFFECT'S init MUST PRESERVE r1"; r7 bumps).
+  1. Use core 1's FX2 dispatch for T1–T4. The current proof selects FX2
+     id `0x1e` and enters `md_glue.asm`, which calls the driver.
+  2. Preserve every register the dispatch path relies on (`CLAUDE.md`:
+     "AN EFFECT'S init MUST PRESERVE r1"; r7 bumps).
 - **Done when:** under the port (`ot_emu --dsp-pcwatch`), the driver runs
   once per frame on the MD track and never on the others.
 - **Trap:** measure the dispatcher under the port; never model it in
@@ -370,13 +366,12 @@ under the port.*
 
 **WP-B4 The fixed trigger path (proof only).** *Depends: WP-B3.*
 - **Do:** with no ColdFire MD code yet:
-  - when the MD track's OT trig fires, which is visible in its per-track
-    record at `X:0x080`, set slot 0's record to a fixed TRX-BD trigger
-    record taken from `c10`'s `log.txt`;
-  - set slots 1–3 to fixed records too;
+  - when the T1 MD track's sample voice starts (bit 16 of its track-state
+    word `0x1e`), set slot 0's record to a fixed TRX-BD trigger record
+    taken from `c10`'s `log.txt`;
   - document which record word carries the trig.
-- **Done when:** under the port, with a test project, trigs on T5 produce
-  MD audio on T5's output (`make check` with `OT_PROJECT`, its main-out
+- **Done when:** under the port, with a test project, trigs on T1 produce
+  MD audio on T1's output (`make check` with `OT_PROJECT`, its main-out
   capture).
 
 **WP-B5 Gates and the M1 image.** *Depends: WP-B4, WP-A6.*
@@ -415,9 +410,10 @@ under the port.*
 **WP-C3 Machine registration.** *Depends: WP-C2.*
 - **Do:** a new machine type, following POLY's registration (`modules/poly-machine`,
   on its own branch; `MACHINEDRUM_MACHINE.md` §8). MD is allowed only on
-  T5–T8 and at most once per Part; enforce both.
-- **Done when:** under the port, selecting MD on T5 runs the driver, and
-  selecting it on T1 or on a second track is refused with a message.
+  T1–T4 (core 1) and at most once per Part; enforce both. Keep POLY's
+  serialized type 5 available for a future combined remix.
+- **Done when:** under the port, selecting MD on T1 runs the driver, and
+  selecting it on T5 or on a second track is refused with a message.
 
 **WP-C4 Kits and parameters.** *Depends: WP-C3.*
 - **Do:** 16 parts, each with an engine and its parameters. Parameter

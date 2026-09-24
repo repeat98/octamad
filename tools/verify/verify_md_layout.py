@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Audit the proposed Machinedrum code/table packing budget.
+"""Audit the Machinedrum core-1 code and table placement.
 
 This is intentionally a read-only audit of the user's pinned update.  It
 does not emit a payload, change the layout, or add a generic build target.
 The static code set is the relocator's reachable set, including its explicit
 boot-init root; it is a conservative placement input, not a runtime claim.
+The capacity gate checks the measured relocation map against layout.py.
 """
 
 from __future__ import annotations
@@ -113,19 +114,36 @@ def main() -> int:
               f"code aliases {len(loaded & code):,}; "
               f"non-code {len(loaded - code):,}")
 
-    window = payload.allocation("window_code_tables")["words"]
-    y_only = payload.allocation("y_only_tables")["words"]
-    layout = runpy.run_path(str(ROOT / "modules/machinedrum/layout.py"))["LAYOUT"]
-    max_tables = layout["source_budget_words"]["tables_max"]
-    total = len(remaining) + max_tables
-    capacity = window + y_only
-    print(f"post-hot code + existing max table budget: {total:,} words")
-    print(f"proposed window + Y-only capacity: {capacity:,} words")
-    if total > capacity:
-        print("FAIL: static code/table budget exceeds capacity by "
-              f"{total - capacity:,} words")
-        return 1
-    print("PASS: static code/table budget fits")
+    layout_ns = runpy.run_path(str(ROOT / "modules/machinedrum/layout.py"))
+    window = payload.allocation("window_code")
+    window_start = window["start"]
+    window_end = window_start + window["words"]
+    tables = {space: layout_ns["table_spans"](space)
+              for space in ("X", "Y", "W")}
+    pi = payload.allocation("pi_buffers")
+    tables["Y"].append((pi["start"], pi["start"] + pi["words"]))
+    mapped_code = set()
+    table_words = 0
+    for line in plan.read_text().splitlines():
+        fields = line.split()
+        if len(fields) == 4 and fields[0] == "M":
+            old, end, new = (int(value, 16) for value in fields[1:])
+            if window_start <= new < window_end:
+                if new + end - old > window_end:
+                    print(f"FAIL: mapped code exceeds window at {new:#x}")
+                    return 1
+                mapped_code.update(range(new, new + end - old))
+        elif len(fields) == 5 and fields[0] == "T":
+            space = fields[1]
+            old, end, new = (int(value, 16) for value in fields[2:])
+            if not any(lo <= new and new + end - old <= hi
+                       for lo, hi in tables[space]):
+                print(f"FAIL: table {old:#x}..{end:#x} outside {space} allocation")
+                return 1
+            table_words += end - old
+    print(f"mapped window code: {len(mapped_code):,}/{window['words']:,} words")
+    print(f"mapped tables and P-I buffers: {table_words:,} words")
+    print("PASS: mapped code and tables fit the core-1 allocations")
     return 0
 
 

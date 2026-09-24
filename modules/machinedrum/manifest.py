@@ -1,23 +1,26 @@
 """Machinedrum on core 1 (payload B, tracks 1-4): the M1 proof path.
 
 The FX2 chooser carries MACHINEDRUM (id 0x1e). On core 1 the id runs
-md_glue.asm, which triggers slot 0 with a fixed TRX-BD record on the
-track's OT trig, runs the relocated MD voice DSP through md_driver.asm and
-mixes the sixteen slots into the track (tools/build/md_image.py). On core 0
-the same id is a passthrough stub. The MD's code and tables come from the
-user's pinned MD OS 1.63 update at build time (tools/build/md_payload.py);
-no firmware byte enters the repository.
+md_glue.asm, which writes the ColdFire's record packets into the voice
+records (WP-C1: md_xport.s adds a block to the host-transfer chain), runs
+the relocated MD voice DSP through md_driver.asm and mixes the sixteen
+slots into the track (tools/build/md_image.py). Until a packet has
+arrived it triggers slot 0 with a fixed TRX-BD record on the track's OT
+trig instead. On core 0 the same id is a passthrough stub. The MD's code
+and tables come from the user's pinned MD OS 1.63 update at build time
+(tools/build/md_payload.py); no firmware byte enters the repository.
 
-Not yet: machine registration, the ColdFire record transport and parameter
-handlers, the sequencer, persistence, MIDI, E12 sample delivery and the
-hardware qualification (docs/proposals/MACHINEDRUM_WORKPACKETS.md).
+Not yet: machine registration, the record producer (the transport is fed
+by a test stream only), the parameter handlers, the sequencer,
+persistence, MIDI, E12 sample delivery and the hardware qualification
+(docs/proposals/MACHINEDRUM_WORKPACKETS.md).
 """
 
 from pathlib import Path
 import runpy
 
-from remix.schema import (BusRole, Claims, DspSection, Formatter, Kind, MenuEntry,
-                          Module, Param, YBase)
+from remix.schema import (BusRole, Claims, DspSection, Formatter, Kind, Linked,
+                          MenuEntry, Module, Param, SymbolRef, YBase)
 
 
 _LAYOUT = runpy.run_path(str(Path(__file__).with_name("layout.py")))
@@ -58,6 +61,8 @@ RESOURCE_CLAIMS = {
     "shared": tuple(_span(name) for name in (
         "window_code", "window_tables", "e12_tail",
         "sample_meta", "window_tables_b", "sine", "glue")),
+    # WP-C1's mailbox, core 1's private X (both host banks).
+    "private": tuple(_span(name) for name in ("mbox_a", "mbox_b")),
 }
 
 
@@ -113,4 +118,12 @@ MODULE = Module(
     # Payload B's thirteen stock effects are the MD's hot code now: on core 1
     # every stock id runs the null stub (tools/build/md_image.py).
     claims=Claims(gives_up_payload_fx=("B",)),
+
+    # WP-C1, the record transport: one more burst in the host-transfer chain,
+    # to core 1, before stock state 5 (docs/firmware/DSP.md section 6c).
+    linked=(Linked("mdxport", "modules/machinedrum/md_xport.s", dram=True),),
+    symbol_refs=(
+        SymbolRef(0x400ab62e, 0x40004aaa, "mdxport", "md_xport",
+                  note="host-transfer chain state 5 -> the MD block first"),
+    ),
 )

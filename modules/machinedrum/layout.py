@@ -52,8 +52,7 @@ LAYOUT = {
         # Table ground: what md_flip.py --plan packs the tables and the P-I
         # buffers into (best fit, each keeping its old alignment).
         {"name": "x_tables_a", "space": "X", "start": 0x2840, "words": 0x3940 - 0x2840},
-        {"name": "x_tables_e", "space": "X", "start": 0x3D40, "words": 0x3F00 - 0x3D40},
-        {"name": "x_tables_b", "space": "X", "start": 0x5840, "words": 0x6000 - 0x5840},
+        {"name": "x_tables_b", "space": "X", "start": 0x5840, "words": 0x5D40 - 0x5840},
         {"name": "x_tables_c", "space": "X", "start": 0x7A92, "words": 0x8040 - 0x7A92},
         {"name": "x_tables_d", "space": "X", "start": 0x8858, "words": 0x9000 - 0x8858},
         {"name": "y_tables_a", "space": "Y", "start": 0x07A5, "words": 0x3940 - 0x07A5},
@@ -74,6 +73,16 @@ LAYOUT = {
         # The core-1 host (modules/machinedrum/md_glue.asm, WP-B3/B4/A5): its
         # code from the start, its words from glue["data"].
         {"name": "glue", "space": "shared", "start": 0x36000, "words": 0x400},
+
+        # WP-C1's mailbox: the ColdFire's record packets, one block per frame
+        # (modules/machinedrum/md_xport.s). The host writes to X:0x7d40 and
+        # payload B's host-command handler masks every destination with
+        # 0x3fff or 0x5fff, alternately per frame, so one frame's block lands
+        # at mbox_a and the next at mbox_b, 0x2000 apart like every stock
+        # block; the glue reads the bank this frame's x:$207 names. Neither
+        # was loaded by the payload (x_tables_e was empty in the placement).
+        {"name": "mbox_a", "space": "X", "start": 0x3D40, "words": 0x1C0},
+        {"name": "mbox_b", "space": "X", "start": 0x5D40, "words": 0x1C0},
     ],
     # md_glue.asm's words (tools/build/md_image.py fills its placeholders).
     # GAIN is 16-aligned (m1 = $f), MIX holds one 32-sample period, L/R.
@@ -86,6 +95,13 @@ LAYOUT = {
         "SAVER6": 0x36303,
         "SAVEN7": 0x36304,
         "TRIGS": 0x36305,
+        # WP-C1, the record transport (md_glue.asm, gxport):
+        "LSEQ": 0x36306,     # the last block's sequence number taken
+        "NAPPLY": 0x36307,   # blocks taken
+        "NWORDS": 0x36308,   # record words written
+        "SLIPS": 0x36309,    # sync marks that moved the driver's half
+        "GAPS": 0x3630a,     # sequence numbers skipped (blocks lost)
+        "BAD": 0x3630b,      # packets refused (bounds)
         "SINE16": 0x36310,
         "ZERO": 0x36320,
         "FIXED": 0x36330,
@@ -187,6 +203,11 @@ def check():
             errors.append(f"driver {key} is outside loop_words")
     if not lw["start"] <= d["ENG"] and d["ENG"] + 16 <= _end(lw):
         errors.append("driver ENG (16 words) is outside loop_words")
+    for name, bank in (("mbox_a", 0x2000), ("mbox_b", 0x4000)):
+        if allocation(name)["start"] - bank != allocation("mbox_a")["start"] - 0x2000:
+            errors.append("mbox_a and mbox_b must sit at one offset in the two host banks")
+    if allocation("mbox_a")["start"] + allocation("mbox_a")["words"] > 0x3F00:
+        errors.append("mbox_a runs into X:0x3f00 (payload B's own words)")
     g, glue = LAYOUT["glue"], allocation("glue")
     if g["code"] != glue["start"] or g["end"] > _end(glue):
         errors.append("glue words are outside the glue allocation")

@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <iterator>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -106,6 +107,7 @@ int main(int _argc, char** _argv)
 	bool frameTimer = false;	// O9b: keep the free-running 16-sample frame timer with --dsp (default: the DSP's bank word is the frame edge)
 	std::string pokeAfterLoad;	// O9c: "addr=byte;addr=byte" written after the load, before the frames (drive an apply the load skips)
 	std::string pokeEarly;		// the same, written before --call (the current-track byte 0x80000000 an editor call reads)
+	std::string loadFiles;		// "addr=path[;addr=path]": files written into ColdFire memory with --poke-early (a test stream a DRAM unit reads)
 	std::string callSpec;		// "addr[,arg,...]": a firmware routine called AS MAIN after the load (a menu action the port has no panel for -- Part Reload, 14 Sep 2026)
 	int callAt = -1;			// with --sequencer: make that call this many frames AFTER the transport start instead (a panel edit while playing: the transport start re-applies the part over the live lane, so an edit made before it is gone)
 	uint64_t fastEvery = 1;		// --fast N: timers/interrupts/gates every N instructions (rtos.h setFast); not bit-identical to 1
@@ -182,6 +184,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--card-out" && i + 1 < _argc)	cardOut = _argv[++i];
 		else if(a == "--poke" && i + 1 < _argc)		pokeAfterLoad = _argv[++i];
 		else if(a == "--poke-early" && i + 1 < _argc)	pokeEarly = _argv[++i];
+		else if(a == "--load-file" && i + 1 < _argc)	loadFiles = _argv[++i];
 		else if(a == "--call" && i + 1 < _argc)		callSpec = _argv[++i];
 		else if(a == "--call-at" && i + 1 < _argc)	callAt = std::atoi(_argv[++i]);
 		else if(a == "--midi" && i + 1 < _argc)		midiFile = _argv[++i];
@@ -674,6 +677,26 @@ int main(int _argc, char** _argv)
 					std::printf("poke       : %#x <- %#x (%s)\n", addr, val, _when);
 				}
 			};
+			{
+				size_t q = 0;
+				while(q < loadFiles.size())
+				{
+					auto e = loadFiles.find(';', q); if(e == std::string::npos) e = loadFiles.size();
+					const auto one = loadFiles.substr(q, e - q); q = e + 1;
+					const auto eq = one.find('='); if(eq == std::string::npos) continue;
+					const auto addr = static_cast<uint32_t>(std::strtoul(one.c_str(), nullptr, 0));
+					std::ifstream f(one.substr(eq + 1), std::ios::binary);
+					const std::vector<char> bytes((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+					if(!f.good() && !f.eof())
+					{
+						std::printf("load-file  : cannot read %s\n", one.substr(eq + 1).c_str());
+						return 1;
+					}
+					for(size_t k = 0; k < bytes.size(); ++k)
+						m.write8(addr + static_cast<uint32_t>(k), static_cast<uint8_t>(bytes[k]));
+					std::printf("load-file  : %#x <- %zu bytes of %s\n", addr, bytes.size(), one.substr(eq + 1).c_str());
+				}
+			}
 			pokeBytes(pokeEarly, "before the call");
 			const auto doCall = [&]()
 			{

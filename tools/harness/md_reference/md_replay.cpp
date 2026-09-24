@@ -40,13 +40,22 @@
 // MD_REPLAY_VALUE_BLOCK=all for every block; MD_REPLAY_VALUE_ADDR=X:15
 // limits the trace to one RAM address.
 //
-//   md_replay <capture dir> [--reloc] [--driver] [--init] [out.wav slot]
+//   md_replay <capture dir> [--reloc] [--driver] [--init] [--boot] [out.wav slot]
 //
 // --reloc applies <capture dir>/reloc.txt (md_relocate.py) after loading the
 // snapshot: each region is copied to its new place (M within P, T from the
 // external RAM into private X or Y), the patched words are written, and the
 // old region is filled with 0xa5a5a5, so any address the relocation missed
 // reads garbage or jumps into it.
+//
+// --boot (with --reloc --driver) starts where the OT image starts: it clears
+// the sine, the P-I buffers and the voice records, runs the relocated boot
+// init as --init does, then replays the host stream through the driver. Give
+// it a directory whose snapshot is the payload's own memory image
+// (md_payload.py's source/, with a capture's log.txt and regs.txt beside it):
+// its blocks are then what core 1 renders from the same writes
+// (tools/verify/verify_md_transport.py). MD_REPLAY_OUT=<file> writes every
+// block as "<block> <slot> <32 words>", hex.
 //
 // Prints matching/mismatching blocks per slot. Exit 0 when every block of
 // every slot is bit-identical.
@@ -321,12 +330,14 @@ int main(int _argc, char** _argv)
 	}
 	const std::string dir = _argv[1];
 	// Flags right after the capture dir: --reloc, --driver (either order).
-	bool reloc = false, driver = false, init = false;
-	while(_argc > 2 && (std::string(_argv[2]) == "--reloc" || std::string(_argv[2]) == "--driver" || std::string(_argv[2]) == "--init"))
+	bool reloc = false, driver = false, init = false, boot = false;
+	while(_argc > 2 && (std::string(_argv[2]) == "--reloc" || std::string(_argv[2]) == "--driver" ||
+		std::string(_argv[2]) == "--init" || std::string(_argv[2]) == "--boot"))
 	{
 		const std::string flag = _argv[2];
 		if(flag == "--reloc") reloc = true;
 		else if(flag == "--driver") driver = true;
+		else if(flag == "--boot") boot = true;
 		else init = true;
 		for(int i = 2; i + 1 < _argc; ++i)
 			_argv[i] = _argv[i + 1];
@@ -335,6 +346,11 @@ int main(int _argc, char** _argv)
 	if(init && driver)
 	{
 		std::cerr << "--init and --driver are separate modes\n";
+		return 2;
+	}
+	if(boot && !(reloc && driver))
+	{
+		std::cerr << "--boot needs --reloc and --driver\n";
 		return 2;
 	}
 
@@ -550,7 +566,7 @@ int main(int _argc, char** _argv)
 	// driver's md_slot with the same loop words; the replay stops at md_slot
 	// and md_done where it stopped at P:6b and P:b5, and there is no I/O to
 	// step past.
-	TWord slotPc = 0x6b, donePc = 0xb5, enterPc = 0, idlePc = 0xffffff;
+	TWord slotPc = 0x6b, donePc = 0xb5, enterPc = 0, idlePc = 0xffffff, halfAddr = 0;
 	if(driver)
 	{
 		std::map<std::string, TWord> syms;
@@ -580,6 +596,7 @@ int main(int _argc, char** _argv)
 				cfg[k] = static_cast<TWord>(std::stoul(v, nullptr, 16));
 		}
 		memory.set(MemArea_Y, cfg.at("HALF"), 0);
+		halfAddr = cfg.at("HALF");
 		// MDSAVE holds the MD's low image as md_leave stores it: the whole
 		// X:0-$ff then Y:0-$13f (576 words) when driver.cfg says MDFULL, else
 		// X:$a0-$bf then Y:$1e-$21 (36).
@@ -741,7 +758,7 @@ int main(int _argc, char** _argv)
 		std::exit(1);
 	};
 
-	if(init)
+	if(init || boot)
 	{
 		const TWord sineDest = reloc ? initSineDest : 0x148000;
 		const TWord piStart = reloc ? initPiStart : 0x135600;
@@ -784,42 +801,67 @@ int main(int _argc, char** _argv)
 		// that instruction instead of allowing a JIT block to execute the RTS
 		// and return through the snapshot's unrelated stack.
 		auto initConfig = dsp.getJit().getConfig();
+		const auto savedBlock = initConfig.maxInstructionsPerBlock;
 		initConfig.maxInstructionsPerBlock = 1;
 		dsp.getJit().setConfig(initConfig);
 		dsp.setPC(initPc);
 		runTo({initReturn});
-		size_t sineBad = 0, piBad = 0, voiceXBad = 0, voiceYBad = 0;
-		for(TWord i = 0; i < sineWords; ++i)
-			if(memory.get(MemArea_P, sineDest + i) != sineRef[i])
-				++sineBad;
-		for(TWord i = 0; i < piWords; ++i)
-			if(memory.get(piArea, piStart + i) != piRef[i])
-				++piBad;
-		for(TWord i = 0; i < voiceWords; ++i)
+		if(boot)
 		{
-			if(memory.get(MemArea_X, voiceXDest + i) != snapX[0x800 + i])
-				++voiceXBad;
-			if(memory.get(MemArea_Y, voiceYDest + i) != snapY[0x800 + i])
-				++voiceYBad;
+			// Stopped before the RTS, as the OT's gboot returns from it; the
+			// driver is entered fresh, as the dispatcher enters gfxproc.
+			initConfig.maxInstructionsPerBlock = savedBlock;
+			dsp.getJit().setConfig(initConfig);
+			dsp.setPC(enterPc);
+			// MD_REPLAY_BOOT_IDLE=<n>: n driver calls with no host writes
+			// first, as core 1 renders from gboot until the first block
+			// arrives; the half then restarts at slots 0-7, as the glue's
+			// sync mark makes it.
+			const int idle = std::getenv("MD_REPLAY_BOOT_IDLE") ? std::atoi(std::getenv("MD_REPLAY_BOOT_IDLE")) : 0;
+			for(int k = 0; k < idle; ++k)
+			{
+				while(runTo({slotPc, donePc, idlePc}) != idlePc) {}
+				dsp.setPC(enterPc);
+			}
+			if(idle)
+				memory.set(MemArea_Y, halfAddr, 0);
+			std::cout << "boot: relocated init ran" << (idle ? " and " + std::to_string(idle) + " idle driver call(s)" : std::string()) << "; replaying from it\n";
 		}
-		if(const char* dump = std::getenv("MD_REPLAY_INIT_DUMP"))
+		else
 		{
-			std::ofstream out(dump);
+			size_t sineBad = 0, piBad = 0, voiceXBad = 0, voiceYBad = 0;
 			for(TWord i = 0; i < sineWords; ++i)
-				out << "S " << i << " " << memory.get(MemArea_P, sineDest + i) << "\n";
+				if(memory.get(MemArea_P, sineDest + i) != sineRef[i])
+					++sineBad;
 			for(TWord i = 0; i < piWords; ++i)
-				out << "I " << i << " " << memory.get(piArea, piStart + i) << "\n";
+				if(memory.get(piArea, piStart + i) != piRef[i])
+					++piBad;
 			for(TWord i = 0; i < voiceWords; ++i)
 			{
-				out << "X " << i << " " << memory.get(MemArea_X, voiceXDest + i) << "\n";
-				out << "Y " << i << " " << memory.get(MemArea_Y, voiceYDest + i) << "\n";
+				if(memory.get(MemArea_X, voiceXDest + i) != snapX[0x800 + i])
+					++voiceXBad;
+				if(memory.get(MemArea_Y, voiceYDest + i) != snapY[0x800 + i])
+					++voiceYBad;
 			}
+			if(const char* dump = std::getenv("MD_REPLAY_INIT_DUMP"))
+			{
+				std::ofstream out(dump);
+				for(TWord i = 0; i < sineWords; ++i)
+					out << "S " << i << " " << memory.get(MemArea_P, sineDest + i) << "\n";
+				for(TWord i = 0; i < piWords; ++i)
+					out << "I " << i << " " << memory.get(piArea, piStart + i) << "\n";
+				for(TWord i = 0; i < voiceWords; ++i)
+				{
+					out << "X " << i << " " << memory.get(MemArea_X, voiceXDest + i) << "\n";
+					out << "Y " << i << " " << memory.get(MemArea_Y, voiceYDest + i) << "\n";
+				}
+			}
+			std::cout << "init: sine " << (sineWords - sineBad) << "/" << sineWords
+				<< " pi " << (piWords - piBad) << "/" << piWords
+				<< " voice-X " << (voiceWords - voiceXBad) << "/" << voiceWords
+				<< " voice-Y " << (voiceWords - voiceYBad) << "/" << voiceWords << "\n";
+			return sineBad || piBad || voiceXBad || voiceYBad ? 3 : 0;
 		}
-		std::cout << "init: sine " << (sineWords - sineBad) << "/" << sineWords
-			<< " pi " << (piWords - piBad) << "/" << piWords
-			<< " voice-X " << (voiceWords - voiceXBad) << "/" << voiceWords
-			<< " voice-Y " << (voiceWords - voiceYBad) << "/" << voiceWords << "\n";
-		return sineBad || piBad || voiceXBad || voiceYBad ? 3 : 0;
 	}
 
 	// At every period boundary (slot 0's P:6b, before the host's writes):
@@ -1118,6 +1160,18 @@ int main(int _argc, char** _argv)
 				memory.set(MemArea_Y, base + static_cast<TWord>(k), rec.words[k]);
 		runTo({donePc});
 		const auto out = y(lv(0x140));
+		static std::ofstream outDump = [] { const char* f = std::getenv("MD_REPLAY_OUT"); return f ? std::ofstream(f) : std::ofstream(); }();
+		if(outDump.is_open())
+		{
+			char b[16];
+			outDump << i << " " << rec.slot;
+			for(uint32_t k = 0; k < 32; ++k)
+			{
+				std::snprintf(b, sizeof b, " %06x", y(out + k));
+				outDump << b;
+			}
+			outDump << "\n";
+		}
 		bool same = true;
 		for(uint32_t k = 0; k < 32; ++k)
 		{

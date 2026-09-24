@@ -23,10 +23,29 @@
 ;          alone (the FX1 dispatcher keeps the id there across the call).
 ; gfxproc  the dispatch PROCESS entry. Called once or twice per frame per
 ;          slot (the dispatcher splits a frame at a trig's sample offset,
-;          x:$20c). On the frame's first call (r0 = 0) it triggers slot 0
-;          on the OT trig, runs the driver (half of the sixteen slots), and
-;          after every second call mixes the finished 32-sample period. Every
-;          call writes its part of the frame from the mix, times p0 (VOL).
+;          x:$20c). On the frame's first call (r0 = 0) it writes the
+;          ColdFire's record packets into the voice records (WP-C1, below),
+;          triggers slot 0 on the OT trig while no packet has ever arrived,
+;          runs the driver (half of the sixteen slots), and after every
+;          second call mixes the finished 32-sample period. Every call
+;          writes its part of the frame from the mix, times p0 (VOL).
+;
+; The record transport (WP-C1). The ColdFire sends one block a frame
+; (modules/machinedrum/md_xport.s) to X:$7d40; payload B's host-command
+; handler masks the destination per frame, so it lands at @MBOXA@ or
+; @MBOXB@, and this frame's bank is x:$207 + @MBOXOFF@ (x:$207 is $2000 or
+; $4000, payload B's P:$76). Every word carries 16 bits:
+;   [0] seq     1..$ffff, one more per block sent
+;   [1] flags   bit 0: sync, the block precedes a period's slots 0-7
+;   [2] npkt    packets that follow, at most 64
+;   then npkt x [dest] [count] [hi lo] x count
+; dest is the Machinedrum's own Y address of the first word (a voice record,
+; $800 + $40 x slot + k), as the MD's host sends it; each word is hi<<16|lo.
+; The words go to the relocated records exactly as the MD's DMA5 writes
+; them: word 0 is the trigger, which the driver clears. A bank whose seq is
+; not newer than the last one taken is skipped (the ColdFire sent nothing
+; that frame, or it is the other frame's). A packet outside the records or
+; past the bank is refused and ends the block (@BAD@).
 ;
 ; The fixed trigger (WP-B4): bit 16 of word $1e of the track's state block
 ; (x:(x:$419)+$1e) is set on the frame of an OT trig. Measured under the
@@ -81,6 +100,117 @@ gsinelp:
         move    #>$1,x0
         move    x0,x:>@ONCE@
 gsined:
+; ---- WP-C1: the ColdFire's record packets for this frame
+        move    #>$ffffff,m2
+        move    #>$ffffff,m3
+        move    x:>$207,a               ; this frame's host bank, $2000 or $4000
+        add     #>@MBOXOFF@,a
+        move    a,r3
+        add     #>@MBOXLEN@,a
+        move    a,y0                    ; the bank's end
+        clr     a
+        move    x:(r3)+,a1
+        and     #>$ffff,a               ; seq
+        move    a1,y1
+        move    x:>@LSEQ@,x0
+        sub     x0,a                    ; seq - LSEQ, modulo $10000
+        bge     xpos
+        add     #>$10000,a
+xpos:
+        tst     a
+        beq     xnone                   ; nothing new in this bank
+        move    #>$8000,x0
+        cmp     x0,a
+        bge     xnone                   ; older than the last block taken
+        move    y1,x:>@LSEQ@
+        sub     #<$1,a
+        move    x:>@GAPS@,x0
+        add     x0,a
+        move    a,x:>@GAPS@
+        move    x:>@NAPPLY@,a
+        add     #<$1,a
+        move    a,x:>@NAPPLY@
+        clr     a
+        move    x:(r3)+,a1
+        and     #>$1,a                  ; sync
+        beq     xnosync
+        move    y:>@HALF@,a
+        tst     a
+        beq     xnosync
+        clr     a
+        move    a,y:>@HALF@             ; the driver's next half is slots 0-7
+        move    x:>@SLIPS@,a
+        add     #<$1,a
+        move    a,x:>@SLIPS@
+xnosync:
+        clr     a
+        move    x:(r3)+,a1
+        and     #>$ffff,a               ; npkt
+        tst     a
+        beq     xnone
+        move    #>$41,x0
+        cmp     x0,a
+        bge     xtoomany
+        move    a1,x0
+        do      x0,xpend
+        clr     b
+        move    x:(r3)+,b1
+        and     #>$ffff,b
+        move    b1,x1                   ; dest
+        clr     a
+        move    x:(r3)+,a1
+        and     #>$ffff,a               ; count
+        tst     a
+        beq     xpnext
+        move    a1,x0
+        move    x1,b
+        sub     #>$800,b
+        blt     xpbad                   ; below the records
+        add     x0,b
+        move    #>$400,y1
+        cmp     y1,b
+        bgt     xpbad                   ; past the sixteen records
+        move    r3,b
+        add     x0,b
+        add     x0,b
+        cmp     y0,b
+        bgt     xpbad                   ; past the bank
+        move    x1,b
+        add     #>@VOICEOFF@,b
+        move    b,r2
+        do      x0,xwend
+        clr     b
+        move    x:(r3)+,b1
+        and     #>$ff,b
+        asl     #$10,b,b
+        clr     a
+        move    x:(r3)+,a1
+        and     #>$ffff,a
+        move    a1,x1
+        add     x1,b                    ; = or: hi<<16 has no low bits (add, a
+        move    b1,y:(r2)+              ; stock form); a1/b1 moves do not limit
+xwend:
+        move    x:>@NWORDS@,b
+        add     x0,b
+        move    b,x:>@NWORDS@
+        bra     xpnext
+xpbad:
+        move    x:>@BAD@,b
+        add     #<$1,b
+        move    b,x:>@BAD@
+        move    y0,r3                   ; the rest of the block is not read
+xpnext:
+        nop
+xpend:
+        bra     xnone
+xtoomany:
+        move    x:>@BAD@,b
+        add     #<$1,b
+        move    b,x:>@BAD@
+xnone:
+        move    x:>@NAPPLY@,a           ; the fixed trigger stands in only
+        tst     a                       ; until the ColdFire drives the MD
+        bne     gnotrg
         move    x:>$419,r1              ; this frame's track state
         move    #>$1e,n1
         move    x:(r1+n1),a
@@ -98,6 +228,7 @@ gfixlp:
 gnotrg:
         move    #>@ENTER@,r1
         jsr     (r1)
+gdone:                                  ; the gates sample here: the half just rendered
         move    #>$ffffff,x0
         move    x0,m0
         move    x0,m1
@@ -156,6 +287,15 @@ gcpylp:
         rts
 
 gboot:
+        clr     a                       ; both mailbox banks: no block yet
+        move    #>@MBOXA@,r1
+        do      #@MBOXLEN@,gbza
+        move    a,x:(r1)+
+gbza:
+        move    #>@MBOXB@,r1
+        do      #@MBOXLEN@,gbzb
+        move    a,x:(r1)+
+gbzb:
         move    #>@MDINIT@,r1
         jsr     (r1)
         move    #>@SINE@,r1

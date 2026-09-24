@@ -187,9 +187,14 @@ def assemble_glue(place):
     g, d = LAYOUT["glue"], LAYOUT["driver"]
     syms = dict(l.split() for l in (SOURCE / "driver.sym").read_text().splitlines() if l.strip())
     vals = {k: g[k] for k in ("OWNER", "GOUT", "ONCE", "SAVER6", "SAVEN7", "TRIGS", "SINE16",
-                              "FIXED", "GAIN", "MIX")}
+                              "FIXED", "GAIN", "MIX", "LSEQ", "NAPPLY", "NWORDS", "SLIPS", "GAPS", "BAD")}
+    alloc = {r["name"]: r for r in LAYOUT["allocations"]}
+    voice = alloc["voice_y_records"]["start"]
     vals.update(MIX2=g["MIX"] + 0x20, HALF=d["HALF"], OUTBUF=d["OUTBUF"],
-                VOICE=next(r["start"] for r in LAYOUT["allocations"] if r["name"] == "voice_y_records"),
+                MBOXA=alloc["mbox_a"]["start"], MBOXB=alloc["mbox_b"]["start"],
+                MBOXOFF=alloc["mbox_a"]["start"] - 0x2000, MBOXLEN=alloc["mbox_a"]["words"],
+                VOICEOFF=voice - 0x800,
+                VOICE=voice,
                 SINE=next(r["start"] for r in LAYOUT["allocations"] if r["name"] == "sine"),
                 ENTER=int(syms["md_enter"], 16), MDINIT=place(MD_INIT))
     if vals["MDINIT"] != place(MD_INIT) or place(0x10008d) != vals["MDINIT"] + 0x10008d - MD_INIT:

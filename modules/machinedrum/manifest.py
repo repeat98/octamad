@@ -164,7 +164,7 @@ MODULE = Module(
         Detour(0x40031E74, H("710541f9400d5f38"), "mdmachine", "md_resolve_pb",
                "resolve the signed track's MD page without changing other FLEX tracks", pad_to=10),
         Detour(0x40060CE0, H("222f0004202f0008"), "mdmachine", "md_trig_key",
-               "held MD track key and trig select a part", pad_to=10),
+               "held MD track key and trig select a part", pad_to=8),
         Detour(0x4007981C, H("77101084d081"), "mdmachine", "md_main_commit",
                "admit one MD instance on T1-T4 at main chooser commit"),
         Detour(0x4005A616, H("2239460d5c30"), "mdmachine", "md_src_commit",

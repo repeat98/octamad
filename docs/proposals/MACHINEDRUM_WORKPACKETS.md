@@ -69,14 +69,14 @@ Statuses:
 | WP-B5 Gates and the M1 image | todo | | | | | the user flashes |
 | WP-C1 The record transport | done | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-C1.md` | full c01_16 stream: 33,503/33,503 voice blocks bit-identical to the interpreter replay; 19,335 words, no stream loss; test producer only, hardware timing unmeasured |
 | WP-C2 Port the parameter handlers | done | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-C2.md` | 450 map cases / 50 engines, 84 record bytes each match; 148 source operands relocated; TRX-S2 descriptor compared offline (live map uses empty handler) |
-| WP-C3 Machine registration | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-C3.md`, `HANDOFF-UI.md` | FLEX + MD signature built; signed T1 SRC edit leaves T2 unchanged under port; chooser/admission walk remains |
+| WP-C3 Machine registration | done | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-C3.md`, `HANDOFF-UI.md` | signed FLEX T1 assignment, T2/T5 admission refusals, and T2 slot isolation pass the panel RAM gate |
 | WP-C4 Kits and parameters | done | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-C4.md` | `md_ctl.c` runs the MD's handlers per part; all 450 captured cases reach core 1 as the MD's own trig records (`make verify-md-kit CASES=all`); VOL/PAN gains; E12 plays as GND--- |
 | WP-D1 Is the chord free? | done | `machinedrum` | `d4a626b` | 2026-09-23 | `machinedrum_reports/WP-D1.md` | neither target tests the held track key; use FUNC + track as fallback |
 | WP-D2 The sequencer data model | review | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-D2.md` | lanes follow the parent track's clock, length, scale and swing; 64 locks per pattern; no accent in v1; needs the user's sign-off |
 | WP-D3 The sequencer engine | done | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-D3.md` | machine type 6 on T1 plays the default kit from `md_patterns`; lanes within 0.6 frames of the grid, SYN/VOL locks, audio on T1 (`make verify-md-seq`) |
-| WP-D4 Grid-record view | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/HANDOFF-UI.md` | editor C unit built; trig-mask RAM offset verified; panel gate pending |
-| WP-D5 Parameter pages | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/HANDOFF-UI.md` | FLEX descriptor clone and mirror built; page-2 offset confirmed; panel gate pending |
-| WP-D6 The info box | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/HANDOFF-UI.md` | name lookup and editor unit built; LCD proof pending |
+| WP-D4 Grid-record view | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/HANDOFF-UI.md` | panel gate proves part select and REC+TRIG 5 lane bit; broader page/lock walk pending |
+| WP-D5 Parameter pages | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/HANDOFF-UI.md` | panel gate proves A knob reaches selected part and page-2 VOL/ENG descriptor; page-2 knob/engine actions pending |
+| WP-D6 The info box | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/HANDOFF-UI.md` | panel RAM shows `P02 TRX-SD` and name detours; visible LCD result pending |
 | WP-E1 Persistence | todo | | | | | |
 | WP-E2 MIDI | todo | | | | | |
 | WP-E3 Admission | todo | | | | | |

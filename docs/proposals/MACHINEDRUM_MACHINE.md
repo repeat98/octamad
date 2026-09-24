@@ -2236,8 +2236,13 @@ indexes type × 6 and sent T1 MD knob edits into T2 FLEX's page slot.
 ✅ A signed FLEX track (`MD\x01` in its otherwise unused NEIGHBOR page-1
 slot) kept T2's six FLEX bytes unchanged while T1 SRC A/B/F changed under
 the isolated ColdFire port. The exact before/after bytes and command are
-in `machinedrum_reports/WP-C3.md`. The chooser/admission panel walk is
-still pending. The editor's page-2 store offset is `Part+0x1da+30t+6+slot`
+in `machinedrum_reports/WP-C3.md`. The chooser/admission panel walk now
+passes by direct Part RAM assertions (`verify_md_ui.py`). The editor's
+page-2 store offset is `Part+0x1da+30t+6+slot`
 from the stock writer; the trig-mask RAM base `DB+pattern*0x8ed8+
 track*0x91a` was measured by matching two distinct file masks after the
 port selected pattern 0. Load-only RAM had zero masks before selection.
+The same panel gate proves track-held trig selection, A-knob SYN edit,
+REC grid step, descriptor fields and the dynamic part/engine name in RAM.
+It exposed and corrected a two-byte overrun in the trig-key detour. The
+LCD presentation of the name is still unverified.

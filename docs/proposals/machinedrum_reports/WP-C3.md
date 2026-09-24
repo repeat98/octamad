@@ -69,6 +69,15 @@ The first `make check` exposed a synthetic hidden-FX2 writer probe on the
 internal MD dispatch id; `verify_hidden.py` now skips that inapplicable
 probe. The complete rerun passed.
 
-[ ] The new FLEX-plus-signature chooser selection and admission refusals
-have not been retested through panel actions. Keep WP-C3 claimed until that
-port walk passes. Nothing was flashed.
+[x] `python3 tools/verify/verify_md_ui.py` drove SRC SETUP through
+`tools/harness/md_panel.py`: FUNC+SRC, six DOWN presses and YES assigned
+T1 as FLEX plus `MD\x01`, leaving T2's FLEX slot unchanged. The same
+panel sequence refused a second MD on T2 and an MD on T5; T1's signature
+survived both attempts. The script asserts the Part RAM bytes and every
+panel event reached the port. Nothing was flashed.
+
+The first REC+TRIG 5 editor probe found that the `md_trig_key` detour
+overwrote two bytes of the following stock instruction. Execution ended
+`ILLEGAL` at `0x40060cea`. Changing its `pad_to` from 10 to 8 leaves the
+instruction intact; the same panel sequence then ran through all events
+and recorded step 5. The six required regressions passed after the fix.

@@ -202,3 +202,27 @@ before `apply_kit`):
 - E1 persistence, B5 image/notes, E2 MIDI and A6 cycles were not started.
   B5 depends on A6, which remains blocked on the documented A5/D1
   decisions. No hardware action.
+
+## 24 September 2026 panel RAM checkpoint (Codex)
+
+- The repeatable panel gate is `MD_EMU=$PWD/out/machinedrum/isolated/emu/ot_emu
+  OT_PROJECT=out/machinedrum/testset/OCTABAM/RIG python3
+  tools/verify/verify_md_ui.py`. It stages fresh test cards under ignored
+  `out/mdverify/ui_gate/`, sends FIFO events with `md_panel.py`, and asserts
+  RAM rather than a post-command LCD screenshot.
+- FUNC+SRC, six DOWN presses, YES assigns a signed FLEX MD on T1. The
+  chooser leaves T2's FLEX slot unchanged. The same action on T2 with T1
+  already assigned, and on T5, is refused. All panel events were delivered.
+- Holding T1 and pressing TRIG 2 sets `md_ui.sel=1`. A +5 changes part 2's
+  SYN 1 from 64 to 69 and T1's FLEX slot to 69. REC+TRIG 5 sets bit 4 in
+  `md_patterns[0].trig[1]` and the OT track trig mask. The live descriptor
+  has VOL and ENG on page 2, and `md_ui_name` is `P02 TRX-SD`. This proves
+  the string and descriptor in RAM; the LCD presentation remains unverified.
+- The first grid attempt trapped at `0x40060cea`: `md_trig_key` had
+  `pad_to=10`, overwriting the first two bytes of stock's six-byte `tst.l`
+  following its eight displaced bytes. `pad_to=8` fixed it. The panel
+  gate and the required post-fix `verify-md`, both gain probes,
+  `verify-md-transport`, `verify-md-seq`, and
+  `make check REMIX=machinedrum` passed.
+- Next: WP-E1 persistence. Page-2 knob and engine-choice actions, and an
+  actual LCD render of the info name, remain editor acceptance work.

@@ -190,7 +190,14 @@ def assemble_glue(place):
                               "FIXED", "GAIN", "MIX", "LSEQ", "NAPPLY", "NWORDS", "SLIPS", "GAPS", "BAD")}
     alloc = {r["name"]: r for r in LAYOUT["allocations"]}
     voice = alloc["voice_y_records"]["start"]
-    vals.update(MIX2=g["MIX"] + 0x20, HALF=d["HALF"], OUTBUF=d["OUTBUF"],
+    state_names = ("stash", "outbuf", "loop_words", "mdsave", "phase_flags")
+    state = [alloc[name] for name in state_names]
+    if any(left["start"] + left["words"] != right["start"]
+           for left, right in zip(state, state[1:])):
+        die("Machinedrum driver Y state is not contiguous")
+    vals.update(DRIVERBASE=state[0]["start"],
+                DRIVERWORDS=state[-1]["start"] + state[-1]["words"] - state[0]["start"],
+                MIX2=g["MIX"] + 0x20, HALF=d["HALF"], OUTBUF=d["OUTBUF"],
                 MBOXA=alloc["mbox_a"]["start"], MBOXB=alloc["mbox_b"]["start"],
                 MBOXOFF=alloc["mbox_a"]["start"] - 0x2000, MBOXLEN=alloc["mbox_a"]["words"],
                 VOICEOFF=voice - 0x800,

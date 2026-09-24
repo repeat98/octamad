@@ -8,8 +8,10 @@ on the track's trig, bit-identical to the MD reference under the port
 (`machinedrum_reports/WP-B3-B4.md`, section 12 "Core 1 in the OT image").
 The ColdFire record transport now passes the full c01_16 stream under the
 port (WP-C1: 33,503 bit-identical blocks against the interpreter replay).
-It is unflashed; the live record producer, UI, sequencer and persistence
-remain open.
+It is unflashed. Later on 24 September, WP-C3 registered raw machine type
+6 on T1–T4, with the MD DSP id hidden from FX2; Octemu played TRX-BD with
+FX2 at NONE. The internal-part UI, live record producer, sequencer and
+MD-specific persistence remain open (`machinedrum_reports/WP-C3.md`).
 
 Status: revised proposal, 23 September 2026. Based on the local Octamad
 checkout at `3b5a2eb66930225f914a369fbfd499dd763d7dcd`. No Machinedrum
@@ -196,6 +198,10 @@ current scope.
 
 ## 4. Panel behavior
 
+The T5–T8 labels in the earlier interface sketches below refer to the
+superseded core-0 placement. Apply this UI plan to **T1–T4**, the selected
+core-1 placement.
+
 Distinguish the **parent OT track**, its **MD instance**, the selected
 **internal MD part**, and the Octatrack's existing **Part** preset structure.
 
@@ -255,24 +261,22 @@ bindings are a UI milestone, not claimed existing firmware behavior.
 
 ## 5. Eight encoders adapted to six
 
-**Proposed page mapping (23 September 2026, not yet decided).** It stays on
+**Page mapping (chosen 24 September 2026).** It stays on
 the stock page machinery (descriptors, four-character names, the knob
 drawer) as far as possible:
 
-| OT control | On an MD track (T5–T8) |
+| OT control | On an MD track (T1–T4) |
 |---|---|
-| SRC | the selected part's synth parameters 1–6 on A–F |
-| FUNC+SRC (SRC setup) | synth parameters 7–8, engine choice, part level and pan |
+| SRC, SYN 1 | the selected part's synth parameters 1–6 on A–F |
+| SYN 2 | synth parameters 7–8 on A–B |
+| SRC setup | engine choice; part level and pan if adopted |
 | AMP, LFO, FX1, FX2 | the OT track's own, acting on the instance's stereo mix |
 | LEVEL | the OT track's level |
 | info box | part and engine (e.g. `P05 E12-SD`), where stock shows the sample |
 
 The user's concept mockup (an image generated outside this repo, kept
-locally, not committed) shows all eight parameters as knobs on one screen,
-with a kit/part/engine box and a level meter. That would need a drawer of
-our own on the 128 × 64 surface (`docs/firmware/PANEL.md` has the
-primitives), with the eight knobs still on six encoders. Open:
-- six knobs per page (stock drawer) or eight on one screen;
+locally, not committed) shows all eight parameters as knobs on one screen.
+The user chose two stock-style pages with the OT's six encoders. Open:
 - whether per-part level and pan live on the setup page;
 - the mix itself: a simple per-part level/pan in the driver, or the MD
   mixer's own per-voice section.

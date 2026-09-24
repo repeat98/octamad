@@ -77,8 +77,11 @@ def main():
         return int.from_bytes(img[a - BASE:a - BASE + 4], "big")
 
     # ---- 1. the image ----------------------------------------------------
-    fb_id = mods[remix.fallback].menu.fx2_id
-    fb_pos = u32(ID2POS + fb_id * 4)
+    # The firmware's own NONE fallback has no module manifest. The builder
+    # restores it as chooser row 0 and parks every hidden id on that row.
+    no_fb = remix.fallback == "NONE"
+    fb_id = 0 if no_fb else mods[remix.fallback].menu.fx2_id
+    fb_pos = 0 if no_fb else u32(ID2POS + fb_id * 4)
     clones = {}
     for key in hidden + listed:
         clones[key] = u32(FX2_IDS + mods[key].menu.fx2_id * 4)
@@ -126,7 +129,7 @@ def main():
     # ⚠️ AN EMPTY CHOOSER IS A VALID OUTCOME, and the loop below cannot find
     # a list that has no rows: with every module hidden the list is a bare
     # terminator. Check that shape directly rather than reporting "not found".
-    listed_p = [clones[k] for k in listed]
+    listed_p = ([u32(FX2_IDS)] if no_fb else []) + [clones[k] for k in listed]
     if not listed_p:
         check("the chooser list is empty: a bare terminator, no rows",
               u32(NEW_LIST) == 0, f"first word 0x{u32(NEW_LIST):08x}")
@@ -135,7 +138,7 @@ def main():
         cand = None
     for cand in ((NEW_LIST, LONG_LIST) if listed_p else ()):
         row = [u32(cand + 4 * i) for i in range(16)]
-        if row[0] in clones.values():
+        if row[0] in clones.values() or (no_fb and row[0] == u32(FX2_IDS)):
             entries = []
             for v in row:
                 if v == 0:
@@ -221,11 +224,14 @@ def main():
     # ---- 4. the code -----------------------------------------------------
     import send_probe
     mem = "out/dsp/mem_dev_A.mem"
-    if pathlib.Path(mem).exists():
+    if pathlib.Path(mem).exists() and key != "MACHINEDRUM":
         ent = send_probe.entry_points(mem, hid_id)
         fb = send_probe.entry_points(mem, fb_id)
         check(f"{key}'s DSP entry points are its own, not {remix.fallback}'s",
               ent != fb, f"init=P:0x{ent[0]:04x} vs 0x{fb[0]:04x}")
+    elif key == "MACHINEDRUM":
+        print("  [SKIP] MACHINEDRUM dispatch is installed by md_image after the "
+              "generic DSP dump; verify_dram_boot and Octemu check it")
 
     # ---- 5. THE HOST GUARD, rendered ------------------------------------
     # A hidden engine gets build_bus.py's HOSTGUARD: it runs on the bank's

@@ -16,13 +16,18 @@ its allocation when profiles omit reachable boot or rare-engine code.
 
 `make bus REMIX=machinedrum` loads that artifact into core 1 at boot
 (`tools/build/md_image.py`: a pre-boot payload of octabam's loader, uploaded
-by the stock DSP boot). The FX2 chooser carries MACHINEDRUM (id 0x1e). On a
-core-1 track (T1–T4) it runs `md_glue.asm`, which does three things:
+by the stock DSP boot). The SRC SETUP machine chooser carries MACHINEDRUM as
+serialized type 6; type 5 remains reserved for POLY. The remix hides internal
+DSP id `0x1e` from FX2. The frame builder selects it only for an MD machine
+on T1–T4, without changing the Part's FX2 setting. Both chooser commit paths
+refuse a second MD within the active Part or assignment on T5–T8. On core 1
+it runs `md_glue.asm`, which does three things:
 
 - it applies the ColdFire record packets, including word-0 triggers;
   until a packet arrives, the track's trig fires a fixed TRX-BD record;
 - it runs the relocated voice DSP through `md_driver.asm`;
-- it mixes the sixteen slots at 1/4 each into the track, times p0 (VOL).
+- it mixes the sixteen slots at 1/4 each into the track at the fixed proof
+  gain (100/128).
 
 On T5–T8 the id is a passthrough (`md_stub.asm`). `make verify-md`
 (OT_PROJECT with a sample on T1) checks the whole path under the port.
@@ -49,9 +54,15 @@ separately on the nine captured parameter vectors. See the
 [WP-C2 report](../../docs/proposals/machinedrum_reports/WP-C2.md).
 The handler unit is present but no live OT control path calls it yet.
 
+The registration proof was walked in headless Octemu with FX2 at NONE:
+MACHINEDRUM appeared in SRC SETUP and on the main track view, TRX-BD played
+on T1, and T2/T5 assignment attempts left STATIC selected. The normal FX2
+list no longer shows MACHINEDRUM. This still runs at the FX2 DSP dispatch
+stage internally. T1–T4's stock FX code is displaced by the MD payload, so
+the visible FX choices on those tracks are not functional yet.
+
 Not yet done:
 
-- machine registration (the MD is an FX2 effect for now);
 - the live record producer that calls the linked parameter handlers;
 - the per-part mix (D1);
 - the sequencer, persistence and MIDI;

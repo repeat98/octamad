@@ -9,7 +9,8 @@
 ; gboot    payload B's startup calls it where stock cleared Y:$4000-$bfff
 ;          and the window's upper half (P:$47-$4a). Those words now hold
 ;          the MD's tables, P-I buffers and driver state, so nothing is
-;          cleared; the MD's own boot init (relocated) builds the sine at
+;          cleared by stock. Clear the driver's private Y state explicitly;
+;          the MD's own boot init (relocated) builds the sine at
 ;          @SINE@, zeroes the P-I buffers and the voice records' word 0.
 ;          It then keeps a copy of the sine's first sixteen words: payload
 ;          B's boot handshake parks sixteen of its own words there while it
@@ -28,7 +29,7 @@
 ;          triggers slot 0 on the OT trig while no packet has ever arrived,
 ;          runs the driver (half of the sixteen slots), and after every
 ;          second call mixes the finished 32-sample period. Every call
-;          writes its part of the frame from the mix, times p0 (VOL).
+;          writes its part of the frame from the mix at the fixed proof gain.
 ;
 ; The record transport (WP-C1). The ColdFire sends one block a frame
 ; (modules/machinedrum/md_xport.s) to X:$7d40; payload B's host-command
@@ -275,7 +276,7 @@ gcopy:
         move    r0,x0
         add     x0,a
         move    a,r1
-        move    x:(r6),y1               ; p0 VOL, val<<16 = val/128
+        move    #>$640000,y1            ; proof gain 100/128, independent of FX2
         do      n7,gcpylp
         move    x:(r1)+,x0
         mpy     x0,y1,a                 ; the sample in x0: a signed order
@@ -287,6 +288,12 @@ gcpylp:
         rts
 
 gboot:
+        move    #>$ffffff,m1           ; the driver Y span needs linear writes
+        move    #>@DRIVERBASE@,r1
+        clr     a
+        do      #>@DRIVERWORDS@,gbdrv
+        move    a,y:(r1)+
+gbdrv:
         clr     a                       ; both mailbox banks: no block yet
         move    #>@MBOXA@,r1
         do      #@MBOXLEN@,gbza

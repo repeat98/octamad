@@ -63,13 +63,13 @@ Statuses:
 | WP-B5 Gates and the M1 image | todo | | | | | the user flashes |
 | WP-C1 The record transport | done | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-C1.md` | full c01_16 stream: 33,503/33,503 voice blocks bit-identical to the interpreter replay; 19,335 words, no stream loss; test producer only, hardware timing unmeasured |
 | WP-C2 Port the parameter handlers | done | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-C2.md` | 450 map cases / 50 engines, 84 record bytes each match; 148 source operands relocated; TRX-S2 descriptor compared offline (live map uses empty handler) |
-| WP-C3 Machine registration | todo | | | | | |
+| WP-C3 Machine registration | done | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-C3.md` | type 6 appears in SRC SETUP/main view; T1 plays with FX2 NONE; T2/T5 refused with a visible message; FX2 chooser hides MD |
 | WP-C4 Kits and parameters | todo | | | | | |
 | WP-D1 Is the chord free? | done | `machinedrum` | `d4a626b` | 2026-09-23 | `machinedrum_reports/WP-D1.md` | neither target tests the held track key; use FUNC + track as fallback |
 | WP-D2 The sequencer data model | todo | | | | | user sign-off on the spec |
 | WP-D3 The sequencer engine | todo | | | | | |
 | WP-D4 Grid-record view | todo | | | | | |
-| WP-D5 Parameter pages | blocked | | | | | decision D2 |
+| WP-D5 Parameter pages | todo | | | | | two stock-style pages chosen 24 Sep |
 | WP-D6 The info box | todo | | | | | |
 | WP-E1 Persistence | todo | | | | | |
 | WP-E2 MIDI | todo | | | | | |
@@ -227,7 +227,7 @@ Useful `md_replay` switches:
 - **Open decisions for the user** (packets that need one say so):
   - D1, the mix: a simple level/pan per part (A, recommended) or the MD
     mixer's per-voice section (B);
-  - D2, six knobs per page or the eight-knob custom page;
+  - D2 resolved 24 Sep: two stock-style pages on six encoders;
   - D3, whether to carry the full low image (fixes one TRX-S2 residual,
     ~70 cycles/sample);
   - D4, how E12 samples are delivered;
@@ -441,9 +441,10 @@ with a fixed pattern.
 part's lane; hold the track key to select a part; `TRK` is the 17th entry;
 PAGE and locks work (§4, "Entering and leaving").
 
-**WP-D5 Parameter pages.** SRC gives parameters 1–6; FUNC+SRC gives 7–8,
-the engine, and level/pan (§5 proposal). Use the stock descriptors. The
-eight-knob page is decision D2.
+**WP-D5 Parameter pages.** SYN 1 gives parameters 1–6 on A–F; SYN 2 gives
+parameters 7–8 on A–B. Apply the same split to MD FX and ROUTE groups,
+separate from the parent FX pages. Use the stock-style drawer and descriptors
+(§5). Engine choice stays in SRC setup; level/pan placement remains open.
 
 **WP-D6 The info box.** It shows the part and engine (e.g. `P05 E12-SD`),
 using the `PANEL.md` primitives.

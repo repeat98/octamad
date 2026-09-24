@@ -6,15 +6,17 @@ can finish on its own. The design and the evidence live in
 section 1 decisions and section 12 before starting any packet.
 
 **Goal.** An MD instance plays on the Octatrack:
-- one instance per OT Part, on tracks **T5–T8 only** (core 0);
+- one instance per OT Part, on tracks **T1–T4 only** (core 1, decided 24
+  September 2026; the T5–T8/core-0 wording below it is superseded);
 - all 50 synthesis engines (GND 3, TRX 14, EFM 8, E12 16, P-I 9);
 - an embedded 16-part sequencer (option B), edited through OT grid
   recording;
 - saved with the project.
 
 **Milestones.**
-- **M1**, a flashable proof: T5 plays MD voices from a fixed kit, with no
-  UI.
+- **M1**, a flashable proof: T1 plays MD voices from a fixed kit, with no
+  UI (the core-1 image and fixed trigger exist under the port since 24 Sep;
+  unflashed).
 - **M2**, playable: the ColdFire drives the records, the parameters work,
   and the machine can be selected.
 - **M3**, the sequencer and UI.
@@ -50,14 +52,14 @@ Statuses:
 | WP-A1 Core-0 memory ledger | blocked | `machinedrum` | `dea1167` | 2026-09-23 | `machinedrum_reports/WP-A1.md` | four ledgers and write-up done; two heavy slice/recorder fixtures exited -11 before a wordmap, so X `0x2840–0x3fff` remains 🟡 |
 | WP-A2 The layout | review | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-A2-core1.md` | core-1 layout in `layout.py` (private P/X/Y, window code+tables, sine at 0x38000); `make modules` passes; needs the user's sign-off on the stock costs |
 | WP-A7 The X/Y flip audit | done | `machinedrum` | `7c53cb0` | 2026-09-24 | `machinedrum_reports/WP-A7.md` | all tables and the 16 P-I buffers fit core 1's private X/Y at 178 flips + 14 rewrites (+7.8 instr/sample worst); only the sine and code overflow stay in the window; D6 accepts the cost |
-| WP-A3 Layout-driven relocation and driver | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-A2-core1.md` | frozen mid-way: core-1 relocation from the WP-A7 plan; gate 7/12 (6 exact + c10_16 known residual); c1d_16, c37_16, c20_16, c40_16, c42_16 differ from ~block 2273 on when P-I or table 142f33 moves; next: value-level diff |
+| WP-A3 Layout-driven relocation and driver | review | `machinedrum` | `50ac374` | 2026-09-24 | `machinedrum_reports/WP-A2-core1.md` | all twelve relocated kits equal their plain baselines; `md_gate.sh` and `md_init_gate.py` exit 0 (rerun 24 Sep on the B3/B4 commit) |
 | WP-A4 Boot-time init on the OT | review | `machinedrum` | `cab97a3` | 2026-09-24 | `machinedrum_reports/WP-A4.md` | relocated six-voice init spans pass; pending A2 sign-off and the WP-A3 block | |
-| WP-A5 The stereo mix | blocked | | | | | decision D1 |
+| WP-A5 The stereo mix | blocked | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-B3-B4.md` | decision D1; `md_glue.asm` mixes option A's shape at fixed gains of 1/4 (L = R) so the M1 proof has audio; per-part level/pan waits on D1 |
 | WP-A6 The cycle report at OT addresses | blocked | `machinedrum` | `cab97a3` | 2026-09-24 | `machinedrum_reports/WP-A6.md` | eleven fetch runs measured; c40_16 reproduces `rc=139`, and D1/WP-A5 mix cost is still missing | |
 | WP-B1 Module and remix skeleton | review | `machinedrum` | `f383ecc` | 2026-09-24 | `machinedrum_reports/WP-B1.md` | builds, and `make check REMIX=bus` passes with it (24 Sep); its payload-A donor and core-0 claims move to core 1 with the WP-A2 redo |
-| WP-B2 Build-time extraction | blocked | `machinedrum` | `9b823ff` | 2026-09-24 | `machinedrum_reports/WP-B2.md` | access space measured (tables mostly X-only, sine X+Y); packing waits on the core-1 layout (WP-A2 redo) |
-| WP-B3 The dispatcher hook | todo | | | | | |
-| WP-B4 The fixed trigger path | todo | | | | | |
+| WP-B2 Build-time extraction | review | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-B2.md`, `WP-B3-B4.md` | `payload_B.mem` (core 1) is now in the image: `md_image.py` builds the combined core-1 upload, which `loader.S` depacks before the DSP boot; `verify_dram_boot` reads it back from core 1 |
+| WP-B3 The dispatcher hook | review | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-B3-B4.md` | FX2 id 0x1e (MACHINEDRUM) on core 1 runs `md_glue.asm`; the other ids run the null stub there; `make verify-md` passes on the repo's dsp56300 pin |
+| WP-B4 The fixed trigger path | review | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-B3-B4.md` | trig = bit 16 of the track state's word $1e (a sample voice starting); slot 0 plays c10's TRX-BD, bit-identical to the MD reference for 171 periods under the port |
 | WP-B5 Gates and the M1 image | todo | | | | | the user flashes |
 | WP-C1 The record transport | todo | | | | | |
 | WP-C2 Port the parameter handlers | todo | | | | | |
@@ -76,7 +78,7 @@ Statuses:
 | WP-R1 E12 sample delivery | review | `machinedrum` | `cdc9540` | 2026-09-24 | `machinedrum_reports/WP-R1.md` | D4: stream about 0.98M packed 24-bit words/s (3.0 MB/s) or trade proposed shared-window allocations for a bounded burst cache |
 | WP-R2 The TRX-S2 residual | review | `machinedrum` | `8513de2` | 2026-09-24 | `machinedrum_reports/WP-R2.md` | D3: current 36-word swap leaves c1d +1/c10 +2 blocks; full low image fixes c1d at ~70 estimated cycles/sample but not c10 |
 | WP-R3 The interpreter/JIT mismatch | blocked | `machinedrum` | `94ef689` | 2026-09-24 | `machinedrum_reports/WP-R3.md` | `ADD X,B` boundary isolated in both captures; needs the user's WP-R4 vendor repin before parity can be repaired |
-| WP-R4 The stale toolchain | blocked | | | | | the user reruns `scripts/setup.sh` |
+| WP-R4 The stale toolchain | blocked | | | | `machinedrum_reports/WP-B3-B4.md` | the user reruns `scripts/setup.sh`. Measured 24 Sep: the port built from the stale `c051afad` renders the MD wrongly from period 25 (a sign flip); the repo's pin matches the reference |
 | WP-R5 The c47_2 anomaly | done | `machinedrum` | `d27aec4` | 2026-09-24 | `machinedrum_reports/WP-R5.md` | track 7's default EFM-CB is the heaviest voice: 3,946 cycles / 2,983 engine words per render |
 | WP-R6 The MD mixer's per-voice section | blocked | | | | | only if D1 = B |
 

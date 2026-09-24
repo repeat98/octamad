@@ -46,6 +46,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstdio>
 #include <functional>
 #include <memory>
 #include <string>
@@ -211,6 +212,14 @@ namespace ot
 		const Stopwatch& stopwatch() const { return m_sw; }
 		const std::vector<PcWatchHit>& pcWatchHits() const { return m_pcWatchHits; }
 		const std::vector<std::string>& writeMap() const { return m_writeMap; }
+		// A per-arrival memory sampler (Machinedrum WP-B4): at EVERY arrival at
+		// one PC on one core, one line to a file -- the executed count, r0-r7
+		// and the words of each span. A span's base is absolute, or relative to
+		// r0-r7 as they are at the arrival (reg 0-7; -1 = absolute).
+		struct SampleSpan { char space; int reg; uint32_t base, len; };
+		void setSampler(int _core, uint32_t _pc, const std::string& _file, std::vector<SampleSpan> _spans, uint64_t _max);
+		uint64_t samplerLines() const { return m_samplerLines; }
+		void closeSampler() { if(m_samplerFile) { std::fclose(m_samplerFile); m_samplerFile = nullptr; m_samplerOn = false; } }
 
 		// Run both cores up to the due count now (the ticks only book it),
 		// interleaved in quanta of g_quantum instructions (O9b).
@@ -247,6 +256,9 @@ namespace ot
 		bool m_pulling = false;
 		bool m_pcWatchOn = false; int m_pcWatchCore = 0; uint32_t m_pcWatchPc = 0; uint64_t m_pcWatchFrom = 0;	// with a `from`, the FIRST 24 arrivals after it are kept
 		std::vector<PcWatchHit> m_pcWatchHits;
+		bool m_samplerOn = false; int m_samplerCore = 0; uint32_t m_samplerPc = 0; uint64_t m_samplerMax = 0, m_samplerLines = 0;
+		std::vector<SampleSpan> m_samplerSpans;
+		std::FILE* m_samplerFile = nullptr;
 		Stopwatch m_sw;
 		bool m_watchOn = false; int m_watchCore = 0; char m_watchSpace = 'X'; uint32_t m_watchAddr = 0;
 		std::vector<WatchHit> m_watchHits;			// inside pullHalfwords: host-port words are the read-back, not the bank id

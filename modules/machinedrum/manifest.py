@@ -1,16 +1,23 @@
-"""Machinedrum native-machine skeleton.
+"""Machinedrum on core 1 (payload B, tracks 1-4): the M1 proof path.
 
-WP-B1 declares the ownership envelope for the first MD image; since the
-24 September decision it is core 1's (payload B, tracks 1-4). The DSP source
-and ColdFire registration are intentionally not claimed yet: WP-B2 will
-connect the user's build-time extraction to this manifest without copying
-any firmware into the repository.
+The FX2 chooser carries MACHINEDRUM (id 0x1e). On core 1 the id runs
+md_glue.asm, which triggers slot 0 with a fixed TRX-BD record on the
+track's OT trig, runs the relocated MD voice DSP through md_driver.asm and
+mixes the sixteen slots into the track (tools/build/md_image.py). On core 0
+the same id is a passthrough stub. The MD's code and tables come from the
+user's pinned MD OS 1.63 update at build time (tools/build/md_payload.py);
+no firmware byte enters the repository.
+
+Not yet: machine registration, the ColdFire record transport and parameter
+handlers, the sequencer, persistence, MIDI, E12 sample delivery and the
+hardware qualification (docs/proposals/MACHINEDRUM_WORKPACKETS.md).
 """
 
 from pathlib import Path
 import runpy
 
-from remix.schema import Kind, Module
+from remix.schema import (BusRole, Claims, DspSection, Formatter, Kind, MenuEntry,
+                          Module, Param, YBase)
 
 
 _LAYOUT = runpy.run_path(str(Path(__file__).with_name("layout.py")))
@@ -50,7 +57,7 @@ RESOURCE_CLAIMS = {
     },
     "shared": tuple(_span(name) for name in (
         "window_code", "window_tables", "e12_tail",
-        "sample_meta", "window_tables_b", "sine")),
+        "sample_meta", "window_tables_b", "sine", "glue")),
 }
 
 
@@ -70,7 +77,40 @@ _check_claims()
 MODULE = Module(
     name="machinedrum",
     key="MACHINEDRUM",
-    kind=Kind.CF_PATCH,
-    doc=("Native Machinedrum core-1 machine skeleton: payload-B donor and "
-         "shared-window ownership from the proposed layout."),
+    kind=Kind.HYBRID,
+    doc=("Machinedrum voice DSP on core 1 (T1-T4, FX2 slot): fixed TRX-BD "
+         "trigger on the OT trig, 16-slot mix. M1 proof path."),
+
+    menu=MenuEntry(
+        # 0x1e: not stock's and claimed by no other module (the registry
+        # refuses a duplicate). An FX2 id is also an FX1 id; FX1's chooser
+        # does not list it.
+        fx2_id=0x1e,
+        donor_desc=0x400d58b8,        # DARK REV, as HELLO WORLD
+        abbr=b"MD",
+        fullname=b"MACHINEDRUM",      # 11 of 13 bytes
+        build_tag=False,
+    ),
+
+    params=(
+        # ---- page 1 -------------------------------------------------------
+        Param(b"VOL", 100, 128, active=True, formatter=Formatter.PLAIN,
+              doc="the sixteen-slot mix's level, val/128"),
+        Param(), Param(), Param(), Param(), Param(),
+        # ---- page 2: none ---------------------------------------------------
+        Param(), Param(), Param(), Param(), Param(), Param(),
+    ),
+
+    dsp=DspSection(
+        asm="modules/machinedrum/md_stub.asm",
+        priority=17,                  # after every existing module
+        bus_role=BusRole.NONE,
+        ybase=YBase.NEVER,
+        r7_latch_slot=None,
+        gate_label=None,
+    ),
+
+    # Payload B's thirteen stock effects are the MD's hot code now: on core 1
+    # every stock id runs the null stub (tools/build/md_image.py).
+    claims=Claims(gives_up_payload_fx=("B",)),
 )

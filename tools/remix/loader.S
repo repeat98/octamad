@@ -30,6 +30,9 @@
 | A `bra fatal` hang on any mismatch, as hers: a half-loaded runtime is
 | worse than a visibly stuck boot.
 |
+| Pre-boot payloads (`pretable`, only with --defsym PREBOOT=1) run the same
+| gates before BOOT_CONTINUE and are never backed up.
+|
 | Registers inside the loop: a2 table cursor, d7 payloads left, d6 stage,
 | d5 len then rawlen, d4 dst, d3 expected hash; d0/d1/d2/a0/a1 scratch.
 
@@ -39,6 +42,60 @@
         .text
         .global octabam_bootstrap
 octabam_bootstrap:
+.ifdef PREBOOT
+| Pre-boot payloads (Machinedrum: the combined core-1 DSP upload) are
+| depacked BEFORE the boot-continue call, because that call uploads the
+| DSP programs from them. Same entry layout, table `pretable`. Assembled
+| only when a remix carries one, so every other loader is byte-identical.
+        lea     (-48,%sp),%sp
+        movem.l %d0-%d7/%a0-%a2,(%sp)
+        lea     pretable(%pc),%a2
+        move.l  (%a2)+,%d7              | pre-boot payload count (> 0)
+pnext:
+        move.l  (%a2)+,%a0              | src
+        move.l  (%a2)+,%d5              | len
+        move.l  (%a2)+,%d3              | phash
+        move.l  (%a2)+,%d6              | stage (uncached)
+        move.l  %d6,%a1
+        move.l  %d5,%d0
+        bsr.w   copy
+        move.l  %d6,%a0
+        addq.l  #4,%a0
+        move.l  %d5,%d0
+        subq.l  #4,%d0
+        bsr.w   hash
+        cmp.l   %d3,%d1
+        bne.w   fatal
+        move.l  %d6,%a0
+        addq.l  #4,%a0
+        move.l  (%a0)+,%d1
+        cmpi.l  #0x474b4133,%d1
+        bne.w   fatal
+        move.l  (%a2)+,%d4              | dst (uncached)
+        move.l  (%a2)+,%d5              | rawlen
+        move.l  (%a0),%d1
+        cmp.l   %d5,%d1
+        bne.w   fatal
+        move.l  %d4,-(%sp)
+        move.l  %d6,%d1
+        addq.l  #4,%d1
+        move.l  %d1,-(%sp)
+        jsr     (APLIB_DEPACK).l
+        lea     (8,%sp),%sp
+        tst.l   %d0
+        bne.w   fatal
+        move.l  %d4,%a0
+        move.l  %d5,%d0
+        bsr.w   hash
+        move.l  (%a2)+,%d3              | rhash
+        cmp.l   %d3,%d1
+        bne.w   fatal
+        addq.l  #4,%a2                  | backup: never for a pre-boot payload
+        subq.l  #1,%d7
+        bne.w   pnext
+        movem.l (%sp),%d0-%d7/%a0-%a2
+        lea     (48,%sp),%sp
+.endif
         jsr     (BOOT_CONTINUE).l
         lea     (-48,%sp),%sp
         movem.l %d0-%d7/%a0-%a2,(%sp)
@@ -126,3 +183,8 @@ hashloop:
         .align  4
 table:
         .include "table.inc"
+.ifdef PREBOOT
+        .align  4
+pretable:
+        .include "pretable.inc"
+.endif

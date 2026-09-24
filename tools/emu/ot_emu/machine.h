@@ -464,5 +464,11 @@ namespace ot
 		std::vector<uint64_t> m_windowWrites;
 		std::vector<AutoPoke> m_autoPokes;
 		uint64_t m_writes = 0;
+		// Sequential RAM byte reads (addr == the previous byte read + 1): a hash or
+		// a compare walking memory makes progress without writing (the loader's
+		// 300 KB core-1 upload hash, Machinedrum 24 Sep 2026); a poll re-reads one
+		// address. The stall check counts both.
+		uint64_t m_seqReads = 0; uint32_t m_lastRead8 = 0;
+		std::vector<uint64_t> m_windowSeqReads;
 	};
 }

@@ -229,6 +229,10 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	@# page-2 editors called under the port); SKIPs without OT_PROJECT (above).
 	python3 tools/verify/verify_modedefaults.py $(REMIX)
 
+.PHONY: verify-md
+verify-md: ## The Machinedrum on core 1 under the port: owner, OT trig -> slot 0, bit-exact vs the MD reference, T1's audio (needs OT_PROJECT; MD_EMU=<port> to pick the emulator)
+	python3 tools/verify/verify_md_image.py
+
 .PHONY: verify-roll
 verify-roll: ## Prove an alternate REVERB engine is bit-identical: make verify-roll CAND=cand.asm [REF=modules/busverb/reverb_server.asm]
 	@test -n "$(CAND)" || { echo "usage: make verify-roll CAND=<candidate.asm> [REF=modules/busverb/reverb_server.asm]"; exit 1; }

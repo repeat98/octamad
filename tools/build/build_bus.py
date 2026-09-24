@@ -1269,6 +1269,7 @@ def main():
               f"({_acount * arena.PAGE // 1048576} MB) left for samples and recorders "
               f"(stock {arena.PAGES:,}); {len(arena.pokes(_reservations))} words rewritten")
 
+    _platform_at = None             # (index in _appends) -- the Machinedrum rebuilds it last
     if _dram or _payloads:
         from remix import platform_build
         _pappend, _psyms, _boot, _pnames = platform_build.build(
@@ -1280,6 +1281,7 @@ def main():
         for _p in _payloads:
             _exports.update({k: v for k, v in _p.get("symbols", {}).items() if k.startswith("gk_")})
         _appends.append(("octabam loader + payloads (" + ", ".join(_pnames) + ")", _pappend))
+        _platform_at = len(_appends) - 1
         if "OCTAKIT" not in REMIX.modules:
             # Octakit's own recipe already routes the boot site through her
             # wrapper, which calls the loader at its fixed address; without
@@ -2918,6 +2920,45 @@ hostquit:
     # match the identity the recipe pins for exactly this (single-runtime)
     # composition; a remix that combines the runtime with other modules
     # cannot match it, and says so instead of failing.
+    # ==== the Machinedrum's core-1 upload (tools/build/md_image.py) ==========
+    # Last of the DSP work: it patches both payloads as they now stand and
+    # builds the combined core-1 upload from payload B's final records, so
+    # the loader is (re)built here with it as a PRE-BOOT payload. A remix
+    # without MACHINEDRUM never reaches this block.
+    if "MACHINEDRUM" in REMIX.modules:
+        import md_image
+        from remix import platform_build
+        _pre, _mpoke, _mlog = md_image.integrate(img, remix_modules()["MACHINEDRUM"].menu.fx2_id)
+        print("\n=== Machinedrum: core-1 upload, payload patches, pre-boot loader ===")
+        for _l in _mlog:
+            print(_l)
+        _ma, _mexp, _mw, _mnote = _mpoke
+        _got = bytes(img[_ma - BASE:_ma - BASE + len(_mexp)])
+        if _got != _mexp:
+            sys.exit(f"machinedrum: 0x{_ma:08x} holds {_got.hex()}, not stock {_mexp.hex()}")
+        img[_ma - BASE:_ma - BASE + len(_mw)] = _mw
+        print(f"    poke 0x{_ma:08x}: {_mexp.hex()} -> {_mw.hex()}  {_mnote}")
+        _pappend, _psyms2, _boot, _pnames = platform_build.build(
+            [(_m.key, _u) for _m, _u in _dram], _payloads, pathlib.Path("out/platform"),
+            reserve=_reserve, defsyms=_defsym_ovr, preboot=[_pre])
+        if (_dram or _payloads) and _psyms2 != _psyms:
+            sys.exit("machinedrum: the platform runtime linked differently the second time")
+        _entry = ("octabam loader + payloads (" + ", ".join(_pnames) + ")", _pappend)
+        if _platform_at is None:
+            _appends.append(_entry)
+            if "OCTAKIT" not in REMIX.modules:
+                _ba, _bexp, _bw, _bnote = _boot
+                _got = bytes(img[_ba - BASE:_ba - BASE + len(_bexp)])
+                if _got != _bexp:
+                    sys.exit(f"boot site 0x{_ba:08x} holds {_got.hex()}, not stock "
+                             f"{_bexp.hex()} -- refusing to redirect boot")
+                img[_ba - BASE:_ba - BASE + len(_bw)] = _bw
+                print(f"    poke 0x{_ba:08x}: {_bexp.hex()} -> {_bw.hex()}  {_bnote}")
+        else:
+            _appends[_platform_at] = _entry
+        print(f"  platform loader: payloads {', '.join(_pnames)}, append "
+              f"{len(_pappend):,} B at 0x{platform_build.LOADER_AT:08x}")
+
     _grown = ""
     for _aname, _append in _appends:
         img.extend(_append)

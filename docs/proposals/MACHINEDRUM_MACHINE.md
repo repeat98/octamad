@@ -1,9 +1,12 @@
 # Machinedrum Machine: implementation plan
 
 Implementation update (24 September 2026): the core-1 twelve-kit relocation
-replay now matches each plain baseline. See
-`docs/proposals/machinedrum_reports/WP-A2-core1.md` for the gate and
-remaining payload and OT integration work.
+replay now matches each plain baseline (`machinedrum_reports/WP-A2-core1.md`).
+Later the same day `make bus REMIX=machinedrum` began loading the MD into
+core 1 and running it as FX2 id 0x1e on T1–T4. A fixed TRX-BD record plays
+on the track's trig, bit-identical to the MD reference under the port
+(`machinedrum_reports/WP-B3-B4.md`, section 12 "Core 1 in the OT image").
+It is unflashed, with no record transport, UI, sequencer or persistence.
 
 Status: revised proposal, 23 September 2026. Based on the local Octamad
 checkout at `3b5a2eb66930225f914a369fbfd499dd763d7dcd`. No Machinedrum
@@ -1928,6 +1931,80 @@ tables (`md_forms`). The cycle and rate figures are emulator counts.
   identical sine, P-I and voice data on all twelve captured states.
   The build still lacks native OT machine registration, DSP loading,
   record transport, sample delivery, mix, and the UI/sequencer.
+
+### Core 1 in the OT image (24 September 2026)
+
+WP-B2's image side, WP-B3 and WP-B4. Report:
+`machinedrum_reports/WP-B3-B4.md`. Everything below is under the ColdFire
+port. Nothing is hardware.
+
+- ✅ **How the MD reaches core 1.** `tools/build/md_image.py` builds one
+  combined core-1 upload: payload B's own records, the MD's 18 records
+  (the sine's is dropped), the glue, then B's terminator. That is
+  300,282 B, packed to 155,204 B. octabam's loader depacks it **before**
+  the boot-continue call (`loader.S`, `.ifdef PREBOOT`), to
+  0x48b00000 (uncached). The boot's `pea 0x400f59ef` literal (0x40001ed4)
+  points there. Under the port the loader runs once and its hang never
+  fires. Core 1 takes 100,150 host words, and its P at 0x591, 0x1f00,
+  0x34000 and 0x36000 reads back equal to the upload
+  (`verify_dram_boot.py`).
+- ✅ **Payload B's startup clears the MD's ground.** P:0x40–0x4a zeroes
+  Y:0x4000–0xbfff and 0x38000–0x3ffff after the upload. The glue's
+  `gboot` takes the loop's place (P:0x47–0x4a). It runs the MD's own
+  relocated boot init (P:0x34017) and keeps the sine's first sixteen words.
+- ✅ **Payload A's clear of 0x30000–0x37fff runs after B's upload.** A waits
+  for a host word at P:0x30010 before its P:0x40 clear, and B's entry
+  calls A's 0x3008a and 0x30082. The glue's `gaclr` clears Y:0x4000–0xbfff
+  and 0x30000–0x33fff only. Under the port the MD's window code survives
+  it.
+- ✅ **0x38000–0x3800f is a live core 1 → core 0 mailbox.** Payload B
+  re-enters P:0x4b every frame, parks its Y:0x280 words there, and
+  restores the saved words at P:0x172. Core 0 copies them to its Y:0x280
+  at P:0x9b and mixes them at P:0x2f2 with an input gain. Stock core 0 read
+  zeros on 305 of 305 frames. With the MD, core 0 reads 16 zero words at
+  glue `ZERO` instead. The sine's first sixteen words are lost in the boot
+  handshake; `gfxproc` restores them once. ❌ Retracted: "payload B's
+  entry/per-frame words at 0x38000–0x38012 are dead after boot".
+- ✅ **The OT trig on a core-1 track is bit 16** of word $1e of the track's
+  state block. Bits 8–11 are the trig's sample offset (the dispatcher's
+  x:$20c split). T1–T3 set it on frames 3, 347, 692 and 1036 of 1200;
+  T4 on 3, 347 and 1036. It marks a **sample voice starting**: without
+  a staged sample, T1 never sets it.
+- ✅ **The dispatch.** On core 1 the MACHINEDRUM id (0x1e) runs `gfxinit`
+  (the calling track owns the instance) and `gfxproc`. `gfxproc` fires the
+  fixed trigger, runs the driver, mixes a finished period at 1/4 per slot
+  (L = R), and writes its part of the frame times p0. The other 31 ids run
+  payload B's null stub. `gfxproc` is called on every frame (1,052 calls in
+  700 frames; a frame split at a trig calls it twice).
+- ✅ **Bit-exact against the reference, until the OT retriggers.** With
+  the repo's dsp56300 pin (`8ccdd843` + `tools/patches/dsp56300.patch`,
+  built in an isolated tree), slot 0 equals c10's own slot-0 render for
+  171 consecutive periods. At period 171 the OT's second trig retriggers
+  slot 0, which c10 does not. Every non-silent T1 post-FX2 read-back block
+  (694 of 694) is a block the glue wrote.
+- ✅ **A stale emulator mis-renders it.** The port built from `c051afad`
+  (the main checkout's `vendor/`, WP-R4) diverges at period 25, sample 27,
+  with the exact negation of the reference. The following were ruled out:
+  - low-memory garbage: the replay with low X/Y poisoned, except the 36
+    MD words, gives 3400/0;
+  - the other slots: c10 triggers only slot 0 and starts at the same zero
+    state;
+  - the replay's interpreter: 4200/0.
+
+  *Inferred:* an upstream dsp56300 fix between the two pins; CCR overflow
+  flags fit a sign flip. Not bisected.
+- ✅ **Cost**, in interpreter instructions, not cycles:
+  - `gfxproc` with one TRX-BD voice and 15 empty slots: mean 3,276, max
+    5,401 per call.
+  - Core 1 per frame (P:0x167 → P:0x34e): 11,642 mean, 12,370 max,
+    against 22,890 for the skeleton with stock FX on T1–T4, same project.
+  - The window's +1 cycle per fetch is not modelled, and a full kit is
+    not measured (WP-A6).
+- ✅ **The pinned `dsp_asm` drops XY moves beside ALU ops.** It encodes
+  `mac y0,x0,a x:(r1)+,x0 y:(r4)+n4,y0` as the single word 0x012685 and
+  refuses `clr a` with an XY move. The glue keeps them apart, and
+  `md_image.py` refuses max/dc/illegal and su/uu `mac`/`mpy` in its
+  disassembly.
 
 ### Open for Phase 1
 

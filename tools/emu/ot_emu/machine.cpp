@@ -341,6 +341,8 @@ namespace ot
 		if(auto* const r = find(_addr, 1))
 		{
 			const auto v = r->data[_addr - r->base];
+			if(_addr == m_lastRead8 + 1) ++m_seqReads;
+			m_lastRead8 = _addr;
 			if(!m_readWatches.empty()) noteWatchedRead(_addr, 1, v);
 			return v;
 		}
@@ -733,10 +735,12 @@ namespace ot
 			{
 				m_window.push_back(pc());
 				m_windowWrites.push_back(m_writes);
+				m_windowSeqReads.push_back(m_seqReads);
 				if(m_window.size() > g_stallBursts)
 				{
 					m_window.erase(m_window.begin());
 					m_windowWrites.erase(m_windowWrites.begin());
+					m_windowSeqReads.erase(m_windowSeqReads.begin());
 				}
 				if(m_window.size() == g_stallBursts)
 				{
@@ -745,10 +749,11 @@ namespace ot
 					if(hi - lo <= 64)
 					{
 						// A memset makes progress; a poll does not.
-						if(m_windowWrites.back() - m_windowWrites.front() > 2000)
-							m_window.clear(), m_windowWrites.clear();
+						if(m_windowWrites.back() - m_windowWrites.front() > 2000
+							|| m_windowSeqReads.back() - m_windowSeqReads.front() > 2000)
+							m_window.clear(), m_windowWrites.clear(), m_windowSeqReads.clear();
 						else if(tryAutoPoke(pc()))
-							m_window.clear(), m_windowWrites.clear();
+							m_window.clear(), m_windowWrites.clear(), m_windowSeqReads.clear();
 						else
 						{
 							char msg[160];

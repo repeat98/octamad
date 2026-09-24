@@ -29,7 +29,10 @@ values; for a declared replacement, both must point at the module's clone
 THE ONE LEGITIMATE EXCEPTION is a donor reverb whose words this selection
 took: PLATE/SPRING/DARK REV's code IS the donor region, so an id whose code
 was overwritten is repointed at the null stub. That is allowed, and ONLY
-that -- a donor id may be stock or the null stub, never anything else.
+that -- a donor id may be stock or the null stub, never anything else. A
+module that takes a payload's whole effect code (Claims.gives_up_payload_fx:
+the Machinedrum, payload B) extends the same allowance to every stock id on
+that payload.
 
 Static checks run with no image: a declared replacement must name a real
 stock effect and carry that effect's id.
@@ -122,6 +125,11 @@ def check_image(name, img, pristine, fails):
                 if mods[k].menu.fx2_id in stock.fx1_ids()}
     _given_up = set(stock.region_of(stock.harvested(
         set(remix.modules) | set(remix.fx1 or _fx1_all))))
+    # A payload whose whole stock effect code a module takes (the
+    # Machinedrum's core 1, schema.Claims.gives_up_payload_fx): every stock
+    # id there may run the null stub.
+    _whole = {p for k in remix.modules
+              for p in getattr(registry.modules()[k].claims, "gives_up_payload_fx", ())}
     for eff in stock.MODULES:
         eid = eff.menu.fx2_id
         want_desc = eff.menu.donor_desc + 0x38
@@ -190,7 +198,7 @@ def check_image(name, img, pristine, fails):
                 want = rdw(pristine, xtab + slot * 3)
                 if got == want:
                     continue
-                if got == nul and eff.key in _given_up:
+                if got == nul and (eff.key in _given_up or tag in _whole):
                     continue               # its words were taken; see above
                 fails.append(
                     f"{name}: payload {tag} dispatch[0x{eid:02x}] "

@@ -10,7 +10,12 @@ For the current REMIX (the image at out/mainos_bus.bin):
     when OCTAKIT is in the remix) read back equal to the linked runtimes
     -- except for bytes the runtimes themselves write once they run
     (midi-scenes' state words are the known case), which are counted and
-    printed, not hidden.
+    printed, not hidden;
+  * with MACHINEDRUM, the loader's PRE-BOOT payload (the combined core-1
+    upload, tools/build/md_image.py) reached core 1: its code records --
+    the hot code, the driver, the window code and the glue -- read back
+    from core 1's P equal to out/machinedrum/build/core1_upload.bin, and
+    the MACHINEDRUM id dispatches to the glue there.
 
 SKIPs when the port is not built (`make emu-cf`) or the remix carries no
 DRAM payload. What this cannot see: caches (the port has none), the
@@ -31,7 +36,8 @@ remix = registry.remix(os.environ.get("REMIX") or registry.DEFAULT_REMIX)
 mods = [registry.modules()[k] for k in remix.modules]
 dram = any(u.dram for m in mods for u in getattr(m, "linked", ()))
 octakit = "OCTAKIT" in remix.modules
-if not (dram or octakit):
+md = "MACHINEDRUM" in remix.modules
+if not (dram or octakit or md):
     print(f"  [ -- ] verify_dram_boot: {remix.name} carries no DRAM payload")
     sys.exit(0)
 if not EMU.exists():
@@ -67,9 +73,39 @@ if octakit:
     dumps.append((0x45D0DDE0, len(raw), ROOT / "out/_dump_octakit.bin"))
     expects.append(("Octakit window", raw))
 
+peeks = []
+if md:
+    # The combined core-1 upload, in the payload format (24-bit LE words:
+    # space, address, count, data; headers 3 and 4 first). Its P records
+    # below 0x30000 and in the window are code the boot does not rewrite.
+    up = (ROOT / "out/machinedrum/build/core1_upload.bin").read_bytes()
+    w = lambda o: up[o] | up[o + 1] << 8 | up[o + 2] << 16
+    o = 6 if up[0] == 3 else 0
+    o += 6 if up[o] == 4 else 0
+    recs = []
+    while w(o) <= 2:
+        recs.append((w(o), w(o + 3), [w(o + 9 + 3 * i) for i in range(w(o + 6))]))
+        o += 9 + 3 * w(o + 6)
+    glue = {l.split()[0]: int(l.split()[1], 16) for l in
+            (ROOT / "out/machinedrum/build/glue.sym").read_text().splitlines() if l.strip()}
+    for start in (0x591, 0x1F00, 0x34000, 0x36000):
+        # The LAST record over an address wins: stock B's own effect records
+        # at P:0x591.. load first and the MD's overwrite them.
+        rec = [r for r in recs if r[0] == 0 and r[1] <= start < r[1] + len(r[2])]
+        if not rec:
+            sys.exit(f"verify_dram_boot: no P record at {start:05x} in the core-1 upload")
+        words = rec[-1][2][start - rec[-1][1]:start - rec[-1][1] + 64]
+        peeks.append((f"1:P:0x{start:x},{len(words)}", f"core 1 P:{start:05x}", words))
+    md_id = registry.by_key("MACHINEDRUM").menu.fx2_id
+    peeks.append((f"1:X:0x{0x215 + md_id:x},1", "core 1 dispatch init", [glue["gfxinit"]]))
+    peeks.append((f"1:X:0x{0x235 + md_id:x},1", "core 1 dispatch proc", [glue["gfxproc"]]))
+
 args = [str(EMU), "--image", str(IMAGE), "--max", "80000000",
-        "--watch-pc", f"0x{entry:x},0x{fatal:x}",
-        "--mem-dump", ";".join(f"0x{a:x},{n}={p}" for a, n, p in dumps)]
+        "--watch-pc", f"0x{entry:x},0x{fatal:x}"]
+if dumps:
+    args += ["--mem-dump", ";".join(f"0x{a:x},{n}={p}" for a, n, p in dumps)]
+if peeks:
+    args += ["--dsp", "--dsp-peek", ";".join(s for s, _l, _w in peeks)]
 r = subprocess.run(args, capture_output=True, text=True, cwd=ROOT)
 out = r.stdout
 handoff = "HANDOFF" in out
@@ -87,4 +123,14 @@ for (a, n, p), (label, raw) in zip(dumps, expects):
     print(f"  [{'PASS' if fine else 'FAIL'}] verify_dram_boot: {label} at 0x{a:08x} == linked "
           f"runtime ({n:,} B) except {len(diff)} byte(s) the runtime wrote itself"
           + (f" at +{diff[0]:#x}.." if diff else ""))
+for spec, label, want in peeks:
+    core, space, rest = spec.split(":", 2)
+    addr = int(rest.split(",")[0], 16)
+    line = next((l for l in out.splitlines()
+                 if l.strip().startswith(f"core {core} {space}:{addr:#07x}:")), "")
+    got = [int(x, 16) for x in line.split(":", 2)[-1].split()] if line else []
+    fine = got == want
+    ok &= fine
+    print(f"  [{'PASS' if fine else 'FAIL'}] verify_dram_boot: {label} == the core-1 upload "
+          f"({len(want)} word(s))" + ("" if fine else f": got {[hex(x) for x in got[:4]]}.."))
 sys.exit(0 if ok else 1)

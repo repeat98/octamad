@@ -336,6 +336,19 @@ out/emu/ot_emu --image out/mainos_bus.bin --card out/card.img --set OCTABAM --pr
   PC), `--watch-read`, `--watch-pc`, `--dsp-watch core:X|Y|P:addr`,
   `--dsp-pcwatch core:pc` (the last 24 arrivals with a, b, x, y, r0, r4, r6, n4, sp, r2, m2, r1, n1, r7, m7, m0 and, since 21 Sep 2026, n7 -- the frame count of a call), `--dsp-peek core:X|Y|P:addr,len` (upper-case
   space letter), `--mem-dump addr,len=file`.
+- `--dsp-sample core:pc:FILE[:max]=SPACE:[rN+]addr,len[;...]` (24 Sep
+  2026) writes one line per arrival at a DSP PC: the executed count,
+  r0–r7, then each span's words. A span's base is absolute, or relative
+  to r0–r7 as they are at the arrival (`X:r2+1e,1` is the track state's
+  trig word at core 1's `P:0x198`). It is the per-frame view the
+  24-arrival pcwatch cannot give. The Machinedrum's trig bit and its
+  bit-exact check were measured with it.
+- The stall check (a loop within 64 bytes of PC for 4 × 500K
+  instructions) counts sequential RAM byte reads as progress, not only
+  writes (24 Sep 2026). A hash or compare walking memory is progress, and
+  a poll re-reads one address. The loader's hash over the Machinedrum's
+  300 KB core-1 upload reads 2.7 M instructions without writing, and was
+  reported as `unrecognised spin` before.
 - The record a track's DSP instances read is `0x80000110 + 64·t` (32
   halfwords, `docs/firmware/MIDI.md`); the page-2 lane `0x80000810 + 72·t`.
 - `--card-out FILE` writes the card as the firmware left it;

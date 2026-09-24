@@ -400,8 +400,17 @@ class Claims:
     # guard sees no write above 0x3fff), and the pricer takes it at its
     # word: an fx1_only module is priced on FX1 slots only.
     fx1_only: bool = False
+    # THE WHOLE STOCK EFFECT CODE OF A PAYLOAD. The Machinedrum's core-1
+    # upload overwrites all thirteen stock effects in payload B (P:0x591 up)
+    # with its own code, so on that payload every stock id must run the null
+    # stub -- the effects stay in the chooser and run on the other core.
+    # tools/verify/verify_replaces.py accepts the null stub there, and only
+    # there.
+    gives_up_payload_fx: tuple[str, ...] = ()
 
     def __post_init__(self):
+        if set(self.gives_up_payload_fx) - {"A", "B"}:
+            raise ValueError("gives_up_payload_fx names payloads 'A' and/or 'B'")
         if self.buffer_words is not None and not self.stock_instance_buffer:
             raise ValueError("buffer_words without stock_instance_buffer: "
                              "only an allocator reader has a sized buffer")

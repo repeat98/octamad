@@ -70,7 +70,29 @@ LAYOUT = {
         {"name": "sample_meta", "space": "shared", "start": 0x37200, "words": 0x200},
         {"name": "window_tables_b", "space": "shared", "start": 0x37400, "words": 0x0C00},
         {"name": "sine", "space": "shared", "start": 0x38000, "words": 0x8000},
+
+        # The core-1 host (modules/machinedrum/md_glue.asm, WP-B3/B4/A5): its
+        # code from the start, its words from glue["data"].
+        {"name": "glue", "space": "shared", "start": 0x36000, "words": 0x400},
     ],
+    # md_glue.asm's words (tools/build/md_image.py fills its placeholders).
+    # GAIN is 16-aligned (m1 = $f), MIX holds one 32-sample period, L/R.
+    "glue": {
+        "code": 0x36000,
+        "code_words": 0x300,
+        "OWNER": 0x36300,
+        "GOUT": 0x36301,
+        "ONCE": 0x36302,
+        "SAVER6": 0x36303,
+        "SAVEN7": 0x36304,
+        "TRIGS": 0x36305,
+        "SINE16": 0x36310,
+        "ZERO": 0x36320,
+        "FIXED": 0x36330,
+        "GAIN": 0x36340,
+        "MIX": 0x36380,
+        "end": 0x363c0,
+    },
     "driver": {
         "LV140": 0xBE00,
         "LV141": 0xBE01,
@@ -94,8 +116,15 @@ LAYOUT = {
          "start": 0x38013, "end": 0x40000},
         {"owner": "payload B's entry/per-frame words (dead after boot: BusDelay overwrites them)",
          "space": "shared", "start": 0x38000, "end": 0x38013},
-        {"owner": "T8 FX2 slot storage (T8's FX2 limited to memoryless effects)", "space": "shared",
-         "start": 0x34000, "end": 0x38000},
+        {"owner": "T8 FX2 slot storage: payload A's slot table (X:0x25c) now gives T8's FX2 "
+                  "T7's base 0x30000, so T7/T8 memory effects share one buffer (audio, not a crash)",
+         "space": "shared", "start": 0x34000, "end": 0x38000},
+        {"owner": "payload A's boot clear of Y:0x34000-0x37fff (narrowed to 0x30000-0x33fff; "
+                  "the MD's window code is loaded there before core 0 reaches its clear)",
+         "space": "shared", "start": 0x34000, "end": 0x38000},
+        {"owner": "core 0's per-frame read of X:0x38000-0x3800f into Y:0x280 (stock reads zeros "
+                  "there, measured; repointed to 16 zero words at glue ZERO)",
+         "space": "shared", "start": 0x38000, "end": 0x38010},
     ],
 }
 
@@ -158,6 +187,14 @@ def check():
             errors.append(f"driver {key} is outside loop_words")
     if not lw["start"] <= d["ENG"] and d["ENG"] + 16 <= _end(lw):
         errors.append("driver ENG (16 words) is outside loop_words")
+    g, glue = LAYOUT["glue"], allocation("glue")
+    if g["code"] != glue["start"] or g["end"] > _end(glue):
+        errors.append("glue words are outside the glue allocation")
+    words = sorted((v, k) for k, v in g.items() if k not in ("code", "code_words", "end"))
+    if words[0][0] < g["code"] + g["code_words"]:
+        errors.append("glue data overlaps the glue code")
+    if g["GAIN"] % 16 or allocation("outbuf")["start"] % 0x200:
+        errors.append("glue GAIN must be 16-aligned and outbuf 512-aligned (the mix's modulo)")
     return errors
 
 

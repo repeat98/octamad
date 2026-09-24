@@ -96,6 +96,7 @@ int main(int _argc, char** _argv)
 	std::string audioIn;		// O9: a WAV onto RX0's slots from the transport start, or "tones"
 	bool audioInFromBoot = false;	// O14: feed it from the DSP boot instead (a live input already flowing when a step-1 recorder arms)
 	int preRoll = 0;			// O14: frames of the frame engine to run BEFORE the transport start (a warm DSP, as on hardware)
+	std::string dspSample;		// WP-B4: core:pc:FILE[:max]=SPACE:[rN+]addr,len[;...] -- memory at every arrival at a DSP PC
 	std::string dspPcWatch;		// O9b: core:pc -- registers at the last 24 arrivals at that DSP PC
 	std::string dspStopwatch;	// O12: core:startpc:stoppc -- instructions between the two, per pair (the cycle meter)
 	std::string dspWatch;		// O9b: core:space:addr -- the last 16 writers of one DSP word
@@ -171,6 +172,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--dsp-map" && i + 1 < _argc)	dspMap = _argv[++i];
 		else if(a == "--dsp-watch" && i + 1 < _argc)	dspWatch = _argv[++i];
 		else if(a == "--dsp-pcwatch" && i + 1 < _argc)	dspPcWatch = _argv[++i];
+		else if(a == "--dsp-sample" && i + 1 < _argc)	dspSample = _argv[++i];
 		else if(a == "--dsp-stopwatch" && i + 1 < _argc)	dspStopwatch = _argv[++i];
 		else if(a == "--dsp-writes" && i + 1 < _argc)	dspWrites = _argv[++i];
 		else if(a == "--coverage" && i + 1 < _argc)	coverage = _argv[++i];
@@ -254,6 +256,39 @@ int main(int _argc, char** _argv)
 			int core = 0; unsigned pc = 0; unsigned long long from = 0;
 			if(std::sscanf(dspPcWatch.c_str(), "%d:%x:%llu", &core, &pc, &from) >= 2)
 				dspPair->setPcWatch(core, pc, from);
+		}
+		if(!dspSample.empty())
+		{
+			// core:pc:FILE[:max]=X:r2+1e,1;Y:3940,16 -- spans after the '='
+			const auto eq = dspSample.find('=');
+			const auto head = dspSample.substr(0, eq);
+			int core = 0; unsigned pc = 0; char file[512] = {0}; unsigned long long mx = 1000000;
+			const auto c1 = head.find(':'), c2 = head.find(':', c1 + 1), c3 = head.find(':', c2 + 1);
+			core = std::atoi(head.substr(0, c1).c_str());
+			pc = static_cast<unsigned>(std::stoul(head.substr(c1 + 1, c2 - c1 - 1), nullptr, 16));
+			std::snprintf(file, sizeof file, "%s", head.substr(c2 + 1, c3 == std::string::npos ? std::string::npos : c3 - c2 - 1).c_str());
+			if(c3 != std::string::npos) mx = std::stoull(head.substr(c3 + 1));
+			std::vector<ot::DspPair::SampleSpan> spans;
+			size_t q = eq == std::string::npos ? dspSample.size() : eq + 1;
+			while(q < dspSample.size())
+			{
+				auto e = dspSample.find(';', q);
+				if(e == std::string::npos) e = dspSample.size();
+				const auto s = dspSample.substr(q, e - q);
+				q = e + 1;
+				ot::DspPair::SampleSpan sp{s[0], -1, 0, 1};
+				auto rest = s.substr(2);
+				if(rest.size() > 1 && rest[0] == 'r')
+				{
+					sp.reg = rest[1] - '0';
+					rest = rest.substr(rest.size() > 2 && rest[2] == '+' ? 3 : 2);
+				}
+				const auto comma = rest.find(',');
+				sp.base = rest.empty() || rest[0] == ',' ? 0 : static_cast<uint32_t>(std::stoul(rest.substr(0, comma), nullptr, 16));
+				if(comma != std::string::npos) sp.len = static_cast<uint32_t>(std::stoul(rest.substr(comma + 1)));
+				spans.push_back(sp);
+			}
+			dspPair->setSampler(core, pc, file, spans, mx);
 		}
 		if(!dspWatch.empty())
 		{
@@ -1070,6 +1105,11 @@ int main(int _argc, char** _argv)
 			std::printf("             last 24:");
 			for(size_t k = w.last.size() > 24 ? w.last.size() - 24 : 0; k < w.last.size(); ++k) std::printf(" %u", w.last[k]);
 			std::printf("\n");
+		}
+		if(!dspSample.empty())
+		{
+			dspPair->closeSampler();
+			std::printf("dsp sample : %s -- %llu line(s)\n", dspSample.c_str(), static_cast<unsigned long long>(dspPair->samplerLines()));
 		}
 		if(!dspPcWatch.empty())
 		{

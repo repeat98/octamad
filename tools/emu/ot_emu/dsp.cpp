@@ -817,6 +817,23 @@ namespace ot
 					static_cast<uint32_t>(r.m[7].var & 0xffffff), static_cast<uint32_t>(r.m[0].var & 0xffffff),
 					static_cast<uint32_t>(r.n[7].var & 0xffffff)});
 			}
+			if(m_samplerOn && i == m_samplerCore && pc == m_samplerPc && m_samplerLines < m_samplerMax)
+			{
+				const auto& r = c.dsp->regs();
+				uint32_t rr[8];
+				for(int k = 0; k < 8; ++k) rr[k] = static_cast<uint32_t>(r.r[k].var & 0xffffff);
+				std::fprintf(m_samplerFile, "%llu", static_cast<unsigned long long>(c.executed));
+				for(int k = 0; k < 8; ++k) std::fprintf(m_samplerFile, " %06x", rr[k]);
+				for(const auto& s : m_samplerSpans)
+				{
+					std::fprintf(m_samplerFile, " |");
+					const uint32_t base = (s.reg >= 0 ? rr[s.reg] + s.base : s.base) & 0xffffff;
+					for(uint32_t k = 0; k < s.len; ++k)
+						std::fprintf(m_samplerFile, " %06x", s.space == 'P' ? peekP(i, base + k) : s.space == 'Y' ? peekY(i, base + k) : peekX(i, base + k));
+				}
+				std::fputc('\n', m_samplerFile);
+				++m_samplerLines;
+			}
 			c.dsp->execInterpreter();
 			c.dsp->doLoopEnd();
 			const auto d = c.dsp->getInstructionCounter() - before;
@@ -891,6 +908,13 @@ namespace ot
 		if(_addr >= g_shareLo && _addr < g_shareHi)
 			return m_shared[_addr - g_shareLo];
 		return m_cores[_core & 1]->mem->get(dsp56k::MemArea_Y, _addr);
+	}
+	void DspPair::setSampler(const int _core, const uint32_t _pc, const std::string& _file, std::vector<SampleSpan> _spans, const uint64_t _max)
+	{
+		m_samplerFile = std::fopen(_file.c_str(), "w");
+		if(!m_samplerFile)
+			return;
+		m_samplerCore = _core; m_samplerPc = _pc; m_samplerSpans = std::move(_spans); m_samplerMax = _max; m_samplerOn = true;
 	}
 	uint32_t DspPair::pc(const int _core) const { return m_cores[_core & 1]->dsp->getPC().toWord(); }
 	bool DspPair::faulted(const int _core) const { return m_cores[_core & 1]->faulted; }

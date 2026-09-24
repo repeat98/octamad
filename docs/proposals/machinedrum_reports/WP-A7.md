@@ -1,7 +1,7 @@
 # WP-A7 The X/Y flip audit: report
 
 - **Status:** done
-- **Branch and commit:** `machinedrum` (the commit that adds this report)
+- **Branch and commit:** `machinedrum` @ `7c53cb0`
 - **Date:** 24 September 2026
 - **Agent:** Claude, interactive session in the WSL checkout (`/home/jannikassfalg/octamad`)
 

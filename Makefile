@@ -187,6 +187,7 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	python3 tools/verify/verify_octakit.py
 	python3 tools/verify/verify_midiscenes.py
 	REMIX=$(REMIX) python3 tools/verify/verify_dram_boot.py
+	python3 tools/verify/verify_usb.py
 	@# The four ColdFire-port checks need the .venv (make emu-setup). Without
 	@# it they SKIP; with it a failure FAILS (until 16 Sep 2026 `|| echo SKIP`
 	@# swallowed every exit code, and verify_modenames had been failing since

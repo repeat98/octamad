@@ -45,14 +45,28 @@ def _nm(elf, cwd):
     return {f[2]: int(f[0], 16) for f in rows if len(f) == 3 and not f[2].startswith(".L")}
 
 
-def link_runtime(units, work: pathlib.Path, defsyms: dict, base: int) -> tuple[bytes, dict]:
+def link_runtime(units, work: pathlib.Path, defsyms: dict, base: int, includes=None) -> tuple[bytes, dict]:
     """Assemble every (module key, Linked) unit and link them together at
-    `base`. Returns (raw image, symbols)."""
+    `base`. Returns (raw image, symbols). `includes` = {unit label: text}
+    for units with `Linked.include`: the text is written as `remix.inc`
+    beside the unit's object and the assembler searches there."""
     work.mkdir(parents=True, exist_ok=True)
     objs = []
     for i, (key, u) in enumerate(units):
         obj = work / f"{i:02d}_{u.label}.o"
-        _run(["m68k-elf-as", f"-mcpu={u.cpu}", "-o", obj, ROOT / u.source], work)
+        inc = []
+        if includes and u.label in includes:
+            d = work / f"{i:02d}_{u.label}.inc"
+            d.mkdir(exist_ok=True)
+            (d / "remix.inc").write_text(includes[u.label])
+            inc = ["-I", str(d)]
+        # Every DRAM unit is assembled for the chip itself (MCF54455, ISA C).
+        # GNU ld refuses to link an ISA-C object beside ISA-B ones, so one
+        # unit that needs `byterev` (octemu's USB-audio producer) would force
+        # the whole link, and an ISA-C assembly of ISA-A/B text is the same
+        # bytes (refhash: every runtime bit-identical, 25 Sep 2026).
+        # `Linked.cpu` still governs the ROM-cave form.
+        _run(["m68k-elf-as", "-mcpu=54455", *inc, "-o", obj, ROOT / u.source], work)
         objs.append(obj)
     elf, raw = work / "runtime.elf", work / "runtime.bin"
     _run(["m68k-elf-ld", f"-Ttext=0x{base:x}",
@@ -61,7 +75,7 @@ def link_runtime(units, work: pathlib.Path, defsyms: dict, base: int) -> tuple[b
     return raw.read_bytes(), _nm(elf, work)
 
 
-def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None, preboot=()):
+def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None, preboot=(), includes=None):
     """units: [(module key, Linked)] with dram=True, in link order.
     payloads: [dict(name, blob, stage, dst, rawlen, rhash, backup)] for
     payloads built elsewhere (Octakit): `blob` = signature + GKA3 stream.
@@ -88,7 +102,7 @@ def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None, prebo
         for p in payloads:
             defs.update(p.get("symbols", {}))
         defs.update(defsyms or {})
-        raw, symbols = link_runtime(units, work / "runtime", defs, base)
+        raw, symbols = link_runtime(units, work / "runtime", defs, base, includes)
         packed = runtime_build.PACKED_MAGIC + len(raw).to_bytes(4, "big") + \
             runtime_build.pack(raw, MAX_CANDIDATES)
         stage = (base + len(raw) + STAGE_ALIGN - 1) & ~(STAGE_ALIGN - 1)

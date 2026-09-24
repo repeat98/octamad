@@ -18,6 +18,9 @@ time (`.incbin`, `make os`).
 | Airwindows Pockey | MIT | Chris Johnson | `modules/character` TXTR, 13 to 22 Sep 2026 (removed; `git show OCTABAM43:modules/character/pockey_ref.py`) |
 | JClones TapeHead, DaTube, OInflator, AC1 (JSFX) | MIT | JClones | `modules/character` SAT (TAPE / TUBE / INFL), COMP / GLUE |
 | audiojs/filter `moogLadder`, `oberheim` (Zavalishin's zero-delay forms) | MIT | audiojs contributors | `modules/spectrum` LADR, LP / BP |
+| markandrus/octemu `custom/coldfire/usb-midi.s`, `custom/usb-midi.py` (descriptors) | MIT | markandrus | `modules/usbmidi` (his text; one ISA-B substitution, README) |
+| markandrus/octemu `custom/coldfire/usb-audio.s`, `custom/usb-audio.py` (descriptors) | MIT | markandrus | `modules/usbaudio` (his shims, producer, packet builder and servo; the loader replaces his card payload machinery) |
+| markandrus/octemu `src/board/ot-board.c` USB packet bench (line protocol) | MIT | markandrus | `tools/emu/ot_emu/usb.h` speaks the same protocol so his `tests/usb-host.py` drives the port; the model is written here |
 | Airwindows Capacitor2 | MIT | Chris Johnson | `modules/spectrum` ISO (`capacitor2_ref.py`) |
 | Mutable Instruments Clouds / Warps / Rings / Braids (the algorithms' shapes, not the code) | MIT | Emilie Gillet | `modules/nimbus`, `modules/warpfold`, `modules/bodeshift`, `modules/rungs`, `modules/ripple`, `modules/streamz` — written here after the published designs |
 

@@ -520,7 +520,7 @@ class Linked:
     label: str
     source: str                          # .s, repo-relative
     cave_addr: int | None = None         # None = floating
-    cpu: str = "5407"                    # m68k-elf-as -mcpu=
+    cpu: str = "5407"                    # m68k-elf-as -mcpu= for the ROM-cave form; a DRAM unit is assembled for the chip (54455)
     reference: tuple[int, str] | None = None
     # DRAM: the unit is linked into octabam's PLATFORM RUNTIME -- one image
     # of every such unit in the remix, linked together (cross-unit symbols

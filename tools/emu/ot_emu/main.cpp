@@ -57,6 +57,10 @@ int main(int _argc, char** _argv)
 	bool profile = false;
 	std::string golden;
 	std::string cardImage;		// a FAT16 card image built by emu_rtos.stage_project
+	std::string usbHost;		// a unix socket the USB bench listens on (usb.h); the model exists only with this or --usb-notify
+	std::string usbNotify;		// a file that gets an attach/detach line per USB DISK MODE edge
+	bool usbFs = false;			// the port speed the bench reports: full instead of high
+	double usbHoldMs = 120000.0;	// after every other phase: keep the machine running for the bench this many WALL ms, or until its client has come and gone
 	bool mount = false;			// post the card-mount request to the SYS task
 	std::string ataTrace;		// write every task-file access here, for diffing against route A
 	std::string periphTrace;	// every peripheral access over the load, for the same diff
@@ -191,10 +195,15 @@ int main(int _argc, char** _argv)
 		else if(a == "--live" && i + 1 < _argc)		livePath = _argv[++i];
 		else if(a == "--fast" && i + 1 < _argc)		fastEvery = std::strtoull(_argv[++i], nullptr, 0);
 		else if(a == "--frame-timer")				frameTimer = true;
+		else if(a == "--usb-host" && i + 1 < _argc)	usbHost = _argv[++i];
+		else if(a == "--usb-notify" && i + 1 < _argc)	usbNotify = _argv[++i];
+		else if(a == "--usb-fs")					usbFs = true;
+		else if(a == "--usb-hold-ms" && i + 1 < _argc)	usbHoldMs = std::atof(_argv[++i]);
 		else
 		{
 			std::printf("usage: ot_emu [--image FILE] [--max N] [--periph] [--profile]\n"
-			"              [--golden FILE] [--ms N]\n");
+			"              [--golden FILE] [--ms N]\n"
+			"              [--usb-host SOCKET] [--usb-notify FILE] [--usb-fs]   the USB device controller + a scripted host (usb.h)\n");
 			return 2;
 		}
 	}
@@ -393,6 +402,7 @@ int main(int _argc, char** _argv)
 	}
 
 	// -- past the handoff: the RTOS itself (milestone O4) -------------------
+	std::unique_ptr<ot::UsbDevice> usb;	// outlives the block: the exit summary reads it
 	if(stop == ot::Machine::Stop::Handoff)
 	{
 		std::printf("vbr        : %#x (the firmware's own `movec %%a0,%%vbr` at 0x40000db6)\n", m.vbr());
@@ -422,6 +432,31 @@ int main(int _argc, char** _argv)
 			rtos.attachCard(*card);
 			rtos.setAtaTrace(!ataTrace.empty());
 			std::printf("card       : %s, %u sectors\n", cardImage.c_str(), card->totalSectors());
+		}
+		// The USB device controller, attached before install like the card
+		// so the boot's replayed writes seed its registers. Without it the
+		// window is the all-ones stub every gate was measured against.
+		if(!usbHost.empty() || !usbNotify.empty())
+		{
+			usb = std::make_unique<ot::UsbDevice>(
+				[&m](uint32_t a) { return m.read8(a); },
+				[&m](uint32_t a, uint8_t v) { m.write8(a, v); });
+			if(!usbHost.empty())
+			{
+				if(!usb->listen(usbHost))
+				{
+					std::printf("usb        : cannot listen on %s\n", usbHost.c_str());
+					return 1;
+				}
+				if(usbFs)
+					usb->command("speed fs", [](const std::string&) {});
+				std::printf("usb        : device controller modelled; bench on %s (%s speed)\n", usbHost.c_str(), usbFs ? "full" : "high");
+			}
+			else
+				std::printf("usb        : device controller modelled, no bench\n");
+			rtos.attachUsb(*usb);
+			if(!usbNotify.empty())
+				rtos.setUsbNotify(usbNotify);
 		}
 		rtos.install();
 		rtos.setBlockLog(!blockLog.empty());
@@ -1058,6 +1093,57 @@ int main(int _argc, char** _argv)
 			}
 		}
 
+		// The bench: hold the machine here, every other phase done, until
+		// the host script has connected and hung up (or the cap). A gate
+		// that stops the run at 206 ms leaves nothing for a host to talk to.
+		if(usb && usb->listening())
+		{
+			// The cap is WALL time: an idle machine skips through emulated
+			// seconds in milliseconds, and the client is a separate process
+			// on the wall clock.
+			std::printf("usb        : holding for a bench client (up to %.0f wall ms; ends when the client disconnects)\n", usbHoldMs);
+			const auto start = std::chrono::steady_clock::now();
+			bool capped = false;
+			ot::Rtos::Stop rs;
+			for(;;)
+			{
+				rs = rtos.runUntil(1e15, [&]
+				{
+					if(usb->hasRequest() || (usb->sawClient() && !usb->connected()))
+						return true;
+					capped = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() > usbHoldMs;
+					return capped;
+				});
+				ot::UsbDevice::Request req;
+				if(rs != ot::Rtos::Stop::Gate || !usb->takeRequest(req))
+					break;
+				// Served here, outside the run loop: a borrowed call runs
+				// the machine itself.
+				if(req.kind == "poke")
+				{
+					for(size_t i = 0; i < req.bytes.size(); ++i)
+						m.write8(req.addr + uint32_t(i), req.bytes[i]);
+					usb->answerRequest("poke ok\n");
+				}
+				else
+				{
+					uint32_t d0 = 0;
+					// A borrowed call needs main parked in its idle spin; the
+					// request stopped the loop wherever a task was.
+					const bool ok = rtos.runToMainSpin() == ot::Rtos::Stop::Gate
+						&& rtos.callAsMain(req.addr, req.args, d0, 200000000);
+					char line[256];
+					if(ok)
+						std::snprintf(line, sizeof line, "call %#x\n", d0);
+					else
+						std::snprintf(line, sizeof line, "call err %s\n", rtos.why().c_str());
+					std::printf("usb        : bench %s %#x(%zu arg%s) -> %s", req.kind.c_str(), req.addr, req.args.size(), req.args.size() == 1 ? "" : "s", line);
+					usb->answerRequest(line);
+				}
+			}
+			std::printf("usb        : hold ended %s (%.1f s of machine time) -- %s\n", capped ? "on the wall cap" : "on the client's hangup",
+				rtos.ms() / 1000.0, rs == ot::Rtos::Stop::Gate ? "ok" : rtos.why().c_str());
+		}
 		if(!watchPc.empty())
 		{
 			std::printf("watch-pc   : %zu hit(s) (the timestamp is the instruction count: "
@@ -1271,6 +1357,19 @@ int main(int _argc, char** _argv)
 				byAddr.emplace(u.addr, std::make_pair(uint64_t(1), u));
 			else
 				++it->second.first;
+		}
+		if(usb)
+		{
+			const auto& s = usb->stats();
+			std::printf("usb        : USBCMD %#x USBINTR %#x EPLISTADDR %#x DEVICEADDR %#x ENDPTCTRL1..3 %#x %#x %#x; "
+				"%llu setup(s), %llu IN (%llu B), %llu OUT (%llu B), %llu stall(s), %llu prime(s), %llu SOF(s)%s\n",
+				usb->reg(ot::UsbDevice::R_USBCMD), usb->reg(ot::UsbDevice::R_USBINTR), usb->reg(ot::UsbDevice::R_EPLISTADDR),
+				usb->reg(ot::UsbDevice::R_DEVICEADDR), usb->reg(ot::UsbDevice::R_EPCTRL0 + 4), usb->reg(ot::UsbDevice::R_EPCTRL0 + 8),
+				usb->reg(ot::UsbDevice::R_EPCTRL0 + 12),
+				static_cast<unsigned long long>(s.setups), static_cast<unsigned long long>(s.ins), static_cast<unsigned long long>(s.bytesIn),
+				static_cast<unsigned long long>(s.outs), static_cast<unsigned long long>(s.bytesOut), static_cast<unsigned long long>(s.stalls),
+				static_cast<unsigned long long>(s.primes), static_cast<unsigned long long>(s.sofs),
+				s.badQh ? " -- UNINITIALIZED dQH primed (see stderr)" : "");
 		}
 		std::printf("auto-mapped: %llu access(es) outside every declared region and window "
 			"(%llu read, %llu written), %zu distinct address(es)%s\n",

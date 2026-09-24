@@ -94,24 +94,37 @@ FREE. The pedal's scrape
 flutter, physical-cell write/interpolation, spring reverb, stereo Dual mode
 and separate bass/treble controls are omitted.
 
-The loop has two biquad sections, run as hand-scheduled 16-sample EMAC
-batches with fractional-error carry
-to suppress fixed-point limit cycles. The tape curve and control laws are
-offline-generated lookup tables; there is no per-sample floating point,
-trigonometry, division, allocation or variable-speed cell-writing loop.
-Full-period LCG hiss grows with AGE; flutter still uses xorshift. Tone
-updates/ramping run once per 64 samples (~1.45 ms), staggered by track so
-only two of eight active instances do that slow control work per block.
-TIME/WOW geometry and gain smoothing are not decimated. The head reader
-reuses the overlapping sample from the preceding read: 17 instead of 32
-uncached word loads for a normal contiguous block. No persistent ring
-cache or cache-coherency assumption is introduced. See [VOICING.md](VOICING.md) for measured
-results, deviations from Galaxy and the stock-delay CPU benchmark.
+The audio arithmetic is written for the ColdFire EMAC the way stock's own
+delay loops are: multiply-with-load, accumulator loads, several
+accumulators, and the saturating MOVCLR read-out (MACSR OMC) in place of
+explicit clamps. Playback, both filter sections and the record sum run in
+Q3.29 (+/-4 FS, the old clamp points); the record FIR and curve index stay
+Q6.26. The two biquad sections share one pass and carry their eight low
+accumulator bits to the next sample to suppress fixed-point limit cycles.
+Both are stored as g*(x +/- 2*x1 + x2) + a1*y1 + a2*y2 with the unit part
+of a1 as an exact accumulator load; the wet makeup gain lives in the tone
+section's numerator and feedback is divided by it. The tape curve (a
+signed table of finished ring words) and control laws are offline-generated
+lookup tables; there is no per-sample floating point, trigonometry,
+division, allocation or variable-speed cell-writing loop. Full-period LCG
+hiss grows with AGE; flutter still uses xorshift. Tone updates/ramping run
+once per 64 samples (~1.45 ms), staggered by track so only two of eight
+active instances do that slow control work per block. TIME/WOW geometry and
+gain smoothing are not decimated. The head reader steps a DDA and reuses
+the overlapping sample from the preceding read: 17 instead of 32 uncached
+word loads for a normal contiguous block. No persistent ring cache or
+cache-coherency assumption is introduced. A BEAT crossfade's outgoing head
+is blended into the incoming one as it is read. See [VOICING.md](VOICING.md)
+for measured results, deviations from Galaxy and the stock-delay CPU
+benchmark.
 
 ## CPU integration
 
-`cpu.c` is freestanding fixed-point C with signed fractional EMAC multiplies;
-`cpu_kernels.s` supplies the biquad, head-read, gain-ramp/mix and record-FIR/curve kernels.
+`cpu.c` is freestanding fixed-point C with signed fractional EMAC multiplies,
+and its native build is the bit-exact arithmetic oracle for three
+assembly kernels in `cpu_kernels.s`: the head reader (with crossfade), both
+playback filter sections, and the record sum / FIR / curve / output mix.
+Every EMAC form they use has sites in stock 1.40C.
 `generate_cpu.py` produces the checked-in `cpu.s`, following Euclid's build
 pattern. No float, heap allocation, runtime library or firmware bytes are
 vendored. The platform loader owns the code/tables and 1600 bytes of instance
@@ -148,10 +161,14 @@ TIME, FDBK, WOW, AGE, SYNC and MIX, plus all six controls together in FREE
 and BEAT. The gate records mean, p95, p99, the maximum, and the actual worst
 block's function profile, with a separate peak ceiling for every case.
 
-The restored one-page engine peaks at 27,091 instructions/block for all
-controls reversing in FREE and 32,466 in BEAT. Settled MIX=90 with full
-history peaks at 25,604. These are executed-instruction counts, not hardware
-cycles, and hardware UI responsiveness remains unverified.
+After the EMAC rewrite (23 Sep 2026), eight settled full-wet instances
+cost 14,245 instructions per frame with WOW=0 and 15,283 with WOW=44
+(1.87x and 2.00x stock DELAY, from 2.64x and 2.88x); the MIX=90 default
+with moving TIME costs 16,459 (2.16x, from 3.31x). All controls reversing
+peak at 18,063 in FREE and 21,547 in BEAT (from 26,563 and 31,454).
+Settled MIX=90 with full history peaks at 16,248. These are
+executed-instruction counts, not hardware cycles, and hardware UI
+responsiveness remains unverified.
 
 It consumes the remix image built by `make check`, checks generated-source
 drift, incrementally rebuilds its ColdFire probe, and runs:
@@ -163,7 +180,11 @@ drift, incrementally rebuilds its ColdFire probe, and runs:
   buildup, age-dependent noise and fixed DRIVE=0 compression;
 * eight compiled ColdFire instances sweeping every control, tempo and mode,
   including synthetic full history and an active-history wrap, bit-identical to native arithmetic;
-* direct assembly-kernel boundary/clamp/carry and callee-saved register tests;
+* direct assembly-kernel tests against the native oracle's own kernels:
+  1024 filter blocks driving both read-outs into saturation with random
+  carries, 1024 record/output blocks across full wet, MIX, MIX=0 and knob
+  ramps, 2048 plain and crossfading reader blocks with uncached-load counts,
+  callee-saved registers, buffer guards and per-kernel instruction ceilings;
 * the complete stock delay routine with modelled DMA transfers, mixed Tape
   Echo / stock DELAY tracks, and stock audio/ring identity against 1.40C.
 * stock-versus-Tape instruction benchmarks through that complete routine,

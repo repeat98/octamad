@@ -10,6 +10,11 @@
 
 #include "card.h"
 #include "periph.h"
+#include "usb.h"
+
+#include <map>
+#include <string>
+#include <vector>
 
 namespace
 {
@@ -324,6 +329,176 @@ int main()
 		c.write(ot::AtaCard::R_CMD, 1, 0x99);
 		check("an unknown command sets ABRT and the error bit",
 			(c.status() & 1) != 0 && c.log().back().what.rfind("UNSUPPORTED", 0) == 0);
+	}
+
+
+	// ---- USB device controller ------------------------------------------
+	// The rules the firmware's driver and the bench depend on (usb.h), on a
+	// fake guest memory: queue heads and transfer descriptors laid out the
+	// way usb_dev_bringup (0x4001d630) and usb_ep0_send (0x4001d498) lay
+	// them out, big-endian, at the firmware's own addresses.
+	{
+		std::map<uint32_t, uint8_t> mem;
+		auto rd = [&](uint32_t a) { auto it = mem.find(a); return it == mem.end() ? uint8_t(0) : it->second; };
+		auto wr = [&](uint32_t a, uint8_t v) { mem[a] = v; };
+		auto st32 = [&](uint32_t a, uint32_t v) { for(int i = 0; i < 4; ++i) mem[a + i] = uint8_t(v >> (24 - 8 * i)); };
+		auto ld32 = [&](uint32_t a) { uint32_t v = 0; for(int i = 0; i < 4; ++i) v = (v << 8) | rd(a + i); return v; };
+		ot::UsbDevice u(rd, wr);
+		std::vector<std::string> replies;
+		auto reply = [&](const std::string& s) { replies.push_back(s); };
+		using U = ot::UsbDevice;
+
+		// OTGSC: the session is always valid; BSVIS latches on the enable EDGE
+		// and clears by writing 1, and a rewrite with BSVIE still set does not
+		// re-latch (the interrupt storm octemu's first model made).
+		check("OTGSC reads B-session valid with nothing written", (u.read(U::R_OTGSC, 4) & U::OTGSC_BSV) != 0);
+		check("no interrupt before the driver enables anything", !u.irq());
+		u.write(U::R_OTGSC, 4, U::OTGSC_BSVIE, false);
+		check("BSVIE enable edge latches BSVIS and interrupts", (u.read(U::R_OTGSC, 4) & U::OTGSC_BSVIS) && u.irq());
+		u.write(U::R_OTGSC, 4, U::OTGSC_BSVIE | U::OTGSC_BSVIS, false);
+		check("writing 1 to BSVIS clears it and the interrupt", !(u.read(U::R_OTGSC, 4) & U::OTGSC_BSVIS) && !u.irq());
+		u.write(U::R_OTGSC, 4, U::OTGSC_BSVIE, false);
+		check("a rewrite with BSVIE already set does not re-latch", !u.irq());
+
+		// The bring-up, as replayed from the boot's writes: values only.
+		u.write(U::R_USBMODE, 4, 0x0e, true);
+		u.write(U::R_EPLISTADDR, 4, 0x4ec94800, true);
+		u.write(U::R_USBINTR, 4, 0x57, true);
+		u.write(U::R_USBCMD, 4, 0x1, true);
+		checkEq("replayed registers read back", u.read(U::R_EPLISTADDR, 4), 0x4ec94800);
+		check("no host connected: PORTSC1 is whatever was written", u.read(U::R_PORTSC1, 4) == 0);
+
+		// A SETUP lands wire-reversed per dword in the EP0 OUT dQH's +0x28
+		// buffer, sets EPSETUPSR bit 0 and USBSTS.UI, and interrupts (UI is
+		// enabled in 0x57).
+		u.command("setup 8006000100001200", reply);
+		check("setup answers ok", !replies.empty() && replies.back() == "ok\n");
+		checkEq("SETUP dword 0 wire-reversed", ld32(0x4ec94800 + 0x28), 0x01000680);
+		checkEq("SETUP dword 1 wire-reversed", ld32(0x4ec94800 + 0x2c), 0x00120000);
+		checkEq("EPSETUPSR bit 0", u.read(U::R_EPSETUPSR, 4), 1);
+		check("USBSTS.UI + interrupt", (u.read(U::R_USBSTS, 4) & U::USBSTS_UI) && u.irq());
+		u.write(U::R_USBSTS, 4, U::USBSTS_UI, false);
+		u.write(U::R_EPSETUPSR, 4, 1, false);
+		check("both are write-1-to-clear", u.read(U::R_USBSTS, 4) == 0 && u.read(U::R_EPSETUPSR, 4) == 0 && !u.irq());
+
+		// EP0 IN: the host asks for 18 bytes before the guest has primed
+		// anything; the reply waits. The guest then builds a dTD (token =
+		// len << 16 | ACTIVE, buffer page 0) behind the EP0 IN dQH (+0x40),
+		// primes PETB0 (bit 16): the prime bit clears at once, ENDPTSTAT
+		// shows it, the bytes move, the dTD retires, ENDPTCOMPLETE + UI.
+		replies.clear();
+		u.command("in 0 18", reply);
+		check("an IN with nothing primed does not answer", replies.empty());
+		const uint32_t qh0in = 0x4ec94800 + 0x40, td = 0x4ec95020, buf = 0x400e2000;
+		for(int i = 0; i < 18; ++i) mem[buf + i] = uint8_t(0x12 + i);
+		st32(td, 1); st32(td + 4, (18u << 16) | 0x80u); st32(td + 8, buf);
+		st32(qh0in + 8, td);
+		st32(qh0in + 0x0c, 0);
+		u.write(U::R_EPPRIME, 4, 1u << 16, false);
+		checkEq("ENDPTPRIME clears itself", u.read(U::R_EPPRIME, 4), 0);
+		check("the bytes moved and the reply carries them",
+			!replies.empty() && replies.back().rfind("in 0 1213", 0) == 0 && replies.back().size() == 5 + 36 + 1);
+		checkEq("the dTD retired: ACTIVE clear, 0 bytes left", ld32(td + 4), 0);
+		checkEq("ENDPTCOMPLETE PETB0", u.read(U::R_EPCOMPLETE, 4), 1u << 16);
+		checkEq("ENDPTSTAT clear again", u.read(U::R_EPSR, 4), 0);
+		check("completion interrupts", u.irq());
+		u.write(U::R_EPCOMPLETE, 4, 1u << 16, false);
+		u.write(U::R_USBSTS, 4, U::USBSTS_UI, false);
+
+		// A bulk IN chain (MSC: 36 bytes of INQUIRY data with the 13-byte CSW
+		// linked behind it) is walked as ONE transfer up to the host's
+		// appetite; the remainder stays ACTIVE and pending in ENDPTSTAT.
+		const uint32_t qh1in = 0x4ec94800 + 0xc0, tdA = 0x4ec95100, tdB = 0x4ec95140, bufA = 0x4ecc0000, bufB = 0x4ecc0100;
+		for(int i = 0; i < 36; ++i) mem[bufA + i] = uint8_t(i);
+		for(int i = 0; i < 13; ++i) mem[bufB + i] = uint8_t(0x50 + i);
+		st32(tdA, tdB); st32(tdA + 4, (36u << 16) | 0x80u); st32(tdA + 8, bufA);
+		st32(tdB, 1); st32(tdB + 4, (13u << 16) | 0x80u); st32(tdB + 8, bufB);
+		st32(qh1in + 8, tdA); st32(qh1in + 0x0c, 0);
+		u.write(U::R_EPCTRL0 + 4, 4, 0x00c800c8, false);	// EP1 bulk both ways
+		u.write(U::R_EPPRIME, 4, 1u << 17, false);
+		replies.clear();
+		u.command("in 1 36", reply);
+		check("36 of the chain answered", !replies.empty() && replies.back().rfind("in 1 0001", 0) == 0 && replies.back().size() == 5 + 72 + 1);
+		check("a short bulk packet (36 < 64) ends the transfer at the first dTD", ld32(tdA + 4) == 0 && (ld32(tdB + 4) & 0x80u));
+		checkEq("the rest stays pending in ENDPTSTAT", u.read(U::R_EPSR, 4), 1u << 17);
+		replies.clear();
+		u.command("in 1 13", reply);
+		check("the CSW follows on the next IN", !replies.empty() && replies.back().rfind("in 1 5051", 0) == 0);
+		checkEq("chain done: ENDPTSTAT clear", u.read(U::R_EPSR, 4), 0);
+
+		// An ISOCHRONOUS endpoint sends exactly ONE dTD per poll however
+		// long the chain (EP3 IN, type 1 in ENDPTCTRL3 bits 19:18).
+		const uint32_t qh3in = 0x4ec94800 + 0x1c0, tdI = 0x4ec95200, tdJ = 0x4ec95240, bufI = 0x4ecd0000, bufJ = 0x4ecd1000;
+		for(int i = 0; i < 704; ++i) { mem[bufI + i] = uint8_t(i); mem[bufJ + i] = uint8_t(0x80 + i); }
+		st32(tdI, tdJ); st32(tdI + 4, (704u << 16) | 0x80u); st32(tdI + 8, bufI);
+		st32(tdJ, 1); st32(tdJ + 4, (704u << 16) | 0x80u); st32(tdJ + 8, bufJ);
+		st32(qh3in + 8, tdI); st32(qh3in + 0x0c, 0);
+		u.write(U::R_EPCTRL0 + 12, 4, 0x00c40000, false);	// EP3 IN iso, enabled
+		u.write(U::R_EPPRIME, 4, 1u << 19, false);
+		replies.clear();
+		u.command("in 3 1024", reply);
+		check("iso: an IN waits for the host's poll tick", replies.empty());
+		u.isoPoll();
+		check("iso: one 704-byte packet per poll, not the chain", !replies.empty() && replies.back().rfind("in 3 0001", 0) == 0 && replies.back().size() == 5 + 1408 + 1);
+		check("iso: the second dTD is still ACTIVE and pending", (ld32(tdJ + 4) & 0x80u) && (u.read(U::R_EPSR, 4) & (1u << 19)));
+		replies.clear();
+		u.command("in 3 1024", reply);
+		u.isoPoll();
+		check("iso: the next poll takes the second", !replies.empty() && replies.back().rfind("in 3 8081", 0) == 0);
+		replies.clear();
+		u.command("in 3 1024", reply);
+		u.isoPoll();
+		check("iso: a poll with nothing primed answers empty (the host's ZLP)", !replies.empty() && replies.back() == "in 3\n");
+
+		// OUT: bytes land in the primed buffer; a ZLP answers "out n 0".
+		const uint32_t qh2out = 0x4ec94800 + 0x100, tdO = 0x4ec953e0, bufO = 0x4ecc9000;
+		st32(tdO, 1); st32(tdO + 4, (64u << 16) | 0x80u); st32(tdO + 8, bufO);
+		st32(qh2out + 8, tdO); st32(qh2out + 0x0c, 0);
+		u.write(U::R_EPPRIME, 4, 1u << 2, false);
+		replies.clear();
+		u.command("out 2 09903c64", reply);
+		check("OUT answers with the count", !replies.empty() && replies.back() == "out 2 4\n");
+		checkEq("the bytes are in the guest buffer", ld32(bufO), 0x09903c64);
+		checkEq("the dTD reports 60 bytes left", ld32(tdO + 4) >> 16, 60);
+
+		// A stalled EP0 answers the pending op, and the next SETUP clears
+		// the stall bits.
+		replies.clear();
+		u.command("in 0 64", reply);
+		u.write(U::R_EPCTRL0, 4, U::EPCTRL_TXS, false);
+		check("EP0 stall answers a pending IN", !replies.empty() && replies.back() == "in 0 stall\n");
+		u.command("setup 0009010000000000", reply);
+		checkEq("a SETUP clears the EP0 stall bits", u.read(U::R_EPCTRL0, 4) & (U::EPCTRL_TXS | U::EPCTRL_RXS), 0);
+
+		// Reset: address and endpoint state cleared, URI + PCI raised.
+		u.write(U::R_DEVICEADDR, 4, 1u << 25, false);
+		u.command("reset", reply);
+		check("reset clears the address and raises URI + PCI",
+			u.read(U::R_DEVICEADDR, 4) == 0 && (u.read(U::R_USBSTS, 4) & (U::USBSTS_URI | U::USBSTS_PCI)) == (U::USBSTS_URI | U::USBSTS_PCI));
+
+		// A primed queue head whose token still has ACTIVE set is counted.
+		st32(qh0in + 0x0c, 0x80u);
+		u.write(U::R_EPPRIME, 4, 1u << 16, false);
+		checkEq("an uninitialised dQH is counted", u.stats().badQh, 1);
+
+		// poke / call are queued for whoever runs the machine, and answered
+		// by them; nothing is written from the socket reader.
+		u.command("call 0x40010bc8 3 0x400d807c", reply);
+		ot::UsbDevice::Request rq;
+		check("a call is queued, not answered", u.hasRequest() && u.takeRequest(rq) && rq.kind == "call" && rq.addr == 0x40010bc8
+			&& rq.args == std::vector<uint32_t>{3, 0x400d807c} && !u.hasRequest());
+		u.command("poke 0x400d807c 903c64", reply);
+		check("a poke carries its bytes", u.takeRequest(rq) && rq.kind == "poke" && rq.addr == 0x400d807c && rq.bytes == std::vector<uint8_t>{0x90, 0x3c, 0x64});
+
+		// SOF: SRI only, no UI -- the stock USBINTR 0x57 has no SRE, so no
+		// interrupt (a UI beside it cleared a real completion; usb.cpp).
+		u.write(U::R_USBSTS, 4, 0x1ff, false);
+		u.write(U::R_EPCOMPLETE, 4, ~0u, false);
+		u.sof();
+		check("SOF sets SRI and nothing else", u.read(U::R_USBSTS, 4) == U::USBSTS_SRI);
+		check("SOF does not interrupt under the stock USBINTR", !u.irq());
+		u.write(U::R_USBINTR, 4, 0x57 | 0x80, false);
+		check("SOF interrupts once the guest enables SRE", u.irq());
 	}
 
 	std::printf("%s\n", g_failures ? "PERIPHERAL GATE FAILED" : "peripheral gate passed.");

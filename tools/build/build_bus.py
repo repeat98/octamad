@@ -1283,9 +1283,24 @@ def main():
         from remix import platform_build
         _pappend, _psyms, _boot, _pnames = platform_build.build(
             [(_m.key, _u) for _m, _u in _dram], _payloads, pathlib.Path("out/platform"),
-            reserve=_reserve, defsyms=_defsym_ovr)
+            reserve=_reserve, defsyms=_defsym_ovr,
+            includes={_u.label: _u.include({_k: remix_modules()[_k] for _k in REMIX.modules})
+                      for _m, _u in _dram if _u.include is not None})
         for _m, _u in _dram:
             _sym[_u.label] = _psyms          # detours name units; one table serves all
+            if _u.reference is not None:
+                # The author's oracle for a DRAM unit: linked alone at the
+                # author's own address, for the chip (the platform's ISA).
+                _ra, _rsha = _u.reference
+                _rw = pathlib.Path("out/platform/ref") / _u.label
+                _rw.mkdir(parents=True, exist_ok=True)
+                _rb, _, _ = _link(pathlib.Path(_u.source), _ra, "54455", _rw)
+                _got = hashlib.sha256(_rb).hexdigest()
+                if _got != _rsha:
+                    sys.exit(f"{_m.key} {_u.label}: linked at the author's address "
+                             f"0x{_ra:08x} it is {len(_rb)} B sha256 {_got}, not the "
+                             f"author's {_rsha} -- source or toolchain drift; refusing")
+                print(f"  {_m.key} {_u.label}: matches the author's build at 0x{_ra:08x} ({len(_rb):,} B)")
         _exports.update(_psyms)
         for _p in _payloads:
             _exports.update({k: v for k, v in _p.get("symbols", {}).items() if k.startswith("gk_")})
@@ -2949,7 +2964,9 @@ hostquit:
         print(f"    poke 0x{_ma:08x}: {_mexp.hex()} -> {_mw.hex()}  {_mnote}")
         _pappend, _psyms2, _boot, _pnames = platform_build.build(
             [(_m.key, _u) for _m, _u in _dram], _payloads, pathlib.Path("out/platform"),
-            reserve=_reserve, defsyms=_defsym_ovr, preboot=[_pre])
+            reserve=_reserve, defsyms=_defsym_ovr, preboot=[_pre],
+            includes={_u.label: _u.include({_k: remix_modules()[_k] for _k in REMIX.modules})
+                      for _m, _u in _dram if _u.include is not None})
         if (_dram or _payloads) and _psyms2 != _psyms:
             sys.exit("machinedrum: the platform runtime linked differently the second time")
         _entry = ("octabam loader + payloads (" + ", ".join(_pnames) + ")", _pappend)

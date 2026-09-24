@@ -28,7 +28,7 @@ add_subdirectory("${OT_VENDOR}/mc68k" "${CMAKE_CURRENT_BINARY_DIR}/mc68k")
 # build and links only the library (O8, 8 Sep 2026).
 add_subdirectory("${OT_VENDOR}/dsp56300/source" "${CMAKE_CURRENT_BINARY_DIR}/dsp56300" EXCLUDE_FROM_ALL)
 
-add_library(ot_machine STATIC machine.cpp machine.h v4e.cpp v4e.h periph.cpp periph.h card.cpp card.h rtos.cpp rtos.h dsp.cpp dsp.h)
+add_library(ot_machine STATIC machine.cpp machine.h v4e.cpp v4e.h periph.cpp periph.h card.cpp card.h rtos.cpp rtos.h dsp.cpp dsp.h usb.cpp usb.h)
 target_include_directories(ot_machine PUBLIC "${OT_VENDOR}" "${CMAKE_CURRENT_SOURCE_DIR}")
 target_include_directories(ot_machine PUBLIC "${OT_VENDOR}/dsp56300/source")
 target_link_libraries(ot_machine PUBLIC 68kEmu dsp56kEmu)

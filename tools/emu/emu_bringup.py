@@ -18,6 +18,7 @@ and will NOT decode this CPU (mvz/mvs/EMAC) — docs/remixer/TOOLING.md §3. Boo
 details and the fork past the trap: docs/remixer/EMU.md.
 """
 import collections
+import ctypes
 import os
 import re
 import sys
@@ -268,10 +269,21 @@ def boot(image=None, count=BUDGET, on_draw=None):
             on_draw(x, y, _cstr(uc, sptr))
         mu.hook_add(UC_HOOK_CODE, _draw_hook, begin=DRAW_STRING, end=DRAW_STRING)
     for a, sz in {
-        0x00000000: 0x00010000, 0x40000000: 0x02000000, 0x46000000: 0x02000000,
-        0x48000000: 0x00100000, 0x80000000: 0x01000000, 0x100b0000: 0x00010000,
+        0x00000000: 0x00010000, 0x46000000: 0x02000000,
+        0x80000000: 0x01000000, 0x100b0000: 0x00010000,
     }.items():
         mu.mem_map(a, sz)
+    # The OS image's 32 MB and its UNCACHED ALIAS at 0x48000000 are ONE
+    # memory (SDCS0 decodes 256 MB over the 128 MB part; the port's machine.h
+    # folds it the same way). octabam's loader depacks the DRAM runtime
+    # through the alias (0x48a955e0..) and the code then runs from the
+    # cached address, so two separate mappings left every DRAM remix
+    # faulting in this boot (UC_ERR_WRITE_UNMAPPED at loader pc 0x4010fe92,
+    # a1 = 0x48a97000; euclid and usb-audio alike, 25 Sep 2026). Before
+    # this, 0x48000000 was a separate 1 MB.
+    r.alias_buf = (ctypes.c_uint8 * 0x02000000)()
+    mu.mem_map_ptr(0x40000000, 0x02000000, UC_PROT_ALL, r.alias_buf)
+    mu.mem_map_ptr(0x48000000, 0x02000000, UC_PROT_ALL, r.alias_buf)
     mu.mem_write(BASE, img)
     # Reset state the (absent) vector preamble would seed. SR BEFORE A7, or the
     # supervisor/user stack banks swap and A7 lands in the wrong one.

@@ -422,7 +422,15 @@ author's ROM layout byte for byte. A module whose DRAM is its own (a
 calls `fn(modules)` (the remix's modules by key), writes the text it
 returns beside the unit as `remix.inc`, and the source reaches it with
 `.include "remix.inc"` (`modules/mode-defaults`: the view table of every
-module in the image).
+module in the image; `modules/usbmidi`: the USB configuration descriptors,
+grown with the audio function when USB AUDIO is in the remix). Works for
+both forms since 25 Sep 2026.
+
+DRAM units are assembled for the chip itself (`-mcpu=54455`, ISA C):
+GNU ld refuses to link an ISA-C object beside ISA-B ones, and an ISA-C
+assembly of ISA-A/B text is the same bytes (refhash, 25 Sep 2026), so a
+port may keep an author's `byterev`, `mvs`, `mov3q` as written.
+`Linked.cpu` still governs the ROM-cave form.
 
 A **`Detour`** rewrites one stock instruction to reach a symbol. `expect`
 is the stock bytes at `site` (whole instructions), asserted before anything

@@ -7,6 +7,44 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- MIDI SCENES re-pinned to bkkbrls-del's 1.40MIDISC8.2 (25 Sep 2026):
+  MIDI track-1 scene locks no longer reach other tracks (`xf_mix`'s LFO
+  probes index `track*32+param`), and an unlocked knob sends its own CC
+  again (`write_mix` no longer reloads `d2` from the voice). `gas/*.s`
+  regenerated from his 8.2 encoder, every region identical to his bytes;
+  `voice_reload` has no caller and is no longer linked (twelve units). His
+  own 8.2 `build.py` stops at `SAFE_CAVE overrun 2068`; the linked units
+  are placed in DRAM and unaffected. Submodule at his `main` `63ca127` (his
+  8.2 plus the gas regeneration, merged as bkkbrls-del/midisc#6). `make check` passes on
+  `ok-ms` and `midi-scenes` with OCTABAM89_setgate under the port. Nothing
+  on hardware.
+- USB AUDIO's counters over a vendor control request (25 Sep 2026,
+  `tools/hw/usb_counters.py`, the bench's `counters`, checked by
+  `verify_usb`), `tools/harness/click_scan.py`, and image 64 packed from
+  `usb-audio` for the first hardware run (the protocol in
+  `modules/usbaudio/README.md`). Unflashed.
+- USB MIDI and USB AUDIO (25 Sep 2026, markandrus/octemu's work on the
+  DRAM platform; remixes `usb` and `usb-audio`): class-compliant USB-MIDI
+  mirroring DIN, and a UAC2 sixteen-channel input of the tracks (post-FX
+  pre-fader) at high speed, the stereo sum at full speed. Under the port:
+  enumeration, MIDI in and out through the firmware's own paths, the
+  clock-source requests, a 22/23-frame stream at the 500 us poll. Nothing
+  on hardware. DRAM units are now assembled for the chip itself
+  (`-mcpu=54455`; every runtime bit-identical), `Linked.include` works
+  for DRAM units, and `Override` bridges the shared USB ISR site.
+- Route A (`emu_bringup.boot`) folds the OS image's uncached alias at
+  `0x48000000` into the same 32 MB as `0x40000000` (25 Sep 2026): octabam's
+  loader depacks the DRAM runtime through the alias, so every DRAM remix
+  had faulted in that boot (`UC_ERR_WRITE_UNMAPPED`, loader pc
+  `0x4010fe92`) and `verify_hidden`'s host-page render drew nothing for
+  them. euclid and the USB remixes now reach the handoff there.
+- The ColdFire port models the USB device controller and carries a
+  scripted host (25 Sep 2026, `ot_emu --usb-host`, `tools/harness/usb_host.py`,
+  `verify_usb` in `make verify`): the stock stack enumerates and answers
+  mass-storage INQUIRY under the port; octemu's USB-MIDI image built from
+  the same stock bytes enumerates with three interfaces and its received
+  packets reach the firmware's MIDI FIFO. Off by default, so every earlier
+  gate is unchanged. `docs/remixer/EMU.md` "USB".
 - The level knobs ramp per sample across each block (23 Sep 2026): the
   reverb's WET, the delay's WET, the delay host's SEND and every SEND
   client's level. Each stepped once per block, the sends with no glide at

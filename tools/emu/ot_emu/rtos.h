@@ -34,6 +34,7 @@
 #include "card.h"
 #include "machine.h"
 #include "periph.h"
+#include "usb.h"
 
 namespace ot
 {
@@ -172,6 +173,19 @@ namespace ot
 		// for a machine running its own RTOS.
 		void attachCard(AtaCard& _card);
 		void mapCardMemory();
+
+		// ---- USB ---------------------------------------------------------
+		// The device controller (usb.h), attached BEFORE install like the
+		// card so the boot's replayed writes seed it. Without one the
+		// window stays the all-ones stub every gate was measured against:
+		// the firmware then sees no session and never brings the controller
+		// up, which is the stock behaviour of every run to date.
+		void attachUsb(UsbDevice& _usb) { m_usb = &_usb; }
+		UsbDevice* usb() const { return m_usb; }
+		// The firmware's own "USB DISK MODE is active" word (0x460e76a0,
+		// set after it unmounted the card, cleared before it remounts),
+		// polled so a run can log the attach/detach edges the host would see.
+		void setUsbNotify(const std::string& _path) { m_usbNotify = _path; }
 
 		// Borrow main's idle slot to call an OS subroutine the way a UI action
 		// would, with the normal trap-dispatch loop still live underneath, so
@@ -469,6 +483,12 @@ namespace ot
 			uint64_t _nonZero, const std::string& _note);
 		void installHostPortMover();
 		AtaCard* m_card = nullptr;
+		UsbDevice* m_usb = nullptr;
+		std::string m_usbNotify;
+		bool m_usbActive = false;
+		uint64_t m_usbPollCount = 0;
+		double m_usbNextSof = 0.0;
+		double m_usbNextIso = 0.0;
 		// ⚠️ INTRQ IS NOT INSTANTANEOUS, and the firmware depends on it. The
 		// driver writes the command and THEN calls the RTOS event wait; a
 		// drive that asserted INTRQ on the same instruction would run the ISR,

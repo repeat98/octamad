@@ -6,7 +6,7 @@ live 8x30 lock table only the panel writes. midisc adds a second table
 XF morph, part save/reload and the scene clear/copy/paste rows to read it
 when a MIDI event is driving. The panel path is untouched.
 
-Source: `upstream/` is his repository (submodule, tracking 1.40MIDISC8).
+Source: `upstream/` is his repository (submodule, tracking 1.40MIDISC8.2).
 His caves are written in his Python encoder; his `tools/gas_port.py`
 regenerates `gas/*.s` from the same builders and proves each region
 assembles to his bytes at his addresses (`tools/verify/verify_midiscenes.py`
@@ -43,10 +43,9 @@ UNITS = (
     Linked("state", UP + "state.s", dram=True),
     Linked("seam", UP + "seam.s", dram=True),                 # part_window: no deps
     Linked("cave2", UP + "cave2.s", dram=True),               # rebuild, freeze_alt
-    Linked("voice_reload", UP + "voice_reload.s", dram=True),
     Linked("safe_cave", UP + "safe_cave.s", dram=True),       # pack/unpack/... call part_window, rebuild
     Linked("reload_cave", UP + "reload_cave.s", dram=True),   # rel_after: freeze_alt + pack/unpack
-    Linked("code2", UP + "code2.s", dram=True),               # reload -> rel_after; write_mix -> voice_rel
+    Linked("code2", UP + "code2.s", dram=True),               # reload -> rel_after
     Linked("scene_paste", UP + "scene_paste.s", dram=True),
     Linked("seam_bank", UP + "seam_bank.s", dram=True),       # bank_sw/bank_inv call pack/unpack
     Linked("stub", UP + "stub.s", dram=True),

@@ -59,6 +59,8 @@ ones — the DSP toolchain itself is plain CMake). It builds:
 | `ot_bank` | `tools/hw/ot_bank.py` | the bank file's pattern records: `report` lock counts per page, `strip --pages fx1,fx2` clears them in every pattern (the stamper never touches patterns) |
 | `verify_character` / `verify_spectrum` / `verify_modulation` / `verify_nimbus` / `verify_hello` | `tools/verify/verify_<module>.py` | the module rendered through `dsp_host` on the audition's scratch image against predictable arithmetic or a float reference (in `make check` since 16 Sep 2026; Character's master path reads the shipping build) |
 | `verify_spectrum_ident` | `tools/verify/verify_spectrum_ident.py` | bit-identity of a rewritten Spectrum against a saved reference (`make verify-spectrum-ident SAVE=1`, then without) |
+| `verify_usb` | `tools/verify/verify_usb.py` | the built image enumerated as a USB device under the port: Elektron 1935:0002, the MSC interface, INQUIRY and its CSW over EP1, no uninitialised queue head (`make verify`, 3 s) |
+| `usb_host` | `tools/harness/usb_host.py` | the scripted USB host for the port's bench (`ot_emu --usb-host SOCKET`): enumerate, mass storage, USB-MIDI in/out, drain an isochronous endpoint; octemu's protocol |
 | `verify_set` | `tools/verify/verify_set.py` | a real project on the built image under the port: ids, page-2 delivery, chain audio, the main out (`OT_PROJECT=<dir> make check`, or the path in `~/.octabam_project`) |
 | `elektron-firmware-tool` | `vendor/elektron-firmware-tool` (patched) | packs/unpacks Elektron's OS container formats |
 

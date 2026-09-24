@@ -75,6 +75,7 @@ namespace ot
 			uint64_t a = 0;
 			if(m_pit0.irq()) a |= 1ull << 43;
 			if(m_pit1.irq()) a |= 1ull << 44;
+			if(m_usb && m_usb->irq()) a |= 1ull << 47;	// the USB device controller (vector 0xaf, the firmware installs it at level 4)
 			return a;
 		});
 	}
@@ -92,6 +93,7 @@ namespace ot
 		if(_addr >= g_pit1 && _addr < g_pit1 + 0x10)    { _out = m_pit1.read(_addr - g_pit1, _size, m_sample); return true; }
 		if(_addr >= g_dspi && _addr < g_dspi + 0x100)   { _out = m_dspi.read(_addr - g_dspi, _size); return true; }
 		if(_addr >= Edma::g_base && _addr < Edma::g_tcd + 16 * 32) { _out = m_edma.read(_addr, _size); return true; }
+		if(m_usb && _addr >= UsbDevice::g_base && _addr < UsbDevice::g_base + UsbDevice::g_size) { _out = m_usb->read(_addr - UsbDevice::g_base, _size); return true; }
 		if(m_card && _addr >= AtaCard::g_base && _addr < AtaCard::g_base + AtaCard::g_window)
 		{
 			const auto off = _addr - AtaCard::g_base;
@@ -129,6 +131,7 @@ namespace ot
 		else if(_addr >= g_pit1 && _addr < g_pit1 + 0x10) m_pit1.write(_addr - g_pit1, _size, _val, m_sample);
 		else if(_addr >= g_dspi && _addr < g_dspi + 0x100) m_dspi.write(_addr - g_dspi, _size, _val, _replay);
 		else if(_addr >= Edma::g_base && _addr < Edma::g_tcd + 16 * 32) m_edma.write(_addr, _size, _val, _replay);
+		else if(m_usb && _addr >= UsbDevice::g_base && _addr < UsbDevice::g_base + UsbDevice::g_size) m_usb->write(_addr - UsbDevice::g_base, _size, _val, _replay);
 		else if(m_card && _addr >= AtaCard::g_base && _addr < AtaCard::g_base + AtaCard::g_window)
 		{
 			const auto off = _addr - AtaCard::g_base;
@@ -424,6 +427,25 @@ namespace ot
 			m_ataIrqDue = 0.0;
 			m_ataIrq = true;
 		}
+		// The host's start-of-frame, once per audio block (octemu raises it
+		// from the DSP block close as well; the payload's packet builder is
+		// paced by the host's IN polls, not by this edge).
+		if(m_usb)
+		{
+			while(m_sample >= m_usbNextSof)
+			{
+				m_usb->sof();
+				m_usbNextSof += g_framePeriod;
+			}
+			// The host's isochronous poll: every 500 us of device time
+			// (22.05 samples), the bInterval-3 schedule the audio
+			// endpoint is described with.
+			while(m_sample >= m_usbNextIso)
+			{
+				m_usb->isoPoll();
+				m_usbNextIso += 44100.0 / 2000.0;
+			}
+		}
 	}
 
 	bool Rtos::anyPending() const
@@ -573,6 +595,21 @@ namespace ot
 			{
 				m_pollCount = 0;
 				m_poll();
+			}
+			if(m_usb && ++m_usbPollCount >= 256)
+			{
+				m_usbPollCount = 0;
+				m_usb->pollIo();
+				if(!m_usbNotify.empty())
+				{
+					const bool active = m_machine.peek32(0x460e76a0) != 0;
+					if(active != m_usbActive)
+					{
+						m_usbActive = active;
+						std::ofstream f(m_usbNotify, std::ios::app);
+						f << (active ? "attach" : "detach") << " " << m_sample << "\n";
+					}
+				}
 			}
 
 			const auto pc = m_machine.pc();

@@ -523,7 +523,7 @@ def main():
              "repitch": (),
              "euclid": ("SPATIALIZER", "FLANGER", "CHORUS", "COMB FILTER"),
              "bamsep26": _rig, "rig-scenes": _rig, "rig-kits": _rig,
-             "rig-mods": _rig}
+             "rig-mods": _rig, "usb": _rig, "usb-audio": _rig}
     for _n in registry.remix_names():
         _r = registry.remix(_n)
         _hv = stock.region_of(stock.harvested(

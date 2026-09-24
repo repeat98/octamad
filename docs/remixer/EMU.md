@@ -153,6 +153,72 @@ file's length differs by the run's end point), 35.4 s at N = 32 (block
 dump differs). It is not the exact mode and is off by default; the
 gates never use it.
 
+## USB: the device controller and a scripted host (the port, 25 Sep 2026)
+
+`--usb-host SOCKET` gives the port the MCF5445x's USB OTG module as the
+firmware drives it (`tools/emu/ot_emu/usb.h`): the Chipidea device
+controller's registers at `0xfc0b0000`, the session and interrupt
+semantics its driver depends on, and the transfers themselves -- a host on
+a unix socket walks the firmware's queue heads and transfer descriptors in
+guest memory, moves the bytes, retires the descriptors and raises the
+completion interrupt (INTC1 source 47, the firmware installs it at level 4).
+Without the option the window stays the all-ones stub every earlier gate
+was measured against, and the firmware never brings the controller up.
+
+What the firmware does with it, read from the 1.40C image: the boot selects
+a ULPI transceiver (an external high-speed PHY); the bring-up at
+`0x4001d630` writes USBMODE 0x0e (device, big-endian), the endpoint list
+at `0x4ec94800` and USBINTR 0x57 as soon as OTGSC reports a session; the
+ISR at `0x4001e594` answers GET_DESCRIPTOR from the tables at `0x400e2000`
+(Elektron 1935:0002, one MSC/SCSI/BOT interface on EP1) and runs the SCSI
+worker over EP1, answering "no medium" until USB DISK MODE unmounts the
+card. Nothing in the image runs the controller as a host, and the separate
+host-only module at `0xfc0b4000` is never touched.
+
+```sh
+out/emu/ot_emu --image out/mainos_bus.bin --usb-host /tmp/ot-usb.sock &
+tools/harness/usb_host.py /tmp/ot-usb.sock msc        # reset, enumerate, INQUIRY, TEST UNIT READY
+tools/harness/usb_host.py /tmp/ot-usb.sock midi-send 903c64
+tools/harness/usb_host.py /tmp/ot-usb.sock audio 3 2.0 capture.pcm 4
+```
+
+The socket protocol is octemu's (`setup`/`in`/`out`/`reset`/`speed`;
+markandrus, MIT), so its `tests/usb-host.py` drives this port unchanged.
+After every other phase the port HOLDS the machine for the bench until the
+client has connected and hung up (`--usb-hold-ms`, a wall-clock cap: an
+idle machine skips through emulated seconds in milliseconds). A `reset`
+is deferred until the firmware has attached, so a script that connects
+before the bring-up waits instead of failing. `--usb-notify FILE` logs the
+attach/detach edges of USB DISK MODE (the firmware's own flag at
+`0x460e76a0`); `--usb-fs` reports full speed in PORTSC1. The exit summary
+prints the registers and the transfer counts; a primed queue head whose
+token was never cleared is named on stderr (the defect that crashed a unit
+twice under octemu's USB-audio payload).
+
+Measured 25 Sep 2026: the stock stack in `bamsep26` enumerates at high
+speed and answers INQUIRY `Elektron Octatrack DPS-1 0002` with a good CSW
+(`make verify` runs this as `verify_usb`, 3 s). octemu's USB-MIDI image
+built from the same stock bytes enumerates with three interfaces, and two
+channel messages sent to EP2 OUT reach the firmware's own MIDI receive
+FIFO (six writes to `0x46100b80` from `midi_rx_enqueue`). The peripheral
+gate (`ot_periph_test`) pins the register rules, the SETUP byte order, a
+bulk chain (INQUIRY data + CSW), one-descriptor-per-poll on an
+isochronous endpoint, OUT, stall and reset on a fake memory.
+
+What it cannot see: timing. The port serialises the host's polls, the
+frame interrupt and the eDMA, so the USB-audio producer's race against the
+read-back bank swap -- octemu's open hypothesis for its mid-stream clicks
+-- cannot show here. And octemu's card-loaded payload does not install
+under the port: its trampoline hooks `fs_card_detect_poll` (`0x4003f174`),
+the firmware routine the card-detect GPIO poll reaches, and the port mounts
+the card by posting the mount message directly, so that routine never runs
+(0 hits on a PC watch across a 800-frame run). The modules `usbmidi` and
+`usbaudio` carry the same code on octabam's loader instead, and
+`verify_usb` streams from them: the bench polls an isochronous endpoint
+once per 500 us of DEVICE time (`isoPoll`), which is what a real host's
+bInterval-3 schedule does; a script draining as fast as the socket allows
+starved the ring and pulled the rate servo down to 21/22 frames.
+
 ## The card (route A)
 
 `tools/emu/emu_card.py`: a pure-Python FAT16 image builder (a SET folder
@@ -171,6 +237,16 @@ count.
 No audio, no display pixels (strings only), no key matrix; route A models
 no DSP. The C++ port (`make emu-cf`, `tools/emu/ot_emu`) runs both DSP
 cores and the host port and is what `make check`'s boot verifier uses.
+
+Route A's RAM map folds the OS image's uncached alias at `0x48000000` into
+the same 32 MB as `0x40000000` (25 Sep 2026; the port's `machine.h` folds
+it too). octabam's loader depacks the DRAM runtime through that alias and
+the code then runs from the cached address, so with two separate mappings
+every DRAM remix faulted in the boot (`UC_ERR_WRITE_UNMAPPED` at loader pc
+`0x4010fe92`, a1 `0x48a97000`) and `verify_hidden` drew nothing for their
+host pages. The `0x46000000` region's alias at `0x4e000000` is still
+separate here (grown on demand by `_prime_menu`'s hook); the port folds
+both.
 
 ## Speed (the port, measured 17 Sep 2026, M-series Mac, native arm64)
 

@@ -2,7 +2,7 @@
 
 MIDI-driven scene locks, built from
 [bkkbrls-del/midisc](https://github.com/bkkbrls-del/midisc) (submodule
-`upstream/`, tracking `1.40MIDISC8`). `Kind.CF_PATCH`: thirteen linker-placed
+`upstream/`, tracking `1.40MIDISC8.2`). `Kind.CF_PATCH`: twelve linker-placed
 units in DRAM, 38 detours, four pokes. No DSP code, no menu row.
 
 ## What it does
@@ -15,7 +15,8 @@ it when a MIDI event is driving. The panel path is untouched. His README
 (`upstream/README.md`) is the behaviour list.
 
 Not carried: his MIDI → CONTROL CC48/55/56 tick rows (UI-table pokes, not a
-cave); CCs behave as stock in an octabam image.
+cave; off in his own builds since 8.1); CCs behave as stock in an octabam
+image. His `voice_reload` cave has no caller since 8.2 and is not linked.
 
 ## How it is built
 
@@ -39,6 +40,12 @@ module supplies it.
   hash gates pass, the window reads back equal to the linked image except his
   own state words, i.e. his code ran from DRAM during boot. Arms the control
   fixture's five tracks.
+- The submodule pin is his `main` at `63ca127` (his PR #6, merged): his
+  8.2 (`8cba0fa`) plus two gas commits, the 1.40MIDISC8 `gas_port.py`
+  (region table checked against his image) and a regeneration for 8.2 that links `cc_gate` only while his
+  CONTROL filter is on, as his `build.py` does. His `build.py` at `8cba0fa`
+  stops at `SAFE_CAVE overrun 2068` (`SAFE_CAVE_END` allows 2060): the 8.2
+  `xf_mix` probe adds 12 bytes. The linked units are unaffected (DRAM).
 - His own `1.40MIDISC8` image fails project load under the port: his CAVE2
   (`0x400d2ee6`, 308 bytes) overruns the enable words (`0x400d3014/18`) of a
   stock descriptor at `0x400d2e8a` that the loader reads; stock also writes

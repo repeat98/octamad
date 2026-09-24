@@ -10,9 +10,9 @@ trig instead. On core 0 the same id is a passthrough stub. The MD's code
 and tables come from the user's pinned MD OS 1.63 update at build time
 (tools/build/md_payload.py); no firmware byte enters the repository.
 
-Not yet: machine registration, the record producer (the transport is fed
-by a test stream only), the parameter handlers, the sequencer,
-persistence, MIDI, E12 sample delivery and the hardware qualification
+Not yet: machine registration, the live record producer (the transport
+is fed by a test stream only), the sequencer, persistence, MIDI, E12
+sample delivery and the hardware qualification
 (docs/proposals/MACHINEDRUM_WORKPACKETS.md).
 """
 
@@ -121,7 +121,13 @@ MODULE = Module(
 
     # WP-C1, the record transport: one more burst in the host-transfer chain,
     # to core 1, before stock state 5 (docs/firmware/DSP.md section 6c).
-    linked=(Linked("mdxport", "modules/machinedrum/md_xport.s", dram=True),),
+    linked=(
+        Linked("mdxport", "modules/machinedrum/md_xport.s", dram=True),
+        # Generated under out/ from the user's pinned MD OS before linking.
+        # Labels expose each descriptor's unchanged ISA_A handler.
+        Linked("mdhandlers", "out/machinedrum/handlers.s", cpu="5206e",
+               dram=True),
+    ),
     symbol_refs=(
         SymbolRef(0x400ab62e, 0x40004aaa, "mdxport", "md_xport",
                   note="host-transfer chain state 5 -> the MD block first"),

@@ -102,6 +102,78 @@ namespace
 		g_lastUcPc = pc;
 	}
 
+	// WP-C2: one real handler call per map detent. The fixture records the
+	// exact pre-handler record and parameters, then the handler's 84-byte
+	// output. Only track 1 is observed; no firmware bytes enter Git.
+	FILE* g_handlerCases = nullptr;
+	uint32_t g_casePc = 0, g_caseReturn = 0, g_caseRecord = 0;
+	bool g_caseArmed = false, g_caseEntered = false, g_caseDone = false;
+	std::array<uint8_t, 4> g_caseSram{};
+	std::array<uint8_t, 16> g_caseParams{};
+	std::array<uint8_t, 84> g_caseBefore{}, g_caseAfter{};
+
+	uint32_t uc32(md::Microcontroller& uc, uint32_t addr)
+	{
+		return (static_cast<uint32_t>(uc.read16(addr)) << 16) | uc.read16(addr + 2);
+	}
+
+	void onHandlerCase(md::Microcontroller& uc)
+	{
+		if(!g_caseArmed || g_caseDone)
+			return;
+		const auto pc = uc.getPC();
+		if(!g_caseEntered && pc >= 0x201128 && pc < 0x204330)
+		{
+			const auto sp = uc.getAReg(7);
+			const auto record = uc32(uc, sp + 4);
+			if(record != 0x010015b4)
+				return;
+			const auto params = uc32(uc, sp + 8);
+			g_casePc = pc;
+			g_caseReturn = uc32(uc, sp);
+			g_caseRecord = record;
+			for(size_t i = 0; i < g_caseSram.size(); ++i)
+				g_caseSram[i] = uc.read8(0x0100150c + static_cast<uint32_t>(i));
+			for(size_t i = 0; i < g_caseParams.size(); ++i)
+				g_caseParams[i] = uc.read8(params + static_cast<uint32_t>(i));
+			for(size_t i = 0; i < g_caseBefore.size(); ++i)
+				g_caseBefore[i] = uc.read8(record + static_cast<uint32_t>(i));
+			g_caseEntered = true;
+		}
+		else if(g_caseEntered && pc == g_caseReturn)
+		{
+			for(size_t i = 0; i < g_caseAfter.size(); ++i)
+				g_caseAfter[i] = uc.read8(g_caseRecord + static_cast<uint32_t>(i));
+			g_caseDone = true;
+		}
+	}
+
+	void writeHandlerCase(uint8_t id, int encoder)
+	{
+		if(!g_handlerCases || !g_caseDone)
+		{
+			std::cerr << "handler case missing for engine " << int(id)
+			          << " encoder " << encoder << "\n";
+			std::exit(1);
+		}
+		std::fprintf(g_handlerCases, "%02x %d %06x", id, encoder, g_casePc);
+		auto hex = [](const auto& bytes)
+		{
+			const char* digits = "0123456789abcdef";
+			std::string out;
+			out.reserve(bytes.size() * 2);
+			for(uint8_t b : bytes)
+			{
+				out.push_back(digits[b >> 4]);
+				out.push_back(digits[b & 15]);
+			}
+			return out;
+		};
+		std::fprintf(g_handlerCases, " %s %s %s %s\n",
+		             hex(g_caseSram).c_str(), hex(g_caseParams).c_str(),
+		             hex(g_caseBefore).c_str(), hex(g_caseAfter).c_str());
+	}
+
 	// The producer->mixer link, frame by frame, while a trace scenario runs:
 	// one line per frame, its slot words.
 	FILE* g_link = nullptr;
@@ -576,17 +648,39 @@ int main(int _argc, char** _argv)
 		if(arg.rfind("map=", 0) == 0)
 		{
 			const auto id = static_cast<uint8_t>(std::strtol(arg.c_str() + 4, nullptr, 0));
-			md::g_hostTraceHook = &onHost;
-			rig.sysex({0xf0, 0x00, 0x20, 0x3c, 0x02, 0x00, 0x5b, 0x00, id, 0x00, 0xf7});
-			rig.run(22050);
-			auto trigRecord = [&]()
+            md::g_hostTraceHook = &onHost;
+            const char* casePath = std::getenv("MD_HANDLER_CASES");
+            if(casePath)
+            {
+                g_handlerCases = std::fopen(casePath, "a");
+                if(!g_handlerCases)
+                {
+                    std::cerr << "cannot open MD_HANDLER_CASES output\n";
+                    return 1;
+                }
+            }
+            rig.sysex({0xf0, 0x00, 0x20, 0x3c, 0x02, 0x00, 0x5b, 0x00, id, 0x00, 0xf7});
+            rig.run(22050);
+            if(g_handlerCases)
+            {
+                md::g_ucExecHook = &onHandlerCase;
+            }
+            int caseEncoder = -1;
+            auto trigRecord = [&]()
 			{
-				g_trigRecord.clear();
-				rig.trig(0, true);
+                g_trigRecord.clear();
+                g_caseArmed = g_handlerCases != nullptr;
+                g_caseEntered = g_caseDone = false;
+                rig.trig(0, true);
 				rig.run(441);
 				rig.trig(0, false);
-				rig.run(22050);
-				return g_trigRecord;
+                rig.run(22050);
+                if(g_handlerCases)
+                {
+                    writeHandlerCase(id, caseEncoder);
+                    g_caseArmed = false;
+                }
+                return g_trigRecord;
 			};
 			const auto base = trigRecord();
 			FILE* f = std::fopen((outDir + "/map.txt").c_str(), "a");
@@ -598,8 +692,9 @@ int main(int _argc, char** _argv)
 				return r;
 			};
 			std::fprintf(f, "%02x base%s\n", id, words(base).c_str());
-			for(int e = 0; e < 8; ++e)
-			{
+            for(int e = 0; e < 8; ++e)
+            {
+                caseEncoder = e;
 				const auto& before = base;
 				rig.encoder(static_cast<md::PanelEncoder>(e), 8);
 				rig.run(4410);
@@ -621,8 +716,14 @@ int main(int _argc, char** _argv)
 				rig.run(22050);
 			}
 			std::fclose(f);
-			md::g_hostTraceHook = nullptr;
-			std::cout << "map " << std::hex << int(id) << std::dec << "\n";
+            md::g_hostTraceHook = nullptr;
+            md::g_ucExecHook = nullptr;
+            if(g_handlerCases)
+            {
+                std::fclose(g_handlerCases);
+                g_handlerCases = nullptr;
+            }
+            std::cout << "map " << std::hex << int(id) << std::dec << "\n";
 			continue;
 		}
 		// "trace=<id>": the host-port traffic of assigning <id> to track 1,

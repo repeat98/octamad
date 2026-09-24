@@ -991,6 +991,15 @@ def main():
     # the module is in the image, its stub `rts` otherwise). Floating caves
     # take the run after them. 15 Sep 2026; until then units floated after
     # the caves, which is why no cave could reach one.
+    if "MACHINEDRUM" in REMIX.modules:
+        # The MD ColdFire unit is sourced from the user's pinned OS 1.63.
+        # Generate directives before the platform assembler reads the unit.
+        _mdh = subprocess.run(
+            [sys.executable, "modules/machinedrum/handler_build.py"],
+            capture_output=True, text=True)
+        if _mdh.returncode:
+            sys.exit("machinedrum handler extraction failed:\n" + _mdh.stdout + _mdh.stderr)
+        print("  " + _mdh.stdout.strip())
     _all_units = [(remix_modules()[_k], _u) for _k in REMIX.modules
                   for _u in getattr(remix_modules()[_k], "linked", ())]
     _units = [(m, u) for m, u in _all_units if not u.dram]      # ROM-placed

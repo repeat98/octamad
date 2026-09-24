@@ -35,3 +35,9 @@ set_target_properties(md_forms PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED 
 add_executable(md_phase_probe ${CMAKE_CURRENT_LIST_DIR}/md_phase_probe.cpp)
 target_link_libraries(md_phase_probe PRIVATE dsp56kEmu)
 set_target_properties(md_phase_probe PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+
+# WP-C2: execute original and build-linked handlers on identical map cases.
+add_executable(md_handler_gate ${CMAKE_CURRENT_LIST_DIR}/md_handler_gate.cpp)
+target_link_libraries(md_handler_gate PRIVATE 68kEmu)
+target_include_directories(md_handler_gate PRIVATE ${CMAKE_SOURCE_DIR}/source/mc68k)
+set_target_properties(md_handler_gate PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)

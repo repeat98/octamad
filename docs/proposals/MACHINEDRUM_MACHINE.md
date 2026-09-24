@@ -796,16 +796,17 @@ track 1 it logs every host-port word through an assign, a trig, encoder A
   P-I RC/CC/HH AG.
   *Inferred*: they act over time or at control rate rather than in the
   trigger record.
-- ✅ Every core engine's descriptor handler is a pure function
-  `f(record*, params*)`, 44 distinct ones in 32–586 bytes (about 11 KB in
-  all). It reads eight 16-bit parameters and writes the record's 32-bit
-  fields with shifts, `mulu.w`/`muls.l` and lookups in about ten tables at
-  `0x2462e8–0x24da14` of the OS image. The disassembly
-  (`m68k-elf-objdump -m m68k:5206e`) shows no calls, no MAC/EMAC
-  instructions and no hardware access. The MD's CPU is an MCF5206e (ISA_A,
-  per the reference) and the OT's an MCF54454 (ISA_B). *Inferred*: the
-  handlers run on the OT unchanged, with their table addresses relocated.
-  That makes the ColdFire half of the port a copy, not a rewrite.
+- ❌ The earlier claim that every descriptor handler is a pure
+  `f(record*, params*)` is too strong. Twenty absolute operands in ten
+  distinct E12 handlers read the MD's internal-SRAM long at
+  `0x0100150c`; the 50-engine `map=` capture observed `0x00000bb8`
+  there. WP-C2 relocates those reads to a writable word in the DRAM unit.
+  The 44 distinct non-empty handlers otherwise read eight 16-bit
+  parameters and write 32-bit record fields with shifts, multiplies, and
+  lookups in the OS tables. The disassembly shows no calls or MAC/EMAC
+  instructions. The MD's CPU is MCF5206e (ISA_A), the OT's MCF54454
+  (ISA_B). The code bytes remain unchanged except for 148 absolute
+  operands (128 tables, 20 SRAM).
 - Not yet located: the caller that runs a handler, adds modulation and
   serializes the record into the host packet; and where the trigger word
   (`0x11`/`0x02`) comes from.
@@ -2041,6 +2042,32 @@ port. Nothing is hardware.
 
 Commands, reference pins and validation limits are in
 [`WP-C1.md`](machinedrum_reports/WP-C1.md).
+
+### WP-C2 ColdFire parameter handlers (24 September 2026)
+
+- ✅ The user's pinned MD OS 1.63 supplies the 44 distinct non-empty
+  descriptor handlers for 50 playable engines. Build-time extraction emits
+  assembly directives with 12,808 code bytes and two table spans; it
+  commits no extracted firmware bytes. The platform links the generated
+  unit at its assigned DRAM address.
+- ✅ Every linked code and table byte equals the OS source except the
+  148 absolute operands: 128 table references and 20 reads of the E12
+  SRAM word. The latter now address `md_handler_sram_word`, a writable
+  symbol for the future live record producer.
+- ✅ The reference `map=` scenarios yielded 450 captured handler calls:
+  baseline plus eight detents for each of 50 engines. On identical
+  captured parameters, SRAM input and pre-handler records, the original
+  and relocated handlers each reproduced all 84 output bytes per case.
+  TRX-S2's live assignment invoked the empty handler and sent no trigger
+  record; its descriptor handler was separately compared source versus
+  port on those nine captured parameter vectors. GND-NS also sent no
+  trigger record but its descriptor handler was invoked and compared.
+- 🟡 No OT control path calls the linked unit yet. WP-C4 must supply the
+  SRAM word and parameters, invoke the selected handler and serialize
+  its output through WP-C1. This gate uses the reference MCF5206e
+  emulator for both copies; it is not a hardware run.
+
+Commands and output are in [WP-C2.md](machinedrum_reports/WP-C2.md).
 
 ### Open for Phase 1
 

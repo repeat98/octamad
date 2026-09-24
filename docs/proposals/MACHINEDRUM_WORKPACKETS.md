@@ -62,7 +62,7 @@ Statuses:
 | WP-B4 The fixed trigger path | review | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-B3-B4.md` | trig = bit 16 of the track state's word $1e (a sample voice starting); slot 0 plays c10's TRX-BD, bit-identical to the MD reference for 171 periods under the port |
 | WP-B5 Gates and the M1 image | todo | | | | | the user flashes |
 | WP-C1 The record transport | done | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-C1.md` | full c01_16 stream: 33,503/33,503 voice blocks bit-identical to the interpreter replay; 19,335 words, no stream loss; test producer only, hardware timing unmeasured |
-| WP-C2 Port the parameter handlers | todo | | | | | |
+| WP-C2 Port the parameter handlers | done | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-C2.md` | 450 map cases / 50 engines, 84 record bytes each match; 148 source operands relocated; TRX-S2 descriptor compared offline (live map uses empty handler) |
 | WP-C3 Machine registration | todo | | | | | |
 | WP-C4 Kits and parameters | todo | | | | | |
 | WP-D1 Is the chord free? | done | `machinedrum` | `d4a626b` | 2026-09-23 | `machinedrum_reports/WP-D1.md` | neither target tests the held track key; use FUNC + track as fallback |

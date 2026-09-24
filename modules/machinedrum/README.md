@@ -25,15 +25,26 @@ with a port built from the repo's dsp56300 pin.
 c01_16 host stream through `md_xport.s` and the DSP mailbox. All 33,503
 captured voice blocks match the reference interpreter, including 20,544
 non-silent blocks. The producer is currently a test stream loaded by the
-port's `--load-file` option; live parameter production is WP-C2/C4.
+port's `--load-file` option; live parameter production is WP-C4.
 The reference uses `md_replay --interpreter`: a firmware-free arithmetic
 probe reproduces a JIT loop defect in the capture emulator. Details and
 reproduction commands: [WP-C1 report](../../docs/proposals/machinedrum_reports/WP-C1.md).
 
+WP-C2 links all 44 distinct descriptor handlers as a second ColdFire DRAM
+unit. `handler_build.py` reads the user's pinned MD OS at build time, copies
+the original ISA_A code and lookup tables, and relocates 128 table operands
+plus 20 reads of the MD's internal-SRAM word to a writable runtime symbol.
+`md_handler_cases.py` captures the reference's 50 `map=` scenarios and
+byte-compares 450 handler outputs against the linked unit. TRX-S2's live
+map scenario stays on the empty handler; its descriptor is compared
+separately on the nine captured parameter vectors. See the
+[WP-C2 report](../../docs/proposals/machinedrum_reports/WP-C2.md).
+The handler unit is present but no live OT control path calls it yet.
+
 Not yet done:
 
 - machine registration (the MD is an FX2 effect for now);
-- the live record producer and parameter handlers;
+- the live record producer that calls the linked parameter handlers;
 - the per-part mix (D1);
 - the sequencer, persistence and MIDI;
 - E12 samples;

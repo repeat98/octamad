@@ -2308,3 +2308,16 @@ on the caller's own frame (`md_persist_tail.s`).
 free one is `part = 0xff`, and nothing set that before WP-E1. From
 `fire()`, part 1's trig on step 1 played with SYN 1 at 0 in every earlier
 image; this is inferred from the code, not heard or measured.
+
+
+### 25 September 2026: the MD's cost on core 1 under the port
+
+✅ `tools/harness/md_cost.py`, the driver call in the glue:
+- **Mean, per sample:** 676 instructions (default kit), 1,073 (16 TRX),
+  1,227 (16 EFM), 1,400 (16 P-I), 1,534 (16 × EFM-CB).
+- **The glue:** the packets add 288 a frame (3,239 on a frame with
+  sixteen trig records), the mix and copy 2,323 every second frame.
+- **The worst frame of 16 × EFM-CB:** 1,924 instructions a sample.
+- 🟡 About 2,830 cycles/sample at BusVerb's 0.68 ratio, against core 1's
+  ~3,120 usable. Details and the retracted `P:0x303` windows are in
+  `machinedrum_reports/WP-A6.md`.

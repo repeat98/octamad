@@ -173,10 +173,12 @@ def run(tag, kit, image, card, cf, glue, frames, records):
     run_head += bytes(RUN_TRIG - len(run_head))
     run_head += (0xffff).to_bytes(2, "big") + bytes(2) + (0xffff).to_bytes(2, "big")
     run_head += bytes(RUN_STARTED - len(run_head)) + b"\x01\xff\x01"   # started, no MD track, kit ready
-    pokes = [(cf["md_kit"], bytes(blob)),
-             (cf["md_run"], bytes(run_head)),
+    # The kit goes in after the project load: WP-E1's load sets every
+    # loaded bank's kits from machinedrum.work (empty without one).
+    pokes = [(cf["md_run"], bytes(run_head)),
              (cf["md_kit_active"], (1).to_bytes(4, "big"))]
     poke = ";".join(f"{addr + i:#x}={b:#x}" for addr, data in pokes for i, b in enumerate(data))
+    kit_poke = ";".join(f"{cf['md_kit'] + i:#x}={b:#x}" for i, b in enumerate(blob))
     g = LAYOUT["glue"]
     samples, log = OUT / f"{tag}.samples.txt", OUT / f"{tag}.port.txt"
     spans = f"Y:{VOICE_Y:x},1024;X:{g['GAIN']:x},16;X:{g['GAINR']:x},16;X:{g['BAD']:x},1"
@@ -184,7 +186,7 @@ def run(tag, kit, image, card, cf, glue, frames, records):
            "--project", "RIG", "--sequencer", "--internal-clock", "--frames", str(frames),
            "--load-ms", "20000", "--dsp",
            "--dsp-sample", f"1:{glue['gnotrg']:x}:{samples}:1000000={spans}",
-           "--poke-early", poke]
+           "--poke-early", poke, "--poke", kit_poke]
     with open(log, "w") as f:
         f.write(" ".join(cmd) + "\n"); f.flush()
         r = subprocess.run(cmd, cwd=ROOT, stdout=f, stderr=subprocess.STDOUT)

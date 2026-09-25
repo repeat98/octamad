@@ -30,6 +30,8 @@ enum {
     OT_TRACK_LENGTH = 0x50u,
     OT_TRACK_SCALE = 0x51u,
     OT_TRACK_SWING = 0x52u,
+    OT_UI_BANK = 0x80000002u,        /* the resident bank */
+    OT_PART_IDX = 0x100b14cfu,       /* the active Part */
 };
 #define U8(a) (*(volatile uint8_t *)(a))
 #define U32(a) (*(volatile uint32_t *)(a))
@@ -71,6 +73,14 @@ void md_params(const MdPart *part, const MdSeq *q, unsigned p, uint16_t out[MD_S
 static const uint8_t md_default_engines[MD_PARTS] = {
     0x10, 0x11, 0x16, 0x17, 0x13, 0x14, 0x15, 0x18,   /* TRX BD SD CH OH CP RS CB CY */
 };
+
+/* A kit nothing was ever assigned to: every part GND--- at VOL 0. A kit
+ * the user made always has a VOL (an engine assignment sets 100). */
+unsigned md_kit_empty(const MdKit *kit) {
+    for (unsigned p = 0; p < MD_PARTS; ++p)
+        if (kit->part[p].engine || kit->part[p].vol) return 0;
+    return 1;
+}
 
 void md_default_kit(MdKit *kit) {
     for (unsigned p = 0; p < MD_PARTS; ++p) {
@@ -220,7 +230,7 @@ static uint32_t take_trig_requests(void) {
  * the record, and VOL/PAN/mute change the gain pair. */
 static void apply_kit(MdRun *r) {
     for (unsigned p = 0; p < MD_PARTS; ++p) {
-        const MdPart *now = &md_kit.part[p];
+        const MdPart *now = &md_kit_cur()->part[p];
         MdPart *was = &r->shadow[p];
         if (r->started && same_part(now, was)) continue;
         if (!r->started || now->engine != was->engine) {
@@ -293,6 +303,10 @@ const uint16_t *md_ctl_chunk(void) {
      * otherwise lose its first trigs and gains. */
     if (++r->frames < MD_START_FRAMES) return 0;
     md_handler_sram_word = *(volatile uint32_t *)MD_TEMPO24;
+    /* The Part the UI shows has its own kit; a Part change is a kit change,
+     * which apply_kit sends like any edit. */
+    md_kit_index = (U8(OT_UI_BANK) & 15) * 4u + (U8(OT_PART_IDX) & 3);
+    md_persist_frame();
     /* Is a Part's MD track packed? The frame builder's hook says which. */
     unsigned parent = md_ui_frame();
     md_parent_track = 0;
@@ -303,10 +317,8 @@ const uint16_t *md_ctl_chunk(void) {
         ++r->parent_age;
     }
     unsigned machine = r->parent_age && r->parent_age <= 8;
-    if (machine && !r->kit_ready) {
-        md_default_kit(&md_kit);
-        r->kit_ready = 1;
-    }
+    if (machine && md_kit_empty(md_kit_cur()))
+        md_default_kit(md_kit_cur());   /* a Part's first MD assignment */
     unsigned active = md_kit_active || machine;
     if (active) {
         md_clock_update(&md_clock, U32(OT_FRAME_CLOCK));

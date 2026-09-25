@@ -138,6 +138,8 @@ MODULE = Module(
         # (generate_ctl.py). md_xport asks it for a chunk once a frame.
         Linked("mdctl", "modules/machinedrum/md_ctl.s", dram=True),
         Linked("mdui", "modules/machinedrum/md_ui.s", dram=True),
+        # WP-E1: the kits and patterns in SRAM and on the card (md_persist.c).
+        Linked("mdpersist", "modules/machinedrum/md_persist.s", dram=True),
         Linked("mdmachine", "modules/machinedrum/md_machine.s", dram=True),
         # Generated under out/ from the user's pinned MD OS before linking.
         # Labels expose each descriptor's unchanged ISA_A handler.
@@ -175,6 +177,16 @@ MODULE = Module(
         Detour(0x4000D146, H("30eb0020d5fc0000003a"), "mdmachine", "md_pack_fx2",
                "select MD DSP dispatch from the machine byte in transient frame setup",
                pad_to=10),
+        # WP-E1: stock's four persistence steps, each followed by the MD's.
+        Detour(0x4000FAF0, H("2f0a2f022f3c0008ed80"), "mdpersist", "md_hook_sram_save",
+               "a bank copied into SRAM: the MD's slice follows it", pad_to=10),
+        Detour(0x400917C8, H("4e56febc48d73cfc"), "mdpersist", "md_hook_bank_save",
+               "banks saved to the card: write machinedrum.work", pad_to=8),
+        Detour(0x400905D4, H("4feffeb848d77cfc"), "mdpersist", "md_hook_proj_load",
+               "banks loaded from the card: read machinedrum.work (SRAM at boot)",
+               pad_to=8),
+        Detour(0x40016388, H("4e56ffb848d7007c"), "mdpersist", "md_hook_copy",
+               "SAVE / RELOAD copy markers.*: copy machinedrum.* with it", pad_to=8),
         # WP-D3: the lanes restart on PLAY at stock's anchor (as Euclid's do;
         # the two modules therefore never share a remix).
         Detour(0x4009c3d4, H("23c0800065b8"), "mdctl", "md_start_hook",

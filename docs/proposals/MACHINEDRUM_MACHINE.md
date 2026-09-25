@@ -2274,3 +2274,37 @@ therefore needed four detents per engine (three left the accumulator at
 that slot's divisor to 256 while the window edits the MD track, and hands
 the stock value back otherwise; one detent now changes TRX-BD to TRX-SD
 with its defaults (`verify_md_ui.py`), two reach TRX-XT (octemu).
+
+
+### 25 September 2026: persistence
+
+✅ Stock keeps the resident bank's working state in battery-backed SRAM
+and the other banks on the card (octemu, gdbstub breakpoints):
+- **At boot:** the SRAM restore (`0x40025770`) comes first, then the
+  project load `0x400905d4(ctx, 0xfffe, …)` for every bank but the
+  resident one.
+- **At a bank change:** `0x4000faf0(new)` copies the new bank into SRAM,
+  then `0x400917c8(ctx, 1 << old)` saves the old bank to the card.
+- **SYNC TO CARD and SAVE** run the bank save. SAVE then copies every
+  `.work` file to `.strd` through `0x40016388(dst, src, 0)`.
+
+Stock's project load and bank save both take four arguments. The load
+reads the fourth at `sp@(344)`, and a wrapper that re-pushed three
+arguments stalled every load. The MD's four detours therefore run stock
+on the caller's own frame (`md_persist_tail.s`).
+
+✅ WP-E1 (`machinedrum_reports/WP-E1.md`):
+- 64 kits, one per OT Part.
+- `machinedrum.work` (110,628 bytes) is written after each bank save and
+  read after each bank load. The port gate proves the read and the
+  refusal of a damaged file; octemu proves the write through SYNC TO CARD
+  (every field checked on the card).
+- The resident bank's MD slice is kept in SRAM at `0x100fa000`. It brings
+  back an edit made after the last sync across a power cycle (octemu).
+- 🟡 The SRAM range `0x100f859c..0x100ffeff` is inferred free: no OS
+  operand references it, and a used session leaves it zero.
+
+🟡 A zeroed `MdLock` (step 0, part 0, parameter 0) is a live lock: a
+free one is `part = 0xff`, and nothing set that before WP-E1. From
+`fire()`, part 1's trig on step 1 played with SYN 1 at 0 in every earlier
+image; this is inferred from the code, not heard or measured.

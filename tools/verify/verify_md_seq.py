@@ -113,7 +113,7 @@ def main():
            "--project", "RIG", "--sequencer", "--internal-clock", "--frames", str(a.frames),
            "--load-ms", "20000", "--dsp", "--block-dump", str(OUT / "port.dump"),
            "--dsp-sample", f"1:{glue['gnotrg']:x}:{samples}:1000000={spans}",
-           "--poke-early", poke]
+           "--poke", poke]                    # after the load: WP-E1 sets the patterns there
     with open(log, "w") as f:
         f.write(" ".join(cmd) + "\n"); f.flush()
         r = subprocess.run(cmd, cwd=ROOT, stdout=f, stderr=subprocess.STDOUT)

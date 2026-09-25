@@ -157,7 +157,7 @@ static void build_desc(MdUi *u, unsigned id) {
 /* The twelve page values of part p: SYN 1-8, VOL, PAN, ENG, 0; the order
  * of the MD page's slots (page 1 = 0..5, page 2 = 6..11). */
 static void page_values(unsigned p, uint8_t v[12]) {
-    const MdPart *part = &md_kit.part[p];
+    const MdPart *part = &md_kit_cur()->part[p];
     for (unsigned i = 0; i < MD_SYN; ++i) v[i] = part->syn[i];
     v[8] = part->vol;
     v[9] = part->pan;
@@ -190,17 +190,17 @@ static void set_engine(MdPart *part, unsigned id) {
 }
 
 static void page_mirror(MdUi *u, volatile uint8_t *part, volatile uint8_t *sram,
-                        unsigned t, unsigned part_idx) {
+                        unsigned t, unsigned kit) {
     unsigned p = u->sel & (MD_PARTS - 1);
-    MdPart *kp = &md_kit.part[p];
-    if (u->shown_sel != p || u->shown_track != t || u->shown_part != part_idx
+    MdPart *kp = &md_kit_cur()->part[p];
+    if (u->shown_sel != p || u->shown_track != t || u->shown_part != kit
         || u->shown_engine != kp->engine || u->desc_engine != kp->engine) {
         build_desc(u, kp->engine);
         page_values(p, u->snap);
         write_page(part, sram, t, u->snap);
         u->shown_sel = (uint8_t)p;
         u->shown_track = (uint8_t)t;
-        u->shown_part = (uint8_t)part_idx;
+        u->shown_part = (uint8_t)kit;
         u->shown_engine = kp->engine;
         return;
     }
@@ -254,7 +254,7 @@ static void lane_mirror(MdUi *u, unsigned t) {
 
 static void make_name(MdUi *u) {
     unsigned p = u->sel & (MD_PARTS - 1);
-    const char *name = md_engines[md_kit.part[p].engine].name;
+    const char *name = md_engines[md_kit_cur()->part[p].engine].name;
     char *o = md_ui_name;
     o[0] = 'P';
     o[1] = (char)('0' + (p + 1) / 10);
@@ -307,7 +307,7 @@ unsigned md_ui_frame(void) {
     }
     md_ui_md_type = (uint32_t)(part + 0x22 + t);
     make_name(u);
-    page_mirror(u, part, sram, (unsigned)t, part_idx);
+    page_mirror(u, part, sram, (unsigned)t, md_kit_index);   /* bank x 4 + part */
     /* The SETUP window's readers index the table by its cursor, on the
      * selected track: FLEX's entry is the MD page while that is the MD
      * track (md_machine.s md_resolve_pb serves every track by itself). */

@@ -39,10 +39,15 @@ md_reset_clock:
 | assertions pin the sizes against md_ctl.h.
         .data
         .balign 4
-        .global md_kit, md_run, md_trig_request, md_kit_active
+        .global md_kit, md_kits, md_kit_index, md_run, md_trig_request, md_kit_active
         .global md_clock, md_lanes, md_patterns, md_parent_track
+| 64 x 192: one kit per OT Part, bank x 4 + part (WP-E1). md_kit names
+| kit 0 (bank 1, Part 1), the one the port's gates poke and read.
+md_kits:
 md_kit:
-        .zero   192
+        .zero   12288
+md_kit_index:
+        .long   0
 md_run:
         .zero   2476
 md_clock:

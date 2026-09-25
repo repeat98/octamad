@@ -52,6 +52,9 @@ typedef struct {
     MdPart part[MD_PARTS];
 } MdKit;
 
+/* One kit per OT Part (WP-E1): bank x 4 + part, as the Part itself. */
+#define MD_KITS 64
+
 /* Generated at build time from the user's MD OS (handler_build.py): one
  * row per machine id 0x00..0x48, zero where the id is not a machine. */
 typedef uint32_t (*MdHandler)(uint32_t *record, const uint16_t *params);
@@ -115,7 +118,7 @@ typedef struct {
     uint8_t refresh;                 /* the next part for the idle refresh */
     uint8_t started;
     uint8_t parent_age;              /* 1 + frames since an MD track was packed; 0 never */
-    uint8_t kit_ready;               /* md_kit holds a kit (default or loaded) */
+    uint8_t kit_ready;               /* unused since kits follow the Part (WP-E1) */
     uint16_t lock_gain;              /* parts whose gain follows a lock */
     uint16_t chunk[3 + MD_MBOX_HW + 3];  /* md_feed format, terminated */
 } MdRun;
@@ -139,9 +142,14 @@ extern char md_ui_name[12];
 unsigned md_ui_frame(void);
 void md_ui_select(unsigned key);
 
-/* The engine table, the kit and the runtime (md_ctl_tail.s, handlers.s). */
+/* The engine table, the kits and the runtime (md_ctl_tail.s, handlers.s). */
 extern const MdEngine md_engines[MD_ENGINE_IDS];
-extern MdKit md_kit;
+extern MdKit md_kits[MD_KITS];
+/* The kit of the Part the UI shows (resident bank x 4 + active part), set
+ * once a frame by md_ctl_chunk; the editor and the producer use it. */
+extern volatile uint32_t md_kit_index;
+static inline MdKit *md_kit_cur(void) { return &md_kits[md_kit_index & (MD_KITS - 1)]; }
+unsigned md_kit_empty(const MdKit *kit);
 extern MdRun md_run;
 extern MdClock md_clock;
 extern MdSeq md_lanes;
@@ -162,6 +170,10 @@ extern uint32_t md_gain_values[MD_PARTS][2];
 /* The producer: called once per frame by md_xport.s (interrupt context).
  * Returns a chunk in md_feed's format, or 0 when nothing is to be sent. */
 const uint16_t *md_ctl_chunk(void);
+
+/* WP-E1 (md_persist.c): the resident bank's SRAM mirror, a little every
+ * frame. The card side runs in the tasks that save and load the project. */
+void md_persist_frame(void);
 
 /* The PLAY hooks (md_ctl_tail.s) restart the lanes on stock's anchor. */
 void md_clock_start(MdClock *c, uint32_t now);

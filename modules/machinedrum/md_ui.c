@@ -48,6 +48,10 @@ enum {
     OT_FLEX_E = 0x400d3176u,         /* stock FLEX playback descriptor (E) */
     OT_FLEX_P = 0x400d31aeu,
     OT_PB_TABLE = 0x400d5f38u,
+    OT_ENC_CFG = 0x46c7dedeu,        /* per-encoder config, 20 bytes a slot */
+    OT_ENC_STRIDE = 20u,
+    OT_SETUP_EDIT = 0x4003a474u,     /* the SRC SETUP window's editor */
+    OT_SETUP_ROW = 0x460d5c30u,      /* the machine row that window edits */
 };
 #define FLEX 1u
 
@@ -261,6 +265,23 @@ static void make_name(MdUi *u) {
     (void)u;
 }
 
+/* Stock turns an encoder's accumulated delta << 8 into steps of a per-slot
+ * divisor (0x4003249c): 256 for a 0..127 knob, 819 for a select under 128
+ * values, so ENG on SETUP's E would take about four detents per engine
+ * (measured under the port, 25 Sep 2026). While that window edits the MD
+ * track, one detent is one engine; the stock divisor comes back when it
+ * edits anything else. */
+static void eng_gearing(MdUi *u, unsigned md_page) {
+    volatile uint32_t *e = (volatile uint32_t *)(OT_ENC_CFG + 4 * OT_ENC_STRIDE);
+    if (e[0] != OT_SETUP_EDIT) return;
+    if (md_page) {
+        if (e[2] != 256u) { u->eng_div = (uint16_t)e[2]; e[2] = 256u; }
+    } else if (u->eng_div && e[2] == 256u && e[4] < 128u) {
+        e[2] = u->eng_div;
+        u->eng_div = 0;
+    }
+}
+
 void md_ui_select(unsigned key) {
     md_ui.sel = (uint8_t)(key & (MD_PARTS - 1));
     md_trig_request |= 1u << md_ui.sel;      /* play it, as the MD's pads do */
@@ -281,6 +302,7 @@ unsigned md_ui_frame(void) {
         md_ui_md_type = 0;
         U32(OT_PB_TABLE + 4 * FLEX) = OT_FLEX_P;
         u->shown_sel = u->lane_sel = 0xff;
+        eng_gearing(u, 0);
         return 0;
     }
     md_ui_md_type = (uint32_t)(part + 0x22 + t);
@@ -289,8 +311,9 @@ unsigned md_ui_frame(void) {
     /* The SETUP window's readers index the table by its cursor, on the
      * selected track: FLEX's entry is the MD page while that is the MD
      * track (md_machine.s md_resolve_pb serves every track by itself). */
-    U32(OT_PB_TABLE + 4 * FLEX) = U8(OT_UI_TRACK) == (unsigned)t && md_desc_p
-                                  ? md_desc_p : OT_FLEX_P;
+    unsigned md_shown = U8(OT_UI_TRACK) == (unsigned)t && md_desc_p;
+    U32(OT_PB_TABLE + 4 * FLEX) = md_shown ? md_desc_p : OT_FLEX_P;
+    eng_gearing(u, md_shown && U32(OT_SETUP_ROW) == FLEX);
     lane_mirror(u, (unsigned)t);
     return (unsigned)t + 1;
 }

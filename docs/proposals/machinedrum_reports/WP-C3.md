@@ -129,4 +129,44 @@ Open (octemu, same run):
 - One octemu run froze the UI after boot, with the ColdFire still in its
   ISRs and main idle loop. It happened while the gates loaded the CPU and
   has not been reproduced.
-- The MD assignment does not survive an octemu reboot (stock FLEX does).
+- ✅ Resolved 25 Sep 2026 (below): the MD assignment did not survive an
+  octemu reboot (stock FLEX does).
+
+## 25 September 2026: the MD assignment survives a reboot
+
+✅ Measured in octemu (isolated build), writable card, same NVRAM across two
+runs:
+- stock FLEX chosen through SRC SETUP on T1 survives the reboot;
+- MACHINEDRUM chosen the same way came back as the card's STATIC track
+  (image `5f88711`);
+- with the fix, T1 comes back as the MD (`SYNTH▸P01 TRX-BD`).
+
+Cause, from the disassembly and the reboot: boot keeps the SRAM state only
+if the Part validator `0x40002318` repairs nothing in any SRAM Part
+(`0x400257a4`: each of the four working and four saved Parts; one repair
+and the whole restore is dropped, the card's Parts load). The validator
+clamps every machine's page bytes to the STOCK descriptors' ranges
+(`0x400d301c`, `0x400d31ae`, ...): FLEX's are PTCH 4..124, LOOP 0..3,
+SLIC/LEN/RATE 0..1, TSTR 0..3. An MD track's FLEX slots hold the MD page
+(SYN 1–8, VOL, PAN, ENG: 0..127 each), so any MD track failed it.
+NEIGHBOR's ranges are 0..127 on all twelve slots, so the signature passes.
+
+Fix: `md_validate` (detour at the validator's entry, eight displaced
+bytes) shows the validator FLEX's defaults in the MD track's twelve slot
+bytes and puts the MD's bytes back afterwards; every other byte of the
+Part is still checked and repaired as stock does. The same validator runs
+from the card loader (`0x4008cea0`, result ignored: it only clamped) and
+from a tail call at `0x40005a44`; the wrapper covers all three.
+
+Breakpoints over octemu's gdbstub (`out/mdverify/bp/bplog.py`) confirm
+the boot order the fix relies on: the validator on the bank's Parts, the
+SRAM restore `0x40025770` (validator on the eight SRAM Parts, then
+`0x4000fbb4`), then the project load `0x400905d4` with bank mask `0xfffe`
+(every bank but the resident one), about 3 s later.
+
+The kit itself still resets to the default kit on reboot: kits and
+patterns are not persistent yet (WP-E1).
+
+Gates, all passing on `testset_nofx`: `verify_md_ui.py` (now with ENG),
+`verify_md_c3.py`, `verify-md`, `--gain-probe`, `--gain-queue-probe`,
+`verify-md-transport`, `verify-md-seq`, `make check REMIX=machinedrum`.

@@ -2247,3 +2247,30 @@ REC grid step, descriptor fields and the dynamic part/engine name in RAM.
 SRC page-2 encoder A also reaches SYN 7 and the proper FLEX slot.
 It exposed and corrected a two-byte overrun in the trig-key detour. The
 LCD presentation of the name is still unverified.
+
+
+### 25 September 2026: reboot persistence and ENG gearing
+
+✅ The Part validator `0x40002318` clamps every machine's page bytes to
+the stock descriptors' ranges and counts the repairs; boot drops the whole
+SRAM restore when any SRAM Part needs one (`0x400257a4`). An MD track's
+FLEX slots hold 0..127 MD values outside FLEX's ranges, so an MD Part
+never survived a power cycle; stock FLEX did (octemu, same NVRAM, two
+runs). `md_validate` shows the validator FLEX's defaults in those twelve
+bytes and restores them after (`machinedrum_reports/WP-C3.md`).
+
+✅ Boot order (octemu gdbstub breakpoints): SRAM restore of the resident
+bank first, then the project load with bank mask `0xfffe`. A bank change
+A→B copies the new bank into SRAM (`0x4000faf0(1)`) and then saves the
+old one (`0x400917c8(ctx, 1)`). PROJECT › SAVE writes `project.work`,
+`markers.work`, the dirty banks, then copies every file `.work → .strd`
+through `0x40016388(dst, src, 0)`.
+
+✅ Stock steps an encoder by accumulating `delta << 8` against a per-slot
+divisor (`0x4003249c`, table `0x46c7dede + 20·slot + 8`): 256 for a 0..127
+knob, 819 (`0x333`) for a select under 128 values. ENG on SRC SETUP's E
+therefore needed four detents per engine (three left the accumulator at
+768); the handoff's "E +1 did not change ENG" was this. `md_ui.c` sets
+that slot's divisor to 256 while the window edits the MD track, and hands
+the stock value back otherwise; one detent now changes TRX-BD to TRX-SD
+with its defaults (`verify_md_ui.py`), two reach TRX-XT (octemu).

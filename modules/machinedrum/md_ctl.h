@@ -127,7 +127,9 @@ typedef struct {
 typedef struct {
     uint8_t sel, shown_sel, shown_track, shown_part, shown_engine, desc_engine;
     uint8_t lane_sel, lane_track, lane_bank, lane_pattern;
-    uint8_t snap[12], lane_snap[8], pad[10];
+    uint8_t snap[12], lane_snap[8];
+    uint16_t eng_div;                /* SETUP E's stock divisor while ENG is geared */
+    uint8_t pad[8];
     uint8_t desc[MD_DESC_BYTES + 2];
 } MdUi;
 

@@ -141,6 +141,16 @@ def main():
     assert state2["kit"][4 + 6] == 5
     assert state2["part"][0x1da + 6] == 5
     print("page 2: A knob changes part 1 SYN 7 and its FLEX page-2 slot to 5")
+
+    # ENG is SETUP's E: stock gears a select there at 819 per step (about
+    # four detents); md_ui.c gears it at one detent per engine.
+    eng = page2[:6] + [(0.5, "enc 4 1"), (1.0, "quit")]
+    state3 = run("eng", signed_card, emu, image,
+                 {"kit": (sym["md_kit"], 192), "part": (PART, 0x300)}, eng)
+    assert state3["kit"][0] == 0x11, f"engine {state3['kit'][0]:#x}"
+    assert state3["part"][0x1da + 6 + 4] == 5, state3["part"][0x1da + 6:0x1da + 12].hex()
+    assert state3["kit"][4 + 6] == 0x40            # TRX-SD's SYN 7 default
+    print("page 2: one E detent changes part 1 from TRX-BD to TRX-SD with its defaults")
     print("verify_md_ui: PASS")
 
 

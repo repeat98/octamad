@@ -30,6 +30,7 @@
         .global md_resolve_pb
         .global md_trig_key
         .global md_sig_check
+        .global md_validate
 
         .equ    MD_ROW, 6                 | the chooser row
         .equ    FLEX, 1
@@ -45,6 +46,9 @@
         .equ    LIVE_FX2, 0x80000ecc      | + track: the FX2 id the DSP records carry
         .equ    MD_FX2, 0x1e              | the MD's DSP dispatch id (manifest fx2_id)
         .equ    FLEX_P, 0x400d31ae        | stock FLEX playback descriptor (P)
+        .equ    FLEX_DEFAULTS, 0x400d320c | its twelve defaults (E + 0x96)
+        .equ    FLEX_SLOT, 0x2a + 6       | + track x 30: FLEX's page-1 slot
+        .equ    PAGE2_GAP, 0x1da - 0x2a   | page-2 slot - page-1 slot
         .equ    PB_TABLE, 0x400d5f38
         .equ    KEY_ROWS, 0x46100b18      | the panel's held-key rows (PANEL.md 4b)
 
@@ -427,6 +431,78 @@ md_trig_key:
         move.l  8(%sp),%d0
 .tk_stock:
         jmp     (0x40060ce8).l
+
+| The Part validator (0x40002318(part): boot's SRAM restore at 0x400257a4,
+| the card loader at 0x4008cea0 and a tail call at 0x40005a44) clamps every
+| machine's page bytes to the stock descriptors' ranges and returns the
+| number of repairs; boot keeps the SRAM state only when every Part
+| returns 0. An MD track's FLEX slots hold the MD page (SYN 1-8, VOL, PAN,
+| ENG, each 0..127), outside FLEX's ranges, so the whole restore was
+| dropped and the unit booted the card's Parts: T1 came back STATIC while
+| a stock FLEX assignment survived the same reboot (octemu, 25 Sep 2026).
+| The check sees FLEX's defaults in the MD track's slots, and the MD's bytes
+| go back afterwards; every other byte of the Part is checked as stock
+| checks it. The signature is inside NEIGHBOR's 0..127 ranges.
+| Displaced: lea -96(sp),sp / movem.l d2-d7/a2-fp,(sp).
+md_validate:
+        lea     -24(%sp),%sp             | 0..11 the MD bytes, 12.. d2/a2/a3
+        movem.l %d2/%a2-%a3,12(%sp)
+        movea.l 28(%sp),%a2              | the Part
+        moveq   #0,%d2
+.mv_scan:
+        movea.l %a2,%a0
+        move.l  %d2,%d0
+        bsr     md_sig_check
+        tst.l   %d0
+        bne.s   .mv_md
+        addq.l  #1,%d2
+        cmpi.l  #4,%d2
+        bne.s   .mv_scan
+        move.l  %a2,-(%sp)               | no MD track: stock's check alone
+        bsr.s   .mv_stock
+        addq.l  #4,%sp
+        bra.s   .mv_out
+.mv_md:
+        move.l  %d2,%d0
+        mulu.w  #30,%d0
+        lea     FLEX_SLOT(%a2,%d0.l),%a3
+        lea     (%sp),%a0
+        movea.l #FLEX_DEFAULTS,%a1
+        moveq   #5,%d0
+1:      move.b  (%a3),(%a0)+             | page 1: keep the MD byte,
+        move.b  (%a1)+,(%a3)+            | show the check FLEX's default
+        subq.l  #1,%d0
+        bpl.s   1b
+        lea     PAGE2_GAP-6(%a3),%a3
+        moveq   #5,%d0
+2:      move.b  (%a3),(%a0)+             | page 2 likewise
+        move.b  (%a1)+,(%a3)+
+        subq.l  #1,%d0
+        bpl.s   2b
+        move.l  %a2,-(%sp)
+        bsr.s   .mv_stock                | d0 = the repairs
+        addq.l  #4,%sp
+        move.l  %d2,%d1
+        mulu.w  #30,%d1
+        lea     FLEX_SLOT(%a2,%d1.l),%a3
+        lea     (%sp),%a0
+        moveq   #5,%d1
+3:      move.b  (%a0)+,(%a3)+            | the MD's bytes back
+        subq.l  #1,%d1
+        bpl.s   3b
+        lea     PAGE2_GAP-6(%a3),%a3
+        moveq   #5,%d1
+4:      move.b  (%a0)+,(%a3)+
+        subq.l  #1,%d1
+        bpl.s   4b
+.mv_out:
+        movem.l 12(%sp),%d2/%a2-%a3
+        lea     24(%sp),%sp
+        rts
+.mv_stock:                               | stock's validator, as a call
+        lea     -96(%sp),%sp             | displaced
+        movem.l %d2-%d7/%a2-%fp,(%sp)
+        jmp     (0x40002320).l
 
         .data
         .balign 4

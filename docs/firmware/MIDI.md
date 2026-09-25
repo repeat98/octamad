@@ -75,6 +75,40 @@ channel trigger reliably; sample-trig notes 36-43 never fired on the test
 project; a note to the panel-selected track is eaten (keep an empty track
 selected while driving notes).
 
+Note-on body per listening track `0x4000e746..0x4000e76a` (M: command 0x1d
+into `0x46c80354[t]`, PTCH lock, held note, gate bit, then event 0x41);
+note-off body `0x4000dfd4..0x4000dff6` (M: releases only when the note equals
+the held-note byte). Both write the same one-command mailbox as the panel,
+from the MIDI task, so notes that reach it within one frame collapse into the
+last one. `modules/poly-machine` hooks both bodies for a POLY track (25 Sep
+2026, measured under octemu: a C-E-G chord sent as ONE CoreMIDI packet on
+channel 1 plays three voices at 110 / 138.6 / 164.8 Hz within 1 dB, each note-off
+stops only its own voice, note-on velocity 0 releases like note-off).
+
+**Panel chromatic keys** (`0x4004fb94(track, key 0..24, edge)`, M): stock
+keeps ONE held key per track, `0x460d171d[t]` = key + 1 (0 = none). A press
+first releases the previous held key (posts 0x40, sends its note-off), writes
+the PTCH lock `5·key + 4`, triggers through `0x40005030(t, 0x1d, 1, −1)`
+(or ORs `0x119` into the mailbox while `0x46c7dd26` is set — meaning not
+known), and sends a note-on. `0x8000004c` gates both halves: bit 0 clear →
+the press neither triggers nor, on release, posts 0x40; bit 1 → the MIDI
+send (`0x4003f3a8(track, key + 72, velocity)`: `0x90|channel` from
+`0x8000003f + t` via the UART, velocity 127 on a press, 0 on release). The
+names INT / EXT for the two bits are INFERRED from the manual's AUDIO NOTE OUT
+setting; the test project holds `03`. `0x40043728(track)` drops the held key
+(PTCH lock back to 0xFF, 0x40, note-off); the UI calls it on track and mode
+changes (`0x4007c304`, `0x4007c360`, `0x40083c14`, and a loop at
+`0x400438e2`).
+
+**The chromatic keyboard draw** (`0x40044920`, M) boxes held keys: its audio
+branch (`0x40044abc..0x40044b64`) walks the eight bytes `0x460d171d..24`,
+ONE box per track, at `held − 1 − 12·octave` when that is 0..16 (the 17 keys
+shown; octave `0x460d16fc`); with `0x80000012` set it draws the MIDI-track
+bytes `0x460d170c..1c` instead. Measured under octemu on FLEX: the box
+follows the last key pressed, one at a time. POLY's handler bypassed the
+byte, so a POLY chord drew no box at all until image 94 pointed the loop at a
+per-key list.
+
 ## The DSP record ✅
 
 The record (32 halfwords per track) is fully rewritten every frame

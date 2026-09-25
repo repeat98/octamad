@@ -18,7 +18,7 @@ also as letters, "A" or "A-C"):
                                            "locks": {"fx2": {"1": {"SEND": 77}},
                                                      "amp": {"1": {"VOL": 77}}}}}}}}
 
-"machine": STATIC / FLEX / THRU / NEIGHBOR / PICKUP. A pattern track's
+"machine": STATIC / FLEX / THRU / NEIGHBOR / PICKUP (POLY on a poly-machine image). A pattern track's
 "length" (steps) and "scale" ("1X", "1/2X", ... ot_project.SCALE_NAMES) are
 its own pair (CLEAR PATTERN sets 16 / 1X). Lock pages: playback
 (PTCH STRT LEN RATE RTRG RTIM on STATIC/FLEX, INAB INCD .. on THRU), lfo
@@ -57,7 +57,8 @@ LFO = ("SPD1", "SPD2", "SPD3", "DEP1", "DEP2", "DEP3")      # defaults 32 32 32 
 PLAYBACK = {0: ("PTCH", "STRT", "LEN", "RATE", "RTRG", "RTIM"),   # STATIC / FLEX (the manual's order;
             1: ("PTCH", "STRT", "LEN", "RATE", "RTRG", "RTIM"),   #  lane defaults 64 0 0 127 0 79)
             2: ("INAB", "INCD", "PB3", "PB4", "PB5", "PB6")}      # THRU (lane 1 127 0 0 0 0)
-MACHINES = {0: "STATIC", 1: "FLEX", 2: "THRU", 3: "NEIGHBOR", 4: "PICKUP"}
+MACHINES = {0: "STATIC", 1: "FLEX", 2: "THRU", 3: "NEIGHBOR", 4: "PICKUP",
+            5: "POLY"}                  # modules/poly-machine; stock 1.40C loads it as PICKUP
 LOCK_PAGES = {"playback": 0, "lfo": 6, "amp": 12, "fx1": 18, "fx2": 24}
 LOCK_SPAN = {"playback": 6, "lfo": 6, "amp": 6, "fx1": 6, "fx2": 6, "all": 32}   # "all": "clear" only
 LOCK_TRIGS = 2                                             # step mask 2 = the trigless locks

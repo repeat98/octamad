@@ -8,9 +8,10 @@
 | Each voice keeps the pitch it was triggered with: the stock renderer only
 | fetches raw source frames and the DSP resamples the track by the primary's
 | increment, so extensions are resampled here to the primary's source rate
-| (.render_ext).  Panel chromatic presses are queued so a chord is not
-| collapsed into stock's one-command mailbox, and releases address the voice
-| that owns the key.  RATE, sample selection and p-locks remain track-wide.
+| (.render_ext).  Chromatic presses -- panel keys and MIDI notes alike -- are
+| queued so a chord is not collapsed into stock's one-command mailbox, and
+| releases address the voice that owns the key.  RATE, sample selection and
+| p-locks remain track-wide.
         .text
         .global polyphony_call
         .global poly_config_type
@@ -36,6 +37,11 @@
         .global poly_increment_shift
         .global poly_chromatic_key
         .global poly_chord_dequeue
+        .global poly_midi_note_on
+        .global poly_midi_note_off
+        .global poly_release_held
+        .global poly_kbd_fill
+        .global poly_kbd_next
         .global poly_release_note
         .global voice_pointer
         .global poly_voice_selector
@@ -72,6 +78,15 @@
         .equ    CONTINUE_CHORD_DEQUEUE, 0x4000b7c6
         .equ    PENDING_COMMANDS, 0x46c80354
         .equ    LIVE_LOCKS, 0x46c7dfda
+        .equ    MIDI_GATES, 0x46c7fb08
+        .equ    CONTINUE_MIDI_ON, 0x4000e74e
+        .equ    MIDI_ON_HELD, 0x4000e75a
+        .equ    MIDI_OFF_MATCH, 0x4000dfdc
+        .equ    MIDI_OFF_NEXT, 0x4000dff8
+| A voice's owning key: a panel chromatic key 0..135, or MIDI_KEY + note for
+| a MIDI note (72..96 reach the chromatic path, so 0xc8..0xe0); 0xff = none.
+        .equ    MIDI_KEY, 0x80
+        .equ    PANEL_KEYS, 136
         .equ    VOICE_SIZE, 168
         .equ    EXTRA_PER_TRACK, 3
         .equ    EXTRA_TRACK_SIZE, 504
@@ -918,16 +933,32 @@ poly_src_cursor_slot_lookup:
         move.l  (%sp)+,%d0
         jmp     (0x4005a80c).l
 
-| The stock chromatic handler owns one pending command per track.  If two
-| trig-key press events are dispatched before the next audio frame, the last
-| one overwrites the first.  POLY retains the first stock event and queues up
-| to three more pitch bytes, matching its three extension voices.  STATIC and
-| FLEX replay their exact displaced prologue.
+| ---------------------------------------------------------------------------
+| Keys.  A POLY track keeps the set of keys the player holds (panel keys and
+| MIDI notes, up to HOLD_SLOTS), queues presses that arrive while stock's
+| one-command mailbox is busy, and addresses each release to the voices the
+| key owns.  Every change runs with interrupts masked, stock's own idiom
+| (0x40006844): the frame ISR drains the queue and promotes the armed key,
+| and the MIDI task (priority 6) can preempt the UI task (3) mid-update.
+        .equ    HOLD_SLOTS, 8
+        .equ    CMD_TRIGGER, 29           | stock's chromatic trigger, 0x1d
+        .equ    CMD_RELEASE, 0x40
+        .equ    NOTE_OUT, 0x4003f3a8      | AUDIO NOTE OUT: (track, note, velocity)
+        .equ    NOTE_OUT_BASE, 72         | stock sends a key as MIDI note key + 72
+        .equ    NOTE_CONFIG, 0x8000004c   | bit 0 INT (play the track), bit 1 EXT
+        .equ    NOTE_OUT_HOLD, 0x46c7dd26 | stock sends no press note while set
+        .equ    STOCK_HELD, 0x460d171d    | stock's held panel key per track, key + 1
+
+| Detour at 0x4004fb94, the panel chromatic key handler (track, key, edge).
+| Stock owns one held key per track and one pending command, so a second
+| press released the first and two presses in one frame collapsed into one.
+| POLY presses and releases each key on its own.  STATIC and FLEX replay the
+| exact displaced prologue.
 poly_chromatic_key:
         lea     -16(%sp),%sp
         movem.l %d2-%d4/%a2,(%sp)
         move.l  24(%sp),%d1              | chromatic key 0..135
-        cmpi.l  #135,%d1
+        cmpi.l  #PANEL_KEYS-1,%d1
         bhi.w   .pck_stock
         move.l  20(%sp),%d0              | track
         bsr.w   poly_is_track
@@ -935,84 +966,37 @@ poly_chromatic_key:
         beq.w   .pck_stock
 
         move.l  28(%sp),%d0              | edge: 1 press, 0 release
-        beq.w   .pck_release
+        beq.s   .pck_release
         cmpi.l  #1,%d0
         bne.w   .pck_stock
-
+        moveq   #127,%d2
+        mvs.b   (NOTE_CONFIG).l,%d0
+        btst    #0,%d0
+        beq.s   .pck_note_out            | INT off: stock plays nothing, sends only
         move.l  20(%sp),%d0
-        lea     (PENDING_COMMANDS).l,%a0
-        tst.l   (%a0,%d0.l*4)
-        beq.s   .pck_direct
-        lea     poly_chord_count(%pc),%a0
-        mvz.b   (%a0,%d0.l),%d2
-        cmpi.l  #3,%d2
-        bcc.s   .pck_done
-
-        move.l  %d0,%d1
-        add.l   %d0,%d1
-        add.l   %d0,%d1                  | track * 3
-        add.l   %d2,%d1
-        lea     poly_chord_notes(%pc),%a1
-        move.l  24(%sp),%d3
-        move.b  %d3,(%a1,%d1.l)
-        addq.l  #1,%d2
-        move.b  %d2,(%a0,%d0.l)
+        move.l  24(%sp),%d1
+        bsr.w   poly_press_key
+        tst.l   (NOTE_OUT_HOLD).l
+        bne.s   .pck_done
+        bra.s   .pck_note_out
+.pck_release:
+        move.l  20(%sp),%d0
+        move.l  24(%sp),%d1
+        bsr.w   poly_release_key
+        moveq   #0,%d2
+.pck_note_out:
+        move.l  %d2,-(%sp)               | velocity
+        move.l  28(%sp),%d0              | key
+        addi.l  #NOTE_OUT_BASE,%d0
+        move.l  %d0,-(%sp)
+        move.l  28(%sp),-(%sp)           | track
+        jsr     (NOTE_OUT).l
+        lea     12(%sp),%sp
 .pck_done:
         moveq   #0,%d0
         movem.l (%sp),%d2-%d4/%a2
         lea     16(%sp),%sp
         rts
-.pck_direct:
-        move.l  24(%sp),%d1
-        move.l  %d1,%d4                  | raw key
-        bsr.w   .pck_encode              | d3=pitch byte, d2=octave shift
-        move.l  20(%sp),%d0
-        move.l  %d0,%d1
-        lsl.l   #5,%d1
-        lea     (LIVE_LOCKS).l,%a0
-        move.b  %d3,(%a0,%d1.l)
-        lea     (PENDING_COMMANDS).l,%a0
-        moveq   #29,%d1
-        move.l  %d1,(%a0,%d0.l*4)
-        lea     poly_armed_shift(%pc),%a0
-        move.b  %d2,(%a0,%d0.l)
-        lea     poly_armed_key(%pc),%a0
-        move.b  %d4,(%a0,%d0.l)
-        bra.s   .pck_done
-.pck_release:
-        move.l  24(%sp),%d1              | raw extended key
-        move.l  20(%sp),%d0
-        bsr.w   poly_release_note
-| The press's command (0x1d, no bit 8) set this track's bit in the frame
-| consumer's live-played mask 0x46c7e9f8, which keeps the sequencer off the
-| track; stock clears it by posting bit 6 on the release.  Post it once the
-| track's last key is up -- without this a POLY track never triggered again
-| after the first chromatic note (measured under octemu, 22 Sep 2026).
-        move.l  20(%sp),%d0
-        moveq   #-1,%d2                  | 0xff = no key
-        lea     poly_primary_note(%pc),%a0
-        cmp.b   (%a0,%d0.l),%d2
-        bne.w   .pck_done
-        move.l  %d0,%d1
-        add.l   %d0,%d1
-        add.l   %d0,%d1                  | track * 3
-        lea     poly_extra_note(%pc),%a0
-        adda.l  %d1,%a0
-        cmp.b   (%a0)+,%d2
-        bne.w   .pck_done
-        cmp.b   (%a0)+,%d2
-        bne.w   .pck_done
-        cmp.b   (%a0),%d2
-        bne.w   .pck_done
-        lea     poly_chord_count(%pc),%a0
-        tst.b   (%a0,%d0.l)
-        bne.w   .pck_done
-        lea     (PENDING_COMMANDS).l,%a0
-        move.l  (%a0,%d0.l*4),%d1
-        moveq   #0x40,%d2
-        or.l    %d2,%d1
-        move.l  %d1,(%a0,%d0.l*4)
-        bra.w   .pck_done
 .pck_stock:
         movem.l (%sp),%d2-%d4/%a2
         lea     16(%sp),%sp
@@ -1020,7 +1004,332 @@ poly_chromatic_key:
         movem.l %d2-%d4/%a2,(%sp)
         jmp     (CONTINUE_CHROMATIC_KEY).l
 
+| Detour at 0x4000e746, MIDI chromatic note-on (notes 72..96), once per
+| listening track d2; a3 = the message's note.  Stock writes its trigger and
+| PTCH lock straight into the one-command mailbox, so the notes of a chord
+| that reach the MIDI task within one frame collapsed into one, and its
+| note-off matched only the last note.  POLY presses the note like a panel
+| key (owner MIDI_KEY + note) and rejoins stock for the held-note byte, the
+| gate bit and the recorder event.
+poly_midi_note_on:
+        move.l  %d2,%d0
+        bsr.w   poly_is_track            | d1/a0 scratch
+        tst.l   %d0
+        beq.s   .pmon_stock
+        mvz.b   (%a3),%d1
+        addi.l  #MIDI_KEY,%d1
+        move.l  %d2,%d0
+        bsr.w   poly_press_key
+        jmp     (MIDI_ON_HELD).l
+.pmon_stock:
+        moveq   #CMD_TRIGGER,%d1          | displaced
+        move.l  %d1,(%a5,%d2.l*4)
+        mvs.b   (%a3),%d0
+        jmp     (CONTINUE_MIDI_ON).l
+
+| Detour at 0x4000dfd4, MIDI chromatic note-off, once per listening track d2;
+| a0 = the track's held-note byte (0x400d64c2 + t), a3 = the note, d3 =
+| 1 << track.  Stock releases the track only when the note is its one held
+| note.  POLY stops the voices this note owns; the gate bit clears (and
+| stock's release posts) only when the track holds no key.
+poly_midi_note_off:
+        move.l  %a0,-(%sp)
+        move.l  %d2,%d0
+        bsr.w   poly_is_track            | d1/a0 scratch
+        movea.l (%sp)+,%a0
+        tst.l   %d0
+        beq.s   .pmof_stock
+        mvz.b   (%a3),%d1
+        cmp.b   (%a0),%d1
+        bne.s   .pmof_release
+        moveq   #-1,%d0
+        move.b  %d0,(%a0)                | stock's held-note byte, as stock
+.pmof_release:
+        addi.l  #MIDI_KEY,%d1
+        move.l  %d2,%d0
+        move.l  %a0,-(%sp)
+        bsr.w   poly_release_key
+        movea.l (%sp)+,%a0
+        tst.l   %d0
+        beq.s   .pmof_next
+        move.l  %d3,%d0
+        not.l   %d0
+        move.b  (MIDI_GATES).l,%d1
+        and.l   %d1,%d0
+        move.b  %d0,(MIDI_GATES).l
+.pmof_next:
+        jmp     (MIDI_OFF_NEXT).l
+.pmof_stock:
+        mvs.b   (%a0),%d1                | displaced compare
+        mvs.b   (%a3),%d0
+        cmp.l   %d1,%d0
+        bne.s   .pmof_next
+        jmp     (MIDI_OFF_MATCH).l
+
+| Detour at 0x400437b6: stock's "drop the live-held key" of a chromatic track
+| (0x40043728, called by the UI on track and mode changes) looks only at its
+| one held-key byte, which POLY never sets, so keys held across a track
+| change left their voices ringing.  Release every PANEL key held on a POLY
+| track instead; MIDI notes stay held, as stock leaves them.  d3 = track;
+| d2/a2/a3 are the function's own and restored by its exit.
+poly_release_held:
+        move.l  %d3,%d0
+        bsr.w   poly_is_track
+        tst.l   %d0
+        beq.s   .prh_stock
+        moveq   #0,%d2
+.prh_slot:
+        move.l  %d3,%d0
+        lsl.l   #3,%d0
+        lea     poly_held(%pc),%a2
+        adda.l  %d0,%a2
+        mvz.b   (%a2,%d2.l),%d1
+        cmpi.l  #PANEL_KEYS,%d1
+        bcc.s   .prh_next                | empty, or a MIDI note
+        move.l  %d1,%a3
+        move.l  %d3,%d0
+        bsr.w   poly_release_key
+        clr.l   -(%sp)                   | note off, as stock's release does
+        move.l  %a3,%d0
+        addi.l  #NOTE_OUT_BASE,%d0
+        move.l  %d0,-(%sp)
+        move.l  %d3,-(%sp)
+        jsr     (NOTE_OUT).l
+        lea     12(%sp),%sp
+.prh_next:
+        addq.l  #1,%d2
+        cmpi.l  #HOLD_SLOTS,%d2
+        bcs.s   .prh_slot
+        jmp     (0x400438d2).l           | the function's exit
+.prh_stock:
+        lea     (STOCK_HELD).l,%a0       | displaced
+        jmp     (0x400437bc).l
+
+| d0 = track, d1 = owner key.  Adds the key to the held set and presses it:
+| straight into stock's mailbox when that is empty, else queued behind it (up
+| to three, one per frame after it).  Clobbers d0/d1.
+poly_press_key:
+        lea     -24(%sp),%sp
+        movem.l %d2-%d5/%a0-%a1,(%sp)
+        move.w  %sr,%d5
+        move.w  #0x2700,%sr
+        move.l  %d0,%d4
+        move.l  %d1,%d3
+        bsr.w   .hold_add
+        lea     (PENDING_COMMANDS).l,%a0
+        tst.l   (%a0,%d4.l*4)
+        beq.s   .ppk_arm
+        lea     poly_chord_count(%pc),%a0
+        mvz.b   (%a0,%d4.l),%d2
+        cmpi.l  #3,%d2
+        bcc.s   .ppk_done                | queue full: the press is dropped
+        move.l  %d4,%d0
+        add.l   %d4,%d0
+        add.l   %d4,%d0                  | track * 3
+        add.l   %d2,%d0
+        lea     poly_chord_notes(%pc),%a1
+        move.b  %d3,(%a1,%d0.l)
+        addq.l  #1,%d2
+        move.b  %d2,(%a0,%d4.l)
+        bra.s   .ppk_done
+.ppk_arm:
+        bsr.w   .arm_key
+.ppk_done:
+        move.w  %d5,%sr
+        movem.l (%sp),%d2-%d5/%a0-%a1
+        lea     24(%sp),%sp
+        rts
+
+| d0 = track, d1 = owner key.  Releases the key: a press still queued never
+| plays, a press armed but not yet taken is withdrawn, every voice the key
+| owns stops, and the key leaves the held set.  When that was the track's
+| last held key, posts stock's release (bit 6): it ends the live-played state
+| that keeps the sequencer off the track (0x4000b52a) and releases the AMP
+| envelope -- without it a POLY track never played the sequencer again after
+| a chromatic note (octemu, 22 Sep 2026).  Returns d0 = 1 in that case.
+poly_release_key:
+        lea     -32(%sp),%sp
+        movem.l %d2-%d6/%a0-%a2,(%sp)
+        move.w  %sr,%d5
+        move.w  #0x2700,%sr
+        move.l  %d0,%d4
+        move.l  %d1,%d3
+
+        lea     poly_chord_count(%pc),%a2
+        mvz.b   (%a2,%d4.l),%d2
+        move.l  %d4,%d0
+        add.l   %d4,%d0
+        add.l   %d4,%d0
+        lea     poly_chord_notes(%pc),%a1
+        adda.l  %d0,%a1                  | this track's queue
+        moveq   #0,%d0                   | read
+        moveq   #0,%d1                   | write
+.prk_queue:
+        cmp.l   %d2,%d0
+        bcc.s   .prk_queued
+        move.b  (%a1,%d0.l),%d6
+        cmp.b   %d6,%d3
+        beq.s   .prk_queue_next          | dropped
+        move.b  %d6,(%a1,%d1.l)
+        addq.l  #1,%d1
+.prk_queue_next:
+        addq.l  #1,%d0
+        bra.s   .prk_queue
+.prk_queued:
+        move.b  %d1,(%a2,%d4.l)
+
+| Armed and still in the mailbox: withdraw it, as stock's note-off does by
+| overwriting the command (0x4000dfde).  The next queued press then takes
+| the mailbox here, since no consumer will run to re-arm it.
+        lea     poly_armed_key(%pc),%a0
+        cmp.b   (%a0,%d4.l),%d3
+        bne.s   .prk_voices
+        lea     (PENDING_COMMANDS).l,%a1
+        moveq   #CMD_TRIGGER,%d0
+        cmp.l   (%a1,%d4.l*4),%d0
+        bne.s   .prk_voices              | mixed with a release: it plays
+        clr.l   (%a1,%d4.l*4)
+        moveq   #-1,%d1
+        move.b  %d1,(%a0,%d4.l)
+        lea     poly_armed_shift(%pc),%a0
+        clr.b   (%a0,%d4.l)
+        move.l  %d4,%d0
+        lsl.l   #5,%d0
+        lea     (LIVE_LOCKS).l,%a0
+        move.b  %d1,(%a0,%d0.l)          | no PTCH lock, as the consumer leaves it
+        tst.b   (%a2,%d4.l)
+        beq.s   .prk_voices
+        move.l  %d3,%d6
+        bsr.w   .queue_pop
+        bsr.w   .arm_key
+        move.l  %d6,%d3
+
+.prk_voices:
+        move.l  %d4,%d0
+        move.l  %d3,%d1
+        bsr.w   poly_release_note
+        bsr.w   .hold_find
+        tst.l   %d0
+        bmi.s   .prk_busy                | was not held
+        moveq   #-1,%d1
+        move.b  %d1,(%a0,%d0.l)
+        moveq   #0,%d0
+.prk_any:
+        cmp.b   (%a0,%d0.l),%d1
+        bne.s   .prk_busy
+        addq.l  #1,%d0
+        cmpi.l  #HOLD_SLOTS,%d0
+        bcs.s   .prk_any
+        lea     (PENDING_COMMANDS).l,%a0
+        move.l  (%a0,%d4.l*4),%d0
+        moveq   #CMD_RELEASE,%d1
+        or.l    %d1,%d0
+        move.l  %d0,(%a0,%d4.l*4)
+        moveq   #1,%d0
+        bra.s   .prk_out
+.prk_busy:
+        moveq   #0,%d0
+.prk_out:
+        move.w  %d5,%sr
+        movem.l (%sp),%d2-%d6/%a0-%a2
+        lea     32(%sp),%sp
+        rts
+
+| Track d4, owner d3: adds the key to the track's held set (a full set still
+| plays the key, it is only not shown).  Clobbers d0/d1/a0.
+.hold_add:
+        bsr.s   .hold_find
+        tst.l   %d0
+        bpl.s   .ha_done                 | already held
+        moveq   #-1,%d1
+        moveq   #0,%d0
+.ha_free:
+        cmp.b   (%a0,%d0.l),%d1
+        beq.s   .ha_store
+        addq.l  #1,%d0
+        cmpi.l  #HOLD_SLOTS,%d0
+        bcs.s   .ha_free
+        rts
+.ha_store:
+        move.b  %d3,(%a0,%d0.l)
+.ha_done:
+        rts
+
+| a0 = track d4's held set; d0 = the slot holding owner d3, or -1.
+.hold_find:
+        move.l  %d4,%d0
+        lsl.l   #3,%d0
+        lea     poly_held(%pc),%a0
+        adda.l  %d0,%a0
+        moveq   #0,%d0
+.hf_loop:
+        cmp.b   (%a0,%d0.l),%d3
+        beq.s   .hf_done
+        addq.l  #1,%d0
+        cmpi.l  #HOLD_SLOTS,%d0
+        bcs.s   .hf_loop
+        moveq   #-1,%d0
+.hf_done:
+        rts
+
+| Track d4 (queue non-empty): pops the oldest queued owner into d3.
+| Clobbers d0-d2/a0-a1.
+.queue_pop:
+        lea     poly_chord_count(%pc),%a0
+        mvz.b   (%a0,%d4.l),%d2
+        move.l  %d4,%d0
+        add.l   %d4,%d0
+        add.l   %d4,%d0
+        lea     poly_chord_notes(%pc),%a1
+        adda.l  %d0,%a1
+        mvz.b   (%a1),%d3
+        move.b  1(%a1),%d1
+        move.b  %d1,(%a1)
+        move.b  2(%a1),%d1
+        move.b  %d1,1(%a1)
+        subq.l  #1,%d2
+        move.b  %d2,(%a0,%d4.l)
+        rts
+
+| Track d4, owner d3: arms the key and its octave shift first, then the PTCH
+| lock, then stock's trigger command.  The consumer promotes the armed pair
+| when it takes the command, so the command is the last write (a frame
+| between them would otherwise take a command whose owner is not written
+| yet).  Clobbers d0-d2/a0.
+.arm_key:
+        move.l  %d3,-(%sp)
+        move.l  %d3,%d1
+        bsr.w   .pck_encode              | d3 = pitch byte, d2 = octave shift
+        lea     poly_armed_key(%pc),%a0
+        move.b  %d1,(%a0,%d4.l)
+        lea     poly_armed_shift(%pc),%a0
+        move.b  %d2,(%a0,%d4.l)
+        move.l  %d4,%d0
+        lsl.l   #5,%d0
+        lea     (LIVE_LOCKS).l,%a0
+        move.b  %d3,(%a0,%d0.l)
+        lea     (PENDING_COMMANDS).l,%a0
+        moveq   #CMD_TRIGGER,%d0
+        move.l  %d0,(%a0,%d4.l*4)
+        move.l  (%sp)+,%d3
+        rts
+
+| Owner d1 -> d3 = stock's PTCH lock byte, d2 = octave shift; d0 clobbered.
+| A panel key k plays pitch k mod 12 of octave k/12 - 1 (the shift reaches
+| the increment in poly_increment_shift); a MIDI note n takes stock's own
+| MIDI lock, 5n - 100, and no shift.
 .pck_encode:
+        cmpi.l  #PANEL_KEYS,%d1
+        bcs.s   .pcke_panel
+        move.l  %d1,%d3
+        subi.l  #MIDI_KEY,%d3
+        move.l  %d3,%d0
+        lsl.l   #2,%d3
+        add.l   %d0,%d3
+        subi.l  #100,%d3
+        moveq   #0,%d2
+        rts
+.pcke_panel:
         move.l  %d1,%d0
         moveq   #-1,%d2
 .pcke_octave:
@@ -1037,9 +1346,72 @@ poly_chromatic_key:
         addq.l  #4,%d3
         rts
 
-| d0=track, d1=stock chromatic pitch byte. Stop every matching primary or
-| extension record. This replaces the stock single-held-note release only for
-| POLY; the same pitch may legitimately exist in more than one stolen slot.
+| Detour at 0x400449f0 in the keyboard draw (0x40044920).  Its audio branch
+| boxes each track's held key from the eight bytes at STOCK_HELD (key + 1,
+| 0 = none), which POLY never sets: a POLY chord drew no box at all (octemu,
+| 25 Sep 2026).  The loop walks poly_kbd instead, HOLD_SLOTS entries per
+| track: stock's byte for any other machine, every held key for POLY (a MIDI
+| note n as key n - 72, the key stock's own note-out gives it).
+poly_kbd_fill:
+        lea     -24(%sp),%sp
+        movem.l %d0-%d3/%a0-%a1,(%sp)
+        lea     poly_kbd(%pc),%a1
+        moveq   #0,%d2
+.pkf_track:
+        move.l  %d2,%d0
+        bsr.w   poly_is_track            | d1/a0 scratch
+        tst.l   %d0
+        bne.s   .pkf_poly
+        lea     (STOCK_HELD).l,%a0
+        move.b  (%a0,%d2.l),(%a1)+
+        moveq   #HOLD_SLOTS-2,%d0
+.pkf_zero:
+        clr.b   (%a1)+
+        subq.l  #1,%d0
+        bpl.s   .pkf_zero
+        bra.s   .pkf_next
+.pkf_poly:
+        move.l  %d2,%d0
+        lsl.l   #3,%d0
+        lea     poly_held(%pc),%a0
+        adda.l  %d0,%a0
+        moveq   #HOLD_SLOTS-1,%d3
+.pkf_key:
+        mvz.b   (%a0)+,%d0
+        cmpi.l  #PANEL_KEYS,%d0
+        bcs.s   .pkf_value
+        cmpi.l  #0xff,%d0
+        beq.s   .pkf_none
+        subi.l  #MIDI_KEY+NOTE_OUT_BASE,%d0
+.pkf_value:
+        addq.l  #1,%d0
+        bra.s   .pkf_store
+.pkf_none:
+        moveq   #0,%d0
+.pkf_store:
+        move.b  %d0,(%a1)+
+        subq.l  #1,%d3
+        bpl.s   .pkf_key
+.pkf_next:
+        addq.l  #1,%d2
+        moveq   #8,%d0
+        cmp.l   %d0,%d2
+        bcs.s   .pkf_track
+        movem.l (%sp),%d0-%d3/%a0-%a1
+        lea     24(%sp),%sp
+        lea     poly_kbd(%pc),%a2
+        jmp     (0x400449f6).l
+
+| Detour at 0x40044b5c: the draw loop's step and end test, over poly_kbd.
+poly_kbd_next:
+        addq.l  #1,%a2
+        cmpa.l  #poly_kbd_end,%a2
+        bne.s   1f
+        jmp     (0x40044b68).l
+1:      jmp     (0x40044abc).l
+| d0=track, d1=owner key. Stop every matching primary or extension record.
+| This replaces the stock single-held-note release only for POLY; the same
+| key may legitimately own more than one stolen slot.
 poly_release_note:
         lea     -20(%sp),%sp
         movem.l %d2-%d3/%a0-%a2,(%sp)
@@ -1090,7 +1462,7 @@ poly_release_note:
         rts
 
 | Called where the frame consumer has finished copying and clearing the live
-| lock block.  Re-arm one queued pitch for the following frame, then replay
+| lock block.  Re-arm one queued key for the following frame, then replay
 | the displaced clear/LEA sequence.  Spreading a chord over adjacent 16-sample
 | frames prevents the stock one-command mailbox from collapsing its presses.
 | A press (or the re-arm below) leaves its key and octave shift ARMED; the
@@ -1100,7 +1472,7 @@ poly_release_note:
 | here -> initializer -> recompute -> render), so re-arming the next queued
 | key overwrote the key of the note about to start -- it played the right
 | pitch under the wrong key and octave, and the chord's last voice owned no
-| key and never released (octemu, 22 Sep 2026).
+| key and never released (octemu, 22 Sep 2026).  d4 = track (stock's).
 poly_chord_dequeue:
         lea     -24(%sp),%sp
         movem.l %d0-%d3/%a0-%a1,(%sp)
@@ -1125,46 +1497,15 @@ poly_chord_dequeue:
         move.b  %d0,(%a0,%d4.l)
 .pcd_promoted:
         lea     poly_chord_count(%pc),%a0
-        mvz.b   (%a0,%d4.l),%d2
+        tst.b   (%a0,%d4.l)
         beq.s   .pcd_done
-
-        move.l  %d4,%d0
-        move.l  %d0,%d1
-        add.l   %d0,%d0
-        add.l   %d1,%d0                  | track * 3
-        lea     poly_chord_notes(%pc),%a1
-        move.b  (%a1,%d0.l),%d3
-        cmpi.l  #2,%d2
-        bcs.s   .pcd_no_second
-        move.b  1(%a1,%d0.l),%d1
-        move.b  %d1,(%a1,%d0.l)
-.pcd_no_second:
-        cmpi.l  #3,%d2
-        bcs.s   .pcd_store
-        move.b  2(%a1,%d0.l),%d1
-        move.b  %d1,1(%a1,%d0.l)
-.pcd_store:
-        subq.l  #1,%d2
-        move.b  %d2,(%a0,%d4.l)
-        lea     poly_armed_key(%pc),%a0
-        move.b  %d3,(%a0,%d4.l)
-        move.l  %d3,%d1
-        bsr.w   .pck_encode              | d3=pitch byte, d2=octave shift
-        lea     poly_armed_shift(%pc),%a0
-        move.b  %d2,(%a0,%d4.l)
-        move.l  %d4,%d0
-        lsl.l   #5,%d0
-        lea     (LIVE_LOCKS).l,%a1
-        move.b  %d3,(%a1,%d0.l)
-        lea     (PENDING_COMMANDS).l,%a1
-        moveq   #29,%d0
-        move.l  %d0,(%a1,%d4.l*4)
+        bsr.w   .queue_pop                | d3 = the oldest queued key
+        bsr.w   .arm_key
 .pcd_done:
         movem.l (%sp),%d0-%d3/%a0-%a1
         lea     24(%sp),%sp
         lea     0x46c802a6.l,%a0          | displaced instruction
         jmp     (CONTINUE_CHORD_DEQUEUE).l
-
 | Explicit initialization is intentional: this runtime is copied from the
 | loader image and is not a zeroed BSS.
         .balign 4
@@ -1194,6 +1535,11 @@ poly_extra_shift:
         .zero   24
 poly_next:
         .zero   8
+poly_held:
+        .fill   8*HOLD_SLOTS,1,0xff         | keys held per track, 0xff = none
+poly_kbd:
+        .zero   8*HOLD_SLOTS                | the keyboard draw's boxes, key + 1
+poly_kbd_end:
         .balign 4
 poly_extra_increment:
         .zero   96                          | 24 saved Q26 increments

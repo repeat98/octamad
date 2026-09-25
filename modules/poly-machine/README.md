@@ -32,7 +32,13 @@ persistence.
   one audio frame are accepted, extras are queued over the next three
   16-sample frames, and releasing a key stops exactly the voice that key
   started. When a track's last key is up, the track goes back to the
-  sequencer, as stock does.
+  sequencer, as stock does. The on-screen keyboard boxes every held key
+  (stock boxes only the last one pressed), and AUDIO NOTE OUT sends a note
+  on and off for each key.
+- MIDI chromatic play (notes 72..96 on the track's channel, AUDIO NOTE IN on)
+  is polyphonic the same way: a chord arriving in one MIDI packet plays every
+  note, each note-off stops its own voice, and held MIDI notes are boxed on
+  the keyboard too.
 - Octaves (FUNC+LEFT/RIGHT on the keyboard) walk 0..2 and follow stock's
   mapping: the lowest octave is -12 semitones. Pitches above +24 semitones
   from the sample cannot be fetched in one 16-sample chunk (the caller's
@@ -46,16 +52,21 @@ persistence.
 
 ## Current limits
 
-- Emulator-qualified (octemu, 22 Sep 2026), not yet hardware-qualified.
+- Emulator-qualified (octemu, 22 and 25 Sep 2026), not yet hardware-qualified.
+- In octemu a track is POLY only after SRC SETUP (double-click SRC) -> POLY ->
+  YES; the screen then reads `SRC>POLY`. A track that reads `SRC>FLEX` plays
+  one voice, as stock.
 - `POLY` uses FLEX/RAM sample behavior; it is not a polyphonic STATIC streamer.
 - An extension keeps the pitch its note had when it was stolen: later pitch
   changes (PTCH knob, LFO, p-locks) reach only the newest voice. RATE, sample
   selection and other p-locks remain track-wide.
 - Extension voices are resampled by linear interpolation; off-band energy
   measured at about -60 dB, level with the stock voice alone.
-- MIDI chromatic play keeps the stock single-voice behaviour.
-- A key released before its queued press has played (more than four presses
-  in one frame) is not matched.
+- A released key stops its voice at once (no AMP release per voice); only the
+  track's last key up releases the AMP envelope, as stock's key release does.
+- Live recording of PANEL chromatic keys on a POLY track is not wired: POLY's
+  key handler returns before stock's recorder calls (`0x40042d1c`; read from
+  the code, not tried). MIDI notes keep stock's recorder event.
 - Timestretch polyphony is not implemented.
 - The platform reserves 10 MiB of DRAM, leaving 12,895 6 KiB pages (about
   75 MiB) for samples/recorders, versus 14,602 pages in stock.

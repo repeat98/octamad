@@ -1,21 +1,72 @@
 # Poly Machine implementation status
 
-Updated: 2026-09-22 (image 93, packaged as `POLY93`. Image 92 / `POLY92`
-had two bugs found by hand in the emulator -- a chord pressed all at once
-played one note, and FUNC+RIGHT past octave 3 hung the UI -- fixed in 93;
-do not flash 92)
+Updated: 2026-09-25 (image 94, packaged as `POLY94`: the keyboard boxes every
+held key, MIDI chromatic play is polyphonic. Image 93 is superseded, 92 must
+not be flashed -- see the 93 notes below)
 
 This file is the engineering handoff for the `poly-machine` remix.
 
 ## Where it stands
 
-`out/OCTATRACK_POLY93.bin` (card) and `out/OCTATRACK_OS1.40C_POLY93.syx`
-(MIDI) are built from this tree; the packed `mainos_bus.bin` was compared byte
-for byte with the image every result below was measured on (0 bytes differ).
-`make check REMIX=poly-machine` passes (357 PASS, no FAIL). Not yet flashed.
+`out/OCTATRACK_POLY94.bin` (card) and `out/OCTATRACK_OS1.40C_POLY94.syx`
+(MIDI) are built from this tree, and `out/POLY94_OCTEMU/play.sh` boots the
+same image in octemu on a card whose T1 is already POLY with a tone loaded.
+`make check REMIX=poly-machine` passes (374 PASS, no FAIL). Not yet flashed.
 
-Measured under octemu (with the uncached-alias fix below), walking a fresh
-card on which T2 starts as STATIC:
+## Image 94 (25 Sep 2026), measured under octemu
+
+The user played POLY93 by hand in octemu and reported no polyphony and no
+multiple key marks. Two separate causes:
+
+1. **The play card booted T1 as FLEX** (Part machine byte 1, screen
+   `SRC>FLEX`), and POLY engages only once SRC SETUP commits POLY. Replayed
+   with human timing (TRIG1, +30 ms TRIG5, +40 ms TRIG8) on that card: FLEX
+   gave one voice; after SRC SETUP -> POLY -> TONE220 the same chord gave
+   three voices, 110 / 138.6 / 164.8 Hz within 1 dB. Not a code defect; the
+   new package boots on POLY.
+2. **POLY drew no key box at all** (a code defect, fixed). The keyboard draw
+   `0x40044920` boxes one held key per track from `0x460d171d[t]`, which
+   POLY's key handler never set. `poly_kbd_fill` / `poly_kbd_next` point the
+   draw loop at a list of eight entries per track: stock's byte for other
+   machines, every held key for POLY.
+
+| step (T1 POLY, TONE220, T2 selected for MIDI) | result |
+|---|---|
+| TRIG1 / +TRIG5 / +TRIG8 held | 1 / 2 / 3 boxes, on C, E, G |
+| release TRIG5 | boxes on C and G; 138.6 Hz at -97 dB, 110 and 164.8 Hz held |
+| release all | no box; silence (-6 dB RMS, int16) |
+| MIDI ch 1: 72, 76, 79 in ONE packet | 3 voices owned by 72/76/79, 110 / 138.6 / 164.8 Hz within 1 dB |
+| MIDI note-off 76 | its voice stops (-97 dB); gate bit stays set |
+| MIDI note-off 72, 79 | all voices off, held set empty, gate bit clear, silence |
+| MIDI legato 72 -> 76, then off 72 | 76 alone (72 at -95 dB) |
+| MIDI note-on 76 velocity 0 | released like a note-off; a ~0.2 s tail at -32 dB, then silence |
+
+Also in 94:
+
+- **MIDI chromatic notes** (`0x4000e746` note-on, `0x4000dfd4` note-off)
+  press and release POLY keys through the same path as the panel: owner
+  `0x80 + note`, queued behind a busy mailbox, each note-off stops the voices
+  its note owns; the gate bit clears and stock's release posts only when the
+  track holds no key.
+- **Races closed**: presses and releases run with interrupts masked (stock's
+  idiom at `0x40006844`), and the armed key is written BEFORE the trigger
+  command. Image 93 wrote the command first, so a frame landing between the
+  two writes took a command whose owner was not written yet (inferred from
+  the code; a window of a few instructions, never observed).
+- **A queued or armed press released before it played** is dropped or
+  withdrawn (stock's note-off overwrites the command the same way), instead
+  of playing later with no key to stop it.
+- **Stock parity on the panel**: AUDIO NOTE OUT sends each key's note on/off
+  (`0x4003f3a8`, key + 72); a press with `0x8000004c` bit 0 clear (INT off)
+  triggers nothing; stock's release-held routine (`0x40043728`, track and
+  mode changes) releases every panel key held on a POLY track
+  (`poly_release_held`). The last two are read from the code, not exercised.
+- `tools/hw/ot_spec.py` names machine 5 POLY.
+
+## Image 93 (22 Sep 2026), measured under octemu
+
+With the uncached-alias fix below, walking a fresh card on which T2 starts
+as STATIC:
 
 | step | result |
 |---|---|
@@ -102,14 +153,18 @@ resampler). Wide chords cost more; not measured.
 
 - Hardware: nothing above has run on a unit. CPU headroom with wide chords
   on eight tracks is the first thing to watch (see README).
+- A released key stops its voice at once, with no AMP release per voice; a
+  click is likely on a sustained sample (not measured). Only the track's last
+  key up releases the AMP envelope.
+- Live recording of panel chromatic keys on a POLY track: POLY's handler
+  returns before stock's recorder calls (`0x40042d1c`, read from the code).
 - The track-side glyph for a POLY track reads `M` (F for FLEX, S for STATIC):
   an out-of-range letter lookup, cosmetic, not located.
 - The second chooser copy (`0x40077a9c..`, hooks `poly_sample_ui_*`) is
   reached from some entry path other than SRC SETUP; that path was not
-  identified or exercised this session.
-- MIDI chromatic play is stock (one voice).
-- More than four presses in one control scan: queued presses released before
-  they play are not matched.
+  identified or exercised.
+- More than four presses in one control scan: the fifth and later are
+  dropped (queue of three behind the mailbox).
 - An extension keeps the pitch it was stolen with (no PTCH/LFO follow).
 
 ## ☠ Instrument notes (octemu), all measured
@@ -135,6 +190,14 @@ resampler). Wide chords cost more; not measured.
 - **Gestures**: chromatic mode = FUNC+DOWN (popup) then DOWN; octave =
   FUNC+LEFT/RIGHT; SRC SETUP knobs need several detents per step
   (`"times":8`); SRC SETUP reopens in the pane it was left in.
+- **The keyboard draw runs on redraw events, not continuously**: a read
+  watch on `0x460d171d` armed 300 ms after a press saw no read in 3 s. A
+  quiet watch there says nothing about the draw.
+- **Headless octemu cannot `panelshot`** (it needs the window's skin); use
+  `screenshot` (the 128x64 display).
+- **MIDI into octemu**: `--midi` creates the CoreMIDI port `Octatrack
+  Emulator In`; a small CoreMIDI sender that waits on `[mark]` lines in the
+  log drove the 25 Sep tests (not in the tree; 60 lines of C).
 - **Another session's build can replace `out/mainos_bus.bin` mid-test**
   (happened 20:33): copy the image aside before emulating it.
 
@@ -144,7 +207,7 @@ From `/Users/jannikassfalg/coding/octamad`:
 
 ```sh
 make check REMIX=poly-machine
-make image REMIX=poly-machine BUILD=93 VERSION=POLY93
+make image REMIX=poly-machine BUILD=94 VERSION=POLY94
 python3 tools/harness/benchmark_polyphony.py --project <dir> --image <bin> \
   --work out/polyphony-benchmark-<n>
 ```

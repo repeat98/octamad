@@ -95,6 +95,23 @@ MODULE = Module(
                "drain one queued chromatic press per frame", pad_to=10),
         Detour(0x40045918, H("7401b5b9460d16fc"), "polyphony", "poly_octave_button",
                "POLY walks octaves 0..2 where stock toggles two", pad_to=8),
+        # MIDI chromatic play (notes 72..96 on a track's channel) writes the
+        # same one-command mailbox from the MIDI task, and its note-off
+        # releases only the track's single held note: on POLY a MIDI chord
+        # collapsed when its notes shared a frame, and every note but the
+        # last rang on after its note-off.
+        Detour(0x4000E746, H("721d2b812c007113"), "polyphony", "poly_midi_note_on",
+               "a MIDI chromatic note-on presses a POLY key (queued, owned)", pad_to=8),
+        Detour(0x4000DFD4, H("73107113b081661c"), "polyphony", "poly_midi_note_off",
+               "a MIDI chromatic note-off releases the voices its note owns", pad_to=8),
+        Detour(0x400437B6, H("41f9460d171d"), "polyphony", "poly_release_held",
+               "a track or mode change releases every panel key held on POLY"),
+        # The keyboard draw boxes one held key per track from 0x460d171d,
+        # which POLY never set: a POLY chord drew no box (octemu, 25 Sep).
+        Detour(0x400449F0, H("45f9460d171d"), "polyphony", "poly_kbd_fill",
+               "the chromatic keyboard boxes every key held on a POLY track"),
+        Detour(0x40044B5C, H("528ab5fc460d1725"), "polyphony", "poly_kbd_next",
+               "the keyboard draw loop walks the POLY box list", pad_to=8),
     ),
     pokes=(
         Poke(0x4000244E, H("7204"), H("7205"),

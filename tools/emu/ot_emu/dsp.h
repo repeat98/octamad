@@ -48,6 +48,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -108,6 +109,12 @@ namespace ot
 		uint32_t pc(int _core) const;
 		bool bootFinished(int _core) const;
 		uint64_t executed(int _core) const;
+		// Actual interpreter work only. Idle fast-forward is reported separately.
+		void beginWorkProfile();
+		void endWorkProfile();
+		uint64_t profileWork(int _core) const;
+		uint64_t profileSkipped(int _core) const;
+		const std::map<uint32_t, uint64_t>& profilePcs(int _core) const;
 		uint64_t hostWordsIn(int _core) const;		// words the host sent (ROM + HDI08)
 		uint64_t hostWordsOut(int _core) const;		// words the host took back
 		uint64_t hostCommands(int _core) const;

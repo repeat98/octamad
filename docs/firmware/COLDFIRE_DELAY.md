@@ -130,9 +130,13 @@ Per eight-track 16-sample frame under the port's instruction meter (his
 | case | instructions |
 |---|---|
 | stock DELAY ×8, original | 7,628 |
-| stock DELAY ×8, hooked, every track stock | 7,892 |
-| Tape Echo ×8, settled | ~23,000 |
-| Tape Echo ×8, all controls moving | up to 32,355 |
+| stock DELAY ×8, hooked, every track stock | 7,900 (7,892 in PR #357) |
+| Tape Echo ×8, settled full wet, WOW=44 | 15,283 (~23,000 in PR #357) |
+| Tape Echo ×8, MIX=90, moving TIME | 16,459 (25,271 before 23 Sep 2026) |
+| Tape Echo ×8, all controls moving | up to 21,547 (32,355 in PR #357) |
+
+✅ Current figures after Tape Echo's stock-style EMAC rewrite (23 Sep 2026,
+`modules/tapeecho/VOICING.md`); the PR's figures are kept beside them.
 
 Executed instructions, ColdFire, complete routine, not cycles: the meter
 prices an uncached SDRAM access at one cycle and sees no cache, DMA stall

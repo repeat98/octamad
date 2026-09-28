@@ -78,6 +78,9 @@ Statuses:
 | WP-D5 Parameter pages | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/HANDOFF-UI.md` | panel gate proves page-1 SYN 1, page-2 SYN 7 and ENG (one detent per engine, 25 Sep) |
 | WP-D6 The info box | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/HANDOFF-UI.md` | panel RAM shows `P02 TRX-SD` and name detours; visible LCD result pending |
 | WP-D7 MD focus: the kit editor in place on SRC | claimed | `machinedrum` | this commit | 2026-09-28 | | steps 1-4 done: both machine lists reach and open on MACHINEDRUM (row 5); on the MD track's SRC page an input layer takes the trigs (select + play a part) and YES (the engine list), and the page redraws at once; all MD gates and `make check` pass, octemu screenshots; next: a port gate for the layer, the trig LEDs |
+| WP-D8 The ENGINE window | claimed | `machinedrum` | | 2026-09-28 | | full-size engine chooser with descriptions and FUNC+YES preview |
+| WP-D9 The part's pages (SRC, SRC SETUP, AMP, LFO) | todo | | | | | AMP = VOL + PAN (the user, 28 Sep) |
+| WP-D10 The MD LFO | todo | | | | | ColdFire-side, per part |
 | WP-E1 Persistence | review | `machinedrum` | this commit | 2026-09-25 | `machinedrum_reports/WP-E1.md` | 64 kits (one per Part) + 256 patterns: `machinedrum.work` on each bank save/load, the resident bank in SRAM; port gate `verify_md_persist.py`, SYNC and power cycle in octemu; saved-Part kits and SAVE TO NEW open |
 | WP-E2 MIDI | todo | | | | | |
 | WP-E3 Admission | todo | | | | | |
@@ -487,6 +490,32 @@ leaves the trig held (`MAINMENU.md` §6b).
 5. The trig LEDs with REC off: parts with steps lit, the selected part
    blinking.
 6. Gates under the port for each step; an octemu package for the user.
+
+**The user's review of D7 (28 Sep 2026, octemu).** The stock scrolling
+list is too small for the engines; the MD track's pages should all belong
+to the selected part; how do the MD's eight encoders map onto six? Decided:
+
+- **WP-D8 The ENGINE window.** YES on the MD track's SRC page opens a
+  full-size window (the menu window's size, drawn with the stock routines
+  tempo-bus uses): the engines by family on the left, the highlighted
+  engine's full name, a one-line description and its eight parameter names
+  on the right. UP/DOWN move, LEFT/RIGHT change family, FUNC+YES previews
+  (the selected part plays that engine, the kit unchanged), YES takes it,
+  NO leaves. Engine names come from the user's OS at build time; the
+  descriptions are ours.
+- **WP-D9 The part's pages.** On the MD track: SRC = SYN 1-6 (A-F), SRC
+  SETUP = SYN 7-8 (A-B; the OT's convention for a machine's second set of
+  knobs; knob-push combos were rejected as MKII-only and hidden), AMP =
+  the part's VOL and PAN (the user, 28 Sep: VOL + PAN only; the MD's
+  per-part effects stay out, to be revisited after the BURN measurement),
+  LFO = the part's own MD LFO. ENG leaves SRC SETUP for the ENGINE window.
+  First measure whether the parent track's AMP VOL/BAL reach the MD's
+  audio (the MD is in the FX2 slot); its AMP and LFO controls are not
+  reachable on the MD track afterwards.
+- **WP-D10 The MD LFO.** One LFO per part as the MD's (speed, depth, shape
+  mix; destination part and parameter, two shapes, trig mode), computed on
+  the ColdFire before the records are built, as the MD's own tick does
+  (`MACHINEDRUM_MACHINE.md`, 0x204c94 / 0x2069bc). No DSP cost.
 
 ### Phase E: completion (M4)
 

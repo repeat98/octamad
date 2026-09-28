@@ -12,8 +12,14 @@
 |
 | The signature: 'M', 'D', 1 at Part + 0x2a + track x 30 + 18 (the working
 | Part and its SRAM copy 0x100a4ece + part x 0x18b2, as the stock commit
-| writes the type byte). The chooser row 6 (MACHINEDRUM) commits FLEX plus
-| the signature; any other row clears it. Row 5 stays reserved for POLY.
+| writes the type byte). The chooser row 5 (MACHINEDRUM, after PICKUP)
+| commits FLEX plus the signature; any other row clears it. Both machine
+| lists (SRC SETUP's and the track's own) hold six rows, which the track's
+| list shows without scrolling: until 28 Sep 2026 a RESERVED row 5 (for
+| POLY) put MACHINEDRUM on a seventh row that list never drew, so the MD
+| could not be chosen there. A remix with POLY and the MD would need both
+| rows and a scrolling list. On an MD track both lists open on MACHINEDRUM
+| (md_setup_open, md_chooser_open), so YES keeps the MD.
 |
 | Displays that name the type of a track resolve MD through md_ui_md_type,
 | the working-Part address of the MD track's type byte, which the control
@@ -27,12 +33,14 @@
         .global md_pack_fx2
         .global md_name_a, md_name_b
         .global md_setup_row, md_chooser_row
+        .global md_setup_open, md_chooser_open
+        .global md_src_commit2, md_setup_edit6, md_setup_draw6
         .global md_resolve_pb
         .global md_trig_key
         .global md_sig_check
         .global md_validate
 
-        .equ    MD_ROW, 6                 | the chooser row
+        .equ    MD_ROW, 5                 | the chooser row
         .equ    FLEX, 1
         .equ    SRC_CURSOR, 0x460d5c30
         .equ    BANK_PTR, 0x46c82456
@@ -123,15 +131,10 @@ md_machine_name:
         move.l  4(%sp),%d0
         cmpi.l  #MD_ROW,%d0
         beq.s   1f
-        cmpi.l  #5,%d0
-        beq.s   2f
         move.l  %d2,-(%sp)               | displaced stock formatter
         move.l  8(%sp),%d1
         jmp     (0x400334de).l
 1:      lea     md_name(%pc),%a0
-        move.l  %a0,%d0
-        rts
-2:      lea     md_reserved_name(%pc),%a0
         move.l  %a0,%d0
         rts
 
@@ -142,8 +145,7 @@ md_src_names:
         .long   0x400b7c67               | THRU
         .long   0x400b5413               | NEIGHBOR
         .long   0x400b7a63               | PICKUP
-        .long   md_reserved_name          | row 5: reserved for POLY
-        .long   md_name
+        .long   md_name                   | row 5 (MD_ROW)
 
 | The admission check: a0 = the Part base, d0 = this track (0-based).
 | Returns d0 = 1 if the track is T1-T4 and no other track of T1-T4 in the
@@ -182,8 +184,6 @@ md_admit:
 | byte of track d1, d0 = part x stride, d2 = part, a1 = the bank, d4 = the
 | chosen row. Displaced: mvs.b (a0),d3 / move.b d4,(a0) / add.l d1,d0.
 md_main_commit:
-        cmpi.l  #5,%d4
-        beq.w   .reserved
         lea     -12(%sp),%sp
         movem.l %d0-%d1/%a0,(%sp)
         movea.l %a1,%a0                  | the Part base
@@ -216,22 +216,24 @@ md_main_commit:
         jsr     (0x4005a2b8).l
         addq.l  #8,%sp
         jmp     (0x4007989c).l
-.reserved:
-        pea     0x30.w
-        pea     md_reserved_reject(%pc)
-        jsr     (0x4005a2b8).l
-        addq.l  #8,%sp
-        jmp     (0x4007989c).l
 
 | SRC SETUP's machine commit (0x4005a616): a0 = the working Part's type
-| byte of track d2, d0 = part x stride, d3 = part, a1 = the bank. The
-| stock commit stores the cursor; for MD it stores FLEX and leaves the
-| cursor at FLEX, so the code after the store (slot assignment) takes
-| FLEX's path. A refusal restores the cursor to the stored machine.
+| byte of track d2, d0 = part x stride, d3 = part, a1 = the bank. Stock
+| stores d1, the cursor, into the Part and its SRAM copy; for MD d1 is
+| FLEX and the cursor stays on MACHINEDRUM. After the store stock reads
+| the cursor only to sync the STATIC (0) or FLEX (1) slot list, which the
+| MD row skips (read 28 Sep 2026, 0x4005a67c-0x4005a712). A refusal
+| restores the cursor to the stored machine. The same handler has a
+| second store of the cursor into the type byte (0x4005a850, another key
+| action, the same registers), which takes the same path: the Part never
+| holds a raw row.
 md_src_commit:
+        pea     (0x4005a61c).l           | back to the YES commit's store
+        bra.s   md_src_common
+md_src_commit2:
+        pea     (0x4005a856).l           | back to the second path's store
+md_src_common:
         move.l  (SRC_CURSOR).l,%d1
-        cmpi.l  #5,%d1
-        beq.w   .sr_reserved
         lea     -12(%sp),%sp
         movem.l %d0/%d2/%a0,(%sp)
         movea.l %a1,%a0
@@ -246,8 +248,7 @@ md_src_commit:
         move.l  %d2,%d0
         moveq   #1,%d1
         bsr     md_sig_write
-        moveq   #FLEX,%d1
-        move.l  %d1,(SRC_CURSOR).l
+        moveq   #FLEX,%d1                | the Part stores FLEX
         bra.s   .sc_go
 .sc_other:
         move.l  %d1,-(%sp)
@@ -257,7 +258,7 @@ md_src_commit:
 .sc_go:
         movem.l (%sp),%d0/%d2/%a0
         lea     12(%sp),%sp
-        jmp     (0x4005a61c).l
+        rts
 .sc_refuse:
         movem.l (%sp),%d0/%d2/%a0
         lea     12(%sp),%sp
@@ -268,16 +269,61 @@ md_src_commit:
         pea     md_reject_name(%pc)
         jsr     (0x4005a2b8).l
         addq.l  #8,%sp
-        jmp     (0x4005a61c).l
-.sr_reserved:
-        moveq   #0,%d1
-        move.b  (%a0),%d1
-        move.l  %d1,(SRC_CURSOR).l
-        pea     0x30.w
-        pea     md_reserved_reject(%pc)
-        jsr     (0x4005a2b8).l
-        addq.l  #8,%sp
-        jmp     (0x4005a61c).l
+        rts
+
+| SRC SETUP opening (0x400585dc, measured under the port 28 Sep 2026):
+| stock reads the track's type into d3/d4, builds the right half from
+| PB_TABLE[d4] and sets the machine list's cursor to d4 (0x40058614). An
+| MD track reads as MD_ROW here, so the window opens on MACHINEDRUM with
+| the MD page (md_ctl.c points PB_TABLE[MD_ROW] at it). Displaced:
+| move.b (a0),d3 / mvs.b d3,d4 / pea 0x400bb704.
+md_setup_open:
+        move.b  (%a0),%d3
+        move.l  %d0,-(%sp)
+        mvs.b   %d3,%d0
+        bsr     md_row_type
+        move.l  %d0,%d3
+        move.l  (%sp)+,%d0
+        mvs.b   %d3,%d4
+        pea     (0x400bb704).l
+        jmp     (0x400585e6).l
+
+| SRC SETUP addresses a page-2 byte as Part + 0x1da + 30 x track +
+| 6 x cursor + slot: the knob editor (0x4003a474, at 0x4003a52e) and the
+| value drawer (at 0x4003cd98), each right after reading the descriptor
+| PB_TABLE[cursor]. On MACHINEDRUM's row the descriptor is the MD page and
+| the bytes are the track's FLEX slot, where the Part keeps them: 6 x row 5
+| is the NEXT track's slot (verify_md_ui's ENG step caught ENG landing
+| there, 28 Sep 2026). Displaced: the four instructions of each x 6.
+md_setup_edit6:
+        cmpi.l  #MD_ROW,%d2
+        bne.s   1f
+        moveq   #FLEX,%d2
+1:      move.l  %d2,%d0
+        lsl.l   #3,%d0
+        add.l   %d2,%d2
+        sub.l   %d2,%d0
+        jmp     (0x4003a536).l
+md_setup_draw6:
+        cmpi.l  #MD_ROW,%d6
+        bne.s   1f
+        moveq   #FLEX,%d6
+1:      move.l  %d6,%d7
+        lsl.l   #3,%d7
+        add.l   %d6,%d6
+        sub.l   %d6,%d7
+        jmp     (0x4003cda0).l
+
+| The track's own machine list (double-tap the track key, then LEFT) syncs
+| its cursor from the type in 0x40078850 (0x40078886, measured 28 Sep
+| 2026): an MD track opens on MACHINEDRUM. Displaced: mvs.b (a0),d0 /
+| move.l d0,-(sp) / pea 0x460e7386.
+md_chooser_open:
+        mvs.b   (%a0),%d0
+        bsr     md_row_type
+        move.l  %d0,-(%sp)
+        pea     (0x460e7386).l
+        jmp     (0x40078890).l
 
 | The frame builder's per-track loop, run every frame: find the MD track,
 | tell the control engine which it is, and select the MD's DSP dispatch
@@ -519,10 +565,6 @@ md_ui_name:
         .text
 md_name:
         .asciz  "MACHINEDRUM"
-md_reserved_name:
-        .asciz  "RESERVED"
 md_reject_name:
         .asciz  "MD: T1-T4, 1/PART"
-md_reserved_reject:
-        .asciz  "TYPE 5 RESERVED"
         .balign 2

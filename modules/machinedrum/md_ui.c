@@ -47,13 +47,15 @@ enum {
     OT_TRACK_STRIDE = 0x91au,
     OT_FLEX_E = 0x400d3176u,         /* stock FLEX playback descriptor (E) */
     OT_FLEX_P = 0x400d31aeu,
-    OT_PB_TABLE = 0x400d5f38u,
+    OT_EMPTY_P = 0x400d34d2u,        /* NEIGHBOR's page: stock's entries 5 and 6 */
+    OT_PB_TABLE = 0x400d5f38u,       /* seven entries, by machine row */
     OT_ENC_CFG = 0x46c7dedeu,        /* per-encoder config, 20 bytes a slot */
     OT_ENC_STRIDE = 20u,
     OT_SETUP_EDIT = 0x4003a474u,     /* the SRC SETUP window's editor */
     OT_SETUP_ROW = 0x460d5c30u,      /* the machine row that window edits */
 };
 #define FLEX 1u
+#define MD_ROW 5u                    /* md_machine.s: MACHINEDRUM's row in both lists */
 
 /* Descriptor fields, E-relative (PARAM_PAGES.md section 2). */
 enum { D_ABBR = 0x3c, D_NAME = 0x41, D_PNAME = 0x4e, D_DEFAULT = 0x96, D_MIN = 0xa2,
@@ -301,7 +303,7 @@ unsigned md_ui_frame(void) {
     md_ui_md_track = (uint32_t)t;
     if (t < 0) {
         md_ui_md_type = 0;
-        U32(OT_PB_TABLE + 4 * FLEX) = OT_FLEX_P;
+        U32(OT_PB_TABLE + 4 * MD_ROW) = OT_EMPTY_P;
         u->shown_sel = u->lane_sel = 0xff;
         eng_gearing(u, 0);
         return 0;
@@ -310,11 +312,12 @@ unsigned md_ui_frame(void) {
     make_name(u);
     page_mirror(u, part, sram, (unsigned)t, md_kit_index);   /* bank x 4 + part */
     /* The SETUP window's readers index the table by its cursor, on the
-     * selected track: FLEX's entry is the MD page while that is the MD
-     * track (md_machine.s md_resolve_pb serves every track by itself). */
+     * selected track: MACHINEDRUM's row is the MD page while that is the
+     * MD track, which opens on that row (md_machine.s md_setup_open);
+     * md_resolve_pb serves every track's own page by itself. */
     unsigned md_shown = U8(OT_UI_TRACK) == (unsigned)t && md_desc_p;
-    U32(OT_PB_TABLE + 4 * FLEX) = md_shown ? md_desc_p : OT_FLEX_P;
-    eng_gearing(u, md_shown && U32(OT_SETUP_ROW) == FLEX);
+    U32(OT_PB_TABLE + 4 * MD_ROW) = md_shown ? md_desc_p : OT_EMPTY_P;
+    eng_gearing(u, md_shown && U32(OT_SETUP_ROW) == MD_ROW);
     lane_mirror(u, (unsigned)t);
     return (unsigned)t + 1;
 }

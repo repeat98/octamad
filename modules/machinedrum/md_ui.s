@@ -114,10 +114,10 @@ md_ui_frame:
 	jne .L17
 	st %d7
 	mov3q.l #-1,md_ui_md_track
-	move.l #1074606510,%d4
+	move.l #1074607314,%d4
 	clr.l md_ui_md_type
 	move.l #1073980532,%a0
-	move.l %d4,1074618172
+	move.l %d4,1074618188
 	move.b %d7,md_ui+1
 	move.b %d7,md_ui+6
 	cmp.l 1187503918.l,%a0
@@ -557,8 +557,8 @@ md_ui_frame:
 	cmp.l 62(%sp),%d0
 	jeq .L164
 .L75:
-	move.l #1074606510,%d2
-	move.l %d2,1074618172
+	move.l #1074607314,%d2
+	move.l %d2,1074618188
 	move.l #1073980532,%d3
 	cmp.l 1187503918.l,%d3
 	jeq .L78
@@ -638,8 +638,8 @@ md_ui_frame:
 	tst.l md_desc_p
 	jeq .L75
 	lea md_desc_p,%a0
-	mov3q.l #1,%d0
-	move.l (%a0),1074618172
+	mov3q.l #5,%d0
+	move.l (%a0),1074618188
 	cmp.l 1175280688.l,%d0
 	jeq .L76
 	move.l #1073980532,%d1

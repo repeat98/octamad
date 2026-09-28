@@ -286,6 +286,10 @@ verify-md-transport: ## Replay the captured kit through the ColdFire record tran
 verify-md-kit: ## The Machinedrum kit producer vs the MD's own captured trig records (needs OT_PROJECT and MD_EMU; CASES=all for every detent)
 	python3 tools/verify/verify_md_kit.py --cases $(or $(CASES),base)
 
+.PHONY: verify-md-focus
+verify-md-focus: ## The MD track's SRC page as the kit editor: trig -> part, the ENGINE window, FUNC+YES preview, YES takes it, PTN+trig still stock (needs OT_PROJECT and MD_EMU)
+	python3 tools/verify/verify_md_focus.py
+
 .PHONY: verify-md-seq
 verify-md-seq: ## The Machinedrum's embedded sequencer: lanes on the parent track's grid, locks, audio (needs OT_PROJECT and MD_EMU)
 	python3 tools/verify/verify_md_seq.py

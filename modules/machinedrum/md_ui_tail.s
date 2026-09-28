@@ -27,7 +27,7 @@ md_ui:
         .balign 4
         .global md_focus, md_layer
 md_focus:
-        .zero 1456
+        .zero 296
 md_layer:
         .long   0, md_layer_keys, md_layer_encs, 0, 0, -1, -1
 md_layer_keys:
@@ -43,5 +43,62 @@ md_layer_keys:
         .long   0, 0, 0, 0, 0
         .word   0, 0
 md_layer_encs:
+        .byte   0xff, 0
+        .long   0, 0, 0, 0, 0
+
+| WP-D8: the ENGINE window's layer. Its keys: the trigs (a part), UP/DOWN
+| (repeating, as TEMPO's), LEFT/RIGHT, YES, NO, and the page and track keys
+| held while it is open; FUNC as TEMPO's layer has it (0x400bb4ec: press
+| taken, stock's release, a sub-layer for FUNC + key: FUNC+YES previews).
+| Knobs A-F are held (a null handler swallows the turn), LEVEL scrolls.
+        .balign 4
+        .global md_eng_layer
+md_eng_layer:
+        .long   0, md_eng_keys, md_eng_encs, 0, 0, -1, -1
+md_eng_func:
+        .long   0, md_eng_fkeys, 0, 0, 0, -1, -1
+md_eng_keys:
+        .irp    k, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
+        .byte   \k, 0
+        .long   md_eng_key, md_eng_key, md_eng_key, 0, 0
+        .word   16, 0
+        .endr
+        .irp    k, 0x33, 0x20
+        .byte   \k, 0
+        .long   md_eng_key, 0, md_eng_key, 0, 0
+        .word   15, 5
+        .endr
+        .irp    k, 0x34, 0x21, 0x31, 0x32, 0x22, 0x23, 0x24, 0x25, 0x26, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17
+        .byte   \k, 0
+        .long   md_eng_key, 0, 0, 0, 0
+        .word   0, 0
+        .endr
+        .byte   0x2d, 0
+        .long   0, 0x400568e4, 0, md_eng_func, 0
+        .word   0, 0
+        .byte   0xff, 0
+        .long   0, 0, 0, 0, 0
+        .word   0, 0
+md_eng_fkeys:
+        .irp    k, 0x33, 0x20
+        .byte   \k, 0
+        .long   md_eng_key, 0, md_eng_key, 0, 0
+        .word   15, 5
+        .endr
+        .irp    k, 0x31, 0x32
+        .byte   \k, 0
+        .long   md_eng_key, 0, 0, 0, 0
+        .word   0, 0
+        .endr
+        .byte   0xff, 0
+        .long   0, 0, 0, 0, 0
+        .word   0, 0
+md_eng_encs:
+        .irp    k, 0, 1, 2, 3, 4, 5
+        .byte   \k, 0
+        .long   0, 0, 0, 0, 0
+        .endr
+        .byte   6, 0
+        .long   md_eng_level, 0, 0, 0, 0
         .byte   0xff, 0
         .long   0, 0, 0, 0, 0

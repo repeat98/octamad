@@ -148,18 +148,24 @@ void md_ui_select(unsigned key);
 #define MD_FOCUS_KEYS 17u                 /* trigs 0..15 and YES */
 typedef struct {
     uint32_t saved[MD_FOCUS_KEYS][3];     /* press, release, repeat under the layer */
-    const char *labels[MD_ENGINE_IDS];    /* the engine list */
-    void (*cbs[MD_ENGINE_IDS])(void);
     uint32_t mine;                        /* keys whose press the layer took; bit 16 YES */
-    uint32_t eng_sel;                     /* the list's selection (the list writes it) */
-    char names[MD_ENGINE_IDS][8];
-    uint8_t ids[MD_ENGINE_IDS];
-    uint8_t on, eng_n, pad;
+    uint32_t win;                         /* WP-D8: the ENGINE window, 0 = closed */
+    uint32_t win_mine;                    /* trigs whose press the window took */
+    uint8_t on, cur, n, top;              /* layer pushed; window: cursor, count, first row */
+    uint8_t ids[MD_ENGINE_IDS];           /* the playable engines, by id (families in order) */
+    uint8_t pad[3];
 } MdFocus;
 extern MdFocus md_focus;
-extern volatile uint32_t md_layer[7];
+extern volatile uint32_t md_layer[7], md_eng_layer[7];
 void md_layer_key(unsigned code, unsigned edge);
+void md_eng_key(unsigned code, unsigned edge);
+void md_eng_level(unsigned index, int delta);
+void md_eng_close(void);
 void md_ui_tick(void);
+/* WP-D8's preview (md_ctl.c apply_kit): bit 31 on, bits 8-11 the part,
+ * bits 0-7 the engine. That part plays that engine with its defaults
+ * while it is set; the kit itself is unchanged. */
+extern volatile uint32_t md_preview;
 
 /* The engine table, the kits and the runtime (md_ctl_tail.s, handlers.s). */
 extern const MdEngine md_engines[MD_ENGINE_IDS];

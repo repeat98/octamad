@@ -229,8 +229,18 @@ static uint32_t take_trig_requests(void) {
  * every handler writes the words it returns), a synthesis change rebuilds
  * the record, and VOL/PAN/mute change the gain pair. */
 static void apply_kit(MdRun *r) {
+    uint32_t pv = md_preview;
     for (unsigned p = 0; p < MD_PARTS; ++p) {
         const MdPart *now = &md_kit_cur()->part[p];
+        MdPart heard;
+        if ((pv >> 31) && ((pv >> 8) & (MD_PARTS - 1)) == p) {  /* WP-D8 preview */
+            unsigned id = pv & 0xffu;
+            heard = *now;
+            heard.engine = (uint8_t)id;
+            for (unsigned i = 0; i < MD_SYN; ++i)
+                heard.syn[i] = md_engine_ok(id) ? md_engines[id].defaults[i] : 0;
+            now = &heard;
+        }
         MdPart *was = &r->shadow[p];
         if (r->started && same_part(now, was)) continue;
         if (!r->started || now->engine != was->engine) {

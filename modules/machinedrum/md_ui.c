@@ -25,7 +25,7 @@
 #include "md_ctl.h"
 
 _Static_assert(sizeof(MdUi) == 40 + MD_DESC_BYTES + 2, "md_ctl_tail.s ui allocation");
-_Static_assert(sizeof(MdFocus) == 1456, "md_ui_tail.s focus allocation");
+_Static_assert(sizeof(MdFocus) == 296, "md_ui_tail.s focus allocation");
 
 #define U8(a) (*(volatile uint8_t *)(a))
 #define U32(a) (*(volatile uint32_t *)(a))
@@ -319,42 +319,217 @@ enum {
     OT_KEY_ROWS = 0x46100b18u,       /* held keys: row code >> 3, bit code & 7 */
     OT_LAYER_PUSH = 0x40031494u,
     OT_LAYER_POP = 0x4003146cu,
-    OT_LIST_OPEN = 0x4006d94cu,      /* (count, sel, &sel, labels, callbacks) */
     OT_DRAW_PAGE = 0x4004d780u,      /* the main page (a page switch: 0x4005577e) */
     OT_DRAW_KNOBS = 0x4004d948u,     /* (slot): its knobs, -1 all */
     KEY_YES = 0x31u, KEY_FUNC = 0x2du,
 };
 typedef void (*KeyFn)(unsigned code, unsigned edge);
 typedef void (*LayerFn)(volatile uint32_t *layer);
-typedef void (*ListFn)(unsigned n, unsigned sel, uint32_t *selp,
-                       const char **labels, void (**cbs)(void));
-
 static unsigned held(unsigned code) {
     return U8(OT_KEY_ROWS + (code >> 3)) >> (code & 7) & 1u;
 }
 
-/* The list closes itself, stores the selection and then calls this. */
-static void eng_pick(void) {
-    MdFocus *f = &md_focus;
-    if (f->eng_sel < f->eng_n)
-        set_engine(&md_kit_cur()->part[md_ui.sel & (MD_PARTS - 1)], f->ids[f->eng_sel]);
+/* ---- WP-D8: the ENGINE window ---------------------------------------
+ * YES on the MD track's SRC page opens it at the menu window's size
+ * (118 x 64, as tempo-bus's): the selected part's engines by family on the
+ * left, the highlighted engine's description and its eight parameter names
+ * on the right. UP/DOWN move, LEFT/RIGHT change family, LEVEL scrolls, a
+ * trig selects that part, FUNC+YES previews (md_preview: the part plays the
+ * highlighted engine with its defaults, the kit unchanged), YES takes it,
+ * NO leaves. It is made and closed the way the stock scrolling list makes
+ * its popup (0x4006d94c, 0x4006d754) and drawn with the calls its refresh
+ * makes (0x4006d784): the surface is the window + 36, {w, h}, y counted
+ * from the bottom, a text's y its bottom row, rows 7 pixels apart. */
+enum {
+    OT_WIN_NEW = 0x4005829cu,        /* (w, h, 0, 0, 3, closed) -> the window */
+    OT_WIN_SHOW = 0x40056f4cu,       /* (window) */
+    OT_WIN_FREE = 0x40055db4u,       /* (&window): frees it, zeroes the cell */
+    OT_SCREEN_DIRTY = 0x46c7c72cu,
+    OT_CLEAR = 0x40035624u,          /* (surface) */
+    OT_FONT = 0x400ba876u,
+    OT_TEXT = 0x40012bd8u,           /* (font, surface, x, y, limit, text) */
+    OT_RULE = 0x40011910u,           /* (surface, x, y, x2, 1) */
+    OT_INVERT = 0x40012254u,         /* (surface, x1, top, x2, bottom, -1) */
+    WIN_W = 118, WIN_H = 64, ROWS = 6,
+    KEY_UP = 0x33u, KEY_DOWN = 0x20u, KEY_LEFT = 0x34u, KEY_RIGHT = 0x21u, KEY_NO = 0x32u,
+};
+typedef void (*TextFn)(uint32_t font, uint32_t surf, int x, int y, int limit, const char *t);
+
+static void text(uint32_t surf, int x, int y, const char *t) {
+    ((TextFn)OT_TEXT)(OT_FONT, surf, x, y, -1, t);
 }
 
-static void eng_list(void) {
-    MdFocus *f = &md_focus;
-    if (!f->eng_n) {
-        f->eng_n = (uint8_t)choices(f->ids);
-        for (unsigned i = 0; i < f->eng_n; ++i) {
-            const char *name = md_engines[f->ids[i]].name;
-            for (unsigned c = 0; c < 6; ++c)
-                f->names[i][c] = name[0] && name[c] ? name[c] : '-';
-            f->names[i][6] = 0;
-            f->labels[i] = f->names[i];
-            f->cbs[i] = eng_pick;
-        }
+static void name6(char *o, unsigned id) {
+    const char *n = md_engines[id].name;
+    for (unsigned i = 0; i < 6; ++i) o[i] = n[i] ? n[i] : ' ';
+    o[6] = 0;
+}
+
+/* Ours, not the MD's: what the name and the parameter names make certain. */
+static const char *eng_desc(unsigned id) {
+    static const char keys[] = "BDB2SDS2XTCPRSCBCHOHHHCYMACLRCCCSNNSIM--";
+    static const char *const say[] = {
+        "Bass drum", "Bass drum 2", "Snare drum", "Snare drum 2", "Tom", "Hand clap",
+        "Rim shot", "Cowbell", "Closed hi-hat", "Open hi-hat", "Hi-hat", "Cymbal",
+        "Maracas", "Claves", "Ride cymbal", "Crash cymbal", "Sine", "Noise", "Impulse",
+        "Silent"};
+    const char *n = md_engines[id].name;
+    for (unsigned i = 0; i < sizeof say / sizeof say[0]; ++i)
+        if (keys[2 * i] == n[4] && keys[2 * i + 1] == n[5]) return say[i];
+    return "Percussion";
+}
+
+static const char *fam_name(unsigned id) {
+    switch (id >> 4) {
+    case 0: return "GND  basic tones";
+    case 1: return "TRX  analog drums";
+    case 2: return "EFM  FM drums";
+    case 4: return "P-I  physical models";
+    default: return "";
     }
-    f->eng_sel = choice_of(md_kit_cur()->part[md_ui.sel & (MD_PARTS - 1)].engine);
-    ((ListFn)OT_LIST_OPEN)(f->eng_n, f->eng_sel, &f->eng_sel, f->labels, f->cbs);
+}
+
+static unsigned fam_first(const MdFocus *f, unsigned i) {
+    while (i && f->ids[i - 1] >> 4 == f->ids[i] >> 4) --i;
+    return i;
+}
+
+static unsigned fam_end(const MdFocus *f, unsigned i) {
+    unsigned fam = f->ids[i] >> 4u;
+    while (i < f->n && f->ids[i] >> 4u == fam) ++i;
+    return i;
+}
+
+static void eng_draw(void) {
+    MdFocus *f = &md_focus;
+    if (!f->win) return;
+    uint32_t surf = f->win + 36;
+    int h = (int)U32(surf + 4);
+    ((void (*)(uint32_t))OT_CLEAR)(surf);
+    char buf[16], nm[8];
+    unsigned p = md_ui.sel & (MD_PARTS - 1), id = f->ids[f->cur];
+    /* the header: the part, then the family (nothing against the right
+     * edge, which the screen clips; about 4 pixels a character) */
+    buf[0] = 'P'; buf[1] = (char)('0' + (p + 1) / 10); buf[2] = (char)('0' + (p + 1) % 10);
+    buf[3] = 0;
+    text(surf, 3, h - 9, buf);
+    text(surf, 24, h - 9, fam_name(id));
+    ((void (*)(uint32_t, int, int, int, int))OT_RULE)(surf, 2, h - 12, WIN_W - 3, 1);
+    /* the family's engines, the cursor inverted */
+    unsigned first = fam_first(f, f->cur), end = fam_end(f, f->cur);
+    if (f->top < first || f->top > f->cur) f->top = (uint8_t)(f->cur < first + ROWS ? first : f->cur);
+    if (f->cur >= f->top + ROWS) f->top = (uint8_t)(f->cur - ROWS + 1);
+    for (unsigned r = 0; r < ROWS && f->top + r < end; ++r) {
+        int y = h - 20 - 7 * (int)r;
+        unsigned i = f->top + r;
+        name6(nm, f->ids[i]);
+        text(surf, 4, y, nm);
+        if (i == f->cur)
+            ((void (*)(uint32_t, int, int, int, int, int))OT_INVERT)(surf, 2, y + 5, 42, y - 1, -1);
+    }
+    /* the highlighted engine: what it is and its parameters */
+    text(surf, 48, h - 20, eng_desc(id));
+    const MdEngine *e = &md_engines[id];
+    for (unsigned r = 0; r < 4; ++r)
+        for (unsigned c = 0; c < 2; ++c) {
+            const char *pn = e->names[2 * r + c];
+            unsigned k = 0;
+            for (; k < 4 && pn[k]; ++k) buf[k] = pn[k];
+            buf[k] = 0;
+            if (k) text(surf, 48 + 26 * (int)c, h - 29 - 7 * (int)r, buf);
+        }
+    text(surf, 48, 2, "FUNC+YES:PLAY");
+    U32(OT_SCREEN_DIRTY) = 1;
+}
+
+void md_eng_close(void) {
+    MdFocus *f = &md_focus;
+    if (!f->win) return;
+    ((void (*)(volatile uint32_t *))OT_WIN_FREE)(&f->win);
+    ((LayerFn)OT_LAYER_POP)(md_eng_layer);
+    md_preview = 0;
+    U32(OT_SCREEN_DIRTY) = 1;
+    md_ui.redraw = 1;
+}
+
+static void eng_open(void) {
+    MdFocus *f = &md_focus;
+    if (f->win) return;
+    if (!f->n) f->n = (uint8_t)choices(f->ids);
+    f->cur = (uint8_t)choice_of(md_kit_cur()->part[md_ui.sel & (MD_PARTS - 1)].engine);
+    f->top = 0xff;
+    f->win_mine = 0;
+    f->win = ((uint32_t (*)(int, int, int, int, int, void (*)(void)))OT_WIN_NEW)
+             (WIN_W, WIN_H, 0, 0, 3, md_eng_close);
+    if (!f->win) return;
+    ((void (*)(uint32_t))OT_WIN_SHOW)(f->win);
+    md_eng_layer[0] = 0;
+    ((LayerFn)OT_LAYER_PUSH)(md_eng_layer);
+    eng_draw();
+}
+
+static void eng_move(int d) {
+    MdFocus *f = &md_focus;
+    int i = (int)f->cur + d;
+    if (i < 0) i = 0;
+    if (i >= (int)f->n) i = (int)f->n - 1;
+    f->cur = (uint8_t)i;
+    eng_draw();
+}
+
+/* The window's keys (md_ui_tail.s md_eng_layer). */
+void md_eng_key(unsigned code, unsigned edge) {
+    MdFocus *f = &md_focus;
+    if (code < 16) {                                  /* trigs: the part */
+        unsigned bit = 1u << code;
+        if (edge == 1 && !U32(OT_GRID_REC) && !held(KEY_FUNC) && !U32(OT_TRIG_MODE)) {
+            f->win_mine |= bit;
+            md_ui_select(code);
+            f->cur = (uint8_t)choice_of(md_kit_cur()->part[code].engine);
+            if (md_preview >> 31) md_preview = 0;
+            eng_draw();
+        } else if (edge != 1 && (f->win_mine & bit)) {
+            if (!edge) f->win_mine &= ~bit;
+        } else {
+            ((KeyFn)0x40060ce0u)(code, edge);         /* stock's trig handler */
+        }
+        return;
+    }
+    if (edge != 1 && !(edge == 2 && (code == KEY_UP || code == KEY_DOWN))) return;
+    unsigned p = md_ui.sel & (MD_PARTS - 1);
+    switch (code) {
+    case KEY_UP: eng_move(-1); break;
+    case KEY_DOWN: eng_move(1); break;
+    case KEY_LEFT: {
+        unsigned first = fam_first(f, f->cur);
+        f->cur = (uint8_t)(first ? fam_first(f, first - 1) : first);
+        eng_draw();
+        break;
+    }
+    case KEY_RIGHT: {
+        unsigned end = fam_end(f, f->cur);
+        if (end < f->n) f->cur = (uint8_t)end;
+        eng_draw();
+        break;
+    }
+    case KEY_YES:
+        if (held(KEY_FUNC)) {                         /* preview */
+            md_preview = 0x80000000u | p << 8 | f->ids[f->cur];
+            md_trig_request |= 1u << p;
+        } else {                                      /* take it */
+            MdPart *kp = &md_kit_cur()->part[p];
+            if (kp->engine != f->ids[f->cur]) set_engine(kp, f->ids[f->cur]);
+            md_eng_close();
+        }
+        break;
+    case KEY_NO: md_eng_close(); break;
+    default: break;                                   /* held while open */
+    }
+}
+
+void md_eng_level(unsigned index, int delta) {
+    (void)index;
+    if (delta) eng_move(delta > 0 ? 1 : -1);
 }
 
 void md_layer_key(unsigned code, unsigned edge) {
@@ -365,7 +540,7 @@ void md_layer_key(unsigned code, unsigned edge) {
             && (k == 16 || !U32(OT_TRIG_MODE))) {
             f->mine |= bit;
             if (k < 16) md_ui_select(code);
-            else eng_list();
+            else eng_open();
             return;
         }
     } else if (f->mine & bit) {

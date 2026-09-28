@@ -48,6 +48,9 @@ md_kit:
         .zero   12288
 md_kit_index:
         .long   0
+        .global md_preview
+md_preview:
+        .long 0
         .global md_burn, md_burn_sent
 md_burn:                           | the burn build's BURN (md_ctl.h)
         .long   0

@@ -1,9 +1,8 @@
 // The run loop, gated: does the firmware's own scheduler actually run?
 //
-// The FULL gate is the oracle diff (`tools/emu/ot_emu/oracle.py` against a golden
-// file route A writes), because only route A can say whether this machine
-// agrees with the one that has been measured for a fortnight. That needs
-// Python, a venv and a card image, so it is not a unit test.
+// The FULL gate is tools/emu/ot_emu/oracle/oracle.sh (two binaries, byte-
+// compared goldens, serial and audio). That needs a card image, so it is
+// not a unit test.
 //
 // This is the self-contained half: boot the stock image, run the kernel, and
 // assert route A's own M6a gate -- every expected task created with its exact

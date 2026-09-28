@@ -6,7 +6,7 @@
   tools/harness/usb_host.py /tmp/ot-usb.sock msc           # + INQUIRY, TEST UNIT READY
   tools/harness/usb_host.py /tmp/ot-usb.sock midi-recv 5   # drain EP2 IN for 5 s
   tools/harness/usb_host.py /tmp/ot-usb.sock midi-send 903c64
-  tools/harness/usb_host.py /tmp/ot-usb.sock audio 3 2.0 out.pcm   # drain an iso IN endpoint, then the counters
+  tools/harness/usb_host.py /tmp/ot-usb.sock audio 3 2.0 out.pcm [--fs]   # drain an iso IN endpoint, then the counters
   tools/harness/usb_host.py /tmp/ot-usb.sock counters       # USB AUDIO's twelve counters (vendor request)
 
 The line protocol is octemu's (markandrus, MIT), so its tests/usb-host.py
@@ -73,6 +73,11 @@ class Bench:
 
     def speed(self, hs):
         self.cmd(f"speed {'hs' if hs else 'fs'}", "ok")
+
+    def iso_hz(self, hz):
+        """The isochronous poll rate the audio endpoint's bInterval sets
+        (0: the port's default, 4000 at high speed, 1000 at full)."""
+        self.cmd(f"isohz {hz}", "ok")
 
     def setup(self, bm, breq, wval, widx, wlen):
         self.cmd("setup " + struct.pack("<BBHHH", bm, breq, wval, widx, wlen).hex(), "ok")
@@ -207,9 +212,13 @@ def counters(b):
     return dict(zip(COUNTERS, vals))
 
 
-def audio(b, ep, seconds, path):
-    """Drain an isochronous IN endpoint at the host's poll rate and keep the bytes."""
-    n = int(seconds * 2000)
+def audio(b, ep, seconds, path, hz=4000):
+    """Drain an isochronous IN endpoint at the host's poll rate and keep the bytes.
+
+    `hz`: the endpoint's poll rate, 4000 at high speed (bInterval 2), 1000 at
+    full speed. The port serves the polls on the device's clock; this only
+    sets how many to ask for."""
+    n = int(seconds * hz)
     empty = 0
     with open(path, "wb") as f:
         for _ in range(n):
@@ -258,10 +267,12 @@ def main(argv):
             print(f"  {k:10s} {v}")
         return 0
     if what == "audio":
-        enumerate_device(b)
+        hs = "--fs" not in argv
+        argv = [a for a in argv if a != "--fs"]
+        enumerate_device(b, hs=hs)
         ep, seconds, path = int(argv[3]), float(argv[4]), argv[5]
         b.ctrl_nodata(0x01, 0x0b, 1, int(argv[6]) if len(argv) > 6 else 4)   # SET_INTERFACE alt 1
-        audio(b, ep, seconds, path)
+        audio(b, ep, seconds, path, 4000 if hs else 1000)
         c = counters(b)
         print("counters: " + " ".join(f"{k}={v}" for k, v in c.items() if k in ("underruns", "overruns", "bankdup", "reprimes", "produced", "consumed")))
         return 0

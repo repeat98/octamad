@@ -119,7 +119,7 @@ def stage(src=BASE, dest=TEST):
         sys.exit(f"{src} was not saved under this build (OCTABAM21) -- re-save F7CLEAN on the unit")
     if dest.exists():
         shutil.rmtree(dest)
-    op.make_rig_project(str(src), str(dest), "bamsep26")     # RIG FX layout in every part, verified
+    op.make_rig_project(str(src), str(dest), "bottleservice")     # RIG FX layout in every part, verified (flash 7 used bamsep26, removed 27 Sep 2026; same ids)
 
     op.thru_track(dest, 1, guard=False)                      # T1 = THRU (type 2) + page + trig in pattern 1
 
@@ -210,7 +210,7 @@ def card(image=IMAGE, project=TEST, vol="/Volumes/OCTATRACK", set_name="PRESETS"
         sys.exit(f"{vol} is not mounted: put the unit in USB DISK MODE (PROJECT menu) "
                  f"and re-run; `ls /Volumes` shows it")
     if not image.is_file():
-        sys.exit(f"{image} missing -- REMIX=bamsep26 BUILD=21 make image")
+        sys.exit(f"{image} missing -- REMIX=bottleservice BUILD=21 make image")
     setdir = vol / set_name
     if not setdir.is_dir():
         sets = [p.name for p in vol.iterdir() if p.is_dir() and (p / "AUDIO").is_dir()]

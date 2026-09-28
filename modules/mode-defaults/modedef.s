@@ -13,6 +13,12 @@
 | (manifest.py table_inc) from the manifests' ModeViews.
         .set    DIRTY,   0x40027e00    | the displaced call (project-dirty)
         .set    P1WRITE, 0x40054cd8    | page-1 writer (track, flat, value)
+        .set    P1TOKEN,  0x54500000
+| P1TOKEN goes on the stack above the writer's three arguments. With
+| Octakit in the image the writer's last store (0x40054fec) runs her check,
+| which halts unless that word's top half is GK_TRACK_PARAMETER_TOKEN_ARMED
+| (her abi.inc; her own wrapper pushes it there). Stock ignores the word.
+| modules/octakit/manifest.py refuses a build whose abi.inc changes it.
         .set    DBPTR,   0x46c82456    | long: the Part DB base
         .set    ID1OFF,  0x8ed80       | Part: per-track FX1 id byte
         .set    ID2OFF,  0x8ed88       | Part: per-track FX2 id byte
@@ -29,7 +35,7 @@
         .globl  fx2_hook, fx1_hook, CC_MODEDEF2, CC_MODEDEF1
 fx2_hook:
         jsr     DIRTY
-CC_MODEDEF2:                           | CC PAGE 2's entry (its cave sets the
+CC_MODEDEF2:                           | CC MAP's entry (its cave sets the
         lea     %sp@(-44),%sp          | flags itself): a2 = slot2, d2 = value,
         movem.l %d2-%d7/%a2-%a6,%sp@   | d4 = track, d5 = part
         moveq   #1,%d6                 | d6 = FX2
@@ -61,20 +67,17 @@ idok:   moveq   #0,%d0
         movel   %a2,%d1
         addql   #6,%d1                 | d1 = the page-2 slot index 6..11
         lea     MODEDEF_TABLE,%a4
-tloop:  moveq   #0,%d3
-        moveb   %a4@+,%d3              | entry id; 0xff ends the table
+tloop:  mvz.b   %a4@+,%d3              | entry id; 0xff ends the table
         cmpil   #0xff,%d3
         beq.s   done
         cmpl    %d0,%d3
         seq     %d3                    | d3 = id matches
-        moveq   #0,%d7
-        moveb   %a4@+,%d7              | the entry's mode slot
+        mvz.b   %a4@+,%d7              | the entry's mode slot
         cmpl    %d1,%d7
         seq     %d7
         andl    %d7,%d3
         moveal  %d3,%a5                | a5 = entry match
-        moveq   #0,%d7
-        moveb   %a4@+,%d7              | nviews
+        mvz.b   %a4@+,%d7              | nviews
 vloop:  subql   #1,%d7
         bmi.s   tloop
         movel   %d7,%sp@-              | park nviews
@@ -113,11 +116,12 @@ apply:  lea     %sp@(-20),%sp
         beq.s   f1
         addql   #6,%d0
 f1:     addil   #0x12,%d0
+        movel   #P1TOKEN,%sp@-         | Octakit's token above the writer's arguments
         movel   %d1,%sp@-
         movel   %d0,%sp@-
         movel   %d4,%sp@-
         jsr     P1WRITE
-        lea     %sp@(12),%sp
+        lea     %sp@(16),%sp
         bra.s   adone
 page2:  subql   #6,%d0                 | d0 = slot2
         movel   %d4,%d3

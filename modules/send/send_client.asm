@@ -1,8 +1,9 @@
 ; ---------------------------------------------------------------------------
-; SEND: the bus client. One knob, page 1: x:(r6+0) = SEND, this track's send
-; into the one aux bus (delay, then reverb; each engine prints its wet on the
-; track that hosts it). A parallel tap: SEND never writes its own audio
-; buffer.
+; SEND: the bus client. Two knobs, page 1: x:(r6+0) = DEL, this track's send
+; into the delay (the aux accumulator), and x:(r6+1) = REV, its send into the
+; reverb (the REV accumulator). The reverb hears the REV sends plus the
+; delay's repeats x DLY; each engine prints its wet on the track that hosts
+; it. A parallel tap: SEND never writes its own audio buffer.
 ;
 ; ---- the shared absolute-Y bus scratch. This layout is shared with REVERB
 ; SERVER and DELAY SERVER and must stay identical across the three sources.
@@ -23,14 +24,19 @@
 ;                       or read, and never reads one being written. The
 ;                       rotation is `+16 & $70`, the read offset `+80 & $70`
 ;                       (three back == five on), no compare and no clamp.
-;   Y:0x901..0x980      THE AUX accumulator, eight buffers of 16 words: every
-;                       track's one send (SEND's AUX, the hosts' AUX)
-;   Y:0x981             BusVerb host's AUX knob field: the reverb writes it
-;                        every block; the delay's auto-gain and the reverb's
-;                        own count it as one more client while nonzero; the
-;                        delay's warm-up zeroes it. A single-writer word in
-;                        place of a cross-core count RMW.
-;   Y:0x982..0x9c0      free
+;   Y:0x901..0x980      THE AUX accumulator, the delay's input, eight
+;                       buffers of 16 words: SEND's DEL and both hosts' DEL
+;                       (T1's since the one-aux rig, T5's since 26 Sep 2026)
+;   Y:0x981             BusVerb host's REV knob field: the reverb writes it
+;                        every block and counts it as one more REV client
+;                        while nonzero. A single-writer word in place of a
+;                        cross-core count RMW.
+;   Y:0x982            BusVerb's DLY knob field (page-2 slot 10, value<<16):
+;                        the reverb writes it every block, the delay scales
+;                        the wet it writes into the chain buffer by it
+;   Y:0x983..0x98a      REV send COUNT, one per REV buffer, as 0x9c7 is for
+;                        the aux: SEND's REV registers here while nonzero
+;   Y:0x98b..0x9c0      free
 ;   Y:0x9c1             DELAY SERVER role owner (lock)
 ;   Y:0x9c2             REVERB SERVER role owner (lock)
 ;   Y:0x9c3             DELAY LIVE stamp for the REVERB (clear-on-read): the
@@ -41,25 +47,34 @@
 ;   Y:0x9c7..0x9ce      AUX send COUNT, one per accumulator buffer: how many
 ;                        clients wrote that buffer this block, indexed by the
 ;                        same rotation (a server reads the buffer three back
-;                        and needs that buffer's count). SEND and BusDelay's
-;                        AUX register here, gated on their knobs (an idle
-;                        client that registers dilutes the real ones);
-;                        BusVerb's AUX is counted through Y:0x981. One word
+;                        and needs that buffer's count). SEND's DEL and
+;                        BusVerb's DEL register here, gated on their knobs
+;                        (an idle client that registers dilutes the real
+;                        ones); BusDelay counts its own DEL into the buffer
+;                        it reads. The REV counts at 0x983 take SEND's REV
+;                        and BusDelay's REV; BusVerb's REV is counted through
+;                        Y:0x981. One word
 ;                        per buffer, so these are the only sites that scale
 ;                        the offset back to a bare index (`asr #$4`).
 ;   Y:0x9cf..0x9d2      free
 ;   Y:0x9d3..0x9d7      unused, deliberately: under XBUS these are
 ;                       0x360d3-5, where per-block state was dead on hardware
 ;                       (writes and in-loop reads never met; mechanism unknown)
-;   Y:0x9d8..0xa57      THE CHAIN BUFFER: the delay's stage output, mono, at
-;                       unity, eight buffers of 16 words at +0/+16/../+112,
-;                       stored (not accumulated, never cleared) by the delay
-;                       every block it runs, read three back by the reverb
-;                       while the delay is live. Spelled `$9d8 + n` (the
-;                       XBUS rewrite moves `$9xx` literals only); the range
+;   Y:0x9d8..0xa57      THE CHAIN BUFFER: the delay's repeats x DLY, mono,
+;                       eight buffers of 16 words at +0/+16/../+112, stored
+;                       (not accumulated, never cleared) by the delay every
+;                       block it runs, read three back by the reverb while
+;                       the delay is live. Spelled `$9d8 + n` (the XBUS
+;                       rewrite moves `$9xx` literals only); the range
 ;                       carried the T8 return's stage buffers until 20 Sep
 ;                       2026.
-;   Y:0xa58..0xad9      free
+;   Y:0xa58..0xad7      THE REV accumulator, the reverb's input, eight
+;                       buffers of 16 words: SEND's REV and both hosts' REV
+;                       (T5's own, T1's since 26 Sep 2026). Spelled `$9d8` + `$80` (the chain's base
+;                       plus its length), for the same reason. Cleared with
+;                       the aux by the housekeeper; the T8 return's stage
+;                       buffers until 20 Sep 2026.
+;   Y:0xad8..0xad9      free
 ;
 ; Latency: every block, whichever track is position 0 (r7 == 0x6200, the
 ; first FX2 dispatched in this bank, whatever module it runs) advances the
@@ -71,8 +86,8 @@
 ; write target: three blocks of bus latency, 48 samples (two until 22 Sep
 ; 2026).
 ;
-; r7 slots used here: $14 (call flag), $15/$16 (the level ramp: current
-; value / per-sample step), $67 (this call's frame offset; $65/$66
+; r7 slots used here: $14 (call flag), $15/$16 (the DEL level ramp: current
+; value / per-sample step), $17/$18 (the REV level ramp), $67 (this call's frame offset; $65/$66
 ; free since 21 Sep 2026), $68
 ; (the housekeeping election's last-seen rotation, payload A only: the XBUS
 ; gate excises the block on payload B), $69 (this block's resolved write
@@ -89,9 +104,11 @@ init:
 ; seed is the rotation as read, before or after a flip, so the label runs
 ; exact or one behind for the life of the instance; both are inside the
 ; eight buffers' margin (docs/effects/XBUS.md).
-        clr     a
-        move    a,x:(r7+$15)            ; the level ramp starts from 0
-        move    a,x:(r7+$16)            ; (r7 = this slot's block at init)
+        move    #>$ffffff,a             ; -1: both level ramps start AT the knob
+        move    a,x:(r7+$15)            ; on their first block (a level is never
+        move    a,x:(r7+$16)            ; negative; the steps are rewritten
+        move    a,x:(r7+$17)            ; before the loop reads them)
+        move    a,x:(r7+$18)            ; (r7 = this slot's block at init)
 ; ROTINIT
         rts
 
@@ -184,6 +201,13 @@ bus_dohk:                               ; nobody did -- take over this block
         do      #16,>zclr
         move    a,y:(r2)+
 zclr:
+        move    #>$9d8,b                ; the REV accumulator: the chain's
+        add     #>$80,b                 ; base plus its length
+        add     x0,b
+        move    b,r2                    ; r2 = REV ACC[new] base
+        do      #16,>racclr
+        move    a,y:(r2)+
+racclr:
         nop
 ; ---- reset that buffer's SEND COUNT alongside its accumulator ------------
 ; The counts are one word per buffer where the accumulators are sixteen, so
@@ -200,6 +224,12 @@ zclr:
         clr     a
         move    a,y:(r3)                ; AUX count = 0; a stays 0 for the
                                         ; locks below
+        move    r3,b                    ; the REV count, same index: 0x983
+        move    #>$44,x0                ; sits 0x44 below the AUX count
+        sub     x0,b                    ; 0x9c7 (both relocate together)
+        move    b,r3
+        nop
+        move    a,y:(r3)                ; REV count = 0
 ; ---- release both server-role locks for this block ---------------------
 ; a is still 0. The housekeeper frees them once per block; the servers
 ; re-claim them in dispatch order.
@@ -228,6 +258,12 @@ notfirst:
         add     b,a
         move    a,r2                    ; r2 = AUX ACC[write] base + offset
         move    #>$ffffff,m2
+        move    #>$9d8,a                ; the REV accumulator: the chain's
+        add     #>$80,a                 ; base plus its length
+        add     x0,a
+        add     b,a
+        move    a,r4                    ; r4 = REV ACC[write] base + offset
+        move    #>$ffffff,m4
 
 ; ---- register as a bus client, once per block, only if sending ------------
 ; Track 8 is refused: with MASTER TRACK on its chain input is the mix of
@@ -259,24 +295,64 @@ send_ok:
         move    #>$ffffff,m3
         move    #>$1,x0                 ; the increment
         clr     b                       ; b = 0 -- BEFORE the tst below
-        move    x:(r6),a                ; AUX level, the one knob
+        move    x:(r6),a                ; DEL level
         tst     a                       ; Z set == silent == not a client
         tne     x0,b                    ; sending -> b = 1
         move    y:(r3),a
         add     b,a
         move    a,y:(r3)                ; AUX count += 1 ONLY if sending
+        move    r3,a                    ; the REV count, same index: 0x983
+        move    #>$44,x0                ; sits 0x44 below the AUX count
+        sub     x0,a                    ; 0x9c7 (both relocate together)
+        move    a,r3
+        move    #>$1,x0
+        clr     b                       ; b = 0 -- BEFORE the tst below
+        move    x:(r6+$1),a             ; REV level
+        tst     a
+        tne     x0,b
+        move    y:(r3),a
+        add     b,a
+        move    a,y:(r3)                ; REV count += 1 ONLY if sending
 cnt_done:
 
-; ---- per-sample: mono dry sum, scaled into the ONE accumulator -----------
-; The level is ramped across the block from where last block's ramp ended
-; to this block's knob word: the level stepped once per block until 23 Sep
-; 2026, and a turn on a loud source clicked once per block (dsp_host census
-; on a 0.3 FS tone: steps to 0.25 FS in the delay's print).
-        move    x:(r6),a                 ; AUX level, the one knob: the target
-        move    x:(r7+$15),x0            ; the ramp's current value
+; ---- per-sample: mono dry sum, scaled into both accumulators -------------
+; The level is ramped from where last block's ramp ended toward this
+; block's knob word, 1/64 of the way per sample (15/64 per block: linear
+; inside a block, a glide across them): the level stepped once per block
+; until 23 Sep 2026, and a turn on a loud source clicked once per block
+; (dsp_host census on a 0.3 FS tone: steps to 0.25 FS in the delay's
+; print); 1/16 per sample until 26 Sep 2026 left a jump's one-block ramp
+; at the edge (tools/verify/verify_knob_clicks.py).
+        move    x:(r6),y1                ; DEL level: the target
+        move    x:(r7+$15),b             ; the ramp's current value: -1 (init)
+        tst     b                        ; on the first block, so it starts
+        tmi     y1,b                     ; AT the knob (26 Sep 2026)
+        move    b,x0
+        move    y1,a
         sub     x0,a
-        asr     #$4,a,a
+        asr     #$6,a,a
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        tst     a
+        move    x0,b
+        teq     y1,b                     ; a step of 0: on the target
+        move    b,x:(r7+$15)
         move    a,x:(r7+$16)             ; the per-sample step
+        move    x:(r6+$1),y1             ; REV level, ramped the same way
+        move    x:(r7+$17),b
+        tst     b
+        tmi     y1,b
+        move    b,x0
+        move    y1,a
+        sub     x0,a
+        asr     #$6,a,a
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        tst     a
+        move    x0,b
+        teq     y1,b
+        move    b,x:(r7+$17)
+        move    a,x:(r7+$18)
         do      n7,>send_end
         move    x:(r7+$15),a
         move    x:(r7+$16),x0
@@ -289,11 +365,21 @@ cnt_done:
         asr     #$1,a,a                  ; a = mono
         move    a,x0
 
-        mpy     x0,y1,a                  ; a = mono * AUX level
+        mpy     x0,y1,a                  ; a = mono * DEL level
         asr     #$3,a,a                  ; 3 bits of bus headroom: eight clients
         move    y:(r2),b
         add     b,a
         move    a,y:(r2)+                ; AUX ACC[write][i] += contribution
+        move    x:(r7+$17),a             ; REV level, ramped per sample
+        move    x:(r7+$18),y1
+        add     y1,a
+        move    a,x:(r7+$17)
+        move    a,y1
+        mpy     x0,y1,a                  ; a = mono * REV level
+        asr     #$3,a,a
+        move    y:(r4),b
+        add     b,a
+        move    a,y:(r4)+                ; REV ACC[write][i] += contribution
 
 send_end:
         nop

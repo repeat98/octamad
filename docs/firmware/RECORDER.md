@@ -108,6 +108,88 @@ stereo at 44.1 kHz. The length and cap arrays are `0x461053a8` and
 configuration in an emulator; no `RESERVED_RECORDER_LENGTH` setting (§1's
 keys) has been measured on hardware.
 
+### 2a. The MEMORY page and RLEN MAX (port, 26 Sep 2026) ✅
+
+CONTROL > MEMORY stores five bytes, written in key order by the page's
+apply handler `0x40066466–0x400664ba` (mirrored to `0x100b14b1..b6`):
+
+| byte | setting | key |
+|---|---|---|
+| `0x80000051` | LOAD 24BIT FLEX | `LOAD_24BIT_FLEX` |
+| `0x80000052` | DYNAMIC RECORDERS | `DYNAMIC_RECORDERS` |
+| `0x80000053` | RECORDER FORMAT | `RECORD_24BIT` |
+| `0x80000054` | RESERVE RECORDINGS | `RESERVED_RECORDER_COUNT` |
+| `0x80000056` (word) | RESERVE LENGTH, seconds | `RESERVED_RECORDER_LENGTH` |
+
+Cap at a MAX arm (`0x400069b2`, code read): DYNAMIC set → (free pool
+blocks + the recorder's own blocks) × samples per block from
+`0x80003c20`; clear → tracks at or above RESERVE RECORDINGS get 0, the
+rest RESERVE LENGTH × 44,100. A fixed RLEN takes the tempo converter
+(`0x400069fc`) and no cap. A block draw that finds the pool empty
+(`0x40007234`) calls `0x40005e48`, posts to the engine queue
+`0x460d17ae` and leaves the write path — a stop, not a wrap (never
+reached in the runs below).
+
+Measured under the port (stock 1.40C, RECTRIG backup: DYNAMIC 1, 24-bit,
+RESERVE 8 × 16 s; T1 FLEX, one REC1 + PLAY trig on step 1, 64 steps,
+RLEN MAX, watches on `0x80004a3c` END, `0x46c7fe24` LIMIT, `0x80006920`
+pool cursor, `0x461053a8/e8`):
+
+| scale, BPM | length per pass (END at re-arm) | passes | blocks drawn | buffer after |
+|---|---|---|---|---|
+| 1/4X, 120.0 | 1,411,200 = 32.000 s = 16 bars, 88,200 frames | 3 identical | 689 | 1,379 |
+| 1/8X, 120.0 | 2,822,400 = 64.000 s = 32 bars, 176,400 frames | 2 identical | 2,067 | 2,757 |
+| 1/8X, 128.0 | 2,646,000 = 60.000 s = 32 bars, 165,375 frames | 2 identical | 1,894 | 2,584 |
+
+- A MAX recording is the trig spacing on the track's own scale, to the
+  sample; 1/8X is the slowest scale, so 64 steps at 1/8X (32 bars) is the
+  longest one trig per pattern gives.
+- With DYNAMIC on the cap array `0x461053e8[track]` reads 14,602 (the whole
+  pool); the reserve is still allocated at load (460 blocks, then 690 once
+  24-bit is applied, = 16.0 s either way). Draws start when the reserve
+  fills (16.0 s into the first pass, `0x400071cc`, one block per 1,024
+  24-bit frames); pool free 9,081 → 7,015 at 32 bars. The grown buffer is
+  kept across re-arms: passes after the first draw nothing.
+- LIMIT `0x46c7fe24[track]` is written 0 at the first MAX arm and the
+  previous pass's length at each later one (`0x400069d6`).
+- Not measured: DYNAMIC off (the RESERVE LENGTH cap), the pool-empty
+  stop, and whether the grown buffer is released on a fixed RLEN or a
+  project reload.
+
+### 2b. RLEN PLEN (`modules/rlen-plen`, port, 26 Sep 2026) ✅
+
+The fixed-length path, read for the module: the per-frame converter
+`0x40006da6..0x40006e12` runs while the record's length word (`fp@(32)`)
+is zero, `raw + 1 ≤ 64` takes the tempo product, anything above takes the
+MAX branch; the end of a fixed-length recording is posted at `0x40005e8e`
+(LIMIT `0x46c7fe24[track]` := the length), which a MAX recording never
+does. The stored byte is validated on every bank load at `0x40002c6e`
+with a hard-coded 64 (the file parser `0x400165dc` had stored 65; the
+validator wrote 64 over it), and the setup editor clamps with the
+descriptor's `min + count − 1` (`0x4002efd2`). The RECORDING SETUP screen
+pushes the RLEN formatter itself (`pea 0x4002f224` at `0x4002fb12`; the
+descriptor's slot-2 formatter word is 0). The sequencer's pattern length
+and scale, from its step function `0x4009da20`: bank `0x800065bd`, pattern
+`0x800065be`, record `0x400eb034 + p × 0x8ed8 + b × 0x9b340` (scale at +0,
+length at −1, a flag at +1 selecting the track record `0x400e21e0 + t ×
+0x91a + the same offset`, length +0x50, scale +0x51), ticks per step from
+`0x400aba50` = `3 4 6 8 12 24 48`; the blob pointer `[0x46c82456]` read
+`0x400e21e0`.
+
+Measured with the module (recfix image, one REC1 + PLAY trig on step 1,
+RLEN raw 65, DYNAMIC on), watches as §2a:
+
+| fixture | length | evidence |
+|---|---|---|
+| 64 steps 1/4X, 120 | 1,411,200 = 16 bars | end post at `0x40005e8e` each pass; cave rejoin with d4 = 0x158880 twice per frame |
+| 48 steps 1/2X, 128 | 496,125 = 6 bars, 3 passes | end post each pass |
+| 64 steps 1/4X, 120, program change to a trig-less A02 after start | 1,411,200, then **stops** | END froze at 1,411,200 (88,201 writes in 100,000 frames), one end post, no re-arm |
+| flag +1 set, T1 32 steps 1/8X, pattern pair 16 / 1X, 120 | the cave read the track pair (no end post before the next arm at 88,200) | the sequencer restarted T1 every 16 master steps — PER TRACK mode's master length is not modelled by the module; open |
+
+On stock and on the module image without the validator pokes the byte
+published to `0x80000cf4` was 64 and the MAX branch ran (`d0 = 0x41` at
+`0x40006db2`).
+
 ## 3. The primer and the spreadsheet (Bryan T, 6 Sep 2026)
 
 *Sound-on-Sound Looping with the Octatrack* (PDF) and

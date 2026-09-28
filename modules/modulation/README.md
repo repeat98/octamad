@@ -56,11 +56,14 @@ its three sites per channel (L advances the shared counter and latches on
 its compare, R latches on the counter reading 0; the mask keeps bit 23 so
 the extension byte stays consistent and the store does not saturate), as
 are the LFO and the MIX. Straight-line callees: `mo_tap` (the linear read,
-blending toward the older sample; `mo_itap` enters it with the split done
-per block, for the fixed taps), `mo_herm` (the 4-point Hermite read, scaled
+blending toward the older sample; the fixed taps use it too since 26 Sep
+2026, split per sample from the centre's run value; `mo_itap` is its
+second entry), `mo_herm` (the 4-point Hermite read, scaled
 1/16 inside), `mo_apst` (one allpass stage, x in and y out in x0 so a chain
-passes it straight through), `mo_para` (the parabola sine), `mo_tab` (the
-table read, per block). The PHSR chain runs at half scale for headroom (an
+passes it straight through; PHSR's eight mod stages carry it inline, two
+per trip of a counted loop, since 27 Sep 2026), `mo_para` (the parabola
+sine), `mo_tab` (the table read, per block). The one-poles are
+`s' = c x + c' s` with `c' = 1 − c` streamed beside `c`. The PHSR chain runs at half scale for headroom (an
 allpass cascade peaks above its input).
 
 PHSR is the last MODE position so that dropping it would move no other
@@ -74,7 +77,29 @@ lines persist.
 
 ## Measured
 
-- **1,383 words** (`make bus`, 23 Sep 2026; 1,352 on 22 Sep, 1,128 on 20
+- **27 Sep 2026, the cycle pass** (PR: mod-cycles): pricer per loop LINE
+  404 → 354, PHSR 394 → 298, COMB 339 → 329 words/sample; the rig's priced
+  worst core 2,781 → 2,585 (four Characters beside the reverb now bound it;
+  four JUNO + reverb + 3 sends 2,781 → 2,581), payload A FREE 87 → 138.
+  Exact (13/13 `verify-ident` settings bit-identical): the walk pointers by
+  `lua`, `mo_itap`/`mo_herm` read and step back in one move
+  (`y:(r5)-n5,b`, a stock form), limited values moved straight into `y1`,
+  one fixed-tap split shared by L and R (`n3`, `$44`). Within the bars, not
+  bit-identical: LINE's eight one-poles as two products `c x + c' s` (c'
+  streamed; the halved-difference form truncated one bit per sample) and
+  PHSR's eight mod stages rolled two per trip with the stage inline (no
+  limiting reload between the tap weights: one is set, the rest 0). Against
+  main's render on the ident matrix the LINE settings differ by at most 6 LSB
+  (−123 dBFS) and one PHSR setting by 1 LSB; every other setting is
+  bit-identical. `verify_modulation` reference errors unchanged (JUNO
+  2.33e-5 → 2.36e-5, PHSR hard 5.55e-5 → 5.53e-5); `make verify-knobs` 0
+  flagged, 0 garbage-start flagged. Priced on a scratch edit, not applied:
+  LOFI removed −18 words/sample in every loop (its inline hold and mask;
+  LINE 336, PHSR 280, COMB 311); PHSR capped at 4 stages −68 (two trips of
+  the roll: PHSR 230), which drops 6/8-stage phasing.
+- **1,480 words** with the knob ramps (26 Sep 2026; payload A FREE 61 in
+  the rig; pricer per loop LINE 404, PHSR 397, COMB 339 words/sample).
+  Before them: 1,383 words (`make bus`, 23 Sep 2026; 1,352 on 22 Sep, 1,128 on 20
   Sep, LOFI added 16 Sep 2026: 1,044 before, 1,199 with ENS), payload A FREE
   673 in the rig; pricer per loop PHSR 393, LINE 372, COMB 321 words/sample
   (489 / 423 / 361 on 22 Sep; 525 / 446 / 359 before the pointer rewrite).

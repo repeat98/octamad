@@ -6,16 +6,9 @@
 # assembled and auditioned locally instead of by flashing hardware.
 set -euo pipefail
 
-# Copy our sources into the vendor tree. Always overwrite: tools/harness/dsp_host/ is
-# the source of truth. Two diverging copies means an edit that never reaches
-# the binary, which produces confidently wrong measurements.
-stage_dsp_host() {
-  mkdir -p vendor/dsp56300/source/dsp_host
-  cp tools/harness/dsp_host/dsp_asm.cpp tools/harness/dsp_host/dsp_host.cpp \
-     tools/harness/dsp_host/CMakeLists.txt vendor/dsp56300/source/dsp_host/ 2>/dev/null || true
-  grep -q dsp_host vendor/dsp56300/source/CMakeLists.txt 2>/dev/null \
-    || echo 'add_subdirectory(dsp_host)' >> vendor/dsp56300/source/CMakeLists.txt
-}
+# Pins, patches and the fetch/patch helpers: scripts/vendor.sh.
+source "$(dirname "$0")/vendor.sh"
+
 cd "$(dirname "$0")/.."
 
 echo "== 1) System tools (via Homebrew) =="
@@ -35,47 +28,11 @@ fi
 
 echo
 echo "== 1b) mc68k (ColdFire core for the headless machine) =="
-# Musashi plus ColdFire mode, an HI08 host-port register file and the on-chip
-# peripheral scaffolding -- the CPU half of tools/emu/ot_emu. Vendored, GPLv3, the
-# same posture as vendor/dsp56300: tooling and patches are shared, built
-# binaries never are. `docs/history/COLDFIRE_PORT.md`.
-# Pinned: the port was measured against this commit
-# (docs/history/COLDFIRE_PORT.md).
-MC68K_PIN=4a6d0d17a1f2b30077ab726c27fe9bb770fa0456
-pin_checkout() {  # dir url sha
-  [ -d "$1" ] || git clone --no-checkout "$2" "$1"
-  if [ "$(git -C "$1" rev-parse HEAD 2>/dev/null)" != "$3" ]; then
-    git -C "$1" fetch -q origin "$3"
-    git -C "$1" checkout -q "$3"
-  fi
-  echo "   $1 at $(git -C "$1" rev-parse --short HEAD) (pinned)"
-}
-# apply_patch dir patch: apply, or accept already-applied, or fail loudly
-# (a rejected patch reads as "already applied" otherwise).
-apply_patch() {
-  if git -C "$1" apply --check "$2" 2>/dev/null; then
-    git -C "$1" apply "$2" && echo "   local patch applied: $(basename "$2")"
-  elif git -C "$1" apply --check --reverse "$2" 2>/dev/null; then
-    echo "   local patch already applied: $(basename "$2")"
-  else
-    echo "   [!] $(basename "$2") does NOT apply to $1 at $(git -C "$1" rev-parse --short HEAD)"
-    echo "       and is not already applied either. Fix: rm -rf $1; make setup"
-    exit 1
-  fi
-}
-pin_checkout vendor/mc68k https://github.com/joelanders/mc68k-md-mm "$MC68K_PIN"
+vendor_mc68k
 
 echo
 echo "== 2) elektron-firmware-tool (mischa85) =="
-EFT_PIN=065d18f4195793e61891e387813488ee59f6d1ca
-pin_checkout vendor/elektron-firmware-tool https://github.com/mischa85/elektron-firmware-tool "$EFT_PIN"
-
-# Two local changes are needed to reproduce this build:
-#   - set_version() writes the full 10-char ELEK version field from 0x08;
-#     upstream only writes from 0x0D, where 5 fit.
-#   - EFT_EMIT_CONTAINER dumps the rebuilt container, which tools/build/make_bin.py
-#     wraps to produce the CF card .bin.
-apply_patch vendor/elektron-firmware-tool "$(pwd)/tools/patches/elektron-firmware-tool.patch"
+vendor_eft
 
 echo "   building ..."
 if [ -f vendor/elektron-firmware-tool/Makefile ]; then
@@ -123,44 +80,7 @@ if [ ! -x "$DIS" ] || [ ! -x "$ASM" ] || [ ! -x "$HOST" ]; then
     echo "   [!] cmake not found — brew install cmake — then re-run make setup (make check needs dsp_asm and dsp_host)"
     exit 1
   else
-    # Pinned: the patch below is against this commit and does not apply to
-    # upstream's later HEAD. Moving the pin means re-basing the patch and
-    # re-running make check's bit-identity gates.
-    #
-    # Re-pinned 22 Sep 2026 from c051afad (28 Jul) to 8ccdd843 (21 Sep, 144
-    # commits later). Upstream absorbed several of our own fixes in that
-    # span -- MPYRI and MACRI, the DCOL 12-bit width, "serve a DMA request
-    # raised before the channel was enabled", 2D/no-update DMA address
-    # modes, the assembler's TFR/CMP/CMPM/Tcc JJJ=000 encoding, JIT MPYI
-    # sign-extension, CCR overflow flags -- so this patch dropped those
-    # hunks; see the PR that did the re-pin for what was checked absorbed
-    # vs. still needed. NOT absorbed, still ours: the AGU pre-decrement fix
-    # (upstream PR #13 from us, open since 8 Sep), the one-word displaced
-    # move, the DMA dual-counter reload at end of block, the host-stepped
-    # mode, the shared window, the unmapped-register hooks.
-    DSP56300_PIN=8ccdd843adda9c18fc232a2ca50d6caccbf3cb1e
-    if [ ! -d vendor/dsp56300 ]; then
-      git clone --no-checkout https://github.com/dsp56300/dsp56300.git vendor/dsp56300
-    fi
-    if [ "$(git -C vendor/dsp56300 rev-parse HEAD 2>/dev/null)" != "$DSP56300_PIN" ]; then
-      git -C vendor/dsp56300 fetch -q origin "$DSP56300_PIN"
-      git -C vendor/dsp56300 checkout -q "$DSP56300_PIN"
-    fi
-    git -C vendor/dsp56300 submodule update --init --depth 1 --recursive
-    # The patch carries: the one-word displaced move; the AGU pre-decrement
-    # fix; the DMA dual-counter reload at end of block; a same-value DCR
-    # rewrite while a self-clearing window is open renews instead of being
-    # dropped (measured 1199/1200 frames on DCR2, the ESAI feed -- bit-
-    # identical with or without it on that project, ported defensively);
-    # the shared window, two-way for dsp_host (X with X, Y with Y) and
-    # three-way for the ColdFire port's DSP pair (P, X and Y one memory,
-    # as the chip has it); and the host-stepped mode the port drives the
-    # cores in (DO loops stepped, interrupts interpreted, peripherals
-    # serviced under a masked interrupt, an idle step) plus hooks for
-    # Y-side registers it does not map.
-    EMUPATCH=$(pwd)/tools/patches/dsp56300.patch
-    apply_patch vendor/dsp56300 "$EMUPATCH"
-    stage_dsp_host
+    vendor_dsp56300
     cmake -S vendor/dsp56300 -B vendor/dsp56300/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="$(uname -m)" \
       && cmake --build vendor/dsp56300/build \
            --target dsp56kDisassemble dsp_asm dsp_host -j8 \
@@ -169,7 +89,14 @@ if [ ! -x "$DIS" ] || [ ! -x "$ASM" ] || [ ! -x "$HOST" ]; then
   fi
 else
   echo "   already built: $DIS, $ASM, $HOST"
+  # Stage the tree's dsp_host/dsp_asm sources AND rebuild them: until 27 Sep
+  # 2026 this path only copied, so a binary built before a harness change
+  # kept running with the old options (PR #356 was reviewed twice on a
+  # dsp_host that ignored -paramfile, and verify_miniverb read MOD as inert
+  # for the same reason). cmake is incremental: nothing to do costs seconds.
   stage_dsp_host
+  cmake --build vendor/dsp56300/build --target dsp_asm dsp_host -j8 \
+    || { echo "   [!] dsp_host/dsp_asm rebuild FAILED"; exit 1; }
 fi
 
 echo

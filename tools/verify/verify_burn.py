@@ -59,7 +59,8 @@ def render(image, remix, out, burn, aux=100):
                "--tracks", "T1=DELAY SERVER,T2=SEND,T5=REVERB SERVER,T6=SEND",
                "--stem", "T2=out/test_audio/loop.wav", "--stem", "T6=out/test_audio/pad.wav",
                "--tail", "0.5", "--seconds", "1.5", "--frames", "16",
-               "--set", f"T2:SEND={aux}", "--set", f"T6:SEND={aux}",
+               "--set", f"T2:DEL={aux}", "--set", f"T6:DEL={aux}",
+               "--set", f"T2:REV={aux}", "--set", f"T6:REV={aux}",
                "--set", f"T2:FX2:P6={burn}", "--set", f"T6:FX2:P6={burn}", "--out", str(out)])
     meters = {}
     for m in re.finditer(r"core (\d) meter: max (\d+) instructions", txt):
@@ -72,7 +73,7 @@ def render_fx1(image, remix, out, burn):
     txt = run([sys.executable, "tools/harness/rig_render.py", "--image", str(image), "--remix", remix,
                "--tracks", "T1=DELAY SERVER,T2=SEND+SEND",
                "--stem", "T2=out/test_audio/loop.wav", "--tail", "0", "--seconds", "1", "--frames", "16",
-               "--set", "T2:SEND=100", "--set", f"T2:FX1:P6={burn}", "--out", str(out)])
+               "--set", "T2:DEL=100", "--set", "T2:REV=100", "--set", f"T2:FX1:P6={burn}", "--out", str(out)])
     return {int(m.group(1)): int(m.group(2)) for m in re.finditer(r"core (\d) meter: max (\d+) instructions", txt)}
 
 
@@ -84,7 +85,7 @@ def digest(d):
 
 
 def main():
-    remix = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("REMIX", "bamsep26")
+    remix = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("REMIX")
     # The rig burn is a knob on SEND rendered through the bus rig (DELAY
     # SERVER, SEND, REVERB SERVER). A remix without them (recfix, midi-scenes,
     # mods) has nothing to burn and nothing to render: a loud SKIP, never a

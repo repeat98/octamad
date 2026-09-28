@@ -3,12 +3,47 @@
 #include <algorithm>
 #include <cstdio>
 
+#include <fcntl.h>
+#include <unistd.h>
+
 namespace ot
 {
 	AtaCard::AtaCard(std::vector<uint8_t> _image)
 		: m_img(std::move(_image))
 	{
 		m_nsect = static_cast<uint32_t>(m_img.size() / g_sector);
+	}
+
+	AtaCard::~AtaCard()
+	{
+		if(m_fd >= 0)
+		{
+			::fsync(m_fd);
+			::close(m_fd);
+		}
+	}
+
+	bool AtaCard::setWriteBack(const std::string& _path)
+	{
+		if(m_fd >= 0)
+		{
+			::fsync(m_fd);
+			::close(m_fd);
+			m_fd = -1;
+		}
+		const int fd = ::open(_path.c_str(), O_RDWR | O_CLOEXEC);
+		if(fd < 0)
+			return false;
+		m_fd = fd;
+		m_wbPath = _path;
+		return true;
+	}
+
+	bool AtaCard::flush()
+	{
+		if(m_fd < 0)
+			return true;
+		return ::fsync(m_fd) == 0;
 	}
 
 	std::vector<uint16_t> AtaCard::identifyWords(const uint32_t _totalSectors)
@@ -138,7 +173,7 @@ namespace ot
 			}
 			m_dpos = 0;
 			m_status |= ST_DRQ;
-			m_log.push_back({"IDENTIFY", 0, 0});
+			note({"IDENTIFY", 0, 0});
 			return;
 		}
 		case 0x20:					// READ SECTORS
@@ -151,7 +186,7 @@ namespace ot
 			m_dpos = 0;
 			m_status |= ST_DRQ;
 			m_reads += n;
-			m_log.push_back({"READ", l, n});
+			note({"READ", l, n});
 			return;
 		}
 		case 0x30:					// WRITE SECTORS
@@ -161,29 +196,29 @@ namespace ot
 			m_wlba = l;
 			m_wremaining = n;
 			m_status |= ST_DRQ;
-			m_log.push_back({"WRITE", l, n});
+			note({"WRITE", l, n});
 			return;
 		}
 		case 0x87:					// CFA TRANSLATE SECTOR
 			m_data.assign(g_sector, 0);
 			m_dpos = 0;
 			m_status |= ST_DRQ;
-			m_log.push_back({"CFA-TRANSLATE", lba(), 0});
+			note({"CFA-TRANSLATE", lba(), 0});
 			return;
 		case 0xe5:					// CHECK POWER MODE
 			m_count = 0xff;
-			m_log.push_back({"CHECK-POWER", 0, 0});
+			note({"CHECK-POWER", 0, 0});
 			return;
 		case 0xe0: case 0xe1: case 0xe2: case 0xe3: case 0xe6:
 		case 0xef: case 0xc0: case 0x03: case 0x91: case 0xc6:
 			std::snprintf(name, sizeof name, "CMD-%02x", _c);
-			m_log.push_back({name, 0, 0});
+			note({name, 0, 0});
 			return;
 		default:
 			m_error = 0x04;			// ABRT
 			m_status |= 0x01;
 			std::snprintf(name, sizeof name, "UNSUPPORTED-%02x", _c);
-			m_log.push_back({name, 0, 0});
+			note({name, 0, 0});
 			return;
 		}
 	}
@@ -195,7 +230,27 @@ namespace ot
 	{
 		const size_t off = static_cast<size_t>(m_wlba) * g_sector;
 		if(m_wlba < m_nsect)
+		{
 			std::copy(_data, _data + g_sector, m_img.begin() + off);
+			if(m_fd >= 0)
+			{
+				// O19: through to the file, whole sector, same offset. A
+				// short write is counted, never retried (the memory copy is
+				// still right; `card status` reports the count).
+				ssize_t done = 0;
+				while(done < static_cast<ssize_t>(g_sector))
+				{
+					const ssize_t n = ::pwrite(m_fd, _data + done, g_sector - done, static_cast<off_t>(off + done));
+					if(n <= 0)
+						break;
+					done += n;
+				}
+				if(done == static_cast<ssize_t>(g_sector))
+					++m_wbSectors;
+				else
+					++m_wbErrors;
+			}
+		}
 		++m_writes;
 		++m_wlba;
 		if(--m_wremaining <= 0)

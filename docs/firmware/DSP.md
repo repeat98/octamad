@@ -148,9 +148,9 @@ instructions, B 46 / 6,251, zero undecodable.
 
 Two 32-entry pointer tables in X, indexed by the raw id, one load record
 (`X:0x00215`, 64 words; image `0x400e2345` A / `0x400f5a10` B). Both
-menus index the same tables (`CLAUDE.md`, "an FX2 id is also an FX1 id").
+menus index the same tables (`AGENTS.md`, "an FX2 id is also an FX1 id").
 The FX1 dispatcher keeps the id in r1 across the init call (`P:0x4c8..0x4d7`);
-an init that moves r1 sends the proc call through P:0 (`CLAUDE.md`,
+an init that moves r1 sends the proc call through P:0 (`AGENTS.md`,
 `verify_initregs`).
 
 | id | init | process | effect |
@@ -259,9 +259,9 @@ low byte is never published.
 | register | meaning |
 |---|---|
 | `r6` | this instance's parameter block |
-| `r7` | per-instance state block, `x:0x20a + 0x100·k`; the dispatcher bumps it three times per track (`CLAUDE.md`, "the harness's model of the dispatcher is not the dispatcher") |
+| `r7` | per-instance state block, `x:0x20a + 0x100·k`; the dispatcher bumps it three times per track (`AGENTS.md`, "the harness's model of the dispatcher is not the dispatcher") |
 | `n7` | frame count (also `x:0x20c`; 0 skips the effect) |
-| `r0` | audio block: the dispatcher passes `r0 = 0`, 16 interleaved L/R samples at `X:0`; stock code scratches `X:0x20–0xff` (`CLAUDE.md`, `dsp_host -audio 0`) |
+| `r0` | audio block: the dispatcher passes `r0 = 0`, 16 interleaved L/R samples at `X:0`; stock code scratches `X:0x20–0xff` (`AGENTS.md`, `dsp_host -audio 0`) |
 | `r1` | effect id across the FX1 init call |
 
 The stub's `r0` in / `r1` out is the stub's convention; DARK REV saves `r0`
@@ -322,7 +322,20 @@ are dispatcher variables). The 336-word block is built by the packer
 `X:0x30000` staging is that record after unpack.
 
 Read-back: the dispatcher (`P:0x54`/`0x64`) loads `r5 = X:0x4600` (A) /
-`X:0x2600` (B), saved at `X:0x206`; after each FX2 call (`P:0x50d`)
+`X:0x2600` (B), saved at `X:0x206`, from core 0's bank word
+(`y:<<$ffffd4`, 0/1), and patches the host handlers' address masks
+(`p:$371`/`p:$380` = `$3fff`/`$5fff`) so the ColdFire's constant command
+word `$6600` lands in the SAME buffer: one buffer per frame, and the
+pull (DMA channel 1, armed at `P:0x37c` in B) must finish before the first
+FX2 copy overwrites it. ✅ Measured on the unit 25 Sep 2026 (images
+32-38, `docs/remixer/FAILURE_MODES.md`): core 1's pull reaches T1's 64
+words about 4.5 samples after T1's proc entry, jittering by half a
+sample or more with the pattern position (the port models +0.26). A
+module whose proc ends inside it tears its block; BusDelay pads its exit
+by 8,192 cycles (image 43). Core 1's frame-loop head (`P:0x51`, 16 words)
+and `P:0x80` (64 words) are word-by-word handshakes with core 0 through
+the inter-core port, the wait `brclr #$1,y:<<$ffffd3` being each loop's
+last instruction: core 1 has no idle of its own between frames; after each FX2 call (`P:0x50d`)
 `P:0x50e`–`0x514` calls the copy at `P:0x55a` with `r0 = X:0x206`, source
 `X:0`: 16 interleaved samples, each 24-bit sample stored as two words (`mpy`
 by `0x8000` and `0x80`), 64 words per track, `add #>$40` at `P:0x52b`. Four
@@ -471,7 +484,7 @@ hardcoded entry offset.
 Each established on hardware:
 
 - `mpy` does not double when `a1` is read (0.5·0.5 = `$200000`); `a0`
-  exposes the shift (`CLAUDE.md`).
+  exposes the shift (`AGENTS.md`).
 - Let the AGU do address work; hand-rolled modulo cost 135 cycles/sample.
 - `dsp_asm` mis-encodes illegal parallel moves silently: `x:(rN+disp)` is
   never parallel; `mpy y0,x0,a` takes a parallel move, `mpy x0,y0,a`

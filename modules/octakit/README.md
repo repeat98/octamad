@@ -57,6 +57,49 @@ Her recipe rewrites the apply_part entry `0x40009094` and the scene-parameter
 writer `0x40052ae8`; the ledger refuses any other module on those sites. CC
 PAGE 2 shares her MIDI CC dispatch entry through `modules/scenes-kits`.
 
+## Calling the page-1 writer beside her (26 Sep 2026)
+
+Her recipe repoints the three stock calls to the page-1 writer
+`0x40054cd8(track, flat, value)` at her wrapper
+(`gk_stock_track_parameter_absolute`), and rewrites the writer's own dirty
+store (`0x40054fec`) to run her marker: it reads the long 12 bytes above
+the writer's arguments and halts (`illegal`, `0x45d2128e` in the
+`bottleservice` build) unless its top half is
+`GK_TRACK_PARAMETER_TOKEN_ARMED` (`0x54500000`, her `abi.inc`). Her wrapper
+is what puts it there, and it accepts only the three stock return
+addresses, so a module can neither call the writer bare nor call her
+wrapper. TEMPO BUS and MODE DEFAULTS did call it bare: under the port
+`bottleservice` halted at frame 40 of `verify_set`'s run on CC 68 (a MODE
+change re-defaulting page-1 knobs).
+
+What they do now: push the token themselves (`P1TOKEN` in
+`modules/tempo-bus/helpers.s`, `modules/mode-defaults/modedef.s`), then
+call the stock writer. `manifest.py` reads the constant from her `abi.inc`
+and stops the build if it moves. Stock ignores the extra word. Her
+`gk_track_parameter_prepare` / `finish` (workspace mark-dirty and commit)
+do not run on that path, as they do not for CC MAP's page-2 stores.
+
+Measured under the port (`bottleservice`, the `make accept` stress project,
+`make panel` on `localhost:8572`, 26 Sep 2026):
+
+- `--watch-pc`: five MODE DEFAULTS calls per CC 68 (the PHSR view's
+  page-1 defaults 28 121 127 64 64), each reaching `0x40054fec`, none
+  reaching her fatal; `verify_set` 900/900 frames, 0 failures.
+- Kit save / reload: CC 68 = 0 (JUNO) wrote T1 FX1 page 1 `1a 15 12 40 .. 46`
+  through the tokened writer; FUNC+PART+YES saved Kit 001; CC 68 = 77
+  (PHSR) changed it to `1c 79 7f 40 .. 40`; FUNC+CUE brought the JUNO
+  bytes back.
+- Cross-Kit: Kit 002 set to PHSR and saved; LOAD KIT 001 read JUNO, 002
+  read PHSR.
+- Copy: FUNC+REC on 002 in LOAD KIT, FUNC+STOP on 003, loaded 003 ("003
+  TWO"): the PHSR bytes; 001 and 002 unchanged.
+- The same sequence over CC MAP's page-2 store (`rig-kits`, T1 FX1 slot 6)
+  saved, reloaded and stayed per Kit.
+
+Not measured: hardware; whether her unsaved-changes marking (if any)
+notices a tokened or page-2 write; her UNDO KIT and pattern-paste paths
+after one.
+
 ## Kit data, for anyone writing to it (from Em, 12 Sep 2026)
 
 - Kits keep the Part layout and offsets.

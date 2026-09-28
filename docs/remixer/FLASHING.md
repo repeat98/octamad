@@ -84,7 +84,7 @@ Manual §8.5.2: seconds rather than minutes.
    mechanism (inferred from the code, not measured): an OS upgrade rewrites
    program memory but does not clear DSP state RAM, and an engine whose
    tagged warm-up counter survives with a valid tag (BusVerb `$2c0000` at
-   `r7+$82`, BusDelay `$2e0000`, Nimbus `$2d0000` at `r7+$31`) skips its
+   `r7+$82`, BusDelay `$2e0000`) skips its
    warm-up and runs on whatever is in its buffers. A power cycle clears the
    tag.
 

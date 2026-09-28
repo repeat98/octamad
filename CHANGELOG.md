@@ -7,6 +7,357 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- CC FEEDBACK (28 Sep 2026, `modules/cc-feedback`): the OT transmits a
+  CC for every live knob byte that changes -- a pattern or part change, a
+  project load, MODE DEFAULTS, an incoming CC, a page-2 turn -- so a
+  controller's encoders follow the unit; stock echoes page-1 panel turns
+  only. One track per UI tick (a detour on the keyrepeat task's loop),
+  the live lane against the stock emitter's own last-sent cache
+  (`0x46c7bf2c`), page 1 as CC 16-45 and page 2 as CC MAP's 62-73. In
+  `bottleservice` and `usb-audio`. `ot_emu --midi-out FILE` dumps UART0's
+  transmit bytes; `verify_set` checks them against the lane.
+- The port follows a detoured idle park (28 Sep 2026): `Rtos::install`
+  reads a `jmp abs.l` at `0x4001fc96` (CF METER IDLE's `m_idle`) and counts
+  the loop's first 0x80 bytes as main's park for the idle skip, the burst
+  end and run-to-park; a borrowed call still returns to the stock `bras .`.
+  `cfmeter`'s set gate passes (card ready, load handled 7.9 s after the
+  post; before: never posted).
+- SCENES P2's page-2 editor-entry detours displace eight bytes, the span
+  Octakit's own entry write takes (28 Sep 2026): at twelve the build
+  nopped the stock slot load at entry+8, where her trampoline continues,
+  and every page-2 knob turn under Octakit + SCENES P2 (rig-kits,
+  bottleservice) halted in `gk_track_setup_byte_fatal`. Measured under
+  the port from the panel; never flashed. `verify_modedefaults` and
+  `verify_scenesp2` no longer SKIP under Octakit
+  (`docs/remixer/FAILURE_MODES.md`).
+- `make reach` places a file by what depends on it (28 Sep 2026): the
+  Python imports and the `tools/x/y.py` paths the code runs or reads (not
+  the ones in comments, docstrings or messages) form a graph over
+  `tools/`; a change reaches the gates that transitively depend on it. A
+  gate of the shared half reaches `make check-shared` alone (155 s, was
+  every remix's per-remix half too); a gate of the per-remix half every
+  `check-remix` without the shared half; a file no gate depends on
+  (`tools/hw/bcr2000.py`, a render tool) nothing, named as such. The
+  Makefile is placed by which targets changed against the base: only the
+  check graph, a variable or a define reaches every remix; two new Ghidra
+  targets (#483) reach nothing. Before, `tools/harness/`, `tools/hw/`,
+  `scripts/` and any Makefile edit reached every remix.
+- The build's memo (28 Sep 2026): `tools/remix/runtime_build.py` keeps the
+  aPLib packer's output by the sha256 of its input and a `Runtime`'s three
+  artifacts (raw, packed, append) plus symbols by the sha256 of the recipe,
+  every source file, the stock image, the compiler version and the skipped
+  guards, under `out/cache/` (`OCTABAM_CACHE=<dir>`, `OCTABAM_NO_CACHE=1`
+  builds cold). A runtime hit is re-verified against the recipe's own
+  identities before use. bottleservice: 9 s cold, 1.7 s warm, image and
+  report byte-identical; `scripts/refhash.sh check` 24/24 cold and warm.
+  Every `make check-remix` builds its image about eight times (the recipe,
+  the DRAM boot, the set, the three select probes, the burn) and the
+  selftest and `verify_replaces` build every remix; all of it was the same
+  bytes. `verify_scenesp2` runs its three boots side by side (83 s wall,
+  was 220 s under Octakit; verdicts identical): a pool poked once the
+  transport has started never reaches the live lane, with or without a
+  transport restart (measured), so the three cannot share a boot.
+- The gate run, once each (28 Sep 2026): `make accept REMIXES="a b c"`
+  runs the remix-independent half of `make check` once and `make
+  check-remix` per remix (report v2: gates `check_shared` and
+  `check_remix` where v1 had `check`, reports at `<out>/<remix>/` with
+  `summary.json`); it had run the whole `make check` per remix, so a
+  `make reach RUN=1` over N remixes ran the shared half N+1 times and the
+  per-remix half twice. `make reach` lists one accept line for the
+  accepted remixes and, with `STRESS_SOURCE` set, no separate check lines
+  for them; `KEEP=1` runs every gate and prints one table; `JOBS=n` runs
+  the check-remix lines through `tools/verify/check_shards.py` (`make
+  check-remixes`), n detached worktrees of the tree with their own port
+  builds, remixes handed out from one queue. `pressure.py render` renders
+  its 20 layouts `--jobs` at a time (the cores, at most 8) with both
+  payloads dumped once and handed to `rig_render --mem/--memB`; it was
+  serial, 9 to 22 minutes of every accept.
+- The port's load runs until the engine is idle (28 Sep 2026): LOAD
+  PROJECT entered and the engine back at its queue receive with nothing
+  queued, reported as `LOAD PROJECT handled, N ms after the post`;
+  `--load-ms` is a ceiling (90 s in every harness, was a fixed 20 s run).
+  Under Octakit the handler and the command sys queues behind it take
+  ~32 s emulated (her persistence work on a fresh card); the fixed run
+  started the transport inside it and her page-1 wrapper dropped every CC
+  as busy (bottleservice's set gate). ATA latency 8 samples (~180 us per
+  data sector, `--ata-latency`) instead of 1: sys consumes the engine's
+  reset-time "select bank 0" before the BANK= parse (RTOS_FORK section 7),
+  so mods, ok-ms and rig-mods (Octakit + MIDI SCENES) load instead of
+  halting in Octakit's activation lifecycle. `docs/remixer/EMU.md`.
+- Tape Echo's ColdFire probe (27 Sep 2026): its test vectors are glibc's
+  `random()` sequence on every host (macOS's differed, so a failing vector
+  here never occurred on the author's Linux), and its host oracle is
+  compiled with `-fwrapv`: `modules/tapeecho/cpu.c` lines 251, 303 and
+  305 overflow int32 on a steep negative MIX ramp (UBSan), which clang's
+  optimiser exploited ("tape output mismatch 3/16 (mode 3)") while the
+  ColdFire kernel wraps. The gate is green on this machine; the source
+  fix is the author's.
+- USB AUDIO in three modules over one source (27 Sep 2026):
+  `modules/usbaudio` is `modules/usb-audio-extended` (key USB AUDIO
+  EXTENDED, the twenty channels, images byte-identical) and `modules/usbmidi`
+  is `modules/usb-midi`. USB AUDIO FULL (`modules/usb-audio-full`, remix
+  `usb-full`): the sixteen track channels. USB AUDIO MASTER
+  (`modules/usb-audio-master`, remix `usb-master`): two channels, track 8's
+  L/R post-FX pre-fader at both speeds, a front L/R stereo input.
+  `bottleservice` carries USB AUDIO MASTER; every other USB remix USB AUDIO
+  EXTENDED. A remix with two of them is refused by name. USB AUDIO MASTER
+  polls every 1 ms at high speed too (bInterval 4, 44/45-frame packets of
+  at most 360 bytes); the port's USB bench takes `isohz` so a host script
+  polls at the descriptor's rate. Port only.
+
+- `make check` is two halves (27 Sep 2026): `make check-shared
+  REMIXES="a b"` runs the gates that do not depend on the remix (the
+  ledger selftest, the knob census, the isolated module gates with
+  `remix_arg=False`, once for the union of the modules) and `make
+  check-remix REMIX=<r>` the rest; `make reach RUN=1` prints and runs the
+  shared half once and the per-remix half per reached remix. Running every
+  remix on #482 repeated the shared half 25 times.
+- The gates follow the modules (27 Sep 2026): a manifest names its own
+  verifiers (`schema.Gate`) and its dearest knob settings
+  (`Module.dear`, checked against its knobs at load); `make verify` runs
+  the shared gates and then `tools/verify/module_gates.py` for the
+  selection, so a remix never runs another module's gates and a new
+  module needs no Makefile edit. `make accept` takes any remix: the
+  pressure stages run when every DSP module declares `dear` and block by
+  name otherwise; the stress fixture is derived from the selection
+  (servers on their cores' first tracks, the most different FX1 modules
+  that fit under the wall). `make reach` classifies the branch's diff
+  into the gates it reaches and `RUN=1` runs them; CI prints the list on
+  every PR. `pressure.py`'s knob table moved into the manifests. There
+  is no default remix any more: `make` and every tool take `REMIX=<name>`
+  and refuse without it; the bus, knob-census, Character and CC MAP gates
+  ask the registry for the smallest remix carrying what they need
+  (`registry.fixture`); refhash names its subject (`bus`) itself. The
+  selftest refuses a module no remix carries. `remixes/bamsep26` is
+  removed (bottleservice is its strict superset). Running every remix's
+  `make check` found: `verify_set` wanted Character's count on an FX1 id a
+  remix ran as stock LO-FI (kits, scenes); `generate_cpu.py --check`
+  called Tape Echo's cpu.s stale under a gcc other than the one that
+  wrote it (it records the gcc and SKIPs under another); `scripts/setup.sh`
+  staged `dsp_host` without rebuilding it, so the shared binary had ignored
+  `-paramfile` since #388 (verify_miniverb's "MOD residual 0.000", PR
+  #356's two reviews); `verify_modedefaults` SKIPs by name under Octakit,
+  whose editor wrapper halts a direct call (`gk_track_setup_byte_fatal`).
+  selftest refuses a module no remix carries.
+  every PR. `pressure.py`'s knob table moved into the manifests.
+- Character savings (27 Sep 2026): 355 -> 241 static cycles/sample
+  (TAPE 105, TUBE 99, INFL 66 in the SAT fork). Both channels share one
+  register for each of FOLD's gq/trim and TONE's k/t; SAT's DRV-0 flag and
+  mode are one ring word tested once; the arms reordered so TAPE falls
+  through; long immediates moved into ring words; TapeHead's v - v^3 and
+  its x0.7 accumulate are `mac`s, g3*trim one exact coefficient; DaTube's
+  table split into values then slopes (one index, no mask) with a `mac`
+  interpolation; WIDTH hands MIX its outputs in registers (limited as the
+  stores were); COMP reads the key's R in TONE. Tilt and level_s states
+  moved to $1b..$1d, fold trim to $18, ramp steps to $56..$5b. Payload A
+  251 free words, B 855 (on main after #481). Bit-identical: `verify_ident character` 9/9, and
+  16 renders moving every knob, DRV to 0 and back, COMP off/on and SAT
+  mid-render at -12 dB and a level that drives every clip.
+- Spectrum BP into SEM (27 Sep 2026): MODE is LADR SEM ISO VOWL; SEM's SHPE
+  sweeps LP (0) -> BP (64) -> HP (127), an equal-power crossfade (a tone at
+  the cutoff holds its level within 0.1 dB across the sweep; the notch at
+  64 is gone). SHPE draws LP / BP / HP at its stops and the number
+  elsewhere (a 89 B formatter cave at 0x400c45b0). SEM at SHPE 64 is
+  bit-identical to the old BP; every other mode, and SEM at SHPE 0 and
+  127, bit-identical. Saved parts: once per project before play,
+  `ot_project.py remap-slot <project> SPECTRUM MODE 2:1,3:2,4:3` (BP ->
+  SEM, ISO and VOWL down one; SHPE keeps its value).
+
+- Removed (27 Sep 2026): `PLAN.md` (status as of 21 Sep; its memory
+  table is `docs/remixer/PLACEMENT.md`'s), `docs/TIMESTRETCH_PIPELINE.md`
+  (every address retracted, superseded by `docs/firmware/REPITCH.md`) and
+  `tools/hw/hw_flash7_liveclaim.py` (claims about the retired one-aux
+  return). The oracle no longer calls the deleted `oracle.py`; the remix
+  READMEs' links follow the directory layout.
+- Parallel-move folding (27 Sep 2026): an adjacent move and ALU op with
+  no dependency between them become one instruction (the parallel move
+  reads its source before the op writes). Only forms the stock payloads
+  already run; the audited mpysu orders left alone; no address-register
+  write moved closer to its use. BusVerb 36 (1,146 -> 1,090 static
+  cycles/sample, payload A 34 -> 70 free words), Spectrum 8, Character 6,
+  Modulation 3, BusDelay 1. Bit-identical: BusVerb on ROOM/PLATE/BIG at
+  -12 and 0 dBFS sends; BusDelay (3 modes), Spectrum, Character and
+  Modulation (every mode) per channel, 25 files.
+- BusVerb slot pass (27 Sep 2026): 22 per-sample slots the loop reached
+  with two-word displaced moves swapped into the one-word range against
+  per-block slots (`_MODE_SLOTS` and `LFOTAB` renumbered with them).
+  Bit-identical on every mode, level and track; 1,166 -> 1,146 static
+  cycles/sample; payload A 23 -> 34 free words.
+
+- BusVerb wet limiter (27 Sep 2026): a feedback peak limiter on the wet
+  before the x2 makeup, ceiling −2 dBFS, attack x0.9 per sample, hold
+  between −4 and −2 dBFS, linear release ~150 ms, stereo-linked (the
+  right's peak reaches the detector one sample late). At a 0 dBFS send PLATE had railed 7,463 samples on L and
+  11,762 on R per 9 s of a drum loop; now 0 on every mode, peaks −1.1 to
+  −1.8 dBFS. Bit-identical at a −12 dBFS send. +30 cycles/sample static
+  (1,145 -> 1,175); r7 slots $11..$13, with four per-block slots moved
+  into the one-word displacement range to keep the RIG BURN probe's words
+  (payload A at 23 free). Unheard.
+
+- Modulation cycle pass (27 Sep 2026): LINE 404 → 354, PHSR 394 → 298,
+  COMB 339 → 329 words/sample; the rig's priced worst core 2,781 → 2,585.
+  Image 88 on hardware overran at the fourth Modulation beside the reverb
+  (three fit). Exact rewrites plus two within the reference bars (the
+  one-poles as two products, PHSR's stages rolled): LINE renders differ from
+  main by ≤ 6 LSB, PHSR by ≤ 1 LSB.
+
+- Removed (27 Sep 2026): the five Mutable-Instruments-flavoured inserts
+  WarpFold, Ripple, Rungs, Streamz, BodeShift and their `mutables` remix,
+  and the two reference modules HELLO WORLD (`hello`) and HELLO DRAM
+  (`hello-dram`) with their remixes and `verify_hello`. None had reached
+  hardware. The worked examples are now `modules/character/` (DSP) and
+  `modules/repitch/` (ColdFire); the selftest's placer probe uses
+  MINIVERB and EUCLID. Every image changes by 36 bytes: FX2 ids 0x0a,
+  0x0b, 0x0e, 0x0f, 0x17 and 0x1b are no longer aliased to the fallback
+  (descriptor pointer and both payloads' dispatch entries return to
+  stock's), so a project that selected one of them runs stock's entry.
+- Removed (27 Sep 2026): NIMBUS (Clouds-flavoured granular insert, never
+  flashed), its `nimbus` remix, `verify_nimbus` and the `NFRZAT` DEV hook.
+  FX2 id 0x1a is free and de-aliased the same way.
+- The module table and the remix index are rendered (27 Sep 2026):
+  `Module.category`, `author`, `author_url`, `proof`, `proof_note` and
+  `Remix.family`, `proof`, `proof_note` in every manifest and selection;
+  `make docs` writes README.md's table (by category) and
+  docs/remixes/README.md; `verify_docs` in `make check` refuses a stale
+  copy, the selftest a module without the fields. A remix is a directory,
+  `remixes/<name>/remix.py` + `README.md` (the pages moved from
+  docs/remixes/). The remixer's AVAILABLE pane groups by the same
+  categories. Eight merged modules had no README row before this.
+- RLEN PLEN in `recfix` (26 Sep 2026): RLEN value 65, drawn PLEN, past
+  MAX: one loop of the track's pattern on its own scale, so TRIG ONE +
+  QREC PLEN records the next pass and stops (RLEN counts master-clock
+  16ths and stops at 64 = four bars on a 1/4X track). One cave on the arm
+  converter, the setup screen draws PLEN, the part validator's hard-coded
+  64 raised to 65. Saved parts keep their meaning. Port-gated only.
+
+- `bottleservice` (26 Sep 2026): the rig + USB MIDI + USB AUDIO + Octakit
+  (SCENES KITS bridged). TEMPO BUS and MODE DEFAULTS push Octakit's token
+  above the page-1 writer's arguments: her rewrite of the writer's dirty
+  store halted the unit on a bare call (found under the port, never
+  flashed). Kit save, reload and copy measured intact after it. Tier-0
+  maps all 128 MB of SDRAM (her runtime sat in a gap); the port's
+  `--interactive` gains `midi <hex>...` and the panel `/midi`.
+  `verify_modedefaults` pokes both current-track bytes (`0x80000000`,
+  `0x100b14cc`) before its editor call: with one moved, Octakit's editor
+  wrapper halts on the disagreement (the FX1 case, T2; T1 was 0 in both).
+- SCENES P2 (26 Sep 2026): scene locks and the crossfader reach page 2 of
+  FX1 and FX2 (hold a scene, turn a page-2 knob; FUNC + turn removes the
+  lock). Locks live in a 144-byte pool inside the Part window (`+0x90522`)
+  and follow scene copy / paste / clear / undo. In `bamsep26`; in
+  `rig-kits` with the SCENES P2 KITS bridge over Octakit's editor
+  wrappers. Refused beside MIDI SCENES (same Part bytes). Port only.
+
+- Knob click census (26 Sep 2026, `make verify-knobs`, in `make check`):
+  every continuous knob of the DSP modules moved mid-render; 55 of 134
+  cases stepped per block on main, 0 after. Fixed with per-sample ramps
+  (Character, Spectrum, Modulation, BusDelay, SEND, BusVerb DEL/DIFF/TIME).
+  Known: BusVerb SIZE still steps (integer tank taps). Worst core priced
+  2,792 -> 2,836 of 3,120; payload A FREE 415 -> 35 words. Spectrum's
+  ENV/LFO-driven cutoff now moves through the same 1/128-per-sample ramp.
+
+- `usb-audio` (26 Sep 2026) follows `bamsep26` again: TEMPO BUS added and
+  the host pages draw DEL/REV (`host_slots`) where it had all twelve knobs.
+
+- BusVerb SHFT (26 Sep 2026): six shimmer intervals, low to high: -12, +5,
+  +7, +12, +19, +24 (pure ratios 1/2, 4/3, 3/2, 2, 3, 4), default +12. The
+  stored index changed meaning (was +12 +19 +7 -12): run `ot_project.py
+  remap-slot <project> "REVERB SERVER" SHFT 0:3,1:4,2:2,3:0` once per saved
+  project.
+
+- ROUTE A RETIRED (26 Sep 2026): `tools/emu/emu_rtos.py`, `make emu-rtos`,
+  `scripts/o6_gate.sh` and `tools/emu/ot_emu/oracle.py` removed. The
+  panel runs the port only (`--backend`, `--no-rtc` and `/press` gone;
+  `/transport` taps the matrix); `panel_link.py --selftest` boots the
+  port; `stage_project` moved to `emu_card`. Tier-0 (`emu_bringup`) stays.
+- `ot_project.py migrate-hosts <project>` (26 Sep 2026): carries a project
+  saved before image 71 into its host layout, keeping the values: T1 TIME
+  slot 1 -> 11, T5's reverb send slot 0 -> REV (slot 1), T5 TIME slot 1 -> 11,
+  the new T1 REV and T5 DEL at 0. Once per project. Run on Bottleservice 2026.
+
+- RECORDER HOLD in `recfix` (26 Sep 2026): in sound-on-sound (SRC3 = the
+  track) a recorder-buffer voice that reads one sample past its recording
+  repeats the last sample instead of playing zero. Port-gated; the click
+  Bryan T reported on OCTABAM84 at 128 BPM (`docs/firmware/RECORDER_CLICK.md`
+  §5).
+- THE HOST PAGES LOOK LIKE THE SEND TRACKS (26 Sep 2026, Sam: "want all
+  the tracks to look the same"): BusDelay (T1) and BusVerb (T5) carry
+  DEL / REV on page-1 slots 0 / 1 and their pages draw those two only
+  (remix `host_slots`); every other engine knob is on the TEMPO window,
+  whose labels and the MODE renames live in its own name tables.
+  T1's REV (into the reverb) and T5's DEL (into the delay) are new sends,
+  SEND's recipe, tapped from the host's dry before its engine; each lands
+  bit-identically to a SEND track's on the same core (`verify_onebus`).
+  TIME moved to page-2 slot 11 on both engines; BusDelay's WOW is gone
+  (at WOW 0 every render is unchanged). Pricer: reverb 1,125 -> 1,145,
+  delay 1,041 -> 977 cycles/sample; worst core 2,792 of 3,120.
+  STAMP EVERY PROJECT BEFORE PLAY: a part saved before reads its old TIME
+  byte as REV and its slot-11 byte as TIME (`stamp-defaults <project>
+  bamsep26 --all --keep-mode`, or `ot_project.py host <project>`).
+
+- BusDelay's GRAIN scatter knob (page 2, slot 7) is SCTR, was SCAT (26 Sep
+  2026). Name only: slot, count and default unchanged, no stamp needed.
+- TEMPO BUS (25-26 Sep 2026): the TEMPO window lists and edits BusDelay and
+  BusVerb. UP/DOWN pick the row, A (or B) the value, LEFT/RIGHT the box, LEVEL whole BPM, FUNC + LEVEL 0.1 BPM. A
+  mode's `---` rows are left out. Header: `TEMPO 121.2`, then the key
+  `◀▲▼▶ A ●`; five rows per box.
+- USB AUDIO: MAIN and CUE on channels 17-20 (Bryan T, 25 Sep 2026): the
+  high-speed stream is 20 channels, the 16 track channels then MAIN L/R and
+  CUE L/R, the words core 0 sends to the DACs (the buffer the stock
+  recorder reads for SRC3 = MAIN/CUE, 0x80005e60). 80-byte ring slot,
+  <= 960-byte packets. New `usb-lean` remix: stock effects + USB MIDI + USB
+  AUDIO, for testing the stream without the rig. On Bryan's MKII as
+  `usb-lean` image 90: MAIN on 17/18, CUE on 19/20, levels follow.
+- The virtual panel's face is the MKII's (25 Sep 2026): Mark Roberts' octemu
+  skin generator (`tools/panel/skin/gen_svg.py`, MIT) in a dark palette,
+  served as `/skin.js`; the page's keys, knobs, fader and LEDs sit over it as
+  hit areas. PROJ/PART/ARR send FUNC chords while the port runs as an MKI.
+- THE VIRTUAL FRONT PANEL (25 Sep 2026), Tim Hastie's, from his fork
+  `timhastie/octa-panel` at `be68244`: `make panel REMIX=<name>` runs the
+  remix on the port in a browser (LCD, keys, encoders, LEDs, crossfader,
+  scenes, sound, takes, the audio pool) on a persistent card
+  `out/cards/<project>.img`; `make panel-app` builds his macOS app. His
+  port changes are merged into `tools/emu/ot_emu` (`--interactive`,
+  pacing, RTC, DMA timers DTIM0-3, bursts, page table, `--dsp-rt`, card
+  write-back, memory-to-memory eDMA) and his `--dsp-rt` dsp56300 hunks
+  rebased onto our pin (`make dsp-repatch` for an existing tree). Three
+  lockstep behaviour changes, each measured by reverting it: the UI tick
+  is 120 Hz (132 MHz bus), the firmware mounts the last set at boot, the
+  stock delay's eDMA ring copies move data. `--fast` removed (the bursts
+  are exact). Nothing on hardware.
+- TEMPO BUS (25 Sep 2026):
+  - The TEMPO window lists and edits BusDelay's and BusVerb's parameters
+    in two boxes, drawn with the stock settings-screen routines: A = row,
+    B = value, LEFT/RIGHT = box. LEVEL (BPM) and UP/DOWN (tempo step) are
+    unchanged.
+  - Edits go through the page-1 writer and the FX2 page-2 stores. A MODE
+    change re-defaults its knobs through MODE DEFAULTS.
+  - `verify_tempobus` drives it under the port.
+  - Nothing on hardware.
+- SEND splits into DEL (slot 0, into the delay) and REV (slot 1, into the
+  reverb), 25 Sep 2026. A second accumulator (`Y:0xa58..0xad7`) and count
+  (`0x983..0x98a`), cleared by the housekeeper with the aux. The chain
+  carries `wet × DLY` only; the reverb hears the REV sends plus the chain.
+  T1's SEND goes into the delay, T5's into the reverb. `verify_onebus`
+  rewritten for it. Stored parts: the send byte becomes DEL; stamp REV.
+- DLY on BusVerb's page-2 slot 10 (25 Sep 2026): the delay→reverb chain
+  carries `in + wet × DLY`; the delay's WET sets only T1's print. The reverb
+  publishes the knob to `Y:0x982`, the delay glides it as WET. Default 127
+  = the chain as before; a part saved earlier holds 0 there (stamp or
+  `ot_project.py host`). `verify_onebus`: DLY 0 == reverb-only three blocks
+  later (−120 dB), T1 bit-identical at DLY 0. Nothing on hardware.
+- Image 64 (`usb-audio`) ran on Sam's MKII (25 Sep 2026): enumerates as a
+  16-channel 44.1 kHz input and a MIDI port at high speed; every channel
+  carries its track's tone; 9.6 minutes of takes with zero discontinuities
+  after the first 1.6 s of each host stream, with and without a 7,170
+  msg/s USB-MIDI flood and panel load; counters 0 underruns, 0 overruns,
+  bankdup unmoved; a fifth take of 180 s on the USBLOAD project (locks on
+  every step at 200 BPM, 7,950 USB-MIDI msg/s in, FX knobs turned) clean
+  on every channel but the one being turned. One open item: a burst of
+  reordered samples in the first 1.5 s of most host streams
+  (`FAILURE_MODES.md`). His own image (65, card payload) never installed
+  its audio function on this MKII, so no A/B against his build. `usb_counters.py`
+  flushes its watch lines. Not tagged: a diagnostic image, the rig modules
+  as in image 43.
 - MIDI SCENES re-pinned to bkkbrls-del's 1.40MIDISC8.2 (25 Sep 2026):
   MIDI track-1 scene locks no longer reach other tracks (`xf_mix`'s LFO
   probes index `track*32+param`), and an unlocked knob sends its own CC
@@ -22,7 +373,7 @@ flashed image was built from.
   `tools/hw/usb_counters.py`, the bench's `counters`, checked by
   `verify_usb`), `tools/harness/click_scan.py`, and image 64 packed from
   `usb-audio` for the first hardware run (the protocol in
-  `modules/usbaudio/README.md`). Unflashed.
+  `modules/usb-audio-extended/README.md`). Unflashed.
 - USB MIDI and USB AUDIO (25 Sep 2026, markandrus/octemu's work on the
   DRAM platform; remixes `usb` and `usb-audio`): class-compliant USB-MIDI
   mirroring DIN, and a UAC2 sixteen-channel input of the tracks (post-FX

@@ -1,0 +1,917 @@
+diff --git a/Ghidra/Processors/68000/data/languages/68000.ldefs b/Ghidra/Processors/68000/data/languages/68000.ldefs
+index 7fe13fc6bf..6c9014255a 100644
+--- a/Ghidra/Processors/68000/data/languages/68000.ldefs
++++ b/Ghidra/Processors/68000/data/languages/68000.ldefs
+@@ -66,6 +66,7 @@
+             manualindexfile="../manuals/68000.idx"
+             id="68000:BE:32:Coldfire">
+     <description>Motorola 32-bit Coldfire</description>
++    <compiler name="gcc" spec="coldfire.cspec" id="gcc"/>
+     <compiler name="default" spec="68000.cspec" id="default"/>
+     <compiler name="register" spec="68000_register.cspec" id="register"/>
+     <external_name tool="IDA-PRO" name="colfire"/>
+@@ -73,6 +74,21 @@
+     <external_name tool="qemu" name="qemu-m68k"/>
+     <external_name tool="qemu_system" name="qemu-system-m68k"/>
+   </language>
++  <language processor="68000"
++            endian="big"
++            size="32"
++            variant="Coldfire_EMAC_frac"
++            version="1.1"
++            slafile="coldfire.sla"
++            processorspec="coldfire_emacfrac.pspec"
++            manualindexfile="../manuals/68000.idx"
++            id="68000:BE:32:Coldfire_EMAC_frac">
++    <description>Motorola 32-bit Coldfire, EMAC in fractional mode</description>
++    <compiler name="gcc" spec="coldfire.cspec" id="gcc"/>
++    <compiler name="default" spec="68000.cspec" id="default"/>
++    <compiler name="register" spec="68000_register.cspec" id="register"/>
++    <external_name tool="DWARF.register.mapping.file" name="68000.dwarf"/>
++  </language>
+   <language processor="68000"
+             endian="big"
+             size="32"
+diff --git a/Ghidra/Processors/68000/data/languages/68000.sinc b/Ghidra/Processors/68000/data/languages/68000.sinc
+index b6a8b95721..3d1a42292b 100644
+--- a/Ghidra/Processors/68000/data/languages/68000.sinc
++++ b/Ghidra/Processors/68000/data/languages/68000.sinc
+@@ -30,7 +30,13 @@ define register offset=0x400 size=4  [ contextreg ];
+ @ifdef COLDFIRE
+ # TODO: add a pure MAC variant, for now, just do EMAC
+ define register offset=0x500 size=4 [ MACSR MASK ];
+-define register offset=0x600 size=4 [ EMACSR ACC0 ACC1 ACC2 ACC3 ACCext01 ACCext23 EMASK ];
++# EMAC accumulators. The hardware accumulators are 48 bits (ACCn plus the extension
++# bytes in ACCext01/ACCext23); they are modeled here as 64-bit registers holding the
++# full-precision signed sum of the products (see the EMAC section below).
++define register offset=0x600 size=8 [ ACC0 ACC1 ACC2 ACC3 ];
++define register offset=0x620 size=4 [ ACCext01 ACCext23 ];
++# ColdFire control registers (MOVEC destinations)
++define register offset=0x640 size=4 [ ASID ACR0 ACR1 ACR2 ACR3 MMUBAR RGPIOBAR ROMBAR0 ROMBAR1 MPCR EDRAMBAR SECMBAR MBAR CFPC ];
+ @endif
+ 
+ # Floating point registers are 80 bits internally, but are 96 bits to/from memory.
+@@ -177,6 +183,7 @@ define token extword (16)
+   reg12x   = (12,15)
+   reg12xwu = (12,15)
+   reg12xwl = (12,15)
++  emask    = (5,5)
+ @endif
+ @ifdef CPU32
+   tbl_dr_size  = (6,7)
+@@ -329,6 +336,16 @@ define context contextreg
+   regsanw = (11,13)
+   regsanb = (11,13)
+   extGUARD = (14,14)        # guard for saving off modes before starting instructions
++@ifdef COLDFIRE
++  # EMAC operating mode assumed by the decoder. The mode is a run-time setting
++  # (MACSR) that the disassembler cannot see, so it is selected by context:
++  #   emacFrac  0 = integer (signed) mode, 1 = fractional mode (MACSR[F/I]=1)
++  #   emacRnd16 (fractional mode only) 1 = MACSR[S/U]=1: "move.l ACCn,Rx" returns the
++  #             accumulator rounded to 16 bits in Rx[15:0]
++  # Defaults are 0; the "Coldfire (EMAC fractional)" language variant sets emacFrac=1.
++  emacFrac = (15,15)
++  emacRnd16 = (16,16)
++@endif
+ ;
+ 
+ @ifdef CPU32
+@@ -651,6 +668,38 @@ const8: "#"^d8 is  d8		{ export *[const]:1 d8; }
+ const16: "#"^d16 is  d16		{ export *[const]:2 d16; }
+ const32: "#"^d32 is  d32		{ export *[const]:4 d32; }
+ 
++@ifdef COLDFIRE
++# ColdFire MOVEC Rc encodings (CFPRM rev 3, MOVEC; MCF5445x RM). ColdFire MOVEC is
++# write-only. The EMAC registers, SR and PC are handled by dedicated constructors.
++ctlreg: CACR     is CACR & ctl=0x002     { export CACR; }
++ctlreg: ASID     is ASID & ctl=0x003     { export ASID; }
++ctlreg: ACR0     is ACR0 & ctl=0x004     { export ACR0; }
++ctlreg: ACR1     is ACR1 & ctl=0x005     { export ACR1; }
++ctlreg: ACR2     is ACR2 & ctl=0x006     { export ACR2; }
++ctlreg: ACR3     is ACR3 & ctl=0x007     { export ACR3; }
++ctlreg: MMUBAR   is MMUBAR & ctl=0x008   { export MMUBAR; }
++ctlreg: RGPIOBAR is RGPIOBAR & ctl=0x009 { export RGPIOBAR; }
++ctlreg: USP      is USP & ctl=0x800      { export USP; }	# OTHER_A7
++ctlreg: VBR      is VBR & ctl=0x801      { export VBR; }
++ctlreg: MACSR    is MACSR & ctl=0x804    { export MACSR; }
++ctlreg: MASK     is MASK & ctl=0x805     { export MASK; }
++ctlreg: ACCext01 is ACCext01 & ctl=0x807 { export ACCext01; }
++ctlreg: ACCext23 is ACCext23 & ctl=0x808 { export ACCext23; }
++ctlreg: ROMBAR0  is ROMBAR0 & ctl=0xc00  { export ROMBAR0; }
++ctlreg: ROMBAR1  is ROMBAR1 & ctl=0xc01  { export ROMBAR1; }
++ctlreg: RAMBAR0  is RAMBAR0 & ctl=0xc04  { export RAMBAR0; }
++ctlreg: RAMBAR1  is RAMBAR1 & ctl=0xc05  { export RAMBAR1; }
++ctlreg: MPCR     is MPCR & ctl=0xc0c     { export MPCR; }
++ctlreg: EDRAMBAR is EDRAMBAR & ctl=0xc0d { export EDRAMBAR; }
++ctlreg: SECMBAR  is SECMBAR & ctl=0xc0e  { export SECMBAR; }
++ctlreg: MBAR     is MBAR & ctl=0xc0f     { export MBAR; }
++ctlreg: "UNK_CTL_"^ctl   is ctl     { tmp:4 = 0xffffffff; export tmp; }
++
++# Scaling between a 32-bit register value and the EMAC accumulator representation:
++# integer mode: ACC = value; fractional mode: ACC = value << 31 (see EMAC section).
++emacLoadShift: is emacFrac=0	{ export 0:4; }
++emacLoadShift: is emacFrac=1	{ export 31:4; }
++@else
+ ctlreg: SFC    is SFC & ctl=0x000    { export SFC; }
+ ctlreg: DFC    is DFC & ctl=0x001    { export DFC; }
+ ctlreg: USP    is USP & ctl=0x800    { export USP; }
+@@ -664,7 +713,7 @@ ctlreg: ITT0   is ITT0 & ctl=0x004    { export ITT0; }
+ ctlreg: ITT1   is ITT1 & ctl=0x005    { export ITT1; }
+ ctlreg: DTT0   is DTT0 & ctl=0x006    { export DTT0; }
+ ctlreg: DTT1   is DTT1 & ctl=0x007    { export DTT1; }
+-ctlreg: SRP    is SRP & ctl=0x008    { export BUSCR; }
++ctlreg: BUSCR  is BUSCR & ctl=0x008    { export BUSCR; }
+ ctlreg: MMUSR  is MMUSR & ctl=0x805    { export MMUSR; }
+ ctlreg: URP    is URP & ctl=0x806    { export URP; }
+ ctlreg: SRP    is SRP & ctl=0x807    { export SRP; }
+@@ -674,7 +723,8 @@ ctlreg: RAMBAR1    is RAMBAR1 & ctl=0xc05    { export RAMBAR1; }
+ #  ctlreg: PCR    is PCR & ctl=0x808    { export PCR; }
+ ctlreg: CAC    is CAC & ctl=0xffe    { export CAC; }
+ ctlreg: MBB    is MBB & ctl=0xfff    { export MBB; }
+-ctlreg: "UNK_CTL_"^ctl   is ctl     { tmp:4 = 0xffffffff; export tmp; } 
++ctlreg: "UNK_CTL_"^ctl   is ctl     { tmp:4 = 0xffffffff; export tmp; }
++@endif # COLDFIRE
+ 
+ 
+ # Relative jump destinations
+@@ -1040,7 +1090,7 @@ with : extGUARD=1 {
+ 
+ :b^cc^".b" addr8		is op=6 & cc & addr8						{ if (cc) goto addr8; }
+ :b^cc^".w" addr16		is op=6 & cc & d8base=0; addr16					{ if (cc) goto addr16; }
+-:b^cc^".l": addr32		is op=6 & cc & d8base=255; addr32				{ if (cc) goto addr32; }
++:b^cc^".l" addr32		is op=6 & cc & d8base=255; addr32				{ if (cc) goto addr32; }
+ 
+ :bchg.b reg9dn,eab              is (op=0 & reg9dn & op68=5 & $(MEM_ALTER_ADDR_MODES))... & eab {
+ 	local source = eab;
+@@ -1443,7 +1493,14 @@ cachetype: "both"		is op67=3							{ export 3:4; }
+ 
+ @ifdef MC68040
+ 
++@ifdef COLDFIRE
++define pcodeop intouch;
++:cpushl cachetype,(regan)	is opbig=0xf4 & cachetype & op67!=0 & op5=1 & op34=1 & regan		{pushInvalidateCaches(cachetype, regan);}
++# INTOUCH (Ay): prefetch/touch the instruction cache line at Ay (cpushl encoding with cache field 0)
++:intouch (regan)			is opbig=0xf4 & op67=0 & op5=1 & op34=1 & regan		{ intouch(regan); }
++@else
+ :cpushl cachetype,(regan)	is opbig=0xf4 & cachetype & op5=1 & op34=1 & regan		{pushInvalidateCaches(cachetype, regan);}
++@endif
+ :cpushp cachetype,(regan)	is opbig=0xf4 & cachetype & op5=1 & op34=2 & regan		{pushInvalidateCaches(cachetype, regan);}
+ :cpusha cachetype			is opbig=0xf4 & cachetype & op5=1 & op34=3			{pushInvalidateCaches(cachetype);}
+ 
+@@ -1505,6 +1562,7 @@ cachetype: "both"		is op67=3							{ export 3:4; }
+ 	reg9dn = (rem << 16) | (div & 0xffff);
+ 	}
+ 
++@ifndef COLDFIRE
+ #remyes: "s"			is regdq & (regdr=regdq) & divsgn=1				{ }
+ remyes: "sl"			is divsgn=1							{ }
+ #remyes: "u"			is regdq & (regdr=regdq) & divsgn=0				{ }
+@@ -1562,7 +1620,47 @@ subdiv: regdr:regdq		is regdq & regdr & divsz=1 & divsgn=1 {
+ # divu.l  (when divsz = 1) is regdr concat regdq / el2 - > regdr and regdq
+ # divul.l (when divsz = 0) is regdq / el2 -> regdr and regdq
+ #
++@endif # !COLDFIRE (68k divl tables)
++
++@ifdef COLDFIRE
++# ColdFire long divides (CFPRM DIVS.L/DIVU.L, REMS.L/REMU.L). Only the 32/32 forms exist
++# (ext bit 10 = 0). The extension word holds Dx in bits 14-12 and Dw in bits 2-0:
++#   Dw == Dx : DIVx.L <ea>y,Dx     Dx = Dx / <ea>y  (quotient)
++#   Dw != Dx : REMx.L <ea>y,Dw:Dx  Dw = Dx % <ea>y  (remainder), Dx is unchanged
++# N and Z are set from the quotient, V is modeled as 0 (overflow only for 0x80000000/-1),
++# C is cleared. Allowed <ea>y: Dy, (Ay), (Ay)+, -(Ay), (d16,Ay).
++@define CF_DIVL_MODES "(mode=0 | mode=2 | mode=3 | mode=4 | mode=5)"
++@define CF_DQ_EQ_DR "((regdq=0 & regdr=0) | (regdq=1 & regdr=1) | (regdq=2 & regdr=2) | (regdq=3 & regdr=3) | (regdq=4 & regdr=4) | (regdq=5 & regdr=5) | (regdq=6 & regdr=6) | (regdq=7 & regdr=7))"
++
++:divs.l e2l,regdq		is opbig=0x4c & op67=1 & $(CF_DIVL_MODES); divsgn=1 & divsz=0 & regdq & $(CF_DQ_EQ_DR); e2l [ savmod2=savmod1; regtsan=regtfan; ] {
++	local den:4 = e2l;
++	local quot:4 = regdq s/ den;
++	regdq = quot;
++	resflags(quot); VF=0; CF=0;
++}
++:divu.l e2l,regdq		is opbig=0x4c & op67=1 & $(CF_DIVL_MODES); divsgn=0 & divsz=0 & regdq & $(CF_DQ_EQ_DR); e2l [ savmod2=savmod1; regtsan=regtfan; ] {
++	local den:4 = e2l;
++	local quot:4 = regdq / den;
++	regdq = quot;
++	resflags(quot); VF=0; CF=0;
++}
++:rems.l e2l,regdr:regdq	is opbig=0x4c & op67=1 & $(CF_DIVL_MODES); divsgn=1 & divsz=0 & regdq & regdr; e2l [ savmod2=savmod1; regtsan=regtfan; ] {
++	local den:4 = e2l;
++	local num:4 = regdq;
++	regdr = num s% den;
++	local quot:4 = num s/ den;
++	resflags(quot); VF=0; CF=0;
++}
++:remu.l e2l,regdr:regdq	is opbig=0x4c & op67=1 & $(CF_DIVL_MODES); divsgn=0 & divsz=0 & regdq & regdr; e2l [ savmod2=savmod1; regtsan=regtfan; ] {
++	local den:4 = e2l;
++	local num:4 = regdq;
++	regdr = num % den;
++	local quot:4 = num / den;
++	resflags(quot); VF=0; CF=0;
++}
++@else
+ :div^remyes^".l" e2l,subdiv	is opbig=0x4c & op67=1 & $(DAT_ALTER_ADDR_MODES); subdiv & remyes; e2l [ savmod2=savmod1; regtsan=regtfan;] { glbdenom=e2l; build subdiv; CF=0; resflags(subdiv);}
++@endif # COLDFIRE
+ 
+ :eor.b reg9dnb,eab		is (op=11 & reg9dnb & op68=4 & $(DAT_ALTER_ADDR_MODES))... & eab			{ eor(reg9dnb, eab); }
+ :eor.w reg9dnw,eaw		is (op=11 & reg9dnw & op68=5 & $(DAT_ALTER_ADDR_MODES))... & eaw			{ eor(reg9dnw, eaw); }
+@@ -1585,7 +1683,20 @@ subdiv: regdr:regdq		is regdq & regdr & divsz=1 & divsgn=1 {
+ :extb.l regdn			is op=4 & reg9dn=4 & op68=7 & op35=0 & regdn		{ local tmp = regdn:1; regdn = sext(tmp); resflags(regdn); logflags(); }
+ 
+ @ifdef COLDFIRE
+-:halt				is d16=0x4ac8		unimpl
++define pcodeop halt;
++define pcodeop pulse;
++define pcodeop wddata;
++define pcodeop wdebug;
++:halt				is d16=0x4ac8		{ halt(); }
++:pulse				is d16=0x4acc		{ pulse(); }
++# WDDATA.sz <ea>y: write the operand to the debug module's DDATA port
++:wddata.b eab		is (opbig=0xfb & op67=0 & $(MEM_ALTER_ADDR_MODES))... & eab	{ wddata(eab); }
++:wddata.w eaw		is (opbig=0xfb & op67=1 & $(MEM_ALTER_ADDR_MODES))... & eaw	{ wddata(eaw); }
++:wddata.l eal		is (opbig=0xfb & op67=2 & $(MEM_ALTER_ADDR_MODES))... & eal	{ wddata(eal); }
++# WDEBUG.L <ea>y: load a debug-module control register from memory (2nd word is 0x0003)
++wdebugea: (regan)		is mode=2 & regan; opx015=3			{ export regan; }
++wdebugea: (d16,regan)	is mode=5 & regan; opx015=3; d16	{ local tmp = regan + d16; export tmp; }
++:wdebug.l wdebugea	is (opbig=0xfb & op67=3) ... & wdebugea		{ wdebug(wdebugea); }
+ @endif
+ 
+ :illegal			is d16=0x4afc		unimpl
+@@ -1664,8 +1775,19 @@ macro shiftCXFlags(cntreg) {
+ :movea.w eaw,reg9an		is (op=3 & reg9an & mode2=1)... & eaw				{ reg9an = sext(eaw); }
+ :movea.l eal,reg9an		is (op=2 & reg9an & mode2=1)... & eal				{ reg9an = eal; }
+ 
++@ifdef COLDFIRE
++# ColdFire MOVEC only writes control registers (there is no 0x4e7a form)
++:movec rreg,ctlreg		is d16=0x4e7b; rreg & ctlreg					{ ctlreg = rreg; }
++:movec rreg,"ACC0"		is d16=0x4e7b; rreg & ctl=0x806 & emacLoadShift	{ ACC0 = sext(rreg) << emacLoadShift; }
++:movec rreg,"ACC1"		is d16=0x4e7b; rreg & ctl=0x809 & emacLoadShift	{ ACC1 = sext(rreg) << emacLoadShift; }
++:movec rreg,"ACC2"		is d16=0x4e7b; rreg & ctl=0x80a & emacLoadShift	{ ACC2 = sext(rreg) << emacLoadShift; }
++:movec rreg,"ACC3"		is d16=0x4e7b; rreg & ctl=0x80b & emacLoadShift	{ ACC3 = sext(rreg) << emacLoadShift; }
++:movec rreg,"SR"		is d16=0x4e7b; rreg & ctl=0x80e					{ SR = rreg:2; unpackflags(SR); }
++:movec rreg,"PC"		is d16=0x4e7b; rreg & ctl=0x80f					{ CFPC = rreg; }
++@else
+ :movec ctlreg,rreg		is d16=0x4e7a; rreg & ctlreg					{ rreg = ctlreg; }
+ :movec rreg,ctlreg		is d16=0x4e7b; rreg & ctlreg					{ ctlreg = rreg; }
++@endif # COLDFIRE
+ 
+ @ifdef MC68040
+ 
+@@ -1717,14 +1839,23 @@ macro move16(src, dst)
+ 
+ @ifdef COLDFIRE
+ 
+-:mvs.b: eab, reg9dn		is (op=0x7 & op68=4 & reg9dn )... & eab		{ reg9dn = sext(eab); }
+-:mvs.w: eaw, reg9dn		is (op=0x7 & op68=5 & reg9dn )... & eaw		{ reg9dn = sext(eaw); }
+-:mvz.b: eab, reg9dn		is (op=0x7 & op68=6 & reg9dn )... & eab		{ reg9dn = zext(eab); }
+-:mvz.w: eaw, reg9dn		is (op=0x7 & op68=7 & reg9dn )... & eaw		{ reg9dn = zext(eaw); }
++:mvs.b eab,reg9dn		is (op=0x7 & op68=4 & reg9dn )... & eab		{ reg9dn = sext(eab); resflags(reg9dn); logflags(); }
++:mvs.w eaw,reg9dn		is (op=0x7 & op68=5 & reg9dn )... & eaw		{ reg9dn = sext(eaw); resflags(reg9dn); logflags(); }
++:mvz.b eab,reg9dn		is (op=0x7 & op68=6 & reg9dn )... & eab		{ reg9dn = zext(eab); resflags(reg9dn); logflags(); }
++:mvz.w eaw,reg9dn		is (op=0x7 & op68=7 & reg9dn )... & eaw		{ reg9dn = zext(eaw); resflags(reg9dn); logflags(); }
+ 
+-:mov3q "#"^d911, eal	is (op=0xa & op68=5 & d911 )  ... & eal		{ eal = d911; }
++:mov3q.l "#"^d911,eal	is (op=0xa & op68=5 & d911 )  ... & eal		{ local val:4 = d911; eal = val; resflags(val); logflags(); }
+ 
+-:sats.l regdn			is opbig=0x4c & op37=0x10 & regdn	{ if (VF == 0) goto inst_next; regdn = (zext(regdn == 0 ) * 0x80000000) + (zext(regdn != 0) * 0x7fffffff); VF=0; CF=0; }
++# SATS.L Dx (CFPRM): if V is set, Dx = (Dx[31] == 0) ? 0x80000000 : 0x7fffffff, i.e. the
++# saturated value on the side the overflowed result wrapped away from. N,Z from the
++# result, V and C cleared, X unaffected.
++:sats.l regdn			is opbig=0x4c & op37=0x10 & regdn	{
++	if (VF == 0) goto <done>;
++	regdn = (regdn s>> 31) ^ 0x80000000;
++<done>
++	resflags(regdn);
++	logflags();
++}
+ 
+ skip_addr: skipAddr		is op02=2 [skipAddr = inst_next + 2;] { export *[ram]:4 skipAddr; }
+ skip_addr: skipAddr		is op02=3 [skipAddr = inst_next + 4;] { export *[ram]:4 skipAddr; }
+@@ -2027,7 +2158,11 @@ submul: regdr-regdq		is regdq & divsgn=0 & divsz=1 & regdr	{
+ 	VF=0;
+ 
+ }
+-:mul^mulsize e2l,submul		is opbig=0x4c & op67=0 & $(DAT_ALTER_ADDR_MODES); submul & mulsize; e2l [ savmod2=savmod1; regtsan=regtfan; ] { glbdenom=e2l; build submul; }
++:mul^mulsize e2l,submul		is opbig=0x4c & op67=0 & $(DAT_ALTER_ADDR_MODES); submul & mulsize; e2l [ savmod2=savmod1; regtsan=regtfan; ] { glbdenom=e2l; build submul;
++@ifdef COLDFIRE
++	VF=0;
++@endif
++}
+ 
+ :nbcd eab	is (opbig=0x48 & op67=0 & $(DAT_ALTER_ADDR_MODES))... & eab {
+ 	local tmp = eab;
+@@ -2930,140 +3065,238 @@ fsubrnd: "d"	is fdst & fopmode=0x6c		{ tmp:4 = float2float(fdst); fdst = float2f
+ 
+ @ifdef COLDFIRE
+ 
+-macregy: reg03ywl	is reg03ywl; IS=0	{ export reg03ywl; }
+-macregy: reg03ywu	is reg03ywu; IS=1	{ export reg03ywu; }
+-macregx: reg9dnl	is reg9dnl & op6=0; bs=0	{ export reg9dnl; }
+-macregx: reg9dnu	is reg9dnu & op6=0; bs=1	{ export reg9dnu; }
+-macregx: reg9anl	is reg9anl & op6=1; bs=0	{ export reg9anl; }
+-macregx: reg9anu	is reg9anu & op6=1; bs=1	{ export reg9anu; }
+-macrw:   reg9dn		is reg9dn & op6=0 { export reg9dn; }
+-macrw:   reg9an		is reg9an & op6=1 { export reg9an; }
+-
+-macregy_e: ereg03y	is ereg03y	{ export ereg03y; }
+-macregyl: reg03yl	is reg03yl & IS=0	{ export reg03yl; }
+-macregyl: reg03yu	is reg03yu & IS=1	{ export reg03yu; }
+-macregxl: reg12xwl	is reg12xwl & bs=0	{ export reg12xwl; }
+-macregxl: reg12xwu	is reg12xwu & bs=1	{ export reg12xwu; }
+-
+-
+-scalefactor: ""			is sfact=0	{ export 0:1; }
+-scalefactor: "<<1"		is sfact=1	{ export 1:1; }
+-scalefactor: ">>1"		is sfact=3	{ export 2:1; }
++:ff1 regdn							is reg315=0x98 & regdn {
++	# N and Z reflect the source operand; the result is 32 when the source is 0
++	local src = regdn;
++	regdn = lzcount(src);
++	resflags(src);
++	logflags();
++}
+ 
++# ---------------------------------------------------------------------------
++# EMAC (enhanced multiply-accumulate unit)
++#
++# Representation used here:
++#  * ACC0-ACC3 are 64-bit registers holding the full-precision signed sum of the
++#    products (the hardware keeps 48 bits: ACCn plus 8+8 extension bits held in
++#    ACCext01/ACCext23, which are modeled as separate opaque registers).
++#  * The operating mode (MACSR[F/I]) is a run-time setting, so it is taken from the
++#    emacFrac context bit:
++#      emacFrac=0, integer (signed) mode: 16-bit operand halves are sign-extended,
++#        products are exact, "move.l ACCn,Rx" returns the low 32 bits of ACCn and
++#        "move.l Ry,ACCn" sign-extends.
++#      emacFrac=1, fractional (signed) mode: a 16-bit operand half is used as the
++#        upper half of a 32-bit 1.31 fraction (h << 16), products are the raw
++#        signed 64-bit products, and ACCn is read as bits [62:31] (ACCn >> 31),
++#        which is the 1.31 result the hardware returns; "move.l Ry,ACCn" stores
++#        Ry << 31.
++#    Unsigned integer mode (MACSR[S/U]=1 with F/I=0), rounding (R/T), saturation
++#    (OMC) and the MACSR N/Z/V/EV flags are not modeled.
++#  * EMAC opcode layout (CFPRM; operand order and field placement verified against
++#    m68k-elf-objdump -m m68k:isa-c:emac):
++#      register form:  1010 Rx[11:9] 0 Alsb Rx[6] 00 Ry[3:0]
++#                      0000 sz sf[10:9] sub U/Lx U/Ly 0 Amsb 00 00
++#      with load:      1010 Rw[11:9] 0 ~Alsb Rw[6] mode An
++#                      Rx[15:12] sz sf[10:9] sub U/Lx U/Ly mask Amsb Ry[3:0] [d16]
++#    ACC = Amsb:Alsb, except that the low accumulator bit of the load form is
++#    stored inverted (as binutils and QEMU decode it).
++# ---------------------------------------------------------------------------
++
++# accumulator of the register form
+ accreg: ACC0	is ACC0 & acclsb=0 ; accmsb=0 		{ export ACC0; }
+ accreg: ACC1	is ACC1 & acclsb=1 ; accmsb=0 		{ export ACC1; }
+ accreg: ACC2	is ACC2 & acclsb=0 ; accmsb=1 		{ export ACC2; }
+ accreg: ACC3	is ACC3 & acclsb=1 ; accmsb=1 		{ export ACC3; }
+ 
+-
+-:ff1 regdn							is reg315=0x98 & regdn {
+-	regdn = lzcount(regdn);
+-	VF = 0;
+-	CF = 0;
+-	resflags(regdn);
++# accumulator of the MAC-with-load form (low bit inverted)
++accregL: ACC0	is ACC0 & acclsb=1 ; accmsb=0 		{ export ACC0; }
++accregL: ACC1	is ACC1 & acclsb=0 ; accmsb=0 		{ export ACC1; }
++accregL: ACC2	is ACC2 & acclsb=1 ; accmsb=1 		{ export ACC2; }
++accregL: ACC3	is ACC3 & acclsb=0 ; accmsb=1 		{ export ACC3; }
++
++# product scale factor: shift left / shift right amounts
++emacSL: ""			is sfact=0	{ export 0:1; }
++emacSL: "<<1"		is sfact=1	{ export 1:1; }
++emacSL: ">>1"		is sfact=3	{ export 0:1; }
++emacSR: 			is sfact=0	{ export 0:1; }
++emacSR: 			is sfact=1	{ export 0:1; }
++emacSR: 			is sfact=3	{ export 1:1; }
++
++# Rx of the register form, long
++macRx: reg9dn		is reg9dn & op6=0	{ export reg9dn; }
++macRx: reg9an		is reg9an & op6=1	{ export reg9an; }
++
++# destination of the parallel load
++macrw: reg9dn		is reg9dn & op6=0	{ export reg9dn; }
++macrw: reg9an		is reg9an & op6=1	{ export reg9an; }
++
++# 16-bit operand halves, exported as 32-bit operand values (see header)
++# register form, Ry (U/Ly = ext bit 6)
++emacRyW: reg03y^"l"	is emacFrac=0 & reg03y & reg03ywl; IS=0		{ local v:4 = sext(reg03ywl); export v; }
++emacRyW: reg03y^"u"	is emacFrac=0 & reg03y & reg03ywu; IS=1		{ local v:4 = sext(reg03ywu); export v; }
++emacRyW: reg03y^"l"	is emacFrac=1 & reg03y & reg03ywl; IS=0		{ local v:4 = zext(reg03ywl) << 16; export v; }
++emacRyW: reg03y^"u"	is emacFrac=1 & reg03y; IS=1				{ local v:4 = reg03y & 0xffff0000; export v; }
++# register form, Rx (U/Lx = ext bit 7)
++emacRxW: reg9dn^"l"	is emacFrac=0 & op6=0 & reg9dn & reg9dnl; bs=0	{ local v:4 = sext(reg9dnl); export v; }
++emacRxW: reg9dn^"u"	is emacFrac=0 & op6=0 & reg9dn & reg9dnu; bs=1	{ local v:4 = sext(reg9dnu); export v; }
++emacRxW: reg9an^"l"	is emacFrac=0 & op6=1 & reg9an & reg9anl; bs=0	{ local v:4 = sext(reg9anl); export v; }
++emacRxW: reg9an^"u"	is emacFrac=0 & op6=1 & reg9an & reg9anu; bs=1	{ local v:4 = sext(reg9anu); export v; }
++emacRxW: reg9dn^"l"	is emacFrac=1 & op6=0 & reg9dn & reg9dnl; bs=0	{ local v:4 = zext(reg9dnl) << 16; export v; }
++emacRxW: reg9dn^"u"	is emacFrac=1 & op6=0 & reg9dn; bs=1			{ local v:4 = reg9dn & 0xffff0000; export v; }
++emacRxW: reg9an^"l"	is emacFrac=1 & op6=1 & reg9an & reg9anl; bs=0	{ local v:4 = zext(reg9anl) << 16; export v; }
++emacRxW: reg9an^"u"	is emacFrac=1 & op6=1 & reg9an; bs=1			{ local v:4 = reg9an & 0xffff0000; export v; }
++# load form (both operands in the extension word)
++emacLRyW: ereg03y^"l"	is emacFrac=0 & ereg03y & reg03yl & IS=0	{ local v:4 = sext(reg03yl); export v; }
++emacLRyW: ereg03y^"u"	is emacFrac=0 & ereg03y & reg03yu & IS=1	{ local v:4 = sext(reg03yu); export v; }
++emacLRyW: ereg03y^"l"	is emacFrac=1 & ereg03y & reg03yl & IS=0	{ local v:4 = zext(reg03yl) << 16; export v; }
++emacLRyW: ereg03y^"u"	is emacFrac=1 & ereg03y & IS=1				{ local v:4 = ereg03y & 0xffff0000; export v; }
++emacLRxW: reg12x^"l"	is emacFrac=0 & reg12x & reg12xwl & bs=0	{ local v:4 = sext(reg12xwl); export v; }
++emacLRxW: reg12x^"u"	is emacFrac=0 & reg12x & reg12xwu & bs=1	{ local v:4 = sext(reg12xwu); export v; }
++emacLRxW: reg12x^"l"	is emacFrac=1 & reg12x & reg12xwl & bs=0	{ local v:4 = zext(reg12xwl) << 16; export v; }
++emacLRxW: reg12x^"u"	is emacFrac=1 & reg12x & bs=1				{ local v:4 = reg12x & 0xffff0000; export v; }
++
++# Effective address of the parallel load (the d16 of (d16,Ay) follows the extension word).
++# Exports the address; (Ay)+ / -(Ay) update Ay when built.
++emacLea: (regan)		is mode=2 & regan; opx015		{ export regan; }
++emacLea: (regan)+		is mode=3 & regan; opx015		{ local tmp = regan; regan = regan + 4; export tmp; }
++emacLea: -(regan)		is mode=4 & regan; opx015		{ regan = regan - 4; export regan; }
++emacLea: (d16,regan)	is mode=5 & regan; opx015; d16	{ local tmp = regan + d16; export tmp; }
++
++# '&' option of the load form: the load address is ANDed with MASK (upper 16 bits read as 1s)
++emacMask: ""		is emask=0		{ export 0xffffffff:4; }
++emacMask: "&"		is emask=1		{ local m:4 = MASK | 0xffff0000; export m; }
++
++@define EMAC_LOAD_MODES "(mode=2 | mode=3 | mode=4 | mode=5)"
++
++# ---- MAC / MSAC, register form
++:mac.l reg03y, macRx^emacSL, accreg	is (op=10 & op8=0 & op45=0 & reg03y ; fbit=0 & wl=1 & emacSL & emacSR) ... & macRx ... & accreg ...
++{
++	local p:8 = sext(reg03y) * sext(macRx);
++	p = (p << emacSL) s>> emacSR;
++	accreg = accreg + p;
+ }
+-
+-# MAC effective address table
+-  # size=long
+-m_eal: (regan) is mode=2 & regan			{ export *:4 regan; }
+-m_eal: (regan)+ is mode=3 & regan			{ local tmp = regan; regan = regan + 4; export *:4 tmp; }
+-m_eal: -(regan) is mode=4 & regan			{ regan = regan - 4; export *:4 regan; }
+-m_eal: (d16,regan) is mode=5 & regan; d16		{ local tmp  = regan + d16; export *:4 tmp; }
+-
+-:maaac.l reg03y, reg9dn^scalefactor, accreg, accw	is (op=10 & reg9dn & reg03y & op6=0 & op8=0 & op45=0 ; fbit=0 & wl=1 & scalefactor & accw & odsize=1) ... & accreg ...
++:msac.l reg03y, macRx^emacSL, accreg	is (op=10 & op8=0 & op45=0 & reg03y ; fbit=1 & wl=1 & emacSL & emacSR) ... & macRx ... & accreg ...
+ {
+-  local tmp = reg03y * reg9dn;
+-  tmp = tmp << (scalefactor == 1);
+-  tmp = tmp >> (scalefactor == 2);
+-  accreg = accreg + tmp;
+-  accw = accw + tmp;
++	local p:8 = sext(reg03y) * sext(macRx);
++	p = (p << emacSL) s>> emacSR;
++	accreg = accreg - p;
+ }
+-:maaac.l reg03y, reg9an^scalefactor, accreg, accw	is (op=10 & reg9an & reg03y & op6=1 & op8=0 & op45=0 ; fbit=0 & wl=1 & scalefactor & accw & odsize=1) ... & accreg ...
++:mac.w emacRyW, emacRxW^emacSL, accreg	is (op=10 & op8=0 & op45=0 ; fbit=0 & wl=0 & emacSL & emacSR) ... & emacRyW ... & emacRxW ... & accreg ...
+ {
+-  local tmp = reg03y * reg9an;
+-  tmp = tmp << (scalefactor == 1);
+-  tmp = tmp >> (scalefactor == 2);
+-  accreg = accreg + tmp;
+-  accw = accw + tmp;
++	local p:8 = sext(emacRyW) * sext(emacRxW);
++	p = (p << emacSL) s>> emacSR;
++	accreg = accreg + p;
+ }
+-
+-:maaac.w macregy, macregx^scalefactor, accreg, accw	is (op=10 & op8=0 & op45=0 ; fbit=0 & wl=0 & scalefactor & accw & odsize=1) ... & macregy ... &  macregx ... & accreg ...
++:msac.w emacRyW, emacRxW^emacSL, accreg	is (op=10 & op8=0 & op45=0 ; fbit=1 & wl=0 & emacSL & emacSR) ... & emacRyW ... & emacRxW ... & accreg ...
+ {
+-  local tmp = macregy * macregx;
+-  tmp = tmp << (scalefactor == 1);
+-  tmp = tmp >> (scalefactor == 2);
+-  accreg = accreg + sext(tmp);
+-  accw = accw + sext(tmp);
++	local p:8 = sext(emacRyW) * sext(emacRxW);
++	p = (p << emacSL) s>> emacSR;
++	accreg = accreg - p;
+ }
+ 
+-:mac.l reg03y, reg9dn^scalefactor, accreg	is (op=10 & reg9dn & reg03y & op6=0 & op8=0 & op45=0 ; fbit=0 & wl=1 & scalefactor) ... & accreg ...
++# ---- MAC / MSAC with load: Rw = <ea>y (longword, optionally masked) in parallel.
++# The multiply uses the register values from before the load and address update.
++:mac.l ereg03y, reg12x^emacSL, emacLea^emacMask, macrw, accregL	is ((op=10 & op8=0 & macrw & $(EMAC_LOAD_MODES) ; ereg03y & reg12x & fbit=0 & wl=1 & emacSL & emacSR & emacMask) ... & accregL ...) ... & emacLea
++{
++	local p:8 = sext(ereg03y) * sext(reg12x);
++	p = (p << emacSL) s>> emacSR;
++	build emacLea;
++	local addr:4 = emacLea & emacMask;
++	local val:4 = *:4 addr;
++	accregL = accregL + p;
++	macrw = val;
++}
++:msac.l ereg03y, reg12x^emacSL, emacLea^emacMask, macrw, accregL	is ((op=10 & op8=0 & macrw & $(EMAC_LOAD_MODES) ; ereg03y & reg12x & fbit=1 & wl=1 & emacSL & emacSR & emacMask) ... & accregL ...) ... & emacLea
++{
++	local p:8 = sext(ereg03y) * sext(reg12x);
++	p = (p << emacSL) s>> emacSR;
++	build emacLea;
++	local addr:4 = emacLea & emacMask;
++	local val:4 = *:4 addr;
++	accregL = accregL - p;
++	macrw = val;
++}
++:mac.w emacLRyW, emacLRxW^emacSL, emacLea^emacMask, macrw, accregL	is ((op=10 & op8=0 & macrw & $(EMAC_LOAD_MODES) ; emacLRyW & emacLRxW & fbit=0 & wl=0 & emacSL & emacSR & emacMask) ... & accregL ...) ... & emacLea
+ {
+-  local tmp = reg03y * reg9dn;
+-  tmp = tmp << (scalefactor == 1);
+-  tmp = tmp >> (scalefactor == 2);
+-  accreg = accreg + tmp;
++	local p:8 = sext(emacLRyW) * sext(emacLRxW);
++	p = (p << emacSL) s>> emacSR;
++	build emacLea;
++	local addr:4 = emacLea & emacMask;
++	local val:4 = *:4 addr;
++	accregL = accregL + p;
++	macrw = val;
++}
++:msac.w emacLRyW, emacLRxW^emacSL, emacLea^emacMask, macrw, accregL	is ((op=10 & op8=0 & macrw & $(EMAC_LOAD_MODES) ; emacLRyW & emacLRxW & fbit=1 & wl=0 & emacSL & emacSR & emacMask) ... & accregL ...) ... & emacLea
++{
++	local p:8 = sext(emacLRyW) * sext(emacLRxW);
++	p = (p << emacSL) s>> emacSR;
++	build emacLea;
++	local addr:4 = emacLea & emacMask;
++	local val:4 = *:4 addr;
++	accregL = accregL - p;
++	macrw = val;
++}
++
++# ---- EMAC_B dual accumulate (register form only): ext bits 3-2 name the second
++# accumulator, bits 1-0 = 01 add / 11 subtract.
++:maaac.l reg03y, macRx^emacSL, accreg, accw	is (op=10 & op8=0 & op45=0 & reg03y ; fbit=0 & wl=1 & emacSL & emacSR & accw & odsize=1) ... & macRx ... & accreg ...
++{
++	local p:8 = sext(reg03y) * sext(macRx);
++	p = (p << emacSL) s>> emacSR;
++	accreg = accreg + p;
++	accw = accw + p;
+ }
+-:mac.l reg03y, reg9an^scalefactor, accreg	is (op=10 & reg9an & reg03y & op6=1 & op8=0 & op45=0 ; fbit=0 & wl=1 & scalefactor) ... & accreg ...
++:masac.l reg03y, macRx^emacSL, accreg, accw	is (op=10 & op8=0 & op45=0 & reg03y ; fbit=0 & wl=1 & emacSL & emacSR & accw & odsize=3) ... & macRx ... & accreg ...
+ {
+-  local tmp = reg03y * reg9an;
+-  tmp = tmp << (scalefactor == 1);
+-  tmp = tmp >> (scalefactor == 2);
+-  accreg = accreg + tmp;
++	local p:8 = sext(reg03y) * sext(macRx);
++	p = (p << emacSL) s>> emacSR;
++	accreg = accreg + p;
++	accw = accw - p;
+ }
+-
+-:mac.w macregy, macregx^scalefactor, accreg	is (op=10 & op8=0 & op45=0 ; fbit=0 & wl=0 & scalefactor) ... & macregy ... &  macregx ... & accreg ...
++:msaac.l reg03y, macRx^emacSL, accreg, accw	is (op=10 & op8=0 & op45=0 & reg03y ; fbit=1 & wl=1 & emacSL & emacSR & accw & odsize=1) ... & macRx ... & accreg ...
+ {
+-  local tmp = macregy * macregx;
+-  tmp = tmp << (scalefactor == 1);
+-  tmp = tmp >> (scalefactor == 2);
+-  accreg = accreg + sext(tmp);
++	local p:8 = sext(reg03y) * sext(macRx);
++	p = (p << emacSL) s>> emacSR;
++	accreg = accreg - p;
++	accw = accw + p;
+ }
+-
+-#mac with load
+-:mac.w macregyl, macregxl^scalefactor, m_eal, macrw, accreg	is ((op=10 & macrw & op8=0 ; macregxl & fbit=0 & macregyl & wl=0 & scalefactor) ... & accreg ...) ... & m_eal
++:mssac.l reg03y, macRx^emacSL, accreg, accw	is (op=10 & op8=0 & op45=0 & reg03y ; fbit=1 & wl=1 & emacSL & emacSR & accw & odsize=3) ... & macRx ... & accreg ...
+ {
+-  local tmp = macregyl * macregxl;
+-  tmp = tmp << (scalefactor == 1);
+-  tmp = tmp >> (scalefactor == 2);
+-  accreg = accreg + sext(tmp);
+-  macrw = m_eal;
++	local p:8 = sext(reg03y) * sext(macRx);
++	p = (p << emacSL) s>> emacSR;
++	accreg = accreg - p;
++	accw = accw - p;
+ }
+-
+-:mac.l macregy_e, reg12x^scalefactor, m_eal, macrw, accreg	is ((op=10 & macrw & op6=0 & op8=0 ; reg12x & fbit=0 & wl=1 & scalefactor & macregy_e) ... & accreg ...) ... & m_eal
++:maaac.w emacRyW, emacRxW^emacSL, accreg, accw	is (op=10 & op8=0 & op45=0 ; fbit=0 & wl=0 & emacSL & emacSR & accw & odsize=1) ... & emacRyW ... & emacRxW ... & accreg ...
+ {
+-  local tmp = macregy_e * reg12x;
+-  tmp = tmp << (scalefactor == 1);
+-  tmp = tmp >> (scalefactor == 2);
+-  accreg = accreg + tmp;
+-  macrw = m_eal;
++	local p:8 = sext(emacRyW) * sext(emacRxW);
++	p = (p << emacSL) s>> emacSR;
++	accreg = accreg + p;
++	accw = accw + p;
+ }
+-
+-:masac.l reg03y, reg9dn^scalefactor, accreg, accw	is (op=10 & reg9dn & reg03y & op6=0 & op8=0 & op45=0 ; fbit=0 & wl=1 & scalefactor & accw & odsize=3) ... & accreg ...
++:masac.w emacRyW, emacRxW^emacSL, accreg, accw	is (op=10 & op8=0 & op45=0 ; fbit=0 & wl=0 & emacSL & emacSR & accw & odsize=3) ... & emacRyW ... & emacRxW ... & accreg ...
+ {
+-  local tmp = reg03y * reg9dn;
+-  tmp = tmp << (scalefactor == 1);
+-  tmp = tmp >> (scalefactor == 2);
+-  accreg = accreg + tmp;
+-  accw = accw - tmp;
++	local p:8 = sext(emacRyW) * sext(emacRxW);
++	p = (p << emacSL) s>> emacSR;
++	accreg = accreg + p;
++	accw = accw - p;
+ }
+-:masac.l reg03y, reg9an^scalefactor, accreg, accw	is (op=10 & reg9an & reg03y & op6=1 & op8=0 & op45=0 ; fbit=0 & wl=1 & scalefactor & accw & odsize=3) ... & accreg ...
++:msaac.w emacRyW, emacRxW^emacSL, accreg, accw	is (op=10 & op8=0 & op45=0 ; fbit=1 & wl=0 & emacSL & emacSR & accw & odsize=1) ... & emacRyW ... & emacRxW ... & accreg ...
+ {
+-  local tmp = reg03y * reg9an;
+-  tmp = tmp << (scalefactor == 1);
+-  tmp = tmp >> (scalefactor == 2);
+-  accreg = accreg + tmp;
+-  accw = accw - tmp;
++	local p:8 = sext(emacRyW) * sext(emacRxW);
++	p = (p << emacSL) s>> emacSR;
++	accreg = accreg - p;
++	accw = accw + p;
+ }
+-
+-:masac.w macregy, macregx^scalefactor, accreg, accw	is (op=10 & op8=0 & op45=0 ; fbit=0 & wl=0 & scalefactor & accw & odsize=3) ... & macregy ... &  macregx ... & accreg ...
++:mssac.w emacRyW, emacRxW^emacSL, accreg, accw	is (op=10 & op8=0 & op45=0 ; fbit=1 & wl=0 & emacSL & emacSR & accw & odsize=3) ... & emacRyW ... & emacRxW ... & accreg ...
+ {
+-  local tmp = macregy * macregx;
+-  tmp = tmp << (scalefactor == 1);
+-  tmp = tmp >> (scalefactor == 2);
+-  accreg = accreg + sext(tmp);
+-  accw = accw - sext(tmp);
++	local p:8 = sext(emacRyW) * sext(emacRxW);
++	p = (p << emacSL) s>> emacSR;
++	accreg = accreg - p;
++	accw = accw - p;
+ }
+ 
++# ---- EMAC register moves: 1010 rrr 1 d c eeeeee
+ moveaccreg: ACC0  is ACC0 & op0910=0    { export ACC0; }
+ moveaccreg: ACC1  is ACC1 & op0910=1    { export ACC1; }
+ moveaccreg: ACC2  is ACC2 & op0910=2    { export ACC2; }
+@@ -3074,123 +3307,54 @@ moveaccreg2: ACC1  is ACC1 & op01=1    { export ACC1; }
+ moveaccreg2: ACC2  is ACC2 & op01=2    { export ACC2; }
+ moveaccreg2: ACC3  is ACC3 & op01=3    { export ACC3; }
+ 
+-:move.l moveaccreg, reg03y  is op=0b1010 & op11=0 & moveaccreg & op8=1 & op47=0b1000 & reg03y    { reg03y = moveaccreg; }
+-
+-:move.l ACCext01, eal       is (op=0b1010 & op811=0b1011 & op67=0 & ACCext01 & (mode=0 | mode=1 | mode=7)) ... & eal   { ACCext01 = eal; }
+-:move.l ACCext23, eal       is (op=0b1010 & op811=0b1111 & op67=0 & ACCext23 & (mode=0 | mode=1 | mode=7)) ... & eal   { ACCext23 = eal; }
+-
+-:move.l moveaccreg, eal     is (op=0b1010 & op11=0 & moveaccreg & op8=1 & op67=0 & (mode=0 | mode=1 | mode=7)) ... & eal   { moveaccreg = eal; }
+-
+-:move.l moveaccreg, moveaccreg2     is op=0b1010 & op11=0 & moveaccreg & op8=1 & op47=1 & moveaccreg2    { moveaccreg2 = moveaccreg; }
+-
+-:move.l MACSR, reg03y		is op=0b1010 & op811=0b1001 & op47=0b1000 & MACSR & reg03y	{ reg03y = MACSR; }
+-:move.l ACCext01, reg03y	is op=0b1010 & op811=0b1011 & op47=0b1000 & ACCext01 & reg03y	{ reg03y = ACCext01; }
+-:move.l ACCext23, reg03y	is op=0b1010 & op811=0b1111 & op47=0b1000 & ACCext23 & reg03y	{ reg03y = ACCext23; }
+-
+-:move.l MASK, reg03y		is op=10 & op811=13 & op47=8 & MASK & reg03y	{ reg03y = MASK; }
+-
+-:move.l MACSR, "CCR"		is op=10 & op811=9 & op47=12 & MACSR			{ unpackflags(MACSR); }
+-
+-:move.l eal, MACSR			is (op=10 & op611=36 & MACSR & (mode=0 | mode=1 | mode=7)) ... & eal		{ MACSR = eal; }
+-
+-:move.l eal, MASK			is (op=10 & op611=52 & MASK & (mode=0 | mode=1 | mode=7)) ... & eal			{ MASK = eal; }
++@define EMAC_MOVE_SRC "(mode=0 | mode=1 | (mode=7 & regan=4))"
+ 
+-
+-:msaac.l reg03y, reg9dn^scalefactor, accreg, accw	is (op=10 & reg9dn & reg03y & op6=0 & op8=0 & op45=0 ; fbit=1 & wl=1 & scalefactor & accw & odsize=1) ... & accreg ...
+-{
+-  local tmp = reg03y * reg9dn;
+-  tmp = tmp << (scalefactor == 1);
+-  tmp = tmp >> (scalefactor == 2);
+-  accreg = accreg - tmp;
+-  accw = accw + tmp;
+-}
+-
+-:msaac.l reg03y, reg9an^scalefactor, accreg, accw	is (op=10 & reg9an & reg03y & op6=1 & op8=0 & op45=0 ; fbit=1 & wl=1 & scalefactor & accw & odsize=1) ... & accreg ...
+-{
+-  local tmp = reg03y * reg9an;
+-  tmp = tmp << (scalefactor == 1);
+-  tmp = tmp >> (scalefactor == 2);
+-  accreg = accreg - tmp;
+-  accw = accw + tmp;
+-}
+-
+-:msaac.w macregy, macregx^scalefactor, accreg, accw	is (op=10 & op8=0 & op45=0 ; fbit=1 & wl=0 & scalefactor & accw & odsize=1) ... & macregy ... &  macregx ... & accreg ...
++# move.l <ea>y,ACCx
++:move.l eal, moveaccreg		is (op=10 & op11=0 & moveaccreg & op8=1 & op67=0 & emacLoadShift & $(EMAC_MOVE_SRC)) ... & eal
+ {
+-  local tmp = macregy * macregx;
+-  tmp = tmp << (scalefactor == 1);
+-  tmp = tmp >> (scalefactor == 2);
+-  accreg = accreg - sext(tmp);
+-  accw = accw + sext(tmp);
++	moveaccreg = sext(eal) << emacLoadShift;
+ }
++# accumulator read-out as a 32-bit register value (saturation and 32-bit rounding
++# are not modeled; the 16-bit read-out rounds half up)
++emacAccRd: moveaccreg	is emacFrac=0 & moveaccreg					{ local t:8 = moveaccreg; local r:4 = t:4; export r; }
++emacAccRd: moveaccreg	is emacFrac=1 & emacRnd16=0 & moveaccreg	{ local t:8 = moveaccreg s>> 31; local r:4 = t:4; export r; }
++emacAccRd: moveaccreg	is emacFrac=1 & emacRnd16=1 & moveaccreg	{ local t:8 = (moveaccreg + 0x400000000000) s>> 47; local r:4 = zext(t:2); export r; }
+ 
+-:msac.l reg03y, reg9dn^scalefactor, accreg	is (op=10 & reg9dn & reg03y & op6=0 & op8=0 & op45=0 ; fbit=1 & wl=1 & scalefactor) ... & accreg ...
++# move.l ACCy,Rx
++:move.l emacAccRd, reg03y	is op=10 & op11=0 & op8=1 & op47=0b1000 & reg03y & emacAccRd
+ {
+-  local tmp = reg03y * reg9dn;
+-  tmp = tmp << (scalefactor == 1);
+-  tmp = tmp >> (scalefactor == 2);
+-  accreg = accreg - tmp;
++	reg03y = emacAccRd;
+ }
+-:msac.l reg03y, reg9an^scalefactor, accreg	is (op=10 & reg9an & reg03y & op6=1 & op8=0 & op45=0 ; fbit=1 & wl=1 & scalefactor) ... & accreg ...
+-{
+-  local tmp = reg03y * reg9an;
+-  tmp = tmp << (scalefactor == 1);
+-  tmp = tmp >> (scalefactor == 2);
+-  accreg = accreg - tmp;
+-}
+-
+-:msac.w macregy, macregx^scalefactor, accreg	is (op=10 & op6=0 & op8=0 & op45=0 ; fbit=1 & wl=0 & scalefactor) ... & macregy ... &  macregx ... & accreg ...
++# movclr.l ACCy,Rx: read the accumulator, then clear it
++:movclr.l emacAccRd, reg03y	is op=10 & op11=0 & moveaccreg & op8=1 & op47=0b1100 & reg03y & emacAccRd
+ {
+-  local tmp = macregy * macregx;
+-  tmp = tmp << (scalefactor == 1);
+-  tmp = tmp >> (scalefactor == 2);
+-  accreg = accreg - sext(tmp);
++	reg03y = emacAccRd;
++	moveaccreg = 0;
+ }
+-
+-
+-# MSAC with load
+-
+-:msac.w macregyl, macregxl^scalefactor, m_eal, macrw, accreg	is ((op=10 & macrw & op8=0 ; macregxl & fbit=1 & macregyl & wl=0 & scalefactor) ... & accreg ...) ... & m_eal
++# move.l ACCy,ACCx (ACCy in bits 1-0, ACCx in bits 10-9)
++:move.l moveaccreg2, moveaccreg	is op=10 & op11=0 & moveaccreg & op8=1 & op47=1 & moveaccreg2
+ {
+-  local tmp = macregyl * macregxl;
+-  tmp = tmp << (scalefactor == 1);
+-  tmp = tmp >> (scalefactor == 2);
+-  accreg = accreg - sext(tmp);
+-  macrw = m_eal;
++	moveaccreg = moveaccreg2;
+ }
+ 
+-:msac.l macregy_e, reg12x^scalefactor, m_eal, macrw, accreg	is ((op=10 & macrw & op8=0 ; reg12x & fbit=1 & wl=1 & scalefactor & macregy_e) ... & accreg ...) ... & m_eal
+-{
+-  local tmp = macregy_e * reg12x;
+-  tmp = tmp << (scalefactor == 1);
+-  tmp = tmp >> (scalefactor == 2);
+-  accreg = accreg - tmp;
+-  macrw = m_eal;
+-}
++:move.l eal, MACSR			is (op=10 & op611=36 & MACSR & $(EMAC_MOVE_SRC)) ... & eal		{ MACSR = eal; }
++:move.l eal, MASK			is (op=10 & op611=52 & MASK & $(EMAC_MOVE_SRC)) ... & eal		{ MASK = eal; }
++:move.l eal, ACCext01		is (op=10 & op811=0b1011 & op67=0 & ACCext01 & $(EMAC_MOVE_SRC)) ... & eal	{ ACCext01 = eal; }
++:move.l eal, ACCext23		is (op=10 & op811=0b1111 & op67=0 & ACCext23 & $(EMAC_MOVE_SRC)) ... & eal	{ ACCext23 = eal; }
+ 
+-:msaac.l reg03y, reg9dn^scalefactor, accreg, accw	is (op=10 & reg9dn & reg03y & op6=0 & op8=0 & op45=0 ; fbit=1 & wl=1 & scalefactor & accw & odsize=3) ... & accreg ...
+-{
+-  local tmp = reg03y * reg9dn;
+-  tmp = tmp << (scalefactor == 1);
+-  tmp = tmp >> (scalefactor == 2);
+-  accreg = accreg - tmp;
+-  accw = accw - tmp;
+-}
+-:mssac.l reg03y, reg9an^scalefactor, accreg, accw	is (op=10 & reg9an & reg03y & op6=1 & op8=0 & op45=0 ; fbit=1 & wl=1 & scalefactor & accw & odsize=3) ... & accreg ...
+-{
+-  local tmp = reg03y * reg9an;
+-  tmp = tmp << (scalefactor == 1);
+-  tmp = tmp >> (scalefactor == 2);
+-  accreg = accreg - tmp;
+-  accw = accw - tmp;
+-}
++:move.l MACSR, reg03y		is op=10 & op811=0b1001 & op47=0b1000 & MACSR & reg03y		{ reg03y = MACSR; }
++:move.l ACCext01, reg03y	is op=10 & op811=0b1011 & op47=0b1000 & ACCext01 & reg03y	{ reg03y = ACCext01; }
++:move.l ACCext23, reg03y	is op=10 & op811=0b1111 & op47=0b1000 & ACCext23 & reg03y	{ reg03y = ACCext23; }
++:move.l MASK, reg03y		is op=10 & op811=0b1101 & op47=0b1000 & MASK & reg03y		{ reg03y = MASK; }
+ 
+-:mssac.w macregy, macregx^scalefactor, accreg, accw	is (op=10 & op8=0 & op45=0 ; fbit=1 & wl=0 & scalefactor & accw & odsize=3) ... & macregy ... &  macregx ... & accreg ...
++# move.l MACSR,CCR: CCR[3:1] = MACSR N,Z,V; X and C are cleared; the rest of SR is unchanged
++:move.l MACSR, "CCR"		is op=10 & op811=0b1001 & op47=0b1100 & MACSR
+ {
+-  local tmp = macregy * macregx;
+-  tmp = tmp << (scalefactor == 1);
+-  tmp = tmp >> (scalefactor == 2);
+-  accreg = accreg - sext(tmp);
+-  accw = accw - sext(tmp);
++	NF = MACSR[3,1];
++	ZF = MACSR[2,1];
++	VF = MACSR[1,1];
++	CF = 0;
++	XF = 0;
+ }
+ 
+ @endif
+diff --git a/Ghidra/Processors/68000/data/languages/coldfire.cspec b/Ghidra/Processors/68000/data/languages/coldfire.cspec
+new file mode 100644
+index 0000000000..ea70d1bfd0
+--- /dev/null
++++ b/Ghidra/Processors/68000/data/languages/coldfire.cspec
+@@ -0,0 +1,83 @@
++<?xml version="1.0" encoding="UTF-8"?>
++
++<!--
++  GCC calling convention for ColdFire (m68k-elf / uClinux style, no FPU):
++    - all arguments on the stack (4-byte slots, first argument at 4(SP))
++    - integer/pointer/float results in D0, 64-bit results (long long, double) in D0:D1
++    - no FP register results: ColdFire parts without an FPU return floating point in D0/D0:D1
++    - D0, D1, A0, A1 are scratch; D2-D7, A2-A6 are preserved
++  Pointers are returned in D0 only (callers copy D0 to an address register); the
++  68000 SVR4 convention of also returning pointers in A0 is not used by GCC for ColdFire.
++-->
++<compiler_spec>
++  <data_organization>
++	<absolute_max_alignment value="0" />
++	<machine_alignment value="8" />
++	<default_alignment value="1" />
++	<default_pointer_alignment value="4" />
++	<pointer_size value="4" />
++	<wchar_size value="4" />
++	<short_size value="2" />
++	<integer_size value="4" />
++	<long_size value="4" />
++	<long_long_size value="8" />
++	<float_size value="4" />
++	<double_size value="8" />
++	<long_double_size value="8" />
++	<size_alignment_map>
++		<entry size="1" alignment="1" />
++		<entry size="2" alignment="2" />
++		<entry size="4" alignment="4" />
++		<entry size="8" alignment="4" />
++	</size_alignment_map>
++  </data_organization>
++
++  <global>
++    <range space="ram"/>
++  </global>
++
++  <stackpointer register="SP" space="ram"/>
++
++  <returnaddress>
++    <varnode space="stack" offset="0" size="4"/>
++  </returnaddress>
++
++  <default_proto>
++    <prototype name="__stdcall" extrapop="4" stackshift="4">
++      <input>
++        <pentry minsize="1" maxsize="500" align="4">
++          <addr offset="4" space="stack"/>
++        </pentry>
++      </input>
++      <output>
++        <pentry minsize="1" maxsize="4">
++          <register name="D0" />
++        </pentry>
++        <pentry minsize="5" maxsize="8">
++          <addr space="join" piece1="D0" piece2="D1"/>
++        </pentry>
++      </output>
++      <unaffected>
++        <register name="D2"/>
++        <register name="D3"/>
++        <register name="D4"/>
++        <register name="D5"/>
++        <register name="D6"/>
++        <register name="D7"/>
++        <register name="A2"/>
++        <register name="A3"/>
++        <register name="A4"/>
++        <register name="A5"/>
++        <register name="A6"/>
++        <register name="SP"/>
++      </unaffected>
++      <killedbycall>
++        <register name="D0"/>
++        <register name="D1"/>
++        <register name="A0"/>
++        <register name="A1"/>
++      </killedbycall>
++    </prototype>
++  </default_proto>
++
++</compiler_spec>
+diff --git a/Ghidra/Processors/68000/data/languages/coldfire_emacfrac.pspec b/Ghidra/Processors/68000/data/languages/coldfire_emacfrac.pspec
+new file mode 100644
+index 0000000000..0d5f27ddc3
+--- /dev/null
++++ b/Ghidra/Processors/68000/data/languages/coldfire_emacfrac.pspec
+@@ -0,0 +1,21 @@
++<?xml version="1.0" encoding="UTF-8"?>
++
++<!--
++  ColdFire with the EMAC unit assumed to run in fractional mode (MACSR[F/I]=1),
++  e.g. DSP-style firmware that sets MACSR to 0x20. Selects the fractional EMAC
++  semantics of coldfire.sla for the whole program (see the EMAC section of 68000.sinc).
++  Individual ranges can still be switched with the emacFrac / emacRnd16 context
++  registers (Set Register Values), e.g. emacRnd16=1 where MACSR[S/U]=1.
++-->
++<processor_spec>
++  <properties>
++    <property key="emulateInstructionStateModifierClass" value="ghidra.program.emulation.m68kEmulateInstructionStateModifier"/>
++    <property key="useropLibs" value="m68k,trig"/>
++  </properties>
++  <programcounter register="PC"/>
++  <context_data>
++    <context_set space="ram">
++      <set name="emacFrac" val="1" description="EMAC fractional mode (MACSR F/I=1)"/>
++    </context_set>
++  </context_data>
++</processor_spec>

@@ -10,7 +10,7 @@ row.
 
 Chain, fixed: fold → saturate → tilt → compress → width → mix.
 
-- **FOLD** — WarpFold's wavefolder, 1 → 48× into the fold at a held level;
+- **FOLD** — a wrap-and-reflect wavefolder, 1 → 48× into the fold at a held level;
   first fold on a pad at ~24.
 - **SAT / DRV** — three JClones (MIT) characters, re-derived here. TAPE =
   TapeHead: a state-variable split at TONE, the low and band parts through

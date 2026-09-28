@@ -1,10 +1,24 @@
 #!/usr/bin/env python3
-"""Build a repeatable, locally generated DSP and sequencer stress project.
+"""Build a repeatable, locally generated DSP and sequencer stress project
+for a remix.
+
+    python3 tools/harness/stress_project.py [--remix bottleservice] [--source <project>] [--out out/stress-project]
+
+The placement is derived from the selection (`layout`): each server on
+the first track of its core, SEND on the other FX2 slots when the remix
+carries it (else its FX2 inserts, dearest first, else NONE), and per core
+the FX1 combination with the most different modules that prices under
+the static wall beside that core's FX2, then the dearest such set (the
+pressure pricer's arithmetic, tools/harness/pressure.py). Every knob sits at the module's dearest
+setting (schema.Module.dear; defaults for a module without one) and a
+MODE select walks its positions across the four Parts.
 
 The source template stays local and is never committed. Output belongs in out/.
 """
 import argparse
 import hashlib
+import itertools
+import os
 import pathlib
 import re
 import shutil
@@ -21,13 +35,64 @@ from remix import registry  # noqa: E402
 
 SAMPLE_REL = "AUDIO/STRESS_LOOP.wav"
 FRAMES = 88200
-# On payload A, four Character instances run beside BusVerb. Payload B runs
-# Modulation's phaser/comb/line paths beside BusDelay.
-FX1 = ("MODULATION", "SPECTRUM", "MODULATION", "SPECTRUM",
-       "CHARACTER", "CHARACTER", "CHARACTER", "CHARACTER")
-FX2 = ("DELAY SERVER", "SEND", "SEND", "SEND",
-       "REVERB SERVER", "SEND", "SEND", "SEND")
+CORE_TRACKS = {1: (0, 1, 2, 3), 0: (4, 5, 6, 7)}     # payload B serves T1-4, A T5-8
 LOCK_SLOTS = (0, 3, 6, 7, 9, 10, 15, 16, 18, 19, 20, 21, 22, 23, 24)
+
+
+
+
+def layout(remix):
+    """(fx1, fx2): the module KEY on each slot of the eight tracks, or None."""
+    from pressure import PAYLOAD_OF_CORE, price_modules
+    import cycle_count as cc
+    pm = price_modules(remix)
+    servers = {k for k, m in pm.items() if m["server"]}
+    inserts = sorted((k for k, m in pm.items() if m["on_fx2"] and not m["server"]),
+                     key=lambda k: (-pm[k]["cycles"], k))
+    fx1_opts = sorted((k for k, m in pm.items() if m["on_fx1"] and not m["server"]),
+                      key=lambda k: (-pm[k]["cycles"], k))
+    fx1, fx2 = [None] * 8, [None] * 8
+    rr = 0
+    for core in (1, 0):
+        tracks = CORE_TRACKS[core]
+        srv = next((k for k in sorted(servers) if pm[k]["payloads"] == PAYLOAD_OF_CORE[core]), None)
+        for i, t in enumerate(tracks):
+            if i == 0 and srv:
+                fx2[t] = srv
+            elif "SEND" in pm:
+                fx2[t] = "SEND"
+            elif inserts:
+                fx2[t] = inserts[rr % len(inserts)]
+                rr += 1
+        # The most DIFFERENT modules that fit, then the dearest such set: four
+        # of one station is dearer but exercises one engine.
+        base = sum(pm[k]["cycles"] for k in (fx2[t] for t in tracks) if k)
+        best = None
+        for combo in itertools.combinations_with_replacement([None] + fx1_opts, len(tracks)):
+            c = base + sum(pm[k]["cycles"] for k in combo if k)
+            rank = (len(set(combo) - {None}), c)
+            if c <= cc.USABLE and (best is None or rank > best[0]):
+                best = (rank, combo)
+        if best is not None:
+            for t, k in zip(tracks, best[1]):
+                fx1[t] = k
+    return fx1, fx2
+
+
+def probed_tracks(fx2, mods):
+    """verify_set sends CC 40 (FX2 slot 0) to T2 and to every server's host
+    track and reads the value back at the end. A lock or LFO on that lane
+    (flat slot 24) would overwrite the probe, so those tracks keep it free."""
+    from remix.schema import BusRole
+    out = {1}
+    for t, key in enumerate(fx2):
+        if key and mods[key].dsp is not None and mods[key].dsp.bus_role is BusRole.SERVER:
+            out.add(t)
+    return tuple(sorted(out))
+
+
+def lock_slots(track, probed):
+    return tuple(slot for slot in LOCK_SLOTS if not (track in probed and slot == 24))
 
 
 def digest(path):
@@ -56,7 +121,7 @@ def make_sample(path):
 
 
 def set_project_text(dest):
-    block = ("[SAMPLE]\r\nTYPE=FLEX\r\nSLOT=001\r\nPATH=../" + SAMPLE_REL
+    block = ("[SAMPLE]\r\nTYPE=FLEX\r\nSLOT=001\r\nPATH=" + SAMPLE_REL
              + "\r\nTRIM_BARSx100=100\r\nLOOP_BARSx100=100\r\nBPMx24=2880"
              + "\r\nTSMODE=0\r\nLOOPMODE=1\r\nGAIN=48"
              + "\r\nTRIGQUANTIZATION=-1\r\n[/SAMPLE]\r\n\r\n").encode()
@@ -91,42 +156,37 @@ def set_markers(dest):
         path.write_bytes(data)
 
 
-def part_values(mods, track, part):
-    key = FX1[track]
-    if key == "MODULATION":
-        # PHSR is the measured worst loop. The other bank parts select
-        # LINE and COMB so a part change also exercises mode transitions.
-        modes = (4, 0, 3, 4)
-        extra = {"MIX": 95, "RATE": 72, "DPTH": 90, "FDBK": 75, "LOFI": 35}
-        extra["MODE"] = modes[(part + track) % 4]
-    elif key == "SPECTRUM":
-        extra = {"MODE": (0, 2, 4, 1)[(part + track) % 4], "FREQ": 72, "RES": 85,
-                 "LDP": 75, "SHPE": 70}
-    else:
-        extra = {"SAT": (0, 1, 2, 1)[(track - 4 + part) % 4], "DRV": 72,
-                 "FOLD": 55, "COMP": 50, "MIX": 100}
-    fx1 = otp.module_defaults(mods[key], extra)
-    key2 = FX2[track]
-    if track == 0:
-        extra2 = {"SEND": 35, "MODE": (1, 0, 2, 1)[part % 4], "TIME": 45, "FDBK": 65,
-                  "WET": 70, "DENS": 110, "SCAT": 65, "PTCH": 88}
-    elif track == 4:
-        extra2 = {"SEND": 35, "MODE": (2, 1, 0, 2)[part % 4], "TIME": 75, "SIZE": 95,
-                  "SHMR": 28, "WET": 65, "DIFF": 95}
-    else:
-        extra2 = {"SEND": 35}
-    fx2 = otp.module_defaults(mods[key2], extra2)
-    return fx1, fx2
+def slot_values(m, track, part):
+    """The 12 bytes for one slot: the module's dearest settings over its
+    defaults, and its MODE select (when it has one) walking its positions
+    with the Part, so a Part change is also an engine change."""
+    if m is None:
+        return bytes(12)
+    extra = dict(m.dear)
+    if m.mode_slot is not None:
+        p = m.params[m.mode_slot]
+        extra[p.name.decode()] = (part + track) % (p.count or 128)
+    return otp.module_defaults(m, extra)
 
 
-def mutate_bank(data, bank_number, mods):
+def part_values(fx, mods, track, part):
+    fx1, fx2 = fx
+    return (slot_values(mods[fx1[track]] if fx1[track] else None, track, part),
+            slot_values(mods[fx2[track]] if fx2[track] else None, track, part))
+
+
+def fx_id(mods, key):
+    return mods[key].menu.fx2_id if key else 0        # 0: the firmware's NONE
+
+
+def mutate_bank(data, bank_number, mods, fx, probed):
     bank.check_tags(data)
     for part in range(otp.NPARTS_ALL):
         base = otp.PART_BASE + part * otp.PART_STRIDE
         for track in range(8):
-            fx1, fx2 = part_values(mods, track, part)
-            data[base + otp.FX1_OFF + track] = mods[FX1[track]].menu.fx2_id
-            data[base + otp.FX2_OFF + track] = mods[FX2[track]].menu.fx2_id
+            fx1, fx2 = part_values(fx, mods, track, part)
+            data[base + otp.FX1_OFF + track] = fx_id(mods, fx[0][track])
+            data[base + otp.FX2_OFF + track] = fx_id(mods, fx[1][track])
             p1 = base + otp.P1_OFF + track * otp.TRACK_STRIDE
             p2 = base + otp.P2_OFF + track * otp.P2_STRIDE
             data[p1:p1 + 12] = fx1[:6] + fx2[:6]
@@ -144,7 +204,7 @@ def mutate_bank(data, bank_number, mods):
             lfo2 = base + otp.LFO_PM_OFF + track * 30
             data[lfo1:lfo1 + 6] = bytes((20, 36, 52, 20, 28, 18))
             # FX1 frequency/drive, FX1 mix/resonance, FX2 send.
-            data[lfo2:lfo2 + 6] = bytes((18, 19, 24, 1, 1, 1))
+            data[lfo2:lfo2 + 6] = bytes((18, 19, 18 if track in probed else 24, 1, 1, 1))
 
     # Pattern A01-A04 select Parts 1-4 via the measured PTRN tail byte.
     for pat in range(16):
@@ -171,7 +231,7 @@ def mutate_bank(data, bank_number, mods):
                 rec = off + 0x59 + step * 32
                 # Every step changes FX and modulation values. Keep playback
                 # pitch/rate and SEND within useful, non-silent ranges.
-                for slot in LOCK_SLOTS:
+                for slot in lock_slots(track, probed):
                     value = (step * 17 + track * 11 + pat * 23 + slot * 7) % 128
                     if slot == 0:
                         value = (52, 64, 76, 64)[(step + track) % 4]
@@ -184,7 +244,7 @@ def mutate_bank(data, bank_number, mods):
                     data[rec + slot] = value
 
 
-def verify(dest, mods):
+def verify(dest, mods, fx, probed):
     total_trigs = total_locks = 0
     for num in range(1, 17):
         for suffix in ("work", "strd"):
@@ -197,8 +257,8 @@ def verify(dest, mods):
             for part in range(otp.NPARTS_ALL):
                 base = otp.PART_BASE + part * otp.PART_STRIDE
                 for track in range(8):
-                    assert data[base + otp.FX1_OFF + track] == mods[FX1[track]].menu.fx2_id
-                    assert data[base + otp.FX2_OFF + track] == mods[FX2[track]].menu.fx2_id
+                    assert data[base + otp.FX1_OFF + track] == fx_id(mods, fx[0][track])
+                    assert data[base + otp.FX2_OFF + track] == fx_id(mods, fx[1][track])
                     assert data[base + otp.MTYPE_OFF + track] == 1
                     assert data[base + otp.LFO_P1_OFF + track * 24 + 3] > 0
             if suffix != "work":
@@ -213,7 +273,7 @@ def verify(dest, mods):
                         expected = (16, 32, 64, 64)[pat]
                         assert len(locks) == expected, (path, pat, track)
                         assert len(trigs) == (expected // 4 if pat == 3 else expected)
-                        assert all(set(rec) == set(LOCK_SLOTS) for rec in locks.values())
+                        assert all(set(rec) == set(lock_slots(track, probed)) for rec in locks.values())
                         total_trigs += len(trigs)
                         total_locks += sum(map(len, locks.values()))
                     else:
@@ -221,22 +281,37 @@ def verify(dest, mods):
     return total_trigs, total_locks
 
 
+def describe(fx, probed):
+    fx1, fx2 = fx
+    rows = [f"T{t + 1}: FX1 {fx1[t] or 'NONE'}, FX2 {fx2[t] or 'NONE'}"
+            + ("  (FX2 slot 0 unlocked: verify_set probes it)" if t in probed else "")
+            for t in range(8)]
+    return "\n".join(rows)
+
+
 def main():
-    ap = argparse.ArgumentParser(description=__doc__)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--remix", default=os.environ.get("REMIX"))
     ap.add_argument("--source", type=pathlib.Path,
                     default=ROOT / "template_project/Drum Template TGM")
     ap.add_argument("--out", type=pathlib.Path,
                     default=ROOT / "out/stress-project")
+    ap.add_argument("--layout", action="store_true", help="print the derived placement and stop")
     args = ap.parse_args()
+    remix = registry.remix(args.remix)
+    mods = registry.modules()
+    fx = layout(remix)
+    probed = probed_tracks(fx[1], mods)
+    if args.layout:
+        print(describe(fx, probed))
+        return
+    if not any(fx[0]) and not any(fx[1]):
+        ap.error(f"{remix.name} has no DSP module to place")
     source, dest = args.source.resolve(), args.out.resolve()
     if dest.exists():
         ap.error(f"{dest} exists; choose a new --out directory")
     if not (source / "project.work").is_file() or not (source / "bank01.work").is_file():
         ap.error("source needs project.work and bank01.work")
-    remix = registry.remix("bamsep26")
-    mods = registry.modules()
-    if not all(k in remix.modules for k in set(FX1 + FX2)):
-        ap.error("bamsep26 no longer contains the required modules")
     dest.mkdir(parents=True)
     for src in source.iterdir():
         if src.is_file() and src.suffix in (".work", ".strd"):
@@ -244,17 +319,18 @@ def main():
     set_project_text(dest)
     set_markers(dest)
     for num in range(1, 17):
-        otp._bank_write(dest, num, lambda data, n=num: mutate_bank(data, n, mods),
+        otp._bank_write(dest, num, lambda data, n=num: mutate_bank(data, n, mods, fx, probed),
                         guard=False)
     otp.write_stored(dest)
-    trigs, locks = verify(dest, mods)
+    trigs, locks = verify(dest, mods, fx, probed)
     wav = dest / SAMPLE_REL
     make_sample(wav)
-    report = (f"bamsep26 stress project\n"
+    report = (f"{remix.name} stress project\n"
               f"Bank A patterns 01-04: 16/32/64 dense steps, then 64 steps"
               f" with trigless locks\n"
-              f"8 FLEX tracks; 24 LFOs per part; FX1: 4 Character, 2 Modulation,"
-              f" 2 Spectrum; FX2: BusDelay T1, BusVerb T5, SEND elsewhere\n"
+              f"8 FLEX tracks; 24 LFOs per part; every knob at its module's dearest setting;"
+              f" MODE selects walk their positions across the Parts\n"
+              f"{describe(fx, probed)}\n"
               f"{trigs} trigs; {locks} parameter lock bytes in bank A\n"
               f"Generated sample: {SAMPLE_REL}, sha256 {digest(wav)}\n"
               f"Start at A01, 120 BPM. Switch A01-A04 to exercise Part/mode and pattern/lock"
@@ -268,6 +344,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-

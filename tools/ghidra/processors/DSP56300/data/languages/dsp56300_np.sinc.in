@@ -1,0 +1,442 @@
+
+# ===================================================== non-parallel helpers
+attach variables [ q4a ] [ x0 y0 x1 y1 x0 y0 x1 y1 x1 y1 x0 y0 y1 x0 y0 x1 ];
+attach variables [ q4b ] [ x0 y0 x0 y0 y1 x0 y0 x1 x1 y1 x1 y1 x0 y0 x1 y1 ];
+attach variables [ qq2 ] [ y1 x0 y0 x1 ];
+attach variables [ jq4 ] [ x0 y0 x1 y1 ];
+
+# peripheral operands with the pp/qq field in bits 5..0
+Mpp16: "x:<<"^pa is k16_16=0 & k5_0 [ pa = 0xffffc0 + k5_0; ] { export *[X]:3 pa; }
+Mpp16: "y:<<"^pa is k16_16=1 & k5_0 [ pa = 0xffffc0 + k5_0; ] { export *[Y]:3 pa; }
+Mqqx0: "x:<<"^pa is k5_0 [ pa = 0xffff80 + k5_0; ] { export *[X]:3 pa; }
+Mqqy0: "y:<<"^pa is k5_0 [ pa = 0xffff80 + k5_0; ] { export *[Y]:3 pa; }
+Mqq6s: "x:<<"^pa is k6_6=0 & k5_0 [ pa = 0xffff80 + k5_0; ] { export *[X]:3 pa; }
+Mqq6s: "y:<<"^pa is k6_6=1 & k5_0 [ pa = 0xffff80 + k5_0; ] { export *[Y]:3 pa; }
+MqqXs: "x:<<"^pa is k6_6 & k4_0 [ pa = 0xffff80 + (k6_6 << 5) + k4_0; ] { export *[X]:3 pa; }
+MqqYs: "y:<<"^pa is k6_6 & k4_0 [ pa = 0xffff80 + (k6_6 << 5) + k4_0; ] { export *[Y]:3 pa; }
+PEA:   "p:"^EA is EA { export *[P]:3 EA; }
+Paa:   "p:<"^k13_8 is k13_8 { export *[P]:3 k13_8; }
+
+# loop end operands: export the last word of the loop (LA), display LA+1
+LAabs: lp1 is ext24 [ lp1 = ext24 + 1; ] { export *[P]:3 ext24; }
+LAend: lp1 is ext24 [ lp1 = ext24 + 1; ] { export *[P]:3 lp1; }
+LArel: lad is sext24 [ lad = inst_start + sext24; ] { export *[P]:3 lad; }
+LArend: lp1 is sext24 [ lp1 = inst_start + sext24 + 1; ] { export *[P]:3 lp1; }
+LAval: is ext24 { export *[const]:3 ext24; }
+LArval: lad is sext24 [ lad = inst_start + sext24; ] { export *[const]:3 lad; }
+
+# 12-bit loop / repeat count: hhhh (3..0) : iiiiiiii (15..8)
+Cnt12: "#"^cnt is k3_0 & k15_8 [ cnt = (k3_0 << 8) | k15_8; ] { export *[const]:3 cnt; }
+
+# 6-bit and 5-bit bit numbers
+BitN: "#"^k4_0 is k4_4=0 & k4_0 { local bitv:3 = 1 << k4_0; export bitv; }
+BitN: "#"^k4_0 is k4_3=2 & k4_0 { local bitv:3 = 1 << k4_0; export bitv; }
+
+# accumulator source for the ALU forms that name a second 24-bit operand
+ACT3: "a1" is k3_1=2 { export a1; }
+ACT3: "b1" is k3_1=3 { export b1; }
+ACT3: "x0" is k3_1=4 { export x0; }
+ACT3: "y0" is k3_1=5 { export y0; }
+ACT3: "x1" is k3_1=6 { export x1; }
+ACT3: "y1" is k3_1=7 { export y1; }
+
+# Tcc first source
+TccS: nacc3 is k6_4=0 & nacc3 { export nacc3; }
+TccS: S56j  is k6_6=1 & S56j  { export S56j; }
+
+macro push(hi, lo) {
+	ssp = ssp + 6;
+	*[SS]:3 (ssp + 3) = hi;
+	*[SS]:3 ssp = lo;
+}
+
+macro jsrTo(dest) {
+	local ret:3 = inst_next;
+	push(ret, sr);
+	call dest;
+}
+
+macro doLoop(cnt, lastword, top) {
+	push(la, lc);
+	push(top, sr);
+	la = lastword;
+	lc = cnt;
+}
+
+macro popLoop() {
+	lc = *[SS]:3 (ssp - 6);
+	la = *[SS]:3 (ssp - 3);
+	ssp = ssp - 12;
+}
+
+# ============================================================ instructions
+instr: "nop" is {000000000000000000000000} { }
+instr: "rts" is {000000000000000000001100} {
+	local ra:3 = *[SS]:3 (ssp + 3);
+	ssp = ssp - 6;
+	return [ra];
+}
+instr: "rti" is {000000000000000000000100} {
+	local ra:3 = *[SS]:3 (ssp + 3);
+	local s:3 = *[SS]:3 ssp;
+	ssp = ssp - 6;
+	unpackSR(s);
+	return [ra];
+}
+instr: "illegal" is {000000000000000000000101} { illegal_instruction(); }
+instr: "trap"    is {000000000000000000000110} { software_interrupt(); }
+instr: "trap"^CC0 is {00000000000000000001????} & CC0 { if (!CC0) goto inst_next; software_interrupt(); }
+instr: "debug"   is {000000000000001000000000} { debug_request(); }
+instr: "debug"^CC0 is {00000000000000110000????} & CC0 { if (!CC0) goto inst_next; debug_request(); }
+instr: "pflush"   is {000000000000000000000011} { cache_control(); }
+instr: "pflushun" is {000000000000000000000001} { cache_control(); }
+instr: "pfree"    is {000000000000000000000010} { cache_control(); }
+instr: "reset"    is {00000000000000001?0?0100} { reset_peripherals(); }
+instr: "stop"     is {00000000000000001?0?0111} { halt_stop(); }
+instr: "wait"     is {00000000000000001?0?0110} { halt_wait(); }
+instr: "plockr" Rel24   is {000000000000000000001111} ; Rel24 { cache_control(); }
+instr: "punlockr" Rel24 is {000000000000000000001110} ; Rel24 { cache_control(); }
+instr: "plock" EA   is ({0000101111??????10000001}) ... & EA { cache_control(); }
+instr: "punlock" EA is ({0000101011??????10000001}) ... & EA { cache_control(); }
+
+instr: "dec" acc0 is {00000000000000000000101?} & acc0 { local o:7 = acc0; sub56(o, 1:7); acc0 = alu_r; }
+instr: "inc" acc0 is {00000000000000000000100?} & acc0 { local o:7 = acc0; add56(o, 1:7); acc0 = alu_r; }
+
+# AND(I) / OR(I) on mr, ccr, com, eom
+instr: "andi" "#"^k15_8^",mr"  is {00000000????????10111000} & k15_8 { sr = sr & ((k15_8 << 8) | 0xff00ff); }
+instr: "andi" "#"^k15_8^",ccr" is {00000000????????10111001} & k15_8 { local v:3 = 0; packSR(v); v = v & (0xffff00 | k15_8); unpackCCR(v); }
+instr: "andi" "#"^k15_8^",com" is {00000000????????10111010} & k15_8 { omr = omr & (0xffff00 | k15_8); }
+instr: "andi" "#"^k15_8^",eom" is {00000000????????10111011} & k15_8 { omr = omr & ((k15_8 << 8) | 0xff00ff); }
+instr: "ori" "#"^k15_8^",mr"   is {00000000????????11111000} & k15_8 { sr = sr | (k15_8 << 8); }
+instr: "ori" "#"^k15_8^",ccr"  is {00000000????????11111001} & k15_8 { local v:3 = 0; packSR(v); v = v | k15_8; unpackCCR(v); }
+instr: "ori" "#"^k15_8^",com"  is {00000000????????11111010} & k15_8 { omr = omr | k15_8; }
+instr: "ori" "#"^k15_8^",eom"  is {00000000????????11111011} & k15_8 { omr = omr | (k15_8 << 8); }
+
+# ------------------------------------------------------------ immediate ALU
+instr: "add" "#"^k13_8^","^acc3 is {0000000101??????10???000} & k13_8 & acc3 { local s:7 = zext(k13_8:3) << 24; add56(acc3, s); acc3 = alu_r; }
+instr: "sub" "#"^k13_8^","^acc3 is {0000000101??????10???100} & k13_8 & acc3 { local s:7 = zext(k13_8:3) << 24; sub56(acc3, s); acc3 = alu_r; }
+instr: "cmp" "#"^k13_8^","^acc3 is {0000000101??????10???101} & k13_8 & acc3 { local s:7 = zext(k13_8:3) << 24; sub56(acc3, s); }
+instr: "and" "#"^k13_8^","^acc3 is {0000000101??????10???110} & k13_8 & acc3 { local r:3 = acc3[24,24] & k13_8; setd1(acc3, r); acc3 = alu_r; nz24(r); }
+instr: "or"  "#"^k13_8^","^acc3 is {0000000101??????10???010} & k13_8 & acc3 { local r:3 = acc3[24,24] | k13_8; setd1(acc3, r); acc3 = alu_r; nz24(r); }
+instr: "eor" "#"^k13_8^","^acc3 is {0000000101??????10???011} & k13_8 & acc3 { local r:3 = acc3[24,24] ^ k13_8; setd1(acc3, r); acc3 = alu_r; nz24(r); }
+instr: "add" "#>"^ext24^","^acc3 is {0000000101??????11???000} & acc3 ; ext24 { local s:7 = sext(ext24:3); s = s << 24; add56(acc3, s); acc3 = alu_r; }
+instr: "sub" "#>"^ext24^","^acc3 is {0000000101??????11???100} & acc3 ; ext24 { local s:7 = sext(ext24:3); s = s << 24; sub56(acc3, s); acc3 = alu_r; }
+instr: "cmp" "#>"^ext24^","^acc3 is {0000000101??????11???101} & acc3 ; ext24 { local s:7 = sext(ext24:3); s = s << 24; sub56(acc3, s); }
+instr: "and" "#>"^ext24^","^acc3 is {0000000101??????11???110} & acc3 ; ext24 { local r:3 = acc3[24,24] & ext24; setd1(acc3, r); acc3 = alu_r; nz24(r); }
+instr: "or"  "#>"^ext24^","^acc3 is {0000000101??????11???010} & acc3 ; ext24 { local r:3 = acc3[24,24] | ext24; setd1(acc3, r); acc3 = alu_r; nz24(r); }
+instr: "eor" "#>"^ext24^","^acc3 is {0000000101??????11???011} & acc3 ; ext24 { local r:3 = acc3[24,24] ^ ext24; setd1(acc3, r); acc3 = alu_r; nz24(r); }
+
+# ----------------------------------------------------------- multiplies
+# (+/-)S,#n,D : S * 2^-n
+instr: "mpy"  qq2^",#"^k12_8^","^acc3      is {00000001000?????11???000} & qq2 & k12_8 & acc3 { local p:7 = sext(qq2); p = (p << 24) s>> k12_8; alu_r = p; V = 0; nzeu(alu_r); acc3 = alu_r; }
+instr: "mpy"  "-"^qq2^",#"^k12_8^","^acc3  is {00000001000?????11???100} & qq2 & k12_8 & acc3 { local p:7 = sext(qq2); p = (p << 24) s>> k12_8; alu_r = -p; V = 0; nzeu(alu_r); acc3 = alu_r; }
+instr: "mpyr" qq2^",#"^k12_8^","^acc3      is {00000001000?????11???001} & qq2 & k12_8 & acc3 { local p:7 = sext(qq2); p = (p << 24) s>> k12_8; alu_r = rnd56(p); V = 0; nzeu(alu_r); acc3 = alu_r; }
+instr: "mpyr" "-"^qq2^",#"^k12_8^","^acc3  is {00000001000?????11???101} & qq2 & k12_8 & acc3 { local p:7 = sext(qq2); p = -((p << 24) s>> k12_8); alu_r = rnd56(p); V = 0; nzeu(alu_r); acc3 = alu_r; }
+instr: "mac"  qq2^",#"^k12_8^","^acc3      is {00000001000?????11???010} & qq2 & k12_8 & acc3 { local p:7 = sext(qq2); p = (p << 24) s>> k12_8; add56(acc3, p); acc3 = alu_r; }
+instr: "mac"  "-"^qq2^",#"^k12_8^","^acc3  is {00000001000?????11???110} & qq2 & k12_8 & acc3 { local p:7 = sext(qq2); p = (p << 24) s>> k12_8; sub56(acc3, p); acc3 = alu_r; }
+instr: "macr" qq2^",#"^k12_8^","^acc3      is {00000001000?????11???011} & qq2 & k12_8 & acc3 { local p:7 = sext(qq2); p = (p << 24) s>> k12_8; add56(acc3, p); acc3 = rnd56(alu_r); nzeu(acc3); }
+instr: "macr" "-"^qq2^",#"^k12_8^","^acc3  is {00000001000?????11???111} & qq2 & k12_8 & acc3 { local p:7 = sext(qq2); p = (p << 24) s>> k12_8; sub56(acc3, p); acc3 = rnd56(alu_r); nzeu(acc3); }
+
+# (+/-)#xxxx,S,D
+MImm: "#>"^ext24 is ext24 { local p:7 = sext(ext24:3); export p; }
+instr: "mpyi"  MImm^","^jq4^","^acc3     is {0000000101?????111???000} & jq4 & acc3 ; MImm { local p:7 = (MImm * sext(jq4)) << 1; alu_r = p; V = 0; nzeu(alu_r); acc3 = alu_r; }
+instr: "mpyi"  "-"^MImm^","^jq4^","^acc3 is {0000000101?????111???100} & jq4 & acc3 ; MImm { local p:7 = (MImm * sext(jq4)) << 1; alu_r = -p; V = 0; nzeu(alu_r); acc3 = alu_r; }
+instr: "mpyri" MImm^","^jq4^","^acc3     is {0000000101?????111???001} & jq4 & acc3 ; MImm { local p:7 = (MImm * sext(jq4)) << 1; alu_r = rnd56(p); V = 0; nzeu(alu_r); acc3 = alu_r; }
+instr: "mpyri" "-"^MImm^","^jq4^","^acc3 is {0000000101?????111???101} & jq4 & acc3 ; MImm { local p:7 = (MImm * sext(jq4)) << 1; p = -p; alu_r = rnd56(p); V = 0; nzeu(alu_r); acc3 = alu_r; }
+instr: "maci"  MImm^","^jq4^","^acc3     is {0000000101?????111???010} & jq4 & acc3 ; MImm { local p:7 = (MImm * sext(jq4)) << 1; add56(acc3, p); acc3 = alu_r; }
+instr: "maci"  "-"^MImm^","^jq4^","^acc3 is {0000000101?????111???110} & jq4 & acc3 ; MImm { local p:7 = (MImm * sext(jq4)) << 1; sub56(acc3, p); acc3 = alu_r; }
+instr: "macri" MImm^","^jq4^","^acc3     is {0000000101?????111???011} & jq4 & acc3 ; MImm { local p:7 = (MImm * sext(jq4)) << 1; add56(acc3, p); acc3 = rnd56(alu_r); nzeu(acc3); }
+instr: "macri" "-"^MImm^","^jq4^","^acc3 is {0000000101?????111???111} & jq4 & acc3 ; MImm { local p:7 = (MImm * sext(jq4)) << 1; sub56(acc3, p); acc3 = rnd56(alu_r); nzeu(acc3); }
+
+# signed x unsigned / unsigned x unsigned; QQQQ operand pairs in bits 3..0
+QSU: q4a^","^q4b is q4a & q4b { local p:7 = (sext(q4a) * zext(q4b)) << 1; export p; }
+QUU: q4a^","^q4b is q4a & q4b { local p:7 = (zext(q4a) * zext(q4b)) << 1; export p; }
+QSS: q4a^","^q4b is q4a & q4b { local p:7 = (sext(q4a) * sext(q4b)) << 1; export p; }
+instr: "macsu" QSU^","^acc5     is {00000001001001101 0?0????} & QSU & acc5 { add56(acc5, QSU); acc5 = alu_r; }
+instr: "macsu" "-"^QSU^","^acc5 is {00000001001001101 0?1????} & QSU & acc5 { sub56(acc5, QSU); acc5 = alu_r; }
+instr: "macuu" QUU^","^acc5     is {00000001001001101 1?0????} & QUU & acc5 { add56(acc5, QUU); acc5 = alu_r; }
+instr: "macuu" "-"^QUU^","^acc5 is {00000001001001101 1?1????} & QUU & acc5 { sub56(acc5, QUU); acc5 = alu_r; }
+instr: "mpysu" QSU^","^acc5     is {00000001001001111 0?0????} & QSU & acc5 { alu_r = QSU; V = 0; nzeu(alu_r); acc5 = alu_r; }
+instr: "mpysu" "-"^QSU^","^acc5 is {00000001001001111 0?1????} & QSU & acc5 { alu_r = -QSU; V = 0; nzeu(alu_r); acc5 = alu_r; }
+instr: "mpyuu" QUU^","^acc5     is {00000001001001111 1?0????} & QUU & acc5 { alu_r = QUU; V = 0; nzeu(alu_r); acc5 = alu_r; }
+instr: "mpyuu" "-"^QUU^","^acc5 is {00000001001001111 1?1????} & QUU & acc5 { alu_r = -QUU; V = 0; nzeu(alu_r); acc5 = alu_r; }
+# DMAC: acc = (acc >> 24) +/- s1*s2
+instr: "dmacss" QSS^","^acc5     is {000000010010010 0 1 0 ? 0 ????} & QSS & acc5 { local d:7 = acc5 s>> 24; add56(d, QSS); acc5 = alu_r; }
+instr: "dmacss" "-"^QSS^","^acc5 is {000000010010010 0 1 0 ? 1 ????} & QSS & acc5 { local d:7 = acc5 s>> 24; sub56(d, QSS); acc5 = alu_r; }
+instr: "dmacsu" QSU^","^acc5     is {000000010010010 1 1 0 ? 0 ????} & QSU & acc5 { local d:7 = acc5 s>> 24; add56(d, QSU); acc5 = alu_r; }
+instr: "dmacsu" "-"^QSU^","^acc5 is {000000010010010 1 1 0 ? 1 ????} & QSU & acc5 { local d:7 = acc5 s>> 24; sub56(d, QSU); acc5 = alu_r; }
+instr: "dmacuu" QUU^","^acc5     is {000000010010010 1 1 1 ? 0 ????} & QUU & acc5 { local d:7 = acc5 s>> 24; add56(d, QUU); acc5 = alu_r; }
+instr: "dmacuu" "-"^QUU^","^acc5 is {000000010010010 1 1 1 ? 1 ????} & QUU & acc5 { local d:7 = acc5 s>> 24; sub56(d, QUU); acc5 = alu_r; }
+
+# ---------------------------------------------------- other data ALU ops
+instr: "div" jj4^","^acc3 is {000000011000000001???000} & jj4 & acc3 { acc3 = div_step(acc3, jj4, C); C = acc3 s>= 0; V = 0; }
+instr: "norm" ea_r^","^acc3 is {0000000111011???0001?101} & ea_r & acc3 { acc3 = norm_step(acc3, ea_r); ea_r = norm_step(acc3, ea_r); }
+instr: "normf" ACT3^","^acc0 is {00001100000111100010????} & ACT3 & acc0 { acc0 = normf(acc0, ACT3); nzeu(acc0); }
+instr: "clb" acc1^","^acc0 is {0000110000011110000000??} & acc1 & acc0 { local n:3 = clb(acc1); fr56(acc0, n); nzeu(acc0); }
+instr: "cmpu" nacc0^","^acc0 is {00001100000111111111000?} & nacc0 & acc0 { C = acc0 < nacc0; Z = acc0 == nacc0; N = 0; V = 0; }
+instr: "cmpu" ACT3^","^acc0  is {00001100000111111111????} & k3_3=1 & ACT3 & acc0 { local s:7 = zext(ACT3) << 24; local d:7 = acc0 & 0xffffffffffff; C = d < s; Z = d == s; N = 0; V = 0; }
+
+instr: "asl" "#"^k6_1^","^acc7^","^acc0 is {0000110000011101????????} & k6_1 & acc7 & acc0 {
+	local n:7 = k6_1; local r:7 = acc7 << n; C = n != 0 && ((acc7 >> (56 - n)) & 1) != 0;
+	V = (r s>> n) != acc7; L = L || V; acc0 = r; nzeu(r);
+}
+instr: "asr" "#"^k6_1^","^acc7^","^acc0 is {0000110000011100????????} & k6_1 & acc7 & acc0 {
+	local n:7 = k6_1; C = n != 0 && ((acc7 >> (n - 1)) & 1) != 0;
+	local r:7 = acc7 s>> n; V = 0; acc0 = r; nzeu(r);
+}
+instr: "asl" ACT3^","^acc4^","^acc0 is {0000110000011110010?????} & ACT3 & acc4 & acc0 {
+	local n:7 = zext(ACT3 & 0x3f); local r:7 = acc4 << n; V = (r s>> n) != acc4; L = L || V; acc0 = r; nzeu(r);
+}
+instr: "asr" ACT3^","^acc4^","^acc0 is {0000110000011110011?????} & ACT3 & acc4 & acc0 {
+	local n:7 = zext(ACT3 & 0x3f); local r:7 = acc4 s>> n; V = 0; acc0 = r; nzeu(r);
+}
+instr: "lsl" "#"^k5_1^","^acc0 is {000011000001111010??????} & k5_1 & acc0 { local r:3 = acc0[24,24] << k5_1; setd1(acc0, r); acc0 = alu_r; nz24(r); }
+instr: "lsr" "#"^k5_1^","^acc0 is {000011000001111011??????} & k5_1 & acc0 { local r:3 = acc0[24,24] >> k5_1; setd1(acc0, r); acc0 = alu_r; nz24(r); }
+instr: "lsl" ACT3^","^acc0 is {00001100000111100001????} & ACT3 & acc0 { local r:3 = acc0[24,24] << (ACT3 & 0x1f); setd1(acc0, r); acc0 = alu_r; nz24(r); }
+instr: "lsr" ACT3^","^acc0 is {00001100000111100011????} & ACT3 & acc0 { local r:3 = acc0[24,24] >> (ACT3 & 0x1f); setd1(acc0, r); acc0 = alu_r; nz24(r); }
+
+# bit-field operations; control word: width in bits 17..12, offset in bits 5..0
+macro bfextract(src, ctl, dst, signed) {
+	local w:7 = zext((ctl >> 12) & 0x3f);
+	local o:7 = zext(ctl & 0x3f);
+	local f:7 = (src >> o) & ((1 << w) - 1);
+	local s:7 = (f << (56 - w)) s>> (56 - w);
+	dst = f;
+	if (signed == 0) goto <done>;
+	dst = s;
+<done>
+	nzeu(dst);
+}
+instr: "extract" ACT3^","^acc4^","^acc0  is {0000110000011010000?????} & ACT3 & acc4 & acc0 { bfextract(acc4, ACT3, acc0, 1:1); }
+instr: "extractu" ACT3^","^acc4^","^acc0 is {0000110000011010100?????} & ACT3 & acc4 & acc0 { bfextract(acc4, ACT3, acc0, 0:1); }
+instr: "extract" "#>"^ext24^","^acc4^","^acc0  is {0000110000011000000?000?} & acc4 & acc0 ; ext24 { local c:3 = ext24; bfextract(acc4, c, acc0, 1:1); }
+instr: "extractu" "#>"^ext24^","^acc4^","^acc0 is {0000110000011000100?000?} & acc4 & acc0 ; ext24 { local c:3 = ext24; bfextract(acc4, c, acc0, 0:1); }
+INS3: "a0" is k6_4=2 { export a0; }
+INS3: "b0" is k6_4=3 { export b0; }
+INS3: "x0" is k6_4=4 { export x0; }
+INS3: "y0" is k6_4=5 { export y0; }
+INS3: "x1" is k6_4=6 { export x1; }
+INS3: "y1" is k6_4=7 { export y1; }
+macro bfinsert(src, ctl, dst) {
+	local w:7 = zext((ctl >> 12) & 0x3f);
+	local o:7 = zext(ctl & 0x3f);
+	local m:7 = ((1 << w) - 1) << o;
+	dst = (dst & ~m) | ((zext(src) << o) & m);
+	nzeu(dst);
+}
+instr: "insert" ACT3^","^INS3^","^acc0 is {00001100000110110???????} & ACT3 & INS3 & acc0 { bfinsert(INS3, ACT3, acc0); }
+instr: "insert" "#>"^ext24^","^INS3^","^acc0 is {00001100000110010???000?} & INS3 & acc0 ; ext24 { local c:3 = ext24; bfinsert(INS3, c, acc0); }
+instr: "merge" ACT3^","^acc0 is {00001100000110111000????} & ACT3 & acc0 { local r:3 = (ACT3 << 12) | (acc0[24,24] & 0xfff); setd1(acc0, r); acc0 = alu_r; nz24(r); }
+
+# conditional transfers
+instr: "t"^CC12 TccS^","^acc3 is {00000010????0???0???????} & CC12 & TccS & acc3 { if (!CC12) goto inst_next; acc3 = TccS; }
+instr: "t"^CC12 TccS^","^acc3^" "^ea_r^","^t_r0 is {00000011????0???0???????} & CC12 & TccS & acc3 & ea_r & t_r0 { if (!CC12) goto inst_next; local s:3 = ea_r; acc3 = TccS; t_r0 = s; }
+instr: "t"^CC12 ea_r^","^t_r0 is {00000010????1???0???????} & CC12 & ea_r & t_r0 { if (!CC12) goto inst_next; t_r0 = ea_r; }
+
+# ------------------------------------------------------- AGU arithmetic
+instr: "lua" EA4^","^R5w0 is {00000100010?????000?????} & EA4 & R5w0 { mv1 = EA4; build R5w0; }
+LDisp: "+"^disp is s13_13=0 & s13_11 & k7_4 [ disp = (s13_11 << 4) | k7_4; ] { export *[const]:3 disp; }
+LDisp: "-"^ndisp is s13_13=1 & s13_11 & k7_4 [ ndisp = -((s13_11 << 4) | k7_4); ] { local d:3 = -ndisp; export d; }
+instr: "lua" "("^ea_r^LDisp^"),"^lua_d is {0000010000??????????????} & ea_r & LDisp & lua_d { lua_d = ea_r + LDisp; }
+instr: "lra" ea_r^","^R5w0 is {0000010011000???000?????} & ea_r & R5w0 { mv1 = inst_start + ea_r; build R5w0; }
+instr: "lra" Rel24^","^R5w0 is {0000010001??????010?????} & R5w0 ; Rel24 & sext24 { mv1 = inst_start + sext24; build R5w0; }
+
+# ----------------------------------------------------------- moves (np)
+# X:(Rn+xxxx) / Y:(Rn+xxxx), long displacement
+LDisp24: "+"^sext24 is sext24 & k23_23e=0 { export *[const]:3 sext24; }
+LDisp24: "-"^nd is sext24 & k23_23e=1 [ nd = -sext24; ] { export *[const]:3 sext24; }
+instr: "move" "x:("^ea_r^LDisp24^"),"^R6w0 is {0000101001110???11??????} & ea_r & R6w0 ; LDisp24 & sext24 { local ad:3 = ea_r + sext24; mv1 = *[X]:3 ad; build R6w0; }
+instr: "move" R6r0^",x:("^ea_r^LDisp24^")" is {0000101001110???10??????} & ea_r & R6r0 ; LDisp24 & sext24 { local ad:3 = ea_r + sext24; *[X]:3 ad = R6r0; }
+instr: "move" "y:("^ea_r^LDisp24^"),"^R6w0 is {0000101101110???11??????} & ea_r & R6w0 ; LDisp24 & sext24 { local ad:3 = ea_r + sext24; mv1 = *[Y]:3 ad; build R6w0; }
+instr: "move" R6r0^",y:("^ea_r^LDisp24^")" is {0000101101110???10??????} & ea_r & R6r0 ; LDisp24 & sext24 { local ad:3 = ea_r + sext24; *[Y]:3 ad = R6r0; }
+# X:(Rn+xxx) / Y:(Rn+xxx), 7-bit displacement split over bits 16..11 and 6
+Disp7: "+"^disp is s16_16=0 & s16_11 & k6_6 [ disp = (s16_11 << 1) | k6_6; ] { export *[const]:3 disp; }
+Disp7: "-"^ndisp is s16_16=1 & s16_11 & k6_6 [ ndisp = -((s16_11 << 1) | k6_6); ] { local d:3 = -ndisp; export d; }
+instr: "move" "x:("^ea_r^Disp7^"),"^D4w0 is {0000001?????????1?01????} & ea_r & Disp7 & D4w0 { local ad:3 = ea_r + Disp7; mv1 = *[X]:3 ad; build D4w0; }
+instr: "move" D4r0^",x:("^ea_r^Disp7^")" is {0000001?????????1?00????} & ea_r & Disp7 & D4r0 { local ad:3 = ea_r + Disp7; *[X]:3 ad = D4r0; }
+instr: "move" "y:("^ea_r^Disp7^"),"^D4w0 is {0000001?????????1?11????} & ea_r & Disp7 & D4w0 { local ad:3 = ea_r + Disp7; mv1 = *[Y]:3 ad; build D4w0; }
+instr: "move" D4r0^",y:("^ea_r^Disp7^")" is {0000001?????????1?10????} & ea_r & Disp7 & D4r0 { local ad:3 = ea_r + Disp7; *[Y]:3 ad = D4r0; }
+
+# MOVE(C)
+instr: "movec" MEA6^","^C5w0 is ({0000010111??????0?1?????} & C5w0) ... & MEA6 { mv1 = MEA6; build C5w0; }
+instr: "movec" C5r0^","^MEA6 is ({0000010101??????0?1?????} & C5r0) ... & MEA6 { MEA6 = C5r0; }
+instr: "movec" IMM^","^C5w0  is ({0000010111??????0?1?????} & C5w0) ... & IMM { mv1 = IMM; build C5w0; }
+instr: "movec" Maa6^","^C5w0 is {0000010110??????0?1?????} & Maa6 & C5w0 { mv1 = Maa6; build C5w0; }
+instr: "movec" C5r0^","^Maa6 is {0000010100??????0?1?????} & Maa6 & C5r0 { Maa6 = C5r0; }
+instr: "movec" R6r8^","^C5w0 is {0000010011??????1?1?????} & R6r8 & C5w0 { mv1 = R6r8; build C5w0; }
+instr: "movec" C5r0^","^R6w8 is {0000010001??????1?1?????} & C5r0 & R6w8 { mv1 = C5r0; build R6w8; }
+instr: "movec" "#<"^k15_8^","^C5w0 is {00000101????????101?????} & k15_8 & C5w0 { mv1 = k15_8; build C5w0; }
+
+# MOVE(M): program memory
+instr: "movem" PEA^","^R6w0 is ({0000011111??????10??????} & R6w0) ... & PEA { mv1 = PEA; build R6w0; }
+instr: "movem" R6r0^","^PEA is ({0000011101??????10??????} & R6r0) ... & PEA { PEA = R6r0; }
+instr: "movem" Paa^","^R6w0 is {0000011110??????00??????} & Paa & R6w0 { mv1 = Paa; build R6w0; }
+instr: "movem" R6r0^","^Paa is {0000011100??????00??????} & Paa & R6r0 { Paa = R6r0; }
+
+# MOVEP: peripherals
+instr: "movep" MEA6^","^Mpp16 is ({0000100?11??????1???????} & Mpp16) ... & MEA6 { Mpp16 = MEA6; }
+instr: "movep" Mpp16^","^MEA6 is ({0000100?01??????1???????} & Mpp16) ... & MEA6 { MEA6 = Mpp16; }
+instr: "movep" IMM^","^Mpp16  is ({0000100?11??????1???????} & Mpp16) ... & IMM { Mpp16 = IMM; }
+instr: "movep" MEA6^","^Mqqx0 is ({00000111?1??????0???????} & k15_15=1 & Mqqx0) ... & MEA6 { Mqqx0 = MEA6; }
+instr: "movep" Mqqx0^","^MEA6 is ({00000111?1??????0???????} & k15_15=0 & Mqqx0) ... & MEA6 { MEA6 = Mqqx0; }
+instr: "movep" IMM^","^Mqqx0  is ({00000111?1??????0???????} & k15_15=1 & Mqqx0) ... & IMM { Mqqx0 = IMM; }
+instr: "movep" MEA6^","^Mqqy0 is ({00000111?0??????1???????} & k15_15=1 & Mqqy0) ... & MEA6 { Mqqy0 = MEA6; }
+instr: "movep" Mqqy0^","^MEA6 is ({00000111?0??????1???????} & k15_15=0 & Mqqy0) ... & MEA6 { MEA6 = Mqqy0; }
+instr: "movep" IMM^","^Mqqy0  is ({00000111?0??????1???????} & k15_15=1 & Mqqy0) ... & IMM { Mqqy0 = IMM; }
+instr: "movep" PEA^","^Mpp16  is ({0000100?11??????01??????} & Mpp16) ... & PEA { Mpp16 = PEA; }
+instr: "movep" Mpp16^","^PEA  is ({0000100?01??????01??????} & Mpp16) ... & PEA { PEA = Mpp16; }
+instr: "movep" PEA^","^Mqq6s  is ({0000000011??????0???????} & Mqq6s) ... & PEA { Mqq6s = PEA; }
+instr: "movep" Mqq6s^","^PEA  is ({0000000010??????0???????} & Mqq6s) ... & PEA { PEA = Mqq6s; }
+instr: "movep" R6r8^","^Mpp16 is {0000100?11??????00??????} & R6r8 & Mpp16 { Mpp16 = R6r8; }
+instr: "movep" Mpp16^","^R6w8 is {0000100?01??????00??????} & R6w8 & Mpp16 { mv1 = Mpp16; build R6w8; }
+instr: "movep" R6r8^","^MqqXs is {0000010011??????1?0?????} & R6r8 & MqqXs { MqqXs = R6r8; }
+instr: "movep" MqqXs^","^R6w8 is {0000010001??????1?0?????} & R6w8 & MqqXs { mv1 = MqqXs; build R6w8; }
+instr: "movep" R6r8^","^MqqYs is {0000010011??????0?1?????} & R6r8 & MqqYs { MqqYs = R6r8; }
+instr: "movep" MqqYs^","^R6w8 is {0000010001??????0?1?????} & R6w8 & MqqYs { mv1 = MqqYs; build R6w8; }
+
+# VSL: A1/B1 -> X:ea, A0/B0 shifted left with bit i -> Y:ea
+instr: "vsl" acc16^","^k4_4^",l:"^EA is ({0000101?11??????110?0000} & acc16 & k4_4) ... & EA {
+	local ad:3 = EA; *[X]:3 ad = acc16[24,24]; *[Y]:3 ad = (acc16:3 << 1) | k4_4;
+}
+
+# --------------------------------------------------------- bit manipulation
+macro bittest(v, bit) { C = (v & bit) != 0; }
+instr: "bclr" BitN^","^MEA6 is ({0000101001??????0?0?????} & BitN) ... & MEA6 { local v:3 = MEA6; bittest(v, BitN); MEA6 = v & ~BitN; }
+instr: "bset" BitN^","^MEA6 is ({0000101001??????0?1?????} & BitN) ... & MEA6 { local v:3 = MEA6; bittest(v, BitN); MEA6 = v | BitN; }
+instr: "bchg" BitN^","^MEA6 is ({0000101101??????0?0?????} & BitN) ... & MEA6 { local v:3 = MEA6; bittest(v, BitN); MEA6 = v ^ BitN; }
+instr: "btst" BitN^","^MEA6 is ({0000101101??????0?1?????} & BitN) ... & MEA6 { local v:3 = MEA6; bittest(v, BitN); }
+instr: "bclr" BitN^","^Maa6 is {0000101000??????0?0?????} & BitN & Maa6 { local v:3 = Maa6; bittest(v, BitN); Maa6 = v & ~BitN; }
+instr: "bset" BitN^","^Maa6 is {0000101000??????0?1?????} & BitN & Maa6 { local v:3 = Maa6; bittest(v, BitN); Maa6 = v | BitN; }
+instr: "bchg" BitN^","^Maa6 is {0000101100??????0?0?????} & BitN & Maa6 { local v:3 = Maa6; bittest(v, BitN); Maa6 = v ^ BitN; }
+instr: "btst" BitN^","^Maa6 is {0000101100??????0?1?????} & BitN & Maa6 { local v:3 = Maa6; bittest(v, BitN); }
+instr: "bclr" BitN^","^Mpp6 is {0000101010??????0?0?????} & BitN & Mpp6 { local v:3 = Mpp6; bittest(v, BitN); Mpp6 = v & ~BitN; }
+instr: "bset" BitN^","^Mpp6 is {0000101010??????0?1?????} & BitN & Mpp6 { local v:3 = Mpp6; bittest(v, BitN); Mpp6 = v | BitN; }
+instr: "bchg" BitN^","^Mpp6 is {0000101110??????0?0?????} & BitN & Mpp6 { local v:3 = Mpp6; bittest(v, BitN); Mpp6 = v ^ BitN; }
+instr: "btst" BitN^","^Mpp6 is {0000101110??????0?1?????} & BitN & Mpp6 { local v:3 = Mpp6; bittest(v, BitN); }
+instr: "bclr" BitN^","^Mqq6 is {0000000100??????0?0?????} & BitN & Mqq6 { local v:3 = Mqq6; bittest(v, BitN); Mqq6 = v & ~BitN; }
+instr: "bset" BitN^","^Mqq6 is {0000000100??????0?1?????} & BitN & Mqq6 { local v:3 = Mqq6; bittest(v, BitN); Mqq6 = v | BitN; }
+instr: "bchg" BitN^","^Mqq6 is {0000000101??????0?0?????} & BitN & Mqq6 { local v:3 = Mqq6; bittest(v, BitN); Mqq6 = v ^ BitN; }
+instr: "btst" BitN^","^Mqq6 is {0000000101??????0?1?????} & BitN & Mqq6 { local v:3 = Mqq6; bittest(v, BitN); }
+instr: "bclr" BitN^","^R6r8 is {0000101011??????010?????} & BitN & R6r8 & R6w8 { mv1 = R6r8; bittest(mv1, BitN); mv1 = mv1 & ~BitN; build R6w8; }
+instr: "bset" BitN^","^R6r8 is {0000101011??????011?????} & BitN & R6r8 & R6w8 { mv1 = R6r8; bittest(mv1, BitN); mv1 = mv1 | BitN; build R6w8; }
+instr: "bchg" BitN^","^R6r8 is {0000101111??????010?????} & BitN & R6r8 & R6w8 { mv1 = R6r8; bittest(mv1, BitN); mv1 = mv1 ^ BitN; build R6w8; }
+instr: "btst" BitN^","^R6r8 is {0000101111??????011?????} & BitN & R6r8 { local v:3 = R6r8; bittest(v, BitN); }
+
+# jumps on bit
+instr: "jclr" BitN^","^MEAx6^","^Abs24 is {0000101001??????1?0?????} & BitN & MEAx6 ; Abs24 { local v:3 = MEAx6; bittest(v, BitN); if (!C) goto Abs24; }
+instr: "jset" BitN^","^MEAx6^","^Abs24 is {0000101001??????1?1?????} & BitN & MEAx6 ; Abs24 { local v:3 = MEAx6; bittest(v, BitN); if (C) goto Abs24; }
+instr: "jclr" BitN^","^Maa6^","^Abs24  is {0000101000??????1?0?????} & BitN & Maa6 ; Abs24 { local v:3 = Maa6; bittest(v, BitN); if (!C) goto Abs24; }
+instr: "jset" BitN^","^Maa6^","^Abs24  is {0000101000??????1?1?????} & BitN & Maa6 ; Abs24 { local v:3 = Maa6; bittest(v, BitN); if (C) goto Abs24; }
+instr: "jclr" BitN^","^Mpp6^","^Abs24  is {0000101010??????1?0?????} & BitN & Mpp6 ; Abs24 { local v:3 = Mpp6; bittest(v, BitN); if (!C) goto Abs24; }
+instr: "jset" BitN^","^Mpp6^","^Abs24  is {0000101010??????1?1?????} & BitN & Mpp6 ; Abs24 { local v:3 = Mpp6; bittest(v, BitN); if (C) goto Abs24; }
+instr: "jclr" BitN^","^Mqq6^","^Abs24  is {0000000110??????1?0?????} & BitN & Mqq6 ; Abs24 { local v:3 = Mqq6; bittest(v, BitN); if (!C) goto Abs24; }
+instr: "jset" BitN^","^Mqq6^","^Abs24  is {0000000110??????1?1?????} & BitN & Mqq6 ; Abs24 { local v:3 = Mqq6; bittest(v, BitN); if (C) goto Abs24; }
+instr: "jclr" BitN^","^R6r8^","^Abs24  is {0000101011??????000?????} & BitN & R6r8 ; Abs24 { local v:3 = R6r8; bittest(v, BitN); if (!C) goto Abs24; }
+instr: "jset" BitN^","^R6r8^","^Abs24  is {0000101011??????001?????} & BitN & R6r8 ; Abs24 { local v:3 = R6r8; bittest(v, BitN); if (C) goto Abs24; }
+instr: "jsclr" BitN^","^MEAx6^","^Abs24 is {0000101101??????1?0?????} & BitN & MEAx6 ; Abs24 { local v:3 = MEAx6; bittest(v, BitN); if (C) goto inst_next; jsrTo(Abs24); }
+instr: "jsset" BitN^","^MEAx6^","^Abs24 is {0000101101??????1?1?????} & BitN & MEAx6 ; Abs24 { local v:3 = MEAx6; bittest(v, BitN); if (!C) goto inst_next; jsrTo(Abs24); }
+instr: "jsclr" BitN^","^Maa6^","^Abs24  is {0000101100??????1?0?????} & BitN & Maa6 ; Abs24 { local v:3 = Maa6; bittest(v, BitN); if (C) goto inst_next; jsrTo(Abs24); }
+instr: "jsset" BitN^","^Maa6^","^Abs24  is {0000101100??????1?1?????} & BitN & Maa6 ; Abs24 { local v:3 = Maa6; bittest(v, BitN); if (!C) goto inst_next; jsrTo(Abs24); }
+instr: "jsclr" BitN^","^Mpp6^","^Abs24  is {0000101110??????1?0?????} & BitN & Mpp6 ; Abs24 { local v:3 = Mpp6; bittest(v, BitN); if (C) goto inst_next; jsrTo(Abs24); }
+instr: "jsset" BitN^","^Mpp6^","^Abs24  is {0000101110??????1?1?????} & BitN & Mpp6 ; Abs24 { local v:3 = Mpp6; bittest(v, BitN); if (!C) goto inst_next; jsrTo(Abs24); }
+instr: "jsclr" BitN^","^Mqq6^","^Abs24  is {0000000111??????1?0?????} & BitN & Mqq6 ; Abs24 { local v:3 = Mqq6; bittest(v, BitN); if (C) goto inst_next; jsrTo(Abs24); }
+instr: "jsset" BitN^","^Mqq6^","^Abs24  is {0000000111??????1?1?????} & BitN & Mqq6 ; Abs24 { local v:3 = Mqq6; bittest(v, BitN); if (!C) goto inst_next; jsrTo(Abs24); }
+instr: "jsclr" BitN^","^R6r8^","^Abs24  is {0000101111??????000?????} & BitN & R6r8 ; Abs24 { local v:3 = R6r8; bittest(v, BitN); if (C) goto inst_next; jsrTo(Abs24); }
+instr: "jsset" BitN^","^R6r8^","^Abs24  is {0000101111??????001?????} & BitN & R6r8 ; Abs24 { local v:3 = R6r8; bittest(v, BitN); if (!C) goto inst_next; jsrTo(Abs24); }
+
+# branches on bit (PC relative)
+instr: "brclr" BitN^","^MEA6^","^Rel24 is ({0000110010??????0?0?????} & BitN) ... & MEA6 ; Rel24 { local v:3 = MEA6; bittest(v, BitN); if (!C) goto Rel24; }
+instr: "brset" BitN^","^MEA6^","^Rel24 is ({0000110010??????0?1?????} & BitN) ... & MEA6 ; Rel24 { local v:3 = MEA6; bittest(v, BitN); if (C) goto Rel24; }
+instr: "brclr" BitN^","^Maa6^","^Rel24 is {0000110010??????1?0?????} & BitN & Maa6 ; Rel24 { local v:3 = Maa6; bittest(v, BitN); if (!C) goto Rel24; }
+instr: "brset" BitN^","^Maa6^","^Rel24 is {0000110010??????1?1?????} & BitN & Maa6 ; Rel24 { local v:3 = Maa6; bittest(v, BitN); if (C) goto Rel24; }
+instr: "brclr" BitN^","^Mpp6^","^Rel24 is {0000110011??????0?0?????} & BitN & Mpp6 ; Rel24 { local v:3 = Mpp6; bittest(v, BitN); if (!C) goto Rel24; }
+instr: "brset" BitN^","^Mpp6^","^Rel24 is {0000110011??????0?1?????} & BitN & Mpp6 ; Rel24 { local v:3 = Mpp6; bittest(v, BitN); if (C) goto Rel24; }
+instr: "brclr" BitN^","^Mqq6^","^Rel24 is {0000010010??????0?0?????} & BitN & Mqq6 ; Rel24 { local v:3 = Mqq6; bittest(v, BitN); if (!C) goto Rel24; }
+instr: "brset" BitN^","^Mqq6^","^Rel24 is {0000010010??????0?1?????} & BitN & Mqq6 ; Rel24 { local v:3 = Mqq6; bittest(v, BitN); if (C) goto Rel24; }
+instr: "brclr" BitN^","^R6r8^","^Rel24 is {0000110011??????100?????} & BitN & R6r8 ; Rel24 { local v:3 = R6r8; bittest(v, BitN); if (!C) goto Rel24; }
+instr: "brset" BitN^","^R6r8^","^Rel24 is {0000110011??????101?????} & BitN & R6r8 ; Rel24 { local v:3 = R6r8; bittest(v, BitN); if (C) goto Rel24; }
+instr: "bsclr" BitN^","^MEA6^","^Rel24 is ({0000110110??????0?0?????} & BitN) ... & MEA6 ; Rel24 { local v:3 = MEA6; bittest(v, BitN); if (C) goto inst_next; jsrTo(Rel24); }
+instr: "bsset" BitN^","^MEA6^","^Rel24 is ({0000110110??????0?1?????} & BitN) ... & MEA6 ; Rel24 { local v:3 = MEA6; bittest(v, BitN); if (!C) goto inst_next; jsrTo(Rel24); }
+instr: "bsclr" BitN^","^Maa6^","^Rel24 is {0000110110??????1?0?????} & BitN & Maa6 ; Rel24 { local v:3 = Maa6; bittest(v, BitN); if (C) goto inst_next; jsrTo(Rel24); }
+instr: "bsset" BitN^","^Maa6^","^Rel24 is {0000110110??????1?1?????} & BitN & Maa6 ; Rel24 { local v:3 = Maa6; bittest(v, BitN); if (!C) goto inst_next; jsrTo(Rel24); }
+instr: "bsclr" BitN^","^Mpp6^","^Rel24 is {0000110111??????0?0?????} & BitN & Mpp6 ; Rel24 { local v:3 = Mpp6; bittest(v, BitN); if (C) goto inst_next; jsrTo(Rel24); }
+instr: "bsset" BitN^","^Mpp6^","^Rel24 is {0000110111??????0?1?????} & BitN & Mpp6 ; Rel24 { local v:3 = Mpp6; bittest(v, BitN); if (!C) goto inst_next; jsrTo(Rel24); }
+instr: "bsclr" BitN^","^Mqq6^","^Rel24 is {0000010010??????1?0?????} & BitN & Mqq6 ; Rel24 { local v:3 = Mqq6; bittest(v, BitN); if (C) goto inst_next; jsrTo(Rel24); }
+instr: "bsset" BitN^","^Mqq6^","^Rel24 is {0000010010??????1?1?????} & BitN & Mqq6 ; Rel24 { local v:3 = Mqq6; bittest(v, BitN); if (!C) goto inst_next; jsrTo(Rel24); }
+instr: "bsclr" BitN^","^R6r8^","^Rel24 is {0000110111??????100?????} & BitN & R6r8 ; Rel24 { local v:3 = R6r8; bittest(v, BitN); if (C) goto inst_next; jsrTo(Rel24); }
+instr: "bsset" BitN^","^R6r8^","^Rel24 is {0000110111??????101?????} & BitN & R6r8 ; Rel24 { local v:3 = R6r8; bittest(v, BitN); if (!C) goto inst_next; jsrTo(Rel24); }
+
+# ---------------------------------------------------------- flow control
+instr: "bra" Rel24  is {000011010001000011000000} ; Rel24 { goto Rel24; }
+instr: "bra" Rel9   is {00000101000011????0?????} & Rel9 { goto Rel9; }
+instr: "bra" ea_r   is {0000110100011???11000000} & ea_r { local t:3 = inst_start + ea_r; goto [t]; }
+instr: "bsr" Rel24  is {000011010001000010000000} ; Rel24 { jsrTo(Rel24); }
+instr: "bsr" Rel9   is {00000101000010????0?????} & Rel9 { jsrTo(Rel9); }
+instr: "bsr" ea_r   is {0000110100011???10000000} & ea_r { local t:3 = inst_start + ea_r; local ret:3 = inst_next; push(ret, sr); call [t]; }
+instr: "b"^CC0 Rel24  is {00001101000100000100????} & CC0 ; Rel24 { if (CC0) goto Rel24; }
+instr: "b"^CC12 Rel9  is {00000101????01????0?????} & CC12 & Rel9 { if (CC12) goto Rel9; }
+instr: "b"^CC0 ea_r   is {0000110100011???0100????} & CC0 & ea_r { if (!CC0) goto inst_next; local t:3 = inst_start + ea_r; goto [t]; }
+instr: "bs"^CC0 Rel24 is {00001101000100000000????} & CC0 ; Rel24 { if (!CC0) goto inst_next; jsrTo(Rel24); }
+instr: "bs"^CC12 Rel9 is {00000101????00????0?????} & CC12 & Rel9 { if (!CC12) goto inst_next; jsrTo(Rel9); }
+instr: "bs"^CC0 ea_r  is {0000110100011???0000????} & CC0 & ea_r { if (!CC0) goto inst_next; local t:3 = inst_start + ea_r; local ret:3 = inst_next; push(ret, sr); call [t]; }
+
+instr: "jmp" Abs12 is {000011000000????????????} & Abs12 { goto Abs12; }
+instr: "jmp" Abs24 is {000010101111000010000000} ; Abs24 { goto Abs24; }
+instr: "jmp" EAx   is {0000101011??????10000000} & EAx { goto [EAx]; }
+instr: "jsr" Abs12 is {000011010000????????????} & Abs12 { jsrTo(Abs12); }
+instr: "jsr" Abs24 is {000010111111000010000000} ; Abs24 { jsrTo(Abs24); }
+instr: "jsr" EAx   is {0000101111??????10000000} & EAx { local t:3 = EAx; local ret:3 = inst_next; push(ret, sr); call [t]; }
+instr: "j"^CC12 Abs12  is {00001110????????????????} & CC12 & Abs12 { if (CC12) goto Abs12; }
+instr: "j"^CC0 Abs24   is {00001010111100001010????} & CC0 ; Abs24 { if (CC0) goto Abs24; }
+instr: "j"^CC0 EAx     is {0000101011??????1010????} & CC0 & EAx { if (!CC0) goto inst_next; goto [EAx]; }
+instr: "js"^CC12 Abs12 is {00001111????????????????} & CC12 & Abs12 { if (!CC12) goto inst_next; jsrTo(Abs12); }
+instr: "js"^CC0 Abs24  is {00001011111100001010????} & CC0 ; Abs24 { if (!CC0) goto inst_next; jsrTo(Abs24); }
+instr: "js"^CC0 EAx    is {0000101111??????1010????} & CC0 & EAx { if (!CC0) goto inst_next; local t:3 = EAx; local ret:3 = inst_next; push(ret, sr); call [t]; }
+
+# ------------------------------------------------------ hardware loops
+# DO / DOR mark the loop's last word (LA) with context; the root table adds
+# the loop-back there.  A zero count skips the loop.
+instr: "do" MEAx6^","^LAabs is {0000011001??????0?000000} & MEAx6 ; LAabs & LAend & LAval
+	[ lbot=1; lfor=0; ltop=inst_start+2; globalset(LAabs, lbot); globalset(LAabs, lfor); globalset(LAabs, ltop); ]
+	{ local n:3 = MEAx6; local top:3 = inst_next; doLoop(n, LAval, top); if (n != 0) goto inst_next; popLoop(); goto LAend; }
+instr: "do" Maa6^","^LAabs is {0000011000??????0?000000} & Maa6 ; LAabs & LAend & LAval
+	[ lbot=1; lfor=0; ltop=inst_start+2; globalset(LAabs, lbot); globalset(LAabs, lfor); globalset(LAabs, ltop); ]
+	{ local n:3 = Maa6; local top:3 = inst_next; doLoop(n, LAval, top); if (n != 0) goto inst_next; popLoop(); goto LAend; }
+instr: "do" Cnt12^","^LAabs is {00000110????????1000????} & Cnt12 ; LAabs & LAend & LAval
+	[ lbot=1; lfor=0; ltop=inst_start+2; globalset(LAabs, lbot); globalset(LAabs, lfor); globalset(LAabs, ltop); ]
+	{ local n:3 = Cnt12; local top:3 = inst_next; doLoop(n, LAval, top); if (n != 0) goto inst_next; popLoop(); goto LAend; }
+instr: "do" R6nos^","^LAabs is {0000011011??????00000000} & R6nos ; LAabs & LAend & LAval
+	[ lbot=1; lfor=0; ltop=inst_start+2; globalset(LAabs, lbot); globalset(LAabs, lfor); globalset(LAabs, ltop); ]
+	{ local n:3 = R6nos; local top:3 = inst_next; doLoop(n, LAval, top); if (n != 0) goto inst_next; popLoop(); goto LAend; }
+instr: "do" "forever,"^LAabs is {000000000000001000000011} ; LAabs & LAval
+	[ lbot=1; lfor=1; ltop=inst_start+2; globalset(LAabs, lbot); globalset(LAabs, lfor); globalset(LAabs, ltop); ]
+	{ local top:3 = inst_next; doLoop(lc, LAval, top); }
+instr: "dor" MEAx6^","^LArend is {0000011001??????0?010000} & MEAx6 ; LArel & LArend & LArval
+	[ lbot=1; lfor=0; ltop=inst_start+2; globalset(LArel, lbot); globalset(LArel, lfor); globalset(LArel, ltop); ]
+	{ local n:3 = MEAx6; local top:3 = inst_next; doLoop(n, LArval, top); if (n != 0) goto inst_next; popLoop(); goto LArend; }
+instr: "dor" Maa6^","^LArend is {0000011000??????0?010000} & Maa6 ; LArel & LArend & LArval
+	[ lbot=1; lfor=0; ltop=inst_start+2; globalset(LArel, lbot); globalset(LArel, lfor); globalset(LArel, ltop); ]
+	{ local n:3 = Maa6; local top:3 = inst_next; doLoop(n, LArval, top); if (n != 0) goto inst_next; popLoop(); goto LArend; }
+instr: "dor" Cnt12^","^LArend is {00000110????????1001????} & Cnt12 ; LArel & LArend & LArval
+	[ lbot=1; lfor=0; ltop=inst_start+2; globalset(LArel, lbot); globalset(LArel, lfor); globalset(LArel, ltop); ]
+	{ local n:3 = Cnt12; local top:3 = inst_next; doLoop(n, LArval, top); if (n != 0) goto inst_next; popLoop(); goto LArend; }
+instr: "dor" R6nos^","^LArend is {0000011011??????00010000} & R6nos ; LArel & LArend & LArval
+	[ lbot=1; lfor=0; ltop=inst_start+2; globalset(LArel, lbot); globalset(LArel, lfor); globalset(LArel, ltop); ]
+	{ local n:3 = R6nos; local top:3 = inst_next; doLoop(n, LArval, top); if (n != 0) goto inst_next; popLoop(); goto LArend; }
+instr: "dor" "forever,"^LArend is {000000000000001000000010} ; LArel & LArend & LArval
+	[ lbot=1; lfor=1; ltop=inst_start+2; globalset(LArel, lbot); globalset(LArel, lfor); globalset(LArel, ltop); ]
+	{ local top:3 = inst_next; doLoop(lc, LArval, top); }
+
+instr: "enddo" is {00000000000000001?0?1100} { popLoop(); }
+instr: "brk"^CC0 is {00000000000000100001????} & CC0 {
+	if (!CC0) goto inst_next;
+	local t:3 = la + 1;
+	popLoop();
+	goto [t];
+}
+
+# REP: repeat the next instruction LC times
+instr: "rep" MEAx6 is {0000011001??????0?100000} & MEAx6 [ rpt=1; globalset(inst_next, rpt); ] { rep_lc = lc; lc = MEAx6; }
+instr: "rep" Maa6  is {0000011000??????0?100000} & Maa6  [ rpt=1; globalset(inst_next, rpt); ] { rep_lc = lc; lc = Maa6; }
+instr: "rep" Cnt12 is {00000110????????1?1?????} & Cnt12 [ rpt=1; globalset(inst_next, rpt); ] { rep_lc = lc; lc = Cnt12; }
+instr: "rep" R6r8  is {0000011011??????00100000} & R6r8  [ rpt=1; globalset(inst_next, rpt); ] { rep_lc = lc; lc = R6r8; }

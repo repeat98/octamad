@@ -34,6 +34,27 @@ EMU = ROOT / "out/emu/ot_emu"
 IMAGE = ROOT / "out/mainos_bus.bin"
 MIDI_FIFO_HEAD = 0x46100b80         # midi_rx_fifo_head: +1 per byte midi_rx_enqueue (0x40092bbc) takes
 
+# The three USB audio modules (one source, modules/usb-audio-extended/usbaudio.s):
+# high-speed channels, packet cap, bInterval (2 = 250 us, 4 = 1 ms), and what each channel
+# carries as (source, L/R): source 0-7 = track 1-8's read-back words, 8 =
+# MAIN, 9 = CUE.
+LAYOUTS = {
+    "USB AUDIO EXTENDED": (20, 960, 2, [(t, c) for t in range(8) for c in (0, 1)] + [(8, 0), (8, 1), (9, 0), (9, 1)]),
+    "USB AUDIO FULL": (16, 768, 2, [(t, c) for t in range(8) for c in (0, 1)]),
+    "USB AUDIO MASTER": (2, 360, 4, [(7, 0), (7, 1)]),
+}
+RB_BASE, MC_BASE = 0x80003190, 0x80005e60   # the tracks' read-back arena (2 banks) and MAIN/CUE (usbaudio.s)
+
+
+def tap_word(src, lr, frame):
+    """A read-back word that names its source, side and frame; the producer
+    keeps the top 24 bits."""
+    return ((0x10 + src) << 24) | ((0x20 + lr) << 16) | ((0x30 + frame) << 8) | 0x77
+
+
+TAP_RB = b"".join(tap_word(t, c, f).to_bytes(4, "big") for _bank in range(2) for t in range(8) for f in range(16) for c in (0, 1))
+TAP_MC = b"".join(tap_word(8 + k, c, f).to_bytes(4, "big") for k in (0, 1) for f in range(16) for c in (0, 1))
+
 
 def main():
     if not EMU.is_file():
@@ -42,9 +63,9 @@ def main():
     if not IMAGE.is_file():
         print("  [FAIL] verify_usb: no out/mainos_bus.bin (make bus)")
         return 1
-    remix = registry.remix(os.environ.get("REMIX") or registry.DEFAULT_REMIX)
+    remix = registry.remix(os.environ.get("REMIX"))
     midi = "USB MIDI" in remix.modules
-    audio = "USB AUDIO" in remix.modules
+    audio = next((k for k in LAYOUTS if k in remix.modules), None)
     sock = f"/tmp/ot-usb-{os.getpid()}.sock"     # sun_path is 104 bytes on macOS; the scratch dirs are longer
     log = ROOT / "out/verify_usb.log"
     with open(log, "w") as lf:
@@ -98,28 +119,97 @@ def main():
             as_ = [d for d in ifaces if d[5:7] == bytes([1, 2])]
             check("USB AUDIO: a UAC2 AudioStreaming interface 4 with alt 0 and alt 1",
                   sorted((d[2], d[3]) for d in as_) == [(4, 0), (4, 1)], str([(d[2], d[3]) for d in as_]))
+            nch, maxpkt, bint, taps = LAYOUTS[audio]
+            frame_b = 4 * nch
+            per = (10, 11, 12) if bint == 2 else (43, 44, 45, 46)     # frames per packet the servo can send
             iso = [d for d in eps if d[2] == 0x83]
-            check("USB AUDIO: EP 0x83 isochronous, 736 bytes, bInterval 3",
-                  len(iso) == 1 and (iso[0][3] & 3, iso[0][4] | iso[0][5] << 8, iso[0][6]) == (1, 736, 3),
+            if iso:                                              # poll at the rate the descriptor asks for
+                b.iso_hz(8000 // (1 << (iso[0][6] - 1)))
+            check(f"{audio}: EP 0x83 isochronous, {maxpkt} bytes, bInterval {bint}",
+                  len(iso) == 1 and (iso[0][3] & 3, iso[0][4] | iso[0][5] << 8, iso[0][6]) == (1, maxpkt, bint),
                   str([(d[3], d[4] | d[5] << 8, d[6]) for d in iso]))
+            asg = cfg.find(bytes([16, 0x24, 1]))                 # CS AS_GENERAL: bNrChannels at +10, bmChannelConfig +11
+            check(f"{audio}: AS_GENERAL declares {nch} channels",
+                  asg >= 0 and cfg[asg + 10] == nch, f"bNrChannels {cfg[asg + 10] if asg >= 0 else None}")
+            if nch == 2:
+                cc = int.from_bytes(cfg[asg + 11:asg + 15], "little") if asg >= 0 else None
+                check(f"{audio}: AS_GENERAL bmChannelConfig = front left + front right (0x3)", cc == 3, f"{cc}")
+            fmt24, fmt16 = bytes([6, 0x24, 2, 1, 4, 24]), bytes([6, 0x24, 2, 1, 2, 16])   # FORMAT_TYPE_I: subslot, bits
+            check("USB AUDIO: FORMAT_TYPE_I, 24-bit samples in 4-byte subslots",
+                  cfg.count(fmt24) == 1 and fmt16 not in cfg)
             # the clock source answers its sample rate; SET_INTERFACE alt 1 brings EP3 up
             cur = b.ctrl_in(0xa1, 1, 0x0100, 0x1000 | 3, 4)
             check("USB AUDIO: CS_SAM_FREQ_CONTROL CUR = 44100", cur == (44100).to_bytes(4, "little"), cur.hex())
             b.ctrl_nodata(0x01, 0x0b, 1, 4)
             alt = b.ctrl_in(0x81, 0x0a, 0, 4, 1)
             check("USB AUDIO: GET_INTERFACE reports alt 1", alt == b"\x01", alt.hex())
-            got = [b.ep_in(3, 1024) for _ in range(400)]        # 200 ms of device time at the 500 us poll
+            got = [b.ep_in(3, 1024) for _ in range(800)]        # 200 ms of device time at the 250 us poll
             sizes = sorted({len(g) for g in got[10:]})           # the first polls may land before the first prime
-            check("USB AUDIO: 400 polls on EP3 carry 22/23-frame packets and none empty after the first ten",
-                  bool(sizes) and all(s in (704, 736) for s in sizes), f"sizes {sizes}")
+            check(f"{audio}: 800 polls on EP3 carry {per[0]}-{per[-1]}-frame packets of {frame_b} B and none empty after the first ten",
+                  bool(sizes) and all(s in [n * frame_b for n in per] for s in sizes), f"sizes {sizes}")
+            words = b"".join(got[10:])
+            low = sum(1 for i in range(0, len(words), 4) if words[i])
+            check("USB AUDIO: every 4-byte subslot's low byte is zero (24 bits, left-justified)",
+                  bool(words) and low == 0, f"{low} of {len(words) // 4} subslots")
             c = usb_host.counters(b)
             print("  counters: " + " ".join(f"{k}={v}" for k, v in c.items()))
-            check("USB AUDIO: the vendor request reads the counters back: frames produced and consumed, no overrun",
+            check(f"{audio}: the vendor request reads the counters back: frames produced and consumed, no overrun",
                   c["produced"] > c["consumed"] > 0 and c["overruns"] == 0,
                   f"produced {c['produced']} consumed {c['consumed']} overruns {c['overruns']} underruns {c['underruns']} bankdup {c['bankdup']}")
+            # (after the counters: re-poking between polls slows the bench's
+            # polling, and the port counts the polls it skips as overruns)
+            # Which taps stream: the read-back arena (both banks) and MAIN/CUE
+            # re-poked before every poll with words naming their source, so
+            # the producer reads them whichever bank the eDMA left it (the
+            # eDMA rewrites the current bank each frame). Every channel must
+            # carry only its own source's words, and every source it should.
+            tapped = []
+            for _ in range(1200):
+                b.poke(RB_BASE, TAP_RB)
+                b.poke(MC_BASE, TAP_MC)
+                tapped.append(b.ep_in(3, 1024))
+            tw = [int.from_bytes(w[i:i + 4], "little") for w in tapped[-400:] for i in range(0, len(w), 4)]
+            seen, wrong = [0] * nch, []
+            for i, w in enumerate(tw):
+                src, lr = (w >> 24) - 0x10, ((w >> 16) & 0xff) - 0x20
+                if 0 <= src < 10 and lr in (0, 1):
+                    if (src, lr) == taps[i % nch]:
+                        seen[i % nch] += 1
+                    else:
+                        wrong.append((i % nch, f"{w:08x}"))
+            names = ["T%d %s" % (s + 1, "LR"[c]) if s < 8 else ("MAIN", "CUE")[s - 8] + " " + "LR"[c] for s, c in taps]
+            check(f"{audio}: channels 1-{nch} carry {', '.join(names) if nch <= 4 else names[0] + ' .. ' + names[-1]}, each its own source's words only",
+                  not wrong and all(n >= 100 for n in seen), f"per-channel hits {seen}; wrong {wrong[:6]}")
             b.ctrl_nodata(0x01, 0x0b, 0, 4)
             after = [len(b.ep_in(3, 1024)) for _ in range(8)]
             check("USB AUDIO: alt 0 stops the stream (empty polls)", all(a == 0 for a in after[2:]), str(after))
+            # Full speed: the same device re-enumerated. The stereo sum of the
+            # tracks (EXTENDED, FULL) or track 8's L/R (MASTER) in 44/45-frame
+            # 1 ms packets of 8-byte frames.
+            usb_host.enumerate_device(b, hs=False)
+            b.iso_hz(0)                                          # bInterval 1 at full speed: 1 ms
+            b.ctrl_nodata(0x01, 0x0b, 1, 4)
+            fs = []
+            for _ in range(300):
+                if nch == 2:
+                    b.poke(RB_BASE, TAP_RB)
+                fs.append(b.ep_in(3, 1024))
+            fsizes = sorted({len(g) for g in fs[10:]})
+            check(f"{audio}: full speed: 1 ms packets of 43-46 8-byte frames, none empty after the first ten",
+                  bool(fsizes) and all(s in (344, 352, 360, 368) for s in fsizes), f"sizes {fsizes}")
+            if nch == 2:
+                fw = [int.from_bytes(w[i:i + 4], "little") for w in fs[-150:] for i in range(0, len(w), 4)]
+                fseen, fwrong = [0, 0], []
+                for i, w in enumerate(fw):
+                    src, lr = (w >> 24) - 0x10, ((w >> 16) & 0xff) - 0x20
+                    if 0 <= src < 10 and lr in (0, 1):
+                        if (src, lr) == taps[i % 2]:
+                            fseen[i % 2] += 1
+                        else:
+                            fwrong.append((i % 2, f"{w:08x}"))
+                check(f"{audio}: full speed: channels 1/2 carry T8 L/R, its own words only",
+                      not fwrong and all(n >= 100 for n in fseen), f"per-channel hits {fseen}; wrong {fwrong[:6]}")
+            b.ctrl_nodata(0x01, 0x0b, 0, 4)
     except Exception as e:  # noqa: BLE001 -- a hang or a stall is the finding
         check(f"the host script completed ({type(e).__name__}: {e})", False)
     finally:

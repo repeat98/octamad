@@ -27,12 +27,53 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import pathlib
 import shutil
 import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+# The build's memo. Every entry is keyed by the sha256 of its COMPLETE input
+# (the bytes handed to the packer; the recipe, every source file, the stock
+# image, the toolchain version for a runtime) and holds bytes the recipe or
+# the packer's own determinism pins, so a hit is what a cold run would have
+# produced, and a runtime hit is re-verified against the recipe's identities
+# before it is used. A build that cannot write here builds cold.
+# OCTABAM_NO_CACHE=1 builds cold; OCTABAM_CACHE=<dir> names the directory
+# (check_shards.py hands its worktrees the parent's). (28 Sep 2026: the
+# packer was 55% of every build and the runtime's 75 compiles another 22%,
+# with identical inputs on every one of the ~8 builds a `make check-remix`
+# runs; a warm build is 1.7 s where a cold one was 9.)
+CACHE = pathlib.Path(os.environ.get("OCTABAM_CACHE") or ROOT / "out/cache")
+
+
+def _cache_on():
+    return os.environ.get("OCTABAM_NO_CACHE", "") not in ("1", "yes", "true")
+
+
+def _cache_read(kind, key):
+    if not _cache_on():
+        return None
+    p = CACHE / kind / key
+    try:
+        return p.read_bytes() if p.is_file() else None
+    except OSError:
+        return None
+
+
+def _cache_write(kind, key, data):
+    if not _cache_on():
+        return
+    try:
+        d = CACHE / kind
+        d.mkdir(parents=True, exist_ok=True)
+        tmp = d / f"{key}.{os.getpid()}.tmp"
+        tmp.write_bytes(data)
+        tmp.replace(d / key)
+    except OSError:
+        pass
 
 TOOLS = ("m68k-elf-gcc", "m68k-elf-as", "m68k-elf-ld", "m68k-elf-objcopy")
 
@@ -135,7 +176,19 @@ def _length_bits(length_read):
 
 
 def pack(data: bytes, max_candidates: int) -> bytes:
-    """Deterministic aPLib-variant stream, bit-identical to her encoder."""
+    """Deterministic aPLib-variant stream, bit-identical to her encoder.
+    Memoised on the input's sha256 (out/cache/pack): the same bytes pack to
+    the same stream, and the greedy parse is pure Python."""
+    key = f"{hashlib.sha256(data).hexdigest()}-{max_candidates}"
+    hit = _cache_read("pack", key)
+    if hit is not None and hit[:32] == hashlib.sha256(hit[32:]).digest():
+        return hit[32:]
+    out = _pack(data, max_candidates)
+    _cache_write("pack", key, hashlib.sha256(out).digest() + out)
+    return out
+
+
+def _pack(data: bytes, max_candidates: int) -> bytes:
     tag_bits: list[int] = []
     emissions: list[tuple[int, int]] = []
     last_offset = None
@@ -288,6 +341,34 @@ def build(rt, stock: bytes, work: pathlib.Path, skip=()) -> tuple[list, bytes, d
 
     gcc_version = _run(["m68k-elf-gcc", "-dumpfullversion"], work).strip()
 
+    # The memo key: the recipe, every file under her sources, the stock
+    # image, the compiler and the skipped guards. A hit hands back the three
+    # artifacts and the symbol table, each re-verified against the recipe's
+    # own identities (raw, packed, append) -- the same checks a cold build
+    # passes -- and writes the work files the DRAM boot gate reads.
+    h = hashlib.sha256()
+    h.update(recipe.read_bytes())
+    for f in sorted(x for x in srcdir.rglob("*") if x.is_file() and ".git" not in x.parts):
+        h.update(str(f.relative_to(srcdir)).encode()); h.update(b"\0"); h.update(f.read_bytes())
+    h.update(_sha(stock).encode()); h.update(gcc_version.encode()); h.update(repr(sorted(skip)).encode())
+    cache_key = h.hexdigest()
+    hit = _cache_read("runtime", cache_key)
+    if hit is not None:
+        try:
+            c = json.loads(hit)
+            runtime, packed, append = (bytes.fromhex(c[k]) for k in ("runtime", "packed", "append"))
+            symbols = c["symbols"]
+        except (ValueError, KeyError, TypeError):
+            hit = None
+    if hit is not None:
+        _verify(f"cached runtime (m68k-elf-gcc {gcc_version})", runtime, runtime_spec["raw"])
+        _verify("cached packed runtime", packed, runtime_spec["packed"])
+        _verify("cached append", append, {"size": spec["append"]["length"], "sha256": spec["append"]["sha256"]})
+        (work / "runtime.bin").write_bytes(runtime)
+        (work / "packed.bin").write_bytes(packed)
+        (work / "append.bin").write_bytes(append)
+        return _result(spec, stock, skip, gcc_version, runtime, packed, append, symbols, runtime_load)
+
     def compile_one(src, obj):
         if src.suffix == ".c":
             _run(["m68k-elf-gcc", *spec["compiler"]["cflags"], "-c", "-o", obj, src], work)
@@ -340,6 +421,13 @@ def build(rt, stock: bytes, work: pathlib.Path, skip=()) -> tuple[list, bytes, d
         f = line.split()
         if len(f) == 3 and not f[2].startswith(".L"):
             symbols[f[2]] = int(f[0], 16)
+    _cache_write("runtime", cache_key, json.dumps(dict(
+        runtime=runtime.hex(), packed=packed.hex(), append=append.hex(), symbols=symbols)).encode())
+    return _result(spec, stock, skip, gcc_version, runtime, packed, append, symbols, runtime_load)
+
+
+def _result(spec, stock, skip, gcc_version, runtime, packed, append, symbols, runtime_load):
+    """(writes, append, info) from the built or cached artifacts."""
     ws = writes(spec, stock, skip)
     def _roll(b):
         h = 0

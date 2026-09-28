@@ -4,7 +4,7 @@ A per-track insert on stock LO-FI's id 0x1c (FX1 only; an FX2 instance runs
 as a dry pass, decided from the allocator base at init). Chain order:
 fold -> saturate -> tilt -> compress -> width.
 
-  * FOLD -- WarpFold's wavefolder at a held level;
+  * FOLD -- a wrap-and-reflect wavefolder at a held level;
   * SAT -- three JClones (MIT) characters: TAPE = TapeHead (a state-variable
     split at TONE, the low and band parts through a cubic smoothstep, the
     top clean), TUBE = DaTube (u - u^P, the negative half driven twice as
@@ -19,7 +19,7 @@ fold -> saturate -> tilt -> compress -> width.
 Page 1: DRV FOLD WDTH COMP TONE MIX; page 2: SAT (22 Sep 2026: TXTR removed,
 WDTH in its slot; 20 Sep 2026: TONE back on page 1 in the return's slot)."""
 
-from remix.schema import (BusRole, Claims, DspSection, Formatter, Harness,
+from remix.schema import (Gate, Category, Proof, BusRole, Claims, DspSection, Formatter, Harness,
                           Kind, MenuEntry, ModeView, Module, Param, YBase)
 
 _PLAIN = Formatter.PLAIN
@@ -32,18 +32,16 @@ import math as _m
 _P = _m.log(10.0) + 1.0
 def _q(v): return min(0x7FFFFF, max(0, round(v * (1 << 23))))
 
-# DaTube's curve: u^P over u in [0, 1], stored as u^P / 2 in 17 pairs (value,
-# slope to the next), interpolated in chtube over u/2 in 1/32 steps. T(u) =
-# u - u^P applied to u = 1 - |x|; past |x| = 1 the JSFX goes linear, which is
-# the same formula with u^P dropped -- the lookup clamps u at 0. TUBE's post
-# gain is a per-block division in the source.
+# DaTube's curve: u^P over u in [0, 1], stored as u^P / 2 at 17 points, then
+# the 17 slopes to the next point (the last 0): chtube indexes both halves
+# with one idx, interpolating over u/2 in 1/32 steps. T(u) = u - u^P applied
+# to u = 1 - |x|; past |x| = 1 the JSFX goes linear, which is the same
+# formula with u^P dropped -- the lookup clamps u at 0. TUBE's post gain is
+# a per-block division in the source.
 def _tube_up(n=16):
     t = [0.5 * (i / n) ** _P for i in range(n + 1)]
-    out = []
-    for i in range(n + 1):
-        out.append(_q(t[i]))
-        out.append(_q(t[i + 1] - t[i]) if i < n else 0)
-    return tuple(out)
+    return (tuple(_q(v) for v in t)
+            + tuple(_q(t[i + 1] - t[i]) if i < n else 0 for i in range(n + 1)))
 
 
 TUBE_UP = _tube_up()
@@ -57,6 +55,8 @@ MODULE = Module(
     name="character",
     key="CHARACTER",
     kind=Kind.DSP_EFFECT,
+    category=Category.TRACK, author="sambanks", author_url="https://github.com/sambanks",
+    proof=Proof.HARDWARE, proof_note="Sam's MKII",
     doc="BamSep26 station: fold, saturation, tilt, compressor, width.",
     menu=MenuEntry(
         fx2_id=0x1c,
@@ -108,4 +108,6 @@ MODULE = Module(
     # dry pass.
     claims=Claims(fx1_only=True),
     harness=Harness(layout_char="2", is_server=False, bus_client=False),
+    gates=(Gate('tools/verify/verify_character.py', remix_arg=False),),
+    dear={'DRV': 127, 'FOLD': 127, 'COMP': 127, 'MIX': 127, 'WDTH': 127, 'SAT': 0},
 )

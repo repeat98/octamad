@@ -8,7 +8,7 @@ local ColdFire emulator. Nothing in it touches hardware.
 
 ```bash
 make emu-setup      # uv provisions .venv with unicorn + textual
-make bus            # out/mainos_bus.bin, which the emulator view boots
+make bus REMIX=<name>   # out/mainos_bus.bin, which the emulator view boots
 make remix
 ```
 
@@ -25,7 +25,7 @@ build and every check stay dependency-free. Playback is `afplay`
 │    BusDelay FX2 │   1 Filter             │ TIME  64  [######......] p1  │
 │  ✓ BusVerb  FX2 │   2 Equalizer          │ MOD   30  [###.........] p1  │
 │ ── Insert ──     │   … 8 more             │ …                            │
-│    WarpFold  FX2 │ FX2  4 rows            │                              │
+│    Spectrum  FX2 │ FX2  4 rows            │                              │
 │ ── Stock ──      │   1 BusVerb    2411w  │                              │
 │  ✓ Filter FX1+FX2│   2 BusDelay   2469w  │                              │
 │                  │ A 74 free · B 5 free   │                              │
@@ -84,12 +84,13 @@ fit in place, up to 32 in the long cave), and a stock effect on either menu
 costs nothing: its code is already in the image. The budget is per payload
 (two regions, the same effects at different addresses; `SPEC=1` puts each
 server on its own), reported from the build's own figures. An overrun
-arrives as the build's refusal, naming the payload: `payload B: RUNGS
+arrives as the build's refusal, naming the payload: `payload B: SPECTRUM
 overruns the region (3599 > 2724 words)`.
 
-Measured costs, payload A: Hello World 27, Streamz 255, WarpFold 322,
-Ripple 347, BodeShift 391, Nimbus 500, Rungs 880, Send 215, BusVerb 2,411
-(+24 LFO table), BusDelay 2,154 (payload B).
+Measured costs, payload A (27 Sep 2026): Send 262, Euclid 362 (+33
+table), MiniVerb 457, Character 999 (+51), Spectrum 1,346
+(+54), Modulation 1,481 (+148), BusVerb 2,035 (+194 LFO lines and
+table), BusDelay 1,437 (+60, payload B).
 
 The ⚠ line describes the image, not the cursor, and names the cause and
 the count; `x` applies its fix and removes every row the build named:
@@ -150,7 +151,7 @@ It costs no words (the DSP dispatch is shared by both menus; the list is
 rebuilt in the cave with FX1's three `lea` references, its id lookup and
 its cursor table repointed) and it costs cycles: FX1 is four more slots on
 the same four tracks, so an effect on both menus can double the worst
-per-core load (WarpFold 4× → 8×, 404 → 808 of 3,120). Only a buffer-free
+per-core load (4× → 8× instances). Only a buffer-free
 insert, or an allocator reader declaring `buffer_words` ≤ 3,072, may take
 one; the UNIT pane says which cannot and why (`FX1 no row — and cannot
 take one: it sizes its buffer for an FX2 slot (16,384 words)`; `FX1 ONLY:

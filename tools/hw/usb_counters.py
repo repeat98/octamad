@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Read USB AUDIO's counters from a unit over USB (the vendor request
-0xc0/0x55 the module answers on EP0; modules/usbaudio/usbaudio.s).
+0xc0/0x55 the module answers on EP0; modules/usb-audio-extended/usbaudio.s).
 
   tools/hw/usb_counters.py            # once
   tools/hw/usb_counters.py --watch 1  # every second, deltas beside the values
@@ -61,11 +61,11 @@ def main():
         last = read(dev)
     except Exception as e:  # noqa: BLE001
         sys.exit(f"the request failed: {e} (a STALL means the image carries no USB AUDIO)")
-    print(" ".join(f"{k}={v}" for k, v in last.items()))
+    print(" ".join(f"{k}={v}" for k, v in last.items()), flush=True)
     while a.watch > 0:
         time.sleep(a.watch)
         now = read(dev)
-        print(" ".join(f"{k}={now[k]}{'(+%d)' % (now[k] - last[k]) if now[k] != last[k] else ''}" for k in NAMES))
+        print(" ".join(f"{k}={now[k]}{'(+%d)' % (now[k] - last[k]) if now[k] != last[k] else ''}" for k in NAMES), flush=True)
         last = now
 
 

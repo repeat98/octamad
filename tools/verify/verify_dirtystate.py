@@ -16,10 +16,14 @@ For every DSP module of the remix with an entry in the dispatch tables:
 render it under dsp_host with the instance block X:(r7+$00..$ff) pre-filled
 with each of four garbage words, on silence, at its defaults and with every
 knob nudged off its default (the live paths), 100 blocks of 15 frames; the
-last 300 output samples must sit below -100 dBFS. A server's lines live in
+last 300 output samples must sit below -100 dBFS. A module whose render from a
+ZEROED block is itself not silent at those knobs (CF METER prints its page-2
+words) makes its output from the knobs: each garbage render must then equal
+the zeroed one sample for sample. A server's lines live in
 Y and are not filled here (they carry their own tagged counters; dsp_host's
 -dirty covers Y).
 """
+import os
 import argparse, pathlib, struct, subprocess, sys, tempfile
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
 import send_probe
@@ -68,7 +72,7 @@ def knob_sets(mod):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("remix", nargs="?", default="bamsep26")
+    ap.add_argument("remix", nargs="?", default=os.environ.get("REMIX"))
     ap.add_argument("--image", default=str(ROOT / "out/mainos_bus.bin"))
     a = ap.parse_args()
     remix = registry.remix(a.remix); mods = registry.modules()
@@ -93,6 +97,20 @@ def main():
         init, proc = ep
         for label, params in knob_sets(mod):
             worst = None
+            ref, err = render(mem_with_fill(mems[pl], 0, tmp / f"{key}_zero.mem"), init, proc, params, tmp)
+            if ref is not None and db(max(max(abs(x) for x in ref[0][-TAIL:]), max(abs(x) for x in ref[1][-TAIL:]))) > FLOOR_DB:
+                bad = 0
+                for fill in FILLS:
+                    res, err = render(mem_with_fill(mems[pl], fill, tmp / f"{key}_{fill:06x}.mem"), init, proc, params, tmp)
+                    checked += 1
+                    if res != ref:
+                        fails += 1; bad += 1
+                        print(f"FAIL {mod.name:14s} {label:20s} fill {fill:06x}: output differs from the zeroed block's "
+                              f"-- a slot init does not clear is feeding the output")
+                if not bad:
+                    print(f"OK   {mod.name:14s} {label:20s} payload {pl}: not silent from a zeroed block (output from the knobs); "
+                          f"all {len(FILLS)} garbage fills equal it")
+                continue
             for fill in FILLS:
                 mem = mem_with_fill(mems[pl], fill, tmp / f"{key}_{fill:06x}.mem")
                 res, err = render(mem, init, proc, params, tmp)

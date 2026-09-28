@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Pressure-test a remix: every layout a user can select, priced and rendered.
 
-    python3 tools/harness/pressure.py price  [--remix bamsep26]        # A1: the static envelope
-    python3 tools/harness/pressure.py render [--remix bamsep26] [--top N] [--sample N] [--seconds S]
+    python3 tools/harness/pressure.py price  [--remix bottleservice]        # A1: the static envelope
+    python3 tools/harness/pressure.py render [--remix bottleservice] [--top N] [--sample N] [--seconds S]
                                                                       # A2: the worst under the meter + memory police
 
 PRICE enumerates, per core, every combination of FX1 x FX2 on the four
@@ -34,11 +34,20 @@ from remix.schema import BusRole       # noqa: E402
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 OUT = ROOT / "out/pressure"
 TRACKS_PER_CORE = 4
+# Payload A runs on core 0 and serves tracks 5-8; B on core 1, tracks 1-4
+# (measured 10 Aug 2026). A server is bank-bound to one payload, which is
+# how the pricer knows which core it lives on.
+PAYLOAD_OF_CORE = {0: "A", 1: "B"}
 
 
 def price_modules(remix):
     """{key: (stem, cycles, server, on_fx1, on_fx2)} for the remix's DSP modules."""
     import cycle_count as cc
+    # cycle_count reads the selected remix from $REMIX (its grain count);
+    # `pressure.py --remix X` and `stress_project.py --remix X` name the
+    # remix by argument, so export it here (27 Sep 2026: "no remix
+    # selected" from the generator once nothing defaulted).
+    os.environ["REMIX"] = remix.name
     mods = {}
     stock_fx1 = set()
     from remix import stock as _stock
@@ -56,15 +65,23 @@ def price_modules(remix):
         fx1_only = m.claims is not None and m.claims.fx1_only
         on_fx2 = not fx1_only and m.key != "SEND"      # SEND is the FX2 fallback itself
         mods[m.key] = dict(stem=stem, cycles=row["cycles"], inner=row["inner"],
-                          server=server, on_fx1=on_fx1, on_fx2=on_fx2)
+                          server=server, on_fx1=on_fx1, on_fx2=on_fx2,
+                          payloads="".join(sorted(m.dsp.payloads)))
     return mods
+
+
+def fallback_of(mods):
+    """What an unassigned FX2 slot runs: SEND when the remix carries it (the
+    build aliases unimplemented ids to it), else the firmware's own NONE
+    (cost 0; schema.NO_FALLBACK)."""
+    return "SEND" if "SEND" in mods else None
 
 
 def enumerate_layouts(mods, core_server):
     """Every (fx1, fx2) x 4 tracks for one core, as sorted tuples (order on a
     core does not change the sum), with the per-core cost."""
     fx1_opts = [None] + sorted(k for k, m in mods.items() if m["on_fx1"] and not m["server"])
-    fx2_opts = ["SEND"] + sorted(k for k, m in mods.items() if m["on_fx2"] and not m["server"] and k != "SEND")
+    fx2_opts = [fallback_of(mods)] + sorted(k for k, m in mods.items() if m["on_fx2"] and not m["server"] and k != "SEND")
     if core_server:
         fx2_opts.append(core_server)
     slots = [(a, b) for a in fx1_opts for b in fx2_opts]
@@ -72,8 +89,10 @@ def enumerate_layouts(mods, core_server):
     cost[None] = 0
     seen = {}
     for combo in itertools.combinations_with_replacement(slots, TRACKS_PER_CORE):
-        if sum(1 for _, b in combo if b == core_server) > 1:
+        if core_server and sum(1 for _, b in combo if b == core_server) > 1:
             continue                                   # one server per core
+        if not any(a or b for a, b in combo):
+            continue                                   # nothing of ours on the core: nothing to price or render
         c = sum(cost[a] + cost[b] for a, b in combo)
         seen[combo] = c
     return seen
@@ -95,7 +114,7 @@ def price(a):
     summary = {}
     for core, label in ((0, "core 0 (T5-8)"), (1, "core 1 (T1-4)")):
         # which server lives on this core: payload A (core 0) hosts the reverb
-        srv = next((k for k in servers if (k == "REVERB SERVER") == (core == 0)), None)
+        srv = next((k for k in servers if mods[k]["payloads"] == PAYLOAD_OF_CORE[core]), None)
         lay = enumerate_layouts(mods, srv)
         over = {c: v for c, v in lay.items() if v > wall}
         under = {c: v for c, v in lay.items() if v <= wall}
@@ -133,22 +152,19 @@ def price(a):
 
 
 def fmt(combo):
-    return " | ".join(f"{a or '-'}+{b}" for a, b in combo)
+    return " | ".join(f"{a or '-'}+{b or '-'}" for a, b in combo)
 
 
 # ---- A2: render ------------------------------------------------------------
-# Every mode and knob at its dearest setting. Modes are the pricer's "worst
-# loop"; knobs that gate work (a send at 0 registers nothing, MIX 0 can
-# short-circuit a stage) go to their maximum so nothing is skipped.
-DEAR = {
-    # (the knob sets follow the manifests of 16 Sep 2026; rig_render refuses a name it does not know)
-    "CHARACTER": {"DRV": 127, "FOLD": 127, "COMP": 127, "MIX": 127, "WDTH": 127, "SAT": 0},
-    "SPECTRUM": {"RES": 127, "MODE": 4, "ENV": 127, "LDP": 127},
-    "MODULATION": {"MIX": 127, "FDBK": 127, "DPTH": 127, "MODE": 4, "LOFI": 127},   # MODE 4 = PHSR, the dearest loop
-    "DELAY SERVER": {"SEND": 100, "FDBK": 100, "MODE": 1, "SCAT": 127, "DENS": 127, "WET": 127, "WOW": 0},
-    "REVERB SERVER": {"SEND": 100, "MODE": 2, "SHMR": 127, "DIFF": 127, "GATE": 0, "WET": 127},
-    "SEND": {"SEND": 100},
-}
+# Every mode and knob at its dearest setting: each module's `dear`
+# (schema.Module.dear), validated against its own knobs at load. A DSP
+# module without one is rendered at DEFAULTS here and blocks `make accept`
+# (acceptance.pressure_profile) -- the fixture must never be quieter than
+# the manifest says.
+def dear(key):
+    return dict(registry.by_key(key).dear)
+
+
 LETTER_TRACKS = {0: (5, 6, 7, 8), 1: (1, 2, 3, 4)}
 
 
@@ -158,6 +174,8 @@ def render(a):
     if not tsv.is_file():
         sys.exit(f"{tsv} missing -- run `pressure.py price --remix {remix.name}` first")
     rows = [l.rstrip("\n").split("\t") for l in open(tsv)][1:]
+    mods = price_modules(remix)
+    servers = {k for k, m in mods.items() if m["server"]}
     by_core = {0: [], 1: []}
     for core, cyc, verdict, layout in rows:
         by_core[int(core)].append((int(cyc), verdict, layout))
@@ -174,65 +192,49 @@ def render(a):
     if not any(stems.glob("T*.wav")):
         sys.exit(f"no stems in {stems} -- `python3 scripts/make_test_audio.py` and copy/rename to T1..T8.wav, or --stems")
     OUT.mkdir(parents=True, exist_ok=True)
-    report = []
+    # Both payloads dumped ONCE and handed to every rig_render: its own dump
+    # rewrites out/dsp/mem_<remix>_<A|B>.mem, which renders running side by
+    # side would race on. Everything else rig_render writes is PID-tagged.
+    import send_probe
+    mems = {tag: str(send_probe.dump_mem(image, OUT / f"{remix.name}_{tag}.mem", tag)) for tag in ("A", "B")}
+    jobs = []
     for n, (core, cyc, verdict, layout) in enumerate(picks):
         tracks, sets = [], []
         for t, slot in zip(LETTER_TRACKS[core], layout.split(" | ")):
-            fx1, fx2 = slot.split("+")
-            tracks.append(f"T{t}={fx2}" if fx1 == "-" else f"T{t}={fx1}+{fx2}")
+            fx1, fx2 = slot.split("+")                # "-" is an empty slot: rig_render's "."
+            tracks.append(f"T{t}={fx1.replace('-', '.')}+{fx2.replace('-', '.')}")
             for eff, fxn in ((fx1, 1), (fx2, 2)):
-                for k, v in DEAR.get(eff, {}).items():
+                for k, v in (dear(eff) if eff in mods else {}).items():
                     sets += ["--set", f"T{t}:FX{fxn}:{k}={v}"]
         # the other core carries the plain rig so the bus has both ends
         other = 1 - core
         for t in LETTER_TRACKS[other]:
-            tracks.append(f"T{t}=SEND")
+            if fallback_of(mods):
+                tracks.append(f"T{t}={fallback_of(mods)}")
         outdir = OUT / f"render_{remix.name}_c{core}_{n:03d}"
         cmd = [sys.executable, str(ROOT / "tools/harness/rig_render.py"), "--image", str(image), "--remix", remix.name,
+               "--mem", mems["A"], "--memB", mems["B"],
                "--tracks", ",".join(tracks), "--stems", str(stems), "--seconds", str(a.seconds), "--tail", "0.5",
                "--frames", "16", "--extra=-guard -dirty 0x5a", "-v", "--out", str(outdir)] + sets
+        jobs.append((n, core, cyc, verdict, layout, outdir, cmd))
+
+    def run_one(job):
+        n, core, cyc, verdict, layout, outdir, cmd = job
         r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
         text = r.stdout + r.stderr
         (outdir.parent / f"{outdir.name}.log").write_text(text)
-        meter = {}
-        for line in text.splitlines():
-            if "meter:" in line:
-                c = int(line.split("core")[1].split()[0]); mx = int(line.split("max")[1].split()[0])
-                per = float(line.split("(")[1].split("/sample")[0])
-                meter[c] = (mx, per)
-        # What is a red: a HANG, a CLOBBER of a loaded module, or a STRAY
-        # write from a NON-server instance. A server writes the bus scratch
-        # and (the reverb) its relocated buffers outside its own window by
-        # design, so its strays are expected and listed, not failed. A
-        # clipped mix.wav is the fixture (every knob at its dearest), not the
-        # DSP -- reported, not failed.
-        flags, notes = [], []
-        inst_kind = {}
-        for l in text.splitlines():
-            m_ = re.match(r"\s+T(\d) FX(\d) (\S+(?: \S+)?)\s+core", l)
-            if m_:
-                inst_kind[len(inst_kind)] = m_.group(3).strip()
-            if "HANG" in l:
-                flags.append(l.strip())
-            elif "clipped samples" in l:
-                notes.append(l.strip().split("!!")[1].split("(")[0].strip())
-            m_ = re.search(r"instance (\d+): .* (\d+) stray write regions, (\d+) CLOBBERING", l)
-            if m_:
-                k, stray, clob = int(m_.group(1)), int(m_.group(2)), int(m_.group(3))
-                who = inst_kind.get(k, "?")
-                if clob:
-                    flags.append(f"instance {k} ({who}) CLOBBERS a loaded module ({clob} regions)")
-                elif stray and who not in ("REVERB SERVER", "DELAY SERVER"):
-                    flags.append(f"instance {k} ({who}) writes {stray} stray regions outside its window")
-                elif stray:
-                    notes.append(f"{who} {stray} strays (bus scratch/relocated buffers: expected)")
-        failed = r.returncode != 0 or bool(flags)
-        report.append(dict(n=n, core=core, static=cyc, verdict=verdict, layout=layout, rc=r.returncode,
-                           meter=meter, flags=flags[:8], notes=notes[:8]))
-        m = meter.get(core, (0, 0.0))
-        print(f"[{n:03d}] core {core} static {cyc:5d} {verdict:4}  meter {m[1]:7.1f}/sample  "
-              f"{'RED ' + ('; '.join(flags[:2]) or f'rc {r.returncode}') if failed else 'memory clean'}"
-              f"{'  (' + '; '.join(notes[:2]) + ')' if notes else ''}   {layout}")
+        return r.returncode, text
+
+    # The layouts are independent (one dsp_host each, its own --out); run
+    # --jobs at a time and report them in pick order. The meter is an
+    # instruction count, so a loaded machine does not change a result.
+    from concurrent.futures import ThreadPoolExecutor
+    report = []
+    with ThreadPoolExecutor(max_workers=max(1, a.jobs)) as pool:
+        futures = [pool.submit(run_one, job) for job in jobs]
+        for (n, core, cyc, verdict, layout, outdir, cmd), fut in zip(jobs, futures):
+            rc, text = fut.result()
+            report.append(_verdict(n, core, cyc, verdict, layout, rc, text, servers))
     (OUT / f"{remix.name}_render.json").write_text(json.dumps(report, indent=1))
     bad = [r for r in report if r["rc"] != 0 or r["flags"]]
     over = [r for r in report if r["verdict"] != "ok"]
@@ -242,6 +244,50 @@ def render(a):
     return 1 if bad else 0
 
 
+def _verdict(n, core, cyc, verdict, layout, rc, text, servers):
+    """One rendered layout's row: the meter, the flags that make it a red,
+    the notes that do not; the line printed as it lands."""
+    meter = {}
+    for line in text.splitlines():
+        if "meter:" in line:
+            c = int(line.split("core")[1].split()[0]); mx = int(line.split("max")[1].split()[0])
+            per = float(line.split("(")[1].split("/sample")[0])
+            meter[c] = (mx, per)
+    # What is a red: a HANG, a CLOBBER of a loaded module, or a STRAY
+    # write from a NON-server instance. A server writes the bus scratch
+    # and (the reverb) its relocated buffers outside its own window by
+    # design, so its strays are expected and listed, not failed. A
+    # clipped mix.wav is the fixture (every knob at its dearest), not the
+    # DSP -- reported, not failed.
+    flags, notes = [], []
+    inst_kind = {}
+    for l in text.splitlines():
+        m_ = re.match(r"\s+T(\d) FX(\d) (\S+(?: \S+)?)\s+core", l)
+        if m_:
+            inst_kind[len(inst_kind)] = m_.group(3).strip()
+        if "HANG" in l:
+            flags.append(l.strip())
+        elif "clipped samples" in l:
+            notes.append(l.strip().split("!!")[1].split("(")[0].strip())
+        m_ = re.search(r"instance (\d+): .* (\d+) stray write regions, (\d+) CLOBBERING", l)
+        if m_:
+            k, stray, clob = int(m_.group(1)), int(m_.group(2)), int(m_.group(3))
+            who = inst_kind.get(k, "?")
+            if clob:
+                flags.append(f"instance {k} ({who}) CLOBBERS a loaded module ({clob} regions)")
+            elif stray and who not in servers:
+                flags.append(f"instance {k} ({who}) writes {stray} stray regions outside its window")
+            elif stray:
+                notes.append(f"{who} {stray} strays (bus scratch/relocated buffers: expected)")
+    failed = rc != 0 or bool(flags)
+    m = meter.get(core, (0, 0.0))
+    print(f"[{n:03d}] core {core} static {cyc:5d} {verdict:4}  meter {m[1]:7.1f}/sample  "
+          f"{'RED ' + ('; '.join(flags[:2]) or f'rc {rc}') if failed else 'memory clean'}"
+          f"{'  (' + '; '.join(notes[:2]) + ')' if notes else ''}   {layout}", flush=True)
+    return dict(n=n, core=core, static=cyc, verdict=verdict, layout=layout, rc=rc,
+                meter=meter, flags=flags[:8], notes=notes[:8])
+
+
 # ---- A3: the documented soft failures ---------------------------------------
 # Layouts the enumeration excludes by rule or that a knob can reach, each of
 # which some document calls a glitch, a hang or a squeal. Rendered under the
@@ -249,19 +295,19 @@ def render(a):
 # reads as a rail-to-rail tail after the stems stop).
 ODD = [
     ("two delay servers on core 1 (shared scratch: BUS.md Known limitations)",
-     "T1=DELAY SERVER,T2=DELAY SERVER,T3=SEND,T4=SEND,T5=REVERB SERVER,T6=SEND", ["T3:SEND=100", "T4:SEND=100"]),
+     "T1=DELAY SERVER,T2=DELAY SERVER,T3=SEND,T4=SEND,T5=REVERB SERVER,T6=SEND", ["T3:DEL=100", "T3:REV=100", "T4:DEL=100", "T4:REV=100"]),
     ("two reverb servers on core 0",
-     "T5=REVERB SERVER,T6=REVERB SERVER,T7=SEND,T1=DELAY SERVER,T2=SEND", ["T7:SEND=100", "T2:SEND=100"]),
+     "T5=REVERB SERVER,T6=REVERB SERVER,T7=SEND,T1=DELAY SERVER,T2=SEND", ["T7:DEL=100", "T7:REV=100", "T2:DEL=100", "T2:REV=100"]),
     ("reverb on FX1 and FX2 of one track (PARAM_PAGES 5d)",
-     "T5=REVERB SERVER+REVERB SERVER,T6=SEND,T1=DELAY SERVER,T2=SEND", ["T6:SEND=100", "T2:SEND=100"]),
+     "T5=REVERB SERVER+REVERB SERVER,T6=SEND,T1=DELAY SERVER,T2=SEND", ["T6:DEL=100", "T6:REV=100", "T2:DEL=100", "T2:REV=100"]),
     ("delay on FX1 and FX2 of one track",
-     "T1=DELAY SERVER+DELAY SERVER,T2=SEND,T5=REVERB SERVER,T6=SEND", ["T2:SEND=100", "T6:SEND=100"]),
+     "T1=DELAY SERVER+DELAY SERVER,T2=SEND,T5=REVERB SERVER,T6=SEND", ["T2:DEL=100", "T2:REV=100", "T6:DEL=100", "T6:REV=100"]),
     ("Character on T4 and T8 (the two position-3 slots) beside both engines",
-     "T4=CHARACTER,T1=DELAY SERVER,T2=SEND,T5=REVERB SERVER,T8=CHARACTER", ["T4:COMP=40", "T8:COMP=40", "T2:SEND=100"]),
+     "T4=CHARACTER,T1=DELAY SERVER,T2=SEND,T5=REVERB SERVER,T8=CHARACTER", ["T4:COMP=40", "T8:COMP=40", "T2:DEL=100", "T2:REV=100"]),
     ("reverb DIFF 127 (the 4 Sep squeal)",
-     "T5=REVERB SERVER,T6=SEND,T1=DELAY SERVER,T2=SEND", ["T5:DIFF=127", "T5:TIME=127", "T5:SHMR=127", "T6:SEND=127", "T2:SEND=127"]),
-    ("delay FDBK 127, WOW 127, GRAIN",
-     "T1=DELAY SERVER,T2=SEND,T5=REVERB SERVER,T6=SEND", ["T1:FDBK=127", "T1:MODE=1", "T1:WOW=127", "T1:DENS=127", "T2:SEND=127"]),
+     "T5=REVERB SERVER,T6=SEND,T1=DELAY SERVER,T2=SEND", ["T5:DIFF=127", "T5:TIME=127", "T5:SHMR=127", "T6:DEL=127", "T6:REV=127", "T2:DEL=127", "T2:REV=127"]),
+    ("delay FDBK 127, GRAIN",
+     "T1=DELAY SERVER,T2=SEND,T5=REVERB SERVER,T6=SEND", ["T1:FDBK=127", "T1:MODE=1", "T1:DENS=127", "T2:DEL=127", "T2:REV=127"]),
     ("every station at every extreme on one track, both slots",
      "T5=SPECTRUM+CHARACTER,T6=SEND,T1=MODULATION+SPECTRUM,T2=SEND",
      ["T5:FX1:RES=127", "T5:FX1:DRV=127", "T5:FX1:MODE=4", "T5:FX1:ROUT=3", "T5:FX2:DRV=127", "T5:FX2:FOLD=127", "T5:FX2:CRSH=127",
@@ -317,24 +363,31 @@ def oddities(a):
 
 
 def main():
+    global OUT
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("price"); p.add_argument("--remix", default=os.environ.get("REMIX", "bamsep26"))
+    p = sub.add_parser("price"); p.add_argument("--remix", default=os.environ.get("REMIX"))
     p.add_argument("--wall", type=int, help="cycles/sample per core to score against (default USABLE = 3120)")
     r = sub.add_parser("render")
-    r.add_argument("--remix", default=os.environ.get("REMIX", "bamsep26"))
+    r.add_argument("--remix", default=os.environ.get("REMIX"))
     r.add_argument("--image", default="out/mainos_bus.bin")
     r.add_argument("--top", type=int, default=6, help="dearest layouts per core")
     r.add_argument("--sample", type=int, default=4, help="random extra layouts per core")
     r.add_argument("--seed", type=int, default=1)
     r.add_argument("--seconds", type=float, default=2.0)
     r.add_argument("--stems", default="out/test_audio/rig")
+    r.add_argument("--jobs", type=int, default=min(8, os.cpu_count() or 1),
+                   help="layouts rendered side by side (default: the cores, at most 8)")
     o = sub.add_parser("oddities")
-    o.add_argument("--remix", default=os.environ.get("REMIX", "bamsep26"))
+    o.add_argument("--remix", default=os.environ.get("REMIX"))
     o.add_argument("--image", default="out/mainos_bus.bin")
     o.add_argument("--seconds", type=float, default=2.0)
     o.add_argument("--stems", default="out/test_audio/rig")
+    for parser in (p, r, o):
+        parser.add_argument("--out", type=pathlib.Path, default=OUT,
+                            help="price, render and evidence directory")
     a = ap.parse_args()
+    OUT = a.out
     return {"price": price, "render": render, "oddities": oddities}[a.cmd](a)
 
 

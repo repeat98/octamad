@@ -84,7 +84,7 @@ def set_project_text(dest):
                 raise ValueError(f"{path}: no {key.decode()} key")
         raw = raw.replace(b"MASTER_TRACK=1", b"MASTER_TRACK=0")
         path.write_bytes(raw)
-    otp.set_tempo(dest, 120)
+    otp.set_tempo(dest, 200 if LOAD else 120)
 
 
 def set_markers(dest):
@@ -99,13 +99,22 @@ def set_markers(dest):
         path.write_bytes(data)
 
 
+LOAD = False                        # --load: trigless locks on every step (ot_spec, by name), 200 BPM
+
+
+def sends_off(m):
+    """Every send knob the FX2 module has, at 0: the servers' SEND, SEND's
+    DEL and REV."""
+    return {k: 0 for k in ("SEND", "DEL", "REV") if k in m.knob_map_all()}
+
+
 def mutate_bank(data, bank_number, mods):
     bank.check_tags(data)
     for part in range(otp.NPARTS_ALL):
         base = otp.PART_BASE + part * otp.PART_STRIDE
         for track in range(8):
             fx1 = otp.module_defaults(mods[FX1[track]])
-            fx2 = otp.module_defaults(mods[FX2[track]], {"SEND": 0})
+            fx2 = otp.module_defaults(mods[FX2[track]], sends_off(mods[FX2[track]]))
             data[base + otp.FX1_OFF + track] = mods[FX1[track]].menu.fx2_id
             data[base + otp.FX2_OFF + track] = mods[FX2[track]].menu.fx2_id
             p1 = base + otp.P1_OFF + track * otp.TRACK_STRIDE
@@ -161,7 +170,10 @@ def main():
     ap.add_argument("--source", type=pathlib.Path, required=True, help="a locally saved Octatrack project (the template)")
     ap.add_argument("--out", type=pathlib.Path, default=ROOT / "out/usb-sig-project")
     ap.add_argument("--remix", default="usb-audio")
+    ap.add_argument("--load", action="store_true", help="trigless locks on 63 steps x 15 slots per track, 200 BPM")
     args = ap.parse_args()
+    global LOAD
+    LOAD = args.load
     source, dest = args.source.resolve(), args.out.resolve()
     if dest.exists():
         ap.error(f"{dest} exists; choose a new --out directory")
@@ -181,6 +193,31 @@ def main():
         otp._bank_write(dest, num, lambda data, n=num: mutate_bank(data, n, mods), guard=False)
     otp.write_stored(dest)
     verify(dest, mods)
+    if LOAD:
+        # Trigless locks on steps 2..64 of A01, every track, by knob name
+        # through tools/hw/ot_spec.py: the playback page (PTCH 64, RATE 127),
+        # AMP VOL 100, every FX1 knob at the module's default and every FX2 send at 0
+        # -- the values the part already holds, so the sequencer applies
+        # fourteen locks per step and the tone does not change.
+        import json
+        import subprocess
+        sys.path.insert(0, str(ROOT / "tools/hw"))
+        import ot_spec
+        steps = {str(s): None for s in range(2, 65)}
+        tracks = {}
+        for track in range(8):
+            fid = mods[FX1[track]].menu.fx2_id
+            names = ot_spec.knob_names(fid)
+            fx1 = {names[i]: int(otp.module_defaults(mods[FX1[track]])[i]) for i in range(6) if not names[i].startswith("P")}
+            tracks[str(track + 1)] = {"locks": {
+                "playback": {s: {"PTCH": 64, "RATE": 127} for s in steps},
+                "amp": {s: {"VOL": 100} for s in steps},
+                "fx1": {s: dict(fx1) for s in steps},
+                "fx2": {s: sends_off(mods[FX2[track]]) for s in steps}}}
+        spec = {"banks": [1], "patterns": {"1": {"tracks": tracks}}}
+        spec_path = dest / "USBLOAD_spec.json"
+        spec_path.write_text(json.dumps(spec))
+        subprocess.run([sys.executable, str(ROOT / "tools/hw/ot_spec.py"), "apply", str(dest), str(spec_path)], check=True)
     for t in range(8):
         make_sample(dest / "AUDIO" / "USBSIG" / f"T{t + 1}.wav", t)
     lines = [f"T{t + 1}: L {tone(t)[0]} Hz  R {tone(t)[1]} Hz  -> USB channels {2 * t + 1}/{2 * t + 2}" for t in range(8)]

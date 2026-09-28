@@ -64,8 +64,8 @@ def bank_worst(rows, mods, fx1=(), stock_fx1_keys=()):
       * AT MOST ONE SERVER per core. That is the standing design rule and
         what SPEC enforces by placing only one engine per payload -- so the
         legacy `reverb + delay + 2 sends` figure prices a core for two
-        engines no core ever pays, which PLAN.md already flags as a
-        single-core floor rather than a real configuration.
+        engines no core ever pays: a single-core floor rather than a real
+        configuration.
       * INSERTS ARE UNLIMITED. Nothing stops all four tracks selecting the
         same insert, so the worst case is four copies of the dearest one --
         the number that matters for a card of inserts, and the one no
@@ -73,9 +73,8 @@ def bank_worst(rows, mods, fx1=(), stock_fx1_keys=()):
 
     AND FX1 IS A SECOND SET OF FOUR SLOTS on the same four tracks. A module
     the remix lists on FX1 (Remix.fx1) can be selected there as well, on top
-    of whatever that track's FX2 slot is running -- which is why PLAN.md s2
-    puts FX1's real ceiling at "cycles x4". The dearest FX1-listed module is
-    charged four times.
+    of whatever that track's FX2 slot is running, so FX1's ceiling is
+    "cycles x4": the dearest FX1-listed module is charged four times.
 
     Returns (total, [(name, count), ...]).
     """
@@ -162,8 +161,7 @@ def prep(name):
         # reader to two grains per line for the cycles; pricing the source
         # instead reports the four-grain figure for a two-grain image, which
         # is the saving invisible in the tool that measures it.
-        _g = registry.remix(os.environ.get("REMIX")
-                            or registry.DEFAULT_REMIX).grains
+        _g = registry.remix(os.environ.get("REMIX")).grains
         if _g != 4:
             from remix import grains as _grains
             src = _grains.roll(src, _g)
@@ -310,8 +308,8 @@ def _measure_loop(name, src, lines, i):
     # CONDITIONAL branch whose target label sits LATER in the same loop body
     # is allowed, because such a branch can only SKIP code: the word span
     # already counts what it skips, so the figure stays a ceiling for that
-    # path rather than becoming wrong. Nimbus needs this -- its per-grain
-    # scatter latches and its freeze gate are all two-instruction skips.
+    # path rather than becoming wrong. BusDelay (the REVERSE skips),
+    # Character (its sample loop) and Euclid declare it.
     #
     # The FORWARD test is the whole safety of it and is enforced, not
     # trusted: a BACKWARD conditional branch is a loop, the span would count
@@ -476,7 +474,7 @@ def main():
 
     import os
     from remix.schema import BusRole
-    remix = registry.remix(os.environ.get("REMIX") or registry.DEFAULT_REMIX)
+    remix = registry.remix(os.environ.get("REMIX"))
     mods = [dict(stem=pathlib.Path(m.dsp.asm).stem, key=m.key,
                  server=(m.dsp.bus_role is BusRole.SERVER),
                  fx1_only=(m.claims is not None and m.claims.fx1_only),

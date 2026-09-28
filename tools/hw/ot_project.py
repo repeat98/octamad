@@ -10,6 +10,8 @@
         # including the engines (after a slot re-layout); --keep-mode keeps
         # an in-range MODE byte and applies that mode's ModeView defaults
     python3 tools/hw/ot_project.py stamp-slot PROJECT_DIR MODULE SLOT [VALUE] [--track N[,N]]
+    python3 tools/hw/ot_project.py migrate-hosts PROJECT_DIR          # ONCE: a pre-image-71 project's host bytes, carried over
+    python3 tools/hw/ot_project.py remap-slot PROJECT_DIR MODULE SLOT old:new,...   # ONCE: a select whose values changed order
     python3 tools/hw/ot_project.py set-fx PROJECT_DIR fx1|fx2 TRACK MODULE [--page V,V,V,V,V,V] [--page2 V,...]
     python3 tools/hw/ot_project.py thru-track PROJECT_DIR TRACK [--page HEX14]
     python3 tools/hw/ot_project.py stored PROJECT_DIR                  # .strd twins (the unit's saved state)
@@ -20,6 +22,7 @@ Writes edit GAIN= lines only, preserve CRLF and byte length discipline of the
 rest of the file, and refuse to run without a same-day backup directory
 matching /Users/sambanks/octa/backups/*pregain*.
 """
+import os
 import json, pathlib, re, sys, glob
 
 # ⚠️ EIGHT PART RECORDS, not four: 1-4 are the CURRENT parts and 5-8 are the
@@ -72,6 +75,140 @@ def cmd_report(pdir):
         for i, part in enumerate(parts):
             fx2 = "/".join(FX_NAMES.get(v, hex(v)) for v in part["fx2"])
             print(f"  part {i+1}: LEVELs {part['levels']}  FX2 {fx2}")
+
+SLOT_OFF = 0x2d3                    # part-relative: track t's 5 slot bytes at +t*5 (SLOT_KIND)
+MACHINES = {0: "STATIC", 1: "FLEX", 2: "THRU", 3: "NEIGHBOR", 4: "PICKUP"}
+
+
+def track_map(pdir):
+    """-> {(bank, part): [(track, mtype, slot_1based, path)]} for every bank
+    file, parts 1-4 (the live copies). The slot is the machine's own kind
+    (STATIC or FLEX); a THRU/NEIGHBOR/PICKUP track has none."""
+    pdir = pathlib.Path(pdir)
+    _, slots = read_project(pdir)
+    by = {(sl["type"], sl["slot"]): sl["path"] for sl in slots}
+    out = {}
+    for bank in sorted(pdir.glob("bank*.work")):
+        b = int(bank.name[4:6]); data = bank.read_bytes()
+        for p in range(1, NPARTS + 1):
+            base = PART_BASE + (p - 1) * PART_STRIDE
+            rows = []
+            for t in range(8):
+                mt = data[base + MTYPE_OFF + t]
+                kind = {0: "static", 1: "flex"}.get(mt)
+                slot = data[base + SLOT_OFF + t * 5 + SLOT_KIND[kind]] + 1 if kind else None
+                path = by.get((kind.upper(), slot), "") if kind else ""
+                rows.append((t + 1, MACHINES.get(mt, str(mt)), slot, path))
+            out[(b, p)] = rows
+    return out
+
+
+def cmd_tracks(pdir, grep=None):
+    """Per bank and part, each track's machine, slot and sample file."""
+    for (b, p), rows in track_map(pdir).items():
+        for t, mt, slot, path in rows:
+            name = path.split("/")[-1]
+            if grep and grep.lower() not in name.lower():
+                continue
+            if mt in ("STATIC", "FLEX") and name:
+                print(f"  {chr(64 + b)} part{p} T{t} {mt:6} slot {slot:3d}  {name}")
+            elif not grep and mt not in ("STATIC", "FLEX"):
+                print(f"  {chr(64 + b)} part{p} T{t} {mt}")
+
+
+def clone_samples(src, dest, template, length=64, scale="1/4X"):
+    """A fresh project (a copy of `template`, one the unit created on the
+    running image, so its parts and pages are that image's defaults) that
+    carries `src`'s sample slots and, in every bank and part (live and saved
+    copies), each track's machine type and slot bytes, its project-local
+    sample files with their .ot attribute files, MASTER_TRACK and TEMPOx24;
+    every pattern's length/scale pair set.
+    Nothing else of `src` comes across: no trigs,
+    locks, knobs, levels, names or tempo -- those are the TEMPLATE's, so it
+    must be an untouched fresh project (Bottleservice 26, 25 Sep 2026: the
+    template had been a test project; its T1 trigs, hard-left BAL and WOW
+    came across and were cleared by hand afterwards)."""
+    import shutil
+    src, dest, template = (pathlib.Path(x) for x in (src, dest, template))
+    if dest.exists():
+        sys.exit(f"{dest} exists -- refusing to overwrite")
+    for d in (src, template):
+        if not (d / "project.work").is_file():
+            sys.exit(f"{d} is not an Octatrack project directory")
+    shutil.copytree(template, dest)
+    # the sample slots: src's [SAMPLE] blocks in place of the template's
+    src_raw, src_slots = read_project(src)
+    blocks = re.findall(r"\[SAMPLE\].*?\[/SAMPLE\]\r?\n", src_raw, re.S)
+    for suffix in ("work", "strd"):
+        f = dest / f"project.{suffix}"
+        if not f.is_file():
+            continue
+        raw = f.read_bytes().decode("latin1")
+        first = re.search(r"\[SAMPLE\]", raw)
+        stripped = re.sub(r"\[SAMPLE\].*?\[/SAMPLE\]\r?\n", "", raw, flags=re.S)
+        at = first.start() if first else len(stripped)
+        # the strip moved everything after the first block up; recompute
+        at = min(at, len(stripped))
+        f.write_bytes((stripped[:at] + "".join(blocks) + stripped[at:]).encode("latin1"))
+    print(f"{len(blocks)} sample slot(s) from {src.name} ({sum(1 for b in src_slots if b['path'])} with files)")
+    # project-local samples (a bare file name, no directory) live in the
+    # project's own folder: the unit reported 528 FILE NOT FOUND on the first
+    # Bottleservice 26 (25 Sep 2026) for exactly these; pool paths
+    # (../AUDIO/...) resolve from any project in the set. 8.3 aliases in a
+    # path (RU4REA~7/RU4REA~2.WAV) are the unit's and the Mac cannot see them.
+    local = sorted({b["path"] for b in src_slots if b["path"] and "/" not in b["path"]})
+    nf = 0
+    for name in local:
+        for f in (name, pathlib.Path(name).with_suffix(".ot").name):
+            # the .ot beside a sample holds its trim, loop, BPM and slices;
+            # without it the unit plays default trims at a guessed BPM
+            # (Bottleservice 26, 25 Sep 2026: "trimmed short, squealing")
+            if (src / f).is_file() and not (dest / f).is_file():
+                shutil.copyfile(src / f, dest / f); nf += 1
+    print(f"{len(local)} project-local sample(s): {nf} file(s) copied (.wav and .ot)")
+    # project-level settings that belong with the samples' layout
+    for suffix in ("work", "strd"):
+        f = dest / f"project.{suffix}"
+        if f.is_file():
+            raw = f.read_bytes()
+            for key in ("MASTER_TRACK", "TEMPOx24"):        # the tempo the trims-in-bars were made at
+                m = re.search(rb"%s=(\d+)" % key.encode(), src_raw.encode("latin1"))
+                if m:
+                    raw = re.sub(rb"%s=\d+" % key.encode(), key.encode() + b"=" + m.group(1), raw)
+            f.write_bytes(raw)
+    # machines and slots, every bank the template has
+    if isinstance(scale, str):
+        scale = SCALE_NAMES.index(scale.upper())
+    for bank in sorted(dest.glob("bank*.work")):
+        b = int(bank.name[4:6])
+        sb = src / bank.name
+        if not sb.is_file():
+            print(f"  {bank.name}: not in {src.name}, left as the template's")
+            continue
+        sdata = sb.read_bytes()
+        def mut(data, sdata=sdata):
+            for p in range(NPARTS_ALL):
+                base = PART_BASE + p * PART_STRIDE
+                data[base + MTYPE_OFF:base + MTYPE_OFF + 8] = sdata[base + MTYPE_OFF:base + MTYPE_OFF + 8]
+                data[base + SLOT_OFF:base + SLOT_OFF + 40] = sdata[base + SLOT_OFF:base + SLOT_OFF + 40]
+            for pat in range(16):
+                tail = PTRN0 + pat * PTRN_FSTRIDE + PTRN_FSTRIDE - 11
+                data[tail + 2] = length; data[tail + 3] = scale
+        _bank_write(dest, b, mut, guard=False)
+    write_stored(dest)
+    # the per-track pair too (ot_spec's "length"/"scale": what the unit shows
+    # as 64/64 in per-track scale mode); the pattern pair above is the master
+    import subprocess, tempfile
+    spec = {"banks": "all", "patterns": {"all": {"tracks": {"all": {"length": length, "scale": SCALE_NAMES[scale]}}}}}
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+        json.dump(spec, f); specf = f.name
+    r = subprocess.run([sys.executable, str(pathlib.Path(__file__).with_name("ot_spec.py")), "apply", str(dest), specf],
+                       capture_output=True, text=True)
+    if r.returncode:
+        sys.exit(f"ot_spec apply failed:\n{r.stdout[-800:]}{r.stderr[-800:]}")
+    print(r.stdout.strip().splitlines()[-1])
+    print(f"{dest}: machines + slots from {src.name}, every pattern and track LEN {length} SCALE {SCALE_NAMES[scale]}")
+
 
 def guard_backup():
     if not glob.glob("/Users/sambanks/octa/backups/*pregain*"):
@@ -659,7 +796,7 @@ def set_fx(pdir, which_slot, track, which, page=None, page2=None, guard=True):
           + (f", page 1 {list(page)}" if page else "") + (f", page 2 {list(page2)}" if page2 else ""))
 
 
-def host_rig(pdir, remix_name="bamsep26", guard=True):
+def host_rig(pdir, remix_name, guard=True):
     """The locked rig's FX2 assignment in every part of every bank: T1 =
     DELAY SERVER, T5 = REVERB SERVER, T8 = the stock DELAY, every other
     track SEND; then the
@@ -669,6 +806,110 @@ def host_rig(pdir, remix_name="bamsep26", guard=True):
     for t in range(1, NTRACKS + 1):
         set_fx(pdir, "fx2", t, {1: "DELAY SERVER", 5: "REVERB SERVER", 8: "DELAY"}.get(t, "SEND"), guard=guard)
     stamp_defaults(pdir, remix_name, replaced_only=False, guard=guard, keep_mode=True)
+
+
+# Image 71's host layout (PR #441, 26 Sep 2026): the hosts' pages read like
+# SEND's (DEL, REV), so three bytes per host track move. old -> new, per
+# (FX2 id): the page-1 slot index or ("p2", page-2 slot) of each byte.
+HOST_MIGRATION_441 = {
+    0x06: (("p1", 1, "p2", 11),          # BusDelay TIME: slot 1 -> slot 11 (WOW dropped)
+           ("zero", "p1", 1)),           # slot 1 is REV, the new send into the reverb
+    0x07: (("p1", 1, "p2", 11),          # BusVerb TIME: slot 1 -> slot 11
+           ("p1", 0, "p1", 1),           # its reverb send: slot 0 -> REV (slot 1)
+           ("zero", "p1", 0)),           # slot 0 is DEL, the new send into the delay
+}
+
+
+def migrate_hosts_441(pdir, guard=True):
+    """Carry a project saved under the old host layout into image 71's: every
+    part and its saved copy, every track whose FX2 is BusDelay or BusVerb,
+    each file moving its own bytes. Values are copied, never reset; the two
+    new sends start at 0. RUN IT ONCE: a second run would move the moved
+    bytes again (it cannot tell the layouts apart from the bytes)."""
+    pdir = pathlib.Path(pdir)
+
+    def addr(off, t, page, slot):
+        return (off + P1_OFF + t * TRACK_STRIDE + 6 + slot if page == "p1"
+                else off + P2_OFF + t * P2_STRIDE + 6 + slot - 6)
+
+    total = 0
+    for bank in sorted(pdir.glob("bank*.work")):
+        num = int(bank.name[4:6])
+        log = []
+
+        def mut(data, log=log):
+            rec = not log                              # log the .work pass (the first)
+            for p in range(NPARTS_ALL):
+                off = PART_BASE + p * PART_STRIDE
+                for t in range(NTRACKS):
+                    steps = HOST_MIGRATION_441.get(data[off + FX2_OFF + t])
+                    if steps is None:
+                        continue
+                    old = bytes(data)                  # every move reads the pre-move bytes
+                    for st in steps:
+                        if st[0] == "zero":
+                            a = addr(off, t, st[1], st[2])
+                            if rec:
+                                log.append((p, t, f"{st[1]} {st[2]}", old[a], 0))
+                            data[a] = 0
+                    for st in steps:
+                        if st[0] != "zero":
+                            src, dst = addr(off, t, st[0], st[1]), addr(off, t, st[2], st[3])
+                            if rec:
+                                log.append((p, t, f"{st[0]} {st[1]} -> {st[2]} {st[3]}", old[dst], old[src]))
+                            data[dst] = old[src]
+
+        _bank_write(pdir, num, mut, guard=guard)
+        data = bank.read_bytes()
+        if int.from_bytes(data[-2:], "big") != (sum(data[0x10:-2]) & 0xFFFF):
+            sys.exit(f"{bank.name}: checksum did not take -- do NOT use this")
+        for p, t, what, was, now in log:
+            print(f"bank{num:02d} part {p+1} T{t+1} {what}: {was} -> {now}")
+        total += len(log)
+    print(f"{total} host byte(s) moved or zeroed (image 71 layout)")
+    return total
+
+
+def remap_slot(pdir, which, slot, mapping, guard=True):
+    """Translate ONE knob byte through `mapping` ({old: new}) for every
+    part/track naming the module (FX1 or FX2), in .work and .strd, for a
+    select whose values changed order (26 Sep 2026: BusVerb SHFT
+    +12/+19/+7/-12 -> -12/+5/+7/+12/+19/+24 is 0:3,1:4,2:2,3:0). A byte not in
+    the mapping is left alone. RUN IT ONCE: a second run maps again."""
+    pdir = pathlib.Path(pdir)
+    fx_id, mod = _resolve_module(which)
+    slot = _resolve_slot(mod, slot)
+    total = 0
+    for bank in sorted(pdir.glob("bank*.work")):
+        num = int(bank.name[4:6])
+        log = []
+
+        def mut(data, log=log):
+            rec = not log
+            for p in range(NPARTS_ALL):
+                off = PART_BASE + p * PART_STRIDE
+                for t in range(NTRACKS):
+                    for idoff, sub in ((FX1_OFF, 0), (FX2_OFF, 6)):
+                        if data[off + idoff + t] != fx_id:
+                            continue
+                        a = (off + P1_OFF + t * TRACK_STRIDE + sub + slot if slot < 6
+                             else off + P2_OFF + t * P2_STRIDE + sub + slot - 6)
+                        new = mapping.get(data[a])
+                        if new is None:
+                            continue
+                        if rec:
+                            log.append((p, t, data[a], new))
+                        data[a] = new
+
+        _bank_write(pdir, num, mut, guard=guard)
+        data = bank.read_bytes()
+        if int.from_bytes(data[-2:], "big") != (sum(data[0x10:-2]) & 0xFFFF):
+            sys.exit(f"{bank.name}: checksum did not take -- do NOT use this")
+        for p, t, old, new in log:
+            print(f"bank{num:02d} part {p+1} T{t+1} slot {slot}: {old} -> {new}")
+        total += len(log)
+    print(f"{total} byte(s) remapped")
+    return total
 
 
 def stamp_slot(pdir, which, slot, value=None, guard=True, tracks=None):
@@ -810,17 +1051,20 @@ def make_test_project(src, dest, remix_name):
 # ---- the RIG project: the set's layout --------------------------------------
 # One part = the whole rig on its eight tracks: stations on FX1 everywhere,
 # the two engines in T1's and T5's FX2 (each prints its wet on its own track
-# since 20 Sep 2026), a SEND on T2-T7, none on T8. Every part of every bank
+# since 20 Sep 2026), a SEND on T2-T7, none on T8. A SEND's DEL and REV
+# carry the same level: the old single send fed the delay, which passed the
+# dry on to the reverb; the chain carries repeats only since 25 Sep 2026, so
+# the dry reaches the reverb by REV. Every part of every bank
 # gets the same layout, so any pattern is the rig. Knob bytes are the
 # manifest defaults with the few deliberate exceptions listed per track.
 RIG = (
-    (1, ("CHARACTER", {}),                  ("DELAY SERVER", {"SEND": 30})),
-    (2, ("SPECTRUM", {}),                   ("SEND", {"SEND": 40})),
-    (3, ("SPECTRUM", {}),                   ("SEND", {"SEND": 30})),
-    (4, ("SPECTRUM", {}),                   ("SEND", {"SEND": 40})),
-    (5, ("MODULATION", {}),                 ("REVERB SERVER", {"SEND": 40})),
-    (6, ("SPECTRUM", {}),                   ("SEND", {"SEND": 50})),
-    (7, ("SPECTRUM", {}),                   ("SEND", {"SEND": 40})),    # SPECTRUM, not
+    (1, ("CHARACTER", {}),                  ("DELAY SERVER", {"DEL": 30})),
+    (2, ("SPECTRUM", {}),                   ("SEND", {"DEL": 40, "REV": 40})),
+    (3, ("SPECTRUM", {}),                   ("SEND", {"DEL": 30, "REV": 30})),
+    (4, ("SPECTRUM", {}),                   ("SEND", {"DEL": 40, "REV": 40})),
+    (5, ("MODULATION", {}),                 ("REVERB SERVER", {"REV": 40})),
+    (6, ("SPECTRUM", {}),                   ("SEND", {"DEL": 50, "REV": 50})),
+    (7, ("SPECTRUM", {}),                   ("SEND", {"DEL": 40, "REV": 40})),    # SPECTRUM, not
     (8, ("CHARACTER", {"COMP": 40}),        (None, {})),   # GLUE by position (14 Sep 2026); no FX2: the SEND is refused on T8 (the master's input is the mix)
 )
 
@@ -949,7 +1193,7 @@ def make_clean_project(src, dest):
     print(f"{dest}: every FX1 = NONE, FX2 = SEND at 0, every page zero, in every part of every bank; .strd twins in step")
 
 
-def make_delay_test_project(src, dest, remix_name="bamsep26", sender=3):
+def make_delay_test_project(src, dest, remix_name, sender=3):
     """Copy a project (samples included) and put ONLY the delay bus in it:
     T1 = DELAY SERVER on FX2, every other track = SEND on FX2, FX1 = NONE
     everywhere with zeroed page bytes (id 0 runs SEND's proc on a stale
@@ -967,7 +1211,8 @@ def make_delay_test_project(src, dest, remix_name="bamsep26", sender=3):
         f.unlink()
     zeros = [0] * 6
     set_fx(dest, "fx1", 1, 0, page=zeros, page2=zeros, guard=False)
-    set_fx(dest, "fx2", 1, "DELAY SERVER", page=[0, 40, 60, 100, 0, 127], page2=[0, 0, 64, 1, 64, 0], guard=False)
+    # page 1: DEL REV FDBK TONE PING WET; page 2: MODE SCTR DENS SIZE PTCH TIME
+    set_fx(dest, "fx2", 1, "DELAY SERVER", page=[0, 0, 60, 100, 0, 127], page2=[0, 0, 64, 1, 64, 40], guard=False)
     for t in range(2, 9):
         set_fx(dest, "fx1", t, 0, page=zeros, page2=zeros, guard=False)
         set_fx(dest, "fx2", t, "SEND", page=[100 if t == sender else 0, 0, 0, 0, 0, 0], page2=zeros, guard=False)
@@ -1047,6 +1292,12 @@ def make_rig_project(src, dest, remix_name):
 if __name__ == "__main__":
     cmd = sys.argv[1]; pdir = pathlib.Path(sys.argv[2])
     if cmd == "report": cmd_report(pdir)
+    elif cmd == "tracks": cmd_tracks(pdir, sys.argv[3] if len(sys.argv) > 3 else None)
+    elif cmd == "clone-samples":
+        # clone-samples SRC DEST TEMPLATE [LEN [SCALE]]
+        clone_samples(sys.argv[2], sys.argv[3], sys.argv[4],
+                      int(sys.argv[5]) if len(sys.argv) > 5 else 64,
+                      sys.argv[6] if len(sys.argv) > 6 else "1/4X")
     elif cmd == "set-gain": apply_gains(pdir, {sys.argv[3]: sys.argv[4]})
     elif cmd == "apply": apply_gains(pdir, json.loads(pathlib.Path(sys.argv[3]).read_text()))
     elif cmd == "part-name": set_part_name(pdir, int(sys.argv[3]), int(sys.argv[4]), sys.argv[5])
@@ -1087,7 +1338,7 @@ if __name__ == "__main__":
     elif cmd == "lfo-clear":                                                # <project> <track> <lfo> | <project> all
         lfo_clear(pdir, sys.argv[3], sys.argv[4] if len(sys.argv) > 4 else 0, guard=False)
     elif cmd == "host":                                                     # <project> [remix]: T1 BusDelay, T5 BusVerb, the rest SEND, then defaults
-        host_rig(pdir, sys.argv[3] if len(sys.argv) > 3 and not sys.argv[3].startswith("--") else "bamsep26",
+        host_rig(pdir, sys.argv[3] if len(sys.argv) > 3 and not sys.argv[3].startswith("--") else os.environ.get("REMIX"),
                  guard="--no-guard" not in sys.argv)
     elif cmd == "stamp-defaults":
         args = sys.argv[4:]
@@ -1121,4 +1372,10 @@ if __name__ == "__main__":
             del args[i:i + 2]
         stamp_slot(pdir, args[0], args[1], args[2] if len(args) > 2 else None,
                    tracks=tracks)
+    elif cmd == "remap-slot":                                              # <project> MODULE SLOT old:new,...  ONCE
+        remap_slot(pdir, sys.argv[3], sys.argv[4],
+                   {int(a): int(b) for a, b in (x.split(":") for x in sys.argv[5].split(","))},
+                   guard=False)
+    elif cmd == "migrate-hosts":                                          # <project>: ONCE, old host layout -> image 71's
+        migrate_hosts_441(pdir, guard=False)
     else: sys.exit(f"unknown command {cmd!r}")

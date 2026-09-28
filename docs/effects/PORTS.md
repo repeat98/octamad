@@ -170,7 +170,7 @@ Page 1 the performance surface, page 2 knob / select / knob / select:
   (`modules/modulation/<source>_ref.py`, the Capacitor2/Pockey pattern);
   the Juno and Solina against the measured delay ranges and rates.
 
-Cost: the dearest mode sets the price (the Ripple pattern); PHSR ≈ 130 +
+Cost: the dearest mode sets the price; PHSR ≈ 130 +
 the LFO and mix ≈ 200, else ENS ≈ 60 + ≈ 130 — both under today's 277.
 Words: two lines of 1,024 as today; ENS shares one line (mono in), DIM
 and JUNO use both. Estimate ≈ 700..900 words with six modes and the

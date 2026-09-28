@@ -167,10 +167,14 @@ MKI, 13 Sep 2026 ✅): `0x40031494(map)` / `0x4003146c(map)` register /
 remove a 20-byte map `{next, keys, encoders, 0, marker}`; rebuild
 (`FUN_4003125c`) into keys `0x46c7d8de + code·0x18` and encoders
 `0x46c7dede + enc·0x14`; last registered wins; −1 lets the layer below
-through; a null encoder handler swallows the turn. The image's keymaps:
-`0x400bfbf6` (59 records, no `0x1c`; 🟡 MKI) and `0x400c01f4` (62, `0x1c` =
-MAIN MENU; 🟡 MKII); record `+0 code, +2 press, +6 release, +0xa, +0xe
-sub-map, +0x12, +0x16`. Double press: `0x400c0aac` last keycode,
+through; a null encoder handler swallows the turn. The image's keymaps
+(§4c): the MKI layer `0x400c090a` → keys `0x400bfc10` (57 records, no
+`0x1c`) and the MKII layer `0x400c091e` → keys `0x400c01f4` (62: the same
+57 plus `0x1c..0x1f`, `0x36`); ✅ which one `0x40061bc4` pushes follows
+`0x46c8d18c`. (Until 25 Sep 2026 this read "`0x400bfbf6` (59 records)":
+`0x400bfbf6` is 0x1a before the table the MKI layer points at, inside the
+record before it.) Record, 0x1a bytes: `+0 code, +2 press, +6 release,
++0xa, +0xe sub-map, +0x12, +0x16`; the table ends at a code `0xff`. Double press: `0x400c0aac` last keycode,
 `0x460d5de0` ticks (display loop `0x40052204`, reset `0x40033e20`), window
 14 ticks. LEVEL press `0x3e` special-cased at `0x4004ecfc`. Popups: yes/no
 `0x4006d57c(title, n, lines[], 3, handler)`; scrolling list
@@ -183,15 +187,115 @@ and the plane redrew as AMP.
 
 Key codes (octalab's list, plus the probe of 18 Sep 2026 under the
 port, each code alone in a fresh session): trigs `0x00..0x0f`, tracks
-`0x10..0x17`, MAIN MENU (MKII) `0x1c`, DOWN `0x20`, RIGHT `0x21`, page keys
-`0x22..0x26` (SRC, AMP, LFO, FX1, FX2), PLAY `0x28`, REC `0x29`, STOP
-`0x2a`, FUNCTION `0x2d`, PATTERN `0x2e`, BANK `0x2f`, YES `0x31`, NO
+`0x10..0x17`, PROJ (MKII) `0x1c`, PART `0x1d`, AED `0x1e`, ARR `0x1f`
+(§4c), DOWN `0x20`, RIGHT `0x21`, page keys
+`0x22..0x26` (SRC, AMP, LFO, FX1, FX2), STOP `0x27`, PLAY `0x28`, REC
+`0x29`, CUE `0x2a`, FUNCTION `0x2d`, PATTERN `0x2e`, BANK `0x2f`, YES `0x31`, NO
 `0x32`, UP `0x33`, LEFT `0x34`, MIDI `0x35`, encoder pushes `0x38..0x3d`,
-LEVEL push `0x3e`. KEYPROBE
+LEVEL push `0x3e`. KEYPROBE ✅ STOP is `0x27`, not `0x2a` as this list
+said until 25 Sep 2026: under the port (`--mkii`, bamsep26 +
+OCTABAM89_setgate) PLAY `0x28` turned LED row 11 from `0x01` (stop) to
+`0x08` (play), `0x2a` left it at `0x08`, `0x27` put it back to `0x01`
+(`KEYMAP.md` has 0x24.7 = STOP and 0x25.2 = CUE from route A); in both
+keymaps `0x27` has one handler `0x4004aca4` for press and repeat, `0x2a`
+a press and a release handler (`0x4004e978`/`0x4004e968`) and a sub-map
+(`0x400bf2a0`), the held-modifier shape.
 
 `ot_emu --live FIFO` feeds these bytes from text lines and
 `tools/emu/lcd_view.py --panel FIFO` draws a control surface (`EMU.md`).
 What the OS sends BACK on the same link (LEDs, the plane) is unread.
+
+## 4c. The MKII: model flag, panel loader, report, keys (25 Sep 2026) ✅ under the port
+
+What makes the firmware run as an MKII, and what the port (`ot_emu
+--mkii`) models so that it does. Read from the image (base `0x40000400`)
+and measured on bamsep26 + OCTABAM89_setgate staged as `verify_set.py`
+stages it; scratch drivers in `out/_agents/mkii/` (gitignored).
+
+**The model flag `0x46c8d18c`.** The panel-link init at `0x4001f834` sets
+it to 1 (`0x4001f8ce`), then ten times writes `0x20` to GPIO
+`0xfc0a403a` (bit 5 high), reads bit 6, writes `0xdf` to `0xfc0a4052`
+(bit 5 low), reads bit 6; bit 6 not following bit 5 clears the flag
+(`0x4001f910`, MKI). ✅ With bit 6 tied to bit 5 (`--mkii`) the flag stays
+1. 28 `tstl` sites read it; among them the keymap push
+`0x40061bc4`, the loader call `0x4001f976`, the `74 00` / `43` choice
+`0x4001f982`, the crossfader poll install `0x4001f9d2` (MKI only:
+`0x40010ce8(0x7a12, 0x40092f88 | 0x40092fac)`), the `60 00` at
+`0x4001fa08`, the report check `0x40061c94` and the OS-upgrade refusal
+`0x4007f87a` (MKII refuses an OS string ≤ `"0155"`, a panel with report
+byte 4 = 22 one ≤ `"0177"`).
+
+**The panel loader handshake `0x4001f4dc`** (MKII only; interrupts off,
+polled on `0xfc064004` bit 0 / `0xfc06400c`): send `60 02 70 00`, read 5
+bytes. `70 05 v ..` with `v` = the long at `0x400d81a4` (8 in 1.40C) →
+send `60 00`, return 0. `70 05` with another `v` → reflash the panel from
+the image at `0x400d81a8..0x400db3d4` (erase `80 42`, five `ff` back, then
+5-byte `cmd addr32` writes echoed by the panel through `0x4001f40c`, up to
+3 tries), return `v`. Any other reply → `60 00`, return −1. ✅ With nothing
+answering, the port's TX stream stopped at `60 02 70 00` and the boot sat
+in the polled read `0x4001f540` (interrupts off) until the first bytes
+arrived on the panel line. Inferred from that: in the WIP port the first
+key report was taken as the loader's reply (return −1), which is why the
+boot then continued, the `74 00` went unanswered and "UI NOT TESTED!"
+appeared.
+
+**The report.** On an MKII the CPU sends `74 00` (`0x4001f98a`) where an
+MKI gets `43`. The RX parser `0x4009228c` has one format for both models
+(no reference to `0x46c8d18c`): header `0x7n` + 9 bytes → `0x46100b48`,
+pointer `0x46100b52`. Readers: `0x40061c94` (byte 3 == 0 → "UI NOT
+TESTED!" `0x400b4e17`; byte 4 == 22 → `0x46c8d188` = 1) and the system
+page `0x400698a6` ("UI VERSION" `1.<byte 1>.<byte 4 == 22>`, format
+`0x400b64e7`).
+
+**What the port answers** (`ot::MkiiPanel`, `tools/emu/ot_emu/periph.h`,
+on the far end of `Uart@fc064000`, the TX stream framed by the
+PANEL_LINK.md opcode lengths): `60 02` enters the loader state, `70 00`
+there gets `70 05 v 00 00` with `v` read from the image, `60 00` leaves
+it; `74 00` gets `70 00 v 00 01 00 00 00 00 00` (byte 1 = `v`, byte 3 = 1
+tested, byte 4 = 0). 🟡 The report's values other than byte 3 are chosen,
+not captured from an MKII panel. ✅ Measured order: loader entered at
+instruction 10,198,954, returned 0 at 10,199,051, report parsed
+(`0x40092608`) at 10,199,687, checked (`0x40061c94`) at 45,935,951;
+`0x40061cbc` ("UI NOT TESTED!") never runs; `0x46100b48` =
+`00 08 00 01 00 00 00 00 00`, `0x46c8d188` = 0.
+
+**Keys.** The MKII panel's key, encoder and crossfader reports are the
+MKI's `0x2r` / `0x3r` / `0x40` (the parser has one format), so the key
+code is still `row·8 + bit`. What differs is the UI layer: the MKII key
+table `0x400c01f4` = the MKI's `0x400bfc10` + five records:
+
+| code | matrix | handler | measured under `--mkii` |
+|---|---|---|---|
+| `0x1c` | `0x23` bit 4 | `0x40064d78` | PROJ: the PROJECT menu (PROJECT / SYSTEM / CONTROL / MIDI) |
+| `0x1d` | `0x23` bit 5 | `0x4002e7c8` | PART: the part chooser (ONE / TWO / THREE / FOUR) |
+| `0x1e` | `0x23` bit 6 | `0x4006e274` | AED: the audio editor (`STATIC 001`, TRIM SLICE EDIT ATTR FILE) |
+| `0x1f` | `0x23` bit 7 | `0x40058ab8` | ARR: the arranger menu (`ARR 1:` EDIT RENAME CHANGE CHAIN CLEAR SAVE RELOAD) |
+| `0x36` | `0x26` bit 6 | `0x40030a6c` | REC3 🟡: beside REC AB `0x2b` (`0x40030e6c`) and REC CD `0x2c` (`0x40030c60`), same sub-map `0x400b9e02`; nothing drawn on a STATIC track |
+
+PAGE is code `0x1b` (`0x23` bit 3), the MKI's SCALE key: the same handler
+`0x4004ffc4` in both tables. ✅ FUNC + `0x1b` under `--mkii` draws
+`SCALE, TRACK 3 64/64` (per-track scale). Every tap above hits the key
+dispatcher `0x40031904` once (press) and the key-row path `0x400923c0`
+twice (press, release), in both models; under MKI the same `0x23.4-7`
+taps draw nothing (the MKI table has no record for them). Also measured
+under `--mkii`: YES on the date prompt (`DATE/TIME STORED`), T2 then T1
+(`0x80000000` 1 → 0), knob A +3 on T3's SRC page (`0x40170fc6` and
+`0x800008a0` 64 → 66, PTCH draws `+0.4`), code `0x27` = STOP (above).
+
+**LCD and LEDs under `--mkii`** ✅: the stream decodes with
+`panel_link.PanelLink` as on an MKI (897 LCD blocks, 81 LED rows, 785 LED
+levels after boot + 500 ms); new on the wire: `60 02 70 00`, `74 00`,
+`60 00`, and 204 `0xb5` messages (`0x4003f430` called from
+`0x40061af2` / `0x40061b22` only when the flag is set).
+
+Where it is wired: `ot_emu --mkii`; `tools/panel/panel_server.py` passes it
+by default (`--mki` to run as an MKI; `/map` says `"model"`), and
+`panel.html` draws PROJ/PART/AED/ARR/REC3 and the PAGE legend when it is
+an MKII; `tools/emu/live.py` passes it by default (`--mki`);
+`tools/panel/key_map.json` `proj`/`part`/`aed`/`arr`/`rec3`/`page`;
+`panel_check.py` opens the PROJECT menu with PROJ on an MKII (✅ FUNC +
+MIXER does not open it there; both models pass all five checks). The
+gates (`verify_set`, the port's self-tests) run as an MKI, unchanged.
 
 ## 5. The cursor idiom — and the arranger's giant one
 

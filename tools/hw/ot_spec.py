@@ -11,11 +11,11 @@ also as letters, "A" or "A-C"):
    "parts": {"all": {"name": "RIG",
                       "tracks": {"5": {"fx1": "SPECTRUM", "fx2": "REVERB SERVER",
                                        "fx1_knobs": {"FREQ": 100, "MODE": 4},
-                                       "fx2_knobs": {"SEND": 0, "WET": 127}},
-                                 "all": {"fx2_knobs": {"SEND": 0}}}}},
+                                       "fx2_knobs": {"DEL": 0, "REV": 0, "WET": 127}},
+                                 "all": {"fx2_knobs": {"DEL": 0, "REV": 0}}}}},
    "patterns": {"all": {"tracks": {"all": {"locks": {"fx1": "clear", "fx2": "clear"}},
                                    "5":   {"trigs": [1, 5],
-                                           "locks": {"fx2": {"1": {"SEND": 77}},
+                                           "locks": {"fx2": {"1": {"REV": 77}},
                                                      "amp": {"1": {"VOL": 77}}}}}}}}
 
 "machine": STATIC / FLEX / THRU / NEIGHBOR / PICKUP. A pattern track's

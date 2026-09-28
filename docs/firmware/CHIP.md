@@ -306,7 +306,7 @@ disassemble before believing.
 | free pool elsewhere | none | ✅ |
 | reclaimable | 3,384 words held by ten stock effects, at the cost of those effects | ✅ |
 
-`make bus` prints the live ledger (used / FREE per payload). Relocating the
+`make bus REMIX=<name>` prints the live ledger (used / FREE per payload). Relocating the
 project's code is cheap (assembled with `-org`); relocating stock code is
 not (binary, absolute branch targets), so more space means taking a
 neighbour's whole module (`stock.harvested`, `docs/remixer/MODULES.md`).
@@ -338,4 +338,4 @@ damping state in the instance's own Y region.
   falsified by that bisect (its ADDR = 0 is `0x34000`).
 - Assembler traps: `dsp_asm` emits the nearest encoding; `cmp b,a` →
   `maxm a,b`, `tfr a,b` → `rnd b`, an unknown `MPY` operand pair →
-  `mpysu`. Disassemble every hand-written block (`CLAUDE.md`).
+  `mpysu`. Disassemble every hand-written block (`AGENTS.md`).

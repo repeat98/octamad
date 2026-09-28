@@ -27,7 +27,8 @@ run at `0x401087e4` and the unit raised `VEC:03` in the menu draw loop
 ```
 0x400c45b0..0x400c4702     338 B
 0x400d24d0..0x400d2ce0   2,064 B
-0x400d2ee6..0x400d3020     314 B
+0x400d2ee6..0x400d3020     314 B   (refused at placement by the build, 25 Sep 2026:
+                                    a live descriptor, modules/midi-scenes' CAVE2 note)
 0x400d64da..0x400d7c3c   5,986 B   (the FX2 chooser's NONE row + terminator sit at
                                     0x400d6b00 in every build; descriptor clones
                                     grow from 0x400d6b20)

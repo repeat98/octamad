@@ -128,19 +128,19 @@ CASES = [
     # mode with SHMR and GATE at 0, so the GRAIN and REVERSE arms, PLATE, BIG,
     # the shimmer and the gate had no bit-identity gate; a pointer rewrite of
     # those arms needs one. Knobs held off their defaults so each arm's own
-    # decode carries signal (SCAT/DENS/SIZE/PTCH/WOW for GRAIN, SIZE for
+    # decode carries signal (SCTR/DENS/SIZE/PTCH for GRAIN, SIZE for
     # REVERSE, TONE/PING for the loop filters).
     ("DS GRAIN  the delay's GRAIN arm, scatter and wow driven",
      dict(layout="DS", pick="D", dmode=1, dspray=127, drate=100, dptch=1,
-          dpitch=80, dwow=64, dtone=64, dping=64, dur=0.3)),
+          dpitch=80, dtone=64, dping=64, dur=0.3)),
     ("DS GRAIN2 GRAIN at the smallest SIZE, pitch down, no scatter",
      dict(layout="DS", pick="D", dmode=1, dspray=0, drate=64, dptch=2,
           dpitch=40, dur=0.3)),
     ("DS REV   the delay's REVERSE arm",
-     dict(layout="DS", pick="D", dmode=2, dptch=0, dwow=32, dtone=64,
+     dict(layout="DS", pick="D", dmode=2, dptch=0, dtone=64,
           dur=0.3)),
     ("DS PING  CLEAN with PING and TONE driven",
-     dict(layout="DS", pick="D", dping=100, dtone=40, dwow=64)),
+     dict(layout="DS", pick="D", dping=100, dtone=40)),
     ("RS PLATE the reverb's PLATE mode with the shimmer",
      dict(layout="RS", rmode=1, shmr=64, rtone=40, dur=0.3)),
     ("RS BIG   the reverb's BIG mode with the gate and the width",
@@ -160,10 +160,20 @@ CASES = [
           dfdbk=100, dur=0.3)),
     ("RDS HOT2 the same with no split and the delay's WET at 0",
      dict(layout="RDS", pick="R", din=127, level=127, amp=1.0, dfdbk=100,
-          dmix=0, dur=0.3)),
+          dmix=0, rdly=0, dur=0.3)),     # rdly 0: the chain without the
+                                         # repeats, which WET 0 gave until
+                                         # DLY (25 Sep 2026)
     ("RDS HOT3 split 11, PING and TONE driven, both hosts sending",
      dict(layout="RDS", pick="R", din=127, raux=127, level=127, amp=1.0,
           split=11, dping=100, dtone=40, dur=0.3)),
+
+    # --- the hosts' cross-sends (26 Sep 2026): T1's REV into the reverb,
+    # T5's DEL into the delay. Both default to 0, so no case above drives
+    # them; these two do, each hashed on the engine it feeds.
+    ("RDS DREV the delay host's REV send, reverb picked, split 5",
+     dict(layout="RDS", pick="R", drev=100, split=5, dur=0.3)),
+    ("RDS RDEL the reverb host's DEL send, delay picked, split 5",
+     dict(layout="RDS", pick="D", rdel=100, split=5, inall=True, dur=0.3)),
 ]
 
 # Knobs held away from their defaults so the paths under test are actually
@@ -191,14 +201,15 @@ def render(mem, case, bump_level=0, extra_send=""):
     rev[rk["raux"]] = kw["raux"]                 # 0 unless a case drives it:
                                                  # a phantom host client must
                                                  # NOT leak into every case
-    for key in ("rmode", "shmr", "gate", "width", "rtone"):
+    for key in ("rmode", "shmr", "gate", "width", "rtone", "rdly", "rdel"):
         if key in kw:
             rev[rk[key]] = kw[key]
     snd = list(send_probe.SEND_PARAMS)
-    snd[0] = kw["level"]             # AUX, the one send (dlevel is its alias)
+    snd[0] = kw["level"]             # DEL (dlevel is its alias)
+    snd[1] = kw["level"]             # REV: the same level, both buses exercised
     dpar = list(send_probe.DELAY_PARAMS)
     for key in ("dtime", "dfdbk", "din", "dmix", "dtone", "dping", "dmode",
-                "dspray", "drate", "dptch", "dpitch", "dwow"):
+                "dspray", "drate", "dptch", "dpitch", "drev"):
         if key in kw:
             dpar[dk[key]] = kw[key]
 

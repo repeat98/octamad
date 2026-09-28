@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """CHARACTER render gates, with arithmetic you can predict.
 
-Renders the station straight through dsp_host (verify_hello's shape: the id
+Renders the station straight through dsp_host (the render-gate shape: the id
 and the slots come from the manifest, the entry points are checked against
 SEND's so an absent module cannot pass as a dry passthrough).
 
@@ -40,7 +40,7 @@ MEM = f"out/dsp/_audition_{MOD.name}_A.mem"
 # [REVERB] == INIT_TABLE[SEND], which is what the audition's scratch image
 # has. Those renders come from the shipping build's own payload A instead.
 RIG_IMAGE = "out/mainos_bus.bin"
-RIG_REMIX = "bamsep26"                   # the rig: Character beside the reverb on payload A
+RIG_REMIX = registry.fixture("CHARACTER", "REVERB SERVER", "SEND")   # Character beside the reverb on payload A
 RIG_MEM = "out/dsp/_verify_character_rig_A.mem"
 HOST = "vendor/dsp56300/build/source/dsp_host/dsp_host"
 FXID = MOD.menu.fx2_id
@@ -81,7 +81,7 @@ def params(**kw):
 
 def render(samples, slot="fx1", guard=False, **kw):
     """samples: MONO ints in Q23 -- dsp_host feeds one stream to both
-    channels (verify_hello's shape). Returns (L, R) lists.
+    channels (the render-gate shape). Returns (L, R) lists.
 
     slot="fx1" (alloc 0, r7 1) is the station's own slot; "fx2" (alloc 1,
     r7 2) is an FX2 instance, which the station runs as a DRY PASS since
@@ -250,7 +250,7 @@ check("COMP=0 is unity gain (the stage is skipped, bit-exact)",
 glue, _ = render(tone(438, amp=0.13), COMP=40, slot="master")
 g0, _ = render(tone(438, amp=0.13), COMP=0, slot="master")
 if glue is None:
-    print("  [SKIP] the master path (GLUE by position): the shipping build out/mainos_bus.bin carries no Character")
+    print("  [N/A] the master path (GLUE by position): the shipping build out/mainos_bus.bin carries no Character")
     MASTER = False
 else:
     MASTER = True

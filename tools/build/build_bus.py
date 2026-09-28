@@ -121,10 +121,9 @@ NONE_ID = 0x00                  # a fresh part's FX2 id -- aliased to SEND below
 
 # WHICH MODULES THIS IMAGE CARRIES. REMIX=<name> selects remixes/<name>.py;
 # bus is the plain two-server selection and the one every refactor proves
-# itself against (scripts/refhash.sh); bamsep26, the rig, is make's default. A module with no menu entry (a ColdFire patch) takes no chooser row,
+# itself against (scripts/refhash.sh); there is no default. A module with no menu entry (a ColdFire patch) takes no chooser row,
 # so ORDER is the menu modules alone, in the remix's declared order.
-REMIX = remix_registry.remix(os.environ.get("REMIX")
-                             or remix_registry.DEFAULT_REMIX)
+REMIX = remix_registry.remix(os.environ.get("REMIX"))
 ORDER = [k for k in REMIX.modules
          if remix_modules()[k].menu is not None]
 # A HIDDEN module (schema.Remix.hidden) is placed, dispatched and cloned but
@@ -183,7 +182,15 @@ FULLNAME = {m.key: m.menu.fullname + (BUILD_TAG if m.menu.build_tag else b"")
 # FX1 page too. A hidden module on FX1 loses its FX2 row and keeps its names;
 # only a hidden module that is nowhere on FX1 is drawn empty.
 BLANKED = [k for k in HIDDEN if k in REMIX.blanked]   # schema.Remix.blanked
+# A host_slots module's page draws its first n slots, under their names.
+HOST_SLOTS = {k: n for k, n in REMIX.host_slots if k in HIDDEN}
+# a stock `rts` (the tail of the TEMPO window's FUNC-release handler,
+# 0x400568e4): a widget that draws nothing
+NO_WIDGET = 0x4005692e
 RENAMES = {m.key: ([(i, b"") for i in range(12)] if m.key in BLANKED else
+                   [(i, m.params[i].name if i < HOST_SLOTS[m.key] else b"")
+                    for i in range(12)]
+                   if m.key in HOST_SLOTS else
                    [(i, p.name) for i, p in enumerate(m.params)
                     if p.name is not None]) for m in _CLONED}
 # Explicit per-knob defaults -- NOT the donor's, which are sized for a
@@ -198,6 +205,10 @@ DEFAULTS = {m.key: [(i, p.default) for i, p in enumerate(m.params)
 # have shipped.
 ACTIVE_PARAMS = {m.key: m.active_params for m in _CLONED}
 LINKED_PARAMS = {m.key: m.linked_params for m in _CLONED}
+# a host page draws its first n slots only, so a link element on a later slot
+# would be drawn alone between two blank spots
+for _k, _n in HOST_SLOTS.items():
+    LINKED_PARAMS[_k] = tuple(i for i in LINKED_PARAMS[_k] if i < _n)
 # Value counts. Page 2 pairs a knob field and a companion field per word (any
 # count on either -- stock puts selects on even slots and knobs on odd; see
 # docs/firmware/MAINMENU.md 9e). Historically "three knobs and three selects": the knob fields take
@@ -458,50 +469,9 @@ STOCK_DELAY_ID = 0x08
 STOCK_DELAY_P = 0x400d4ace          # DELAY's E (0x400d4a96) + 0x38
 
 
-# ---- DEV repro hooks for outsider modules ----------------------------------
-# The three core sources have their override arms written out at the top of
-# main() (MODE, DMODE, DNOTE and the rest). A module that arrives later needs
-# the same kind of lever without another special case in the placement loop,
-# so it declares a marker in its source and a rule here.
-#
-# ⚠️ EVERY HOOK HERE IS DEV-ONLY: the counter word
-# lives at Y:0x37FFE in payload A's owned half of the shared window (init-
-# zeroed, above the bus scratch at 0x360d2), which is free ground in a DEV
-# layout and is NOT a promise about any shipping one.
-def _dev_hooks(key, src):
-    if key != "NIMBUS":
-        return src
-    at = os.environ.get("NFRZAT")
-    if at is None:
-        return src
-    if os.environ.get("DEV") is None:
-        sys.exit("NFRZAT=n is a DEV-only repro hook (its counter word lives "
-                 "in payload A's shared-window half) -- set DEV=1")
-    if src.count("; NFRZ_OVERRIDE") != 1:
-        sys.exit("NFRZAT=n set but the NIMBUS source has no single "
-                 "; NFRZ_OVERRIDE marker")
-    # Branchless, and the same shared-flag idiom as everywhere else: `sub`
-    # sets N once, the two Tcc read it, and the interleaved immediate moves
-    # do not disturb the condition codes.
-    src = src.replace(
-        "; NFRZ_OVERRIDE",
-        "        move    y:>$37ffe,a\n"
-        "        add     #>1,a\n"
-        "        move    a,y:>$37ffe\n"
-        "        move    #>%d,x0\n"
-        "        sub     x0,a\n"
-        "        move    #>0,x0\n"
-        "        tmi     x0,a\n"
-        "        move    #>1,x0\n"
-        "        tpl     x0,a" % int(at))
-    print(f"  *** NFRZAT OVERRIDE: Nimbus freezes after {int(at)} "
-          f"post-warm blocks ***")
-    return src
-
-
 _SCRATCH = None
 
-# Disassemble what you assemble (CLAUDE.md): dsp_asm's own listing (-list)
+# Disassemble what you assemble (AGENTS.md): dsp_asm's own listing (-list)
 # against dsp56kDisassemble's decode of the same bytes, mnemonic by mnemonic.
 # Only mnemonics are compared: a branch displacement or a `do` immediate
 # renders differently in a listing and a decoder without any bug. What this
@@ -513,7 +483,7 @@ _LISTLINE = re.compile(r"^([0-9a-f]{6}): (\S+)(?:\s+(.*?))?\s*; "
 
 # `mpy` that dsp_asm encodes as `mpysu` is the one mismatch the shipping
 # code carries on purpose: the second operand is non-negative at every site
-# (CLAUDE.md). Sites per assemble() call, by module label and operands. A
+# (AGENTS.md). Sites per assemble() call, by module label and operands. A
 # build whose count differs from this table stops with the site list: a new
 # site needs its operand audited and this table updated; a vanished site
 # needs the table updated so the count stays exact.
@@ -574,7 +544,7 @@ def _roundtrip(list_out, blob, org, label):
                           for k, v in sorted(mpysu.items()))
         sys.exit(f"mpysu audit{who}: found {found or 'none'}, MPYSU_AUDITED says "
                  f"{audited or 'none'}. Every mpy encoded as mpysu needs its "
-                 f"second operand shown non-negative (CLAUDE.md), then the table "
+                 f"second operand shown non-negative (AGENTS.md), then the table "
                  f"in tools/build/build_bus.py updated:\n{sites or '    (no sites)'}")
 
 
@@ -995,7 +965,7 @@ def main():
     _cave_top = cave_end            # caves start past the descriptor clones
     _ovf_top = OVERFLOW_RUN
     # ROM-placed linked units go FIRST, so a cave may name a unit's global
-    # (ccpage2's CC_MODEDEF*, resolved to mode-defaults' cc_fx2 / cc_fx1 when
+    # (cc-map's CC_MODEDEF*, resolved to mode-defaults' cc_fx2 / cc_fx1 when
     # the module is in the image, its stub `rts` otherwise). Floating caves
     # take the run after them. 15 Sep 2026; until then units floated after
     # the caves, which is why no cave could reach one.
@@ -1054,6 +1024,7 @@ def main():
         elif OVERFLOW_RUN <= _at < OVERFLOW_RUN_END:
             _ovf_top = max(_ovf_top, (_at + len(_b) + 3) & ~3)
 
+    _pool_caves = []          # (label, addr, length, declared base literals)
     for _c, _b in _plan:
         _floating = _c.cave_addr is None
         if _floating:
@@ -1159,6 +1130,8 @@ def main():
             sys.exit(f"{_c.label}: its source is the only truth and there is no "
                      f"m68k-elf toolchain -- run `make setup`")
         img[_c.cave_addr - BASE:_c.cave_addr - BASE + len(_b)] = _b
+        if _c.pool_base_literals:
+            _pool_caves.append((_c.label, _c.cave_addr, len(_b), _c.pool_base_literals))
         for _pa, _expect, _write in _pokes:
             _got = bytes(img[_pa - BASE:_pa - BASE + len(_expect)])
             if _got != _expect:
@@ -1285,6 +1258,22 @@ def main():
         print(f"  arena: base 0x{_abase:08x}, {_acount:,} pages "
               f"({_acount * arena.PAGE // 1048576} MB) left for samples and recorders "
               f"(stock {arena.PAGES:,}); {len(arena.pokes(_reservations))} words rewritten")
+    # A cave that compares against the arena base (RECORDER HOLD: the fetch
+    # returns the base for an unmapped page) carries the stock literal; it
+    # follows the base like the firmware's own sites. The declared count is
+    # checked in every build, moved or not.
+    _pbase = _abase if _reservations else arena.BASE
+    for _lbl, _ca, _cl, _want in _pool_caves:
+        _stock = arena.BASE.to_bytes(4, "big")
+        _hits = [_o for _o in range(0, _cl - 3, 2)
+                 if bytes(img[_ca - BASE + _o:_ca - BASE + _o + 4]) == _stock]
+        if len(_hits) != _want:
+            sys.exit(f"{_lbl}: {len(_hits)} arena-base literal(s) in the cave, "
+                     f"the manifest declares {_want}; refusing")
+        if _pbase != arena.BASE:
+            for _o in _hits:
+                img[_ca - BASE + _o:_ca - BASE + _o + 4] = _pbase.to_bytes(4, "big")
+            print(f"  arena: {_lbl}: {_want} arena-base literal(s) -> 0x{_pbase:08x}")
 
     _platform_at = None             # (index in _appends) -- the Machinedrum rebuilds it last
     if _dram or _payloads:
@@ -1392,8 +1381,8 @@ def main():
         img[_p.addr - BASE:_p.addr - BASE + len(_p.write)] = _p.write
         print(f"    poke 0x{_p.addr:08x}: {_p.expect.hex()} -> {_p.write.hex()}  {_p.note}")
 
-    # ---- PLAN §6: the mode selects print their WORDS ---------------------
-    # Every stepped select drew as a bare number -- WarpFold's MODE as `1 2 3`
+    # ---- the mode selects print their WORDS ------------------------------
+    # Every stepped select drew as a bare number -- a MODE select as `1 2 3`
     # where the manifest has said FOLD RING BOTH all along -- because
     # Param.labels was authored, schema-checked against count, and then never
     # read. This is the pass that makes it load-bearing.
@@ -1432,6 +1421,15 @@ def main():
                 _ren = mode_names.with_selfname(_ren, _i, _p.labels)
             if _ren:
                 _desc = clone_addr[name] + mode_names.NAMES_AT
+                if name in HOST_SLOTS:
+                    # the renames go to the screen's own table: the shared
+                    # descriptor keeps the host page's one name
+                    _nsym = f"NAMES_{NEW_IDS[name]:02x}"
+                    if _nsym not in _exports:
+                        sys.exit(f"{name} is a host_slots module, but no linked "
+                                 f"unit exports {_nsym} for its MODE renames")
+                    _desc = _exports[_nsym]
+                    print(f"  {name} MODE renames -> {_nsym} 0x{_desc:08x}")
                 _bytes = mode_names.emit(_p.labels, _desc, _ren)
                 mode_names.verify(_p.labels, _desc, _ren)
             else:
@@ -1472,6 +1470,16 @@ def main():
               + (f"; {sum(1 for x in _lbl if x[3] >= OVERFLOW_RUN and x[3] < OVERFLOW_RUN_END)} "
                  f"overflowed into 0x{OVERFLOW_RUN:08x}.. (next free 0x{_ovf_top:08x})"
                   if _ovf_top > OVERFLOW_RUN else ""))
+    # A host_slots module's page draws its first n slots only: every later
+    # slot's widget (B, P+0x0fa) is a bare `rts`, so the page draws no dial
+    # there, and 0x12a is 0. A (P+0x0ca), the value text the TEMPO window
+    # prints, stays. The slots stay enabled, so they still reach the DSP.
+    for name, _n in HOST_SLOTS.items():
+        for _i in range(_n, 12):
+            wr32(clone_addr[name] + 0x0fa + _i * 4, NO_WIDGET)
+            wr32(clone_addr[name] + 0x12a + _i * 4, 0)
+        print(f"  {name}: page draws slots 0-{_n - 1}; slots {_n}-11 widget -> "
+              f"0x{NO_WIDGET:08x} (rts)")
     # A labelled select wider than CHORUS.TAPS' five-position widget falls
     # back to the plain dial, whose raw 0..127 indexing otherwise uses only
     # part of the arc. Install ONE schema-driven hook for every such slot in
@@ -2396,7 +2404,7 @@ mkgo:""",
         # core sources have at the top of main().
         for _k in CARRIED:
             if _k not in _texts and _k in ASM_SRC:
-                _src_k = _dev_hooks(_k, pathlib.Path(ASM_SRC[_k]).read_text())
+                _src_k = pathlib.Path(ASM_SRC[_k]).read_text()
                 _mk = remix_modules().get(_k)
                 if (_x and _mk is not None and _mk.harness is not None
                         and _mk.harness.bus_client):
@@ -2515,14 +2523,14 @@ hostquit:
         # them out. Their records come FIRST so one r5 walks straight from
         # record 1 into record 2 and the two loops share their whole setup.
         # [rate const, phase slot, AP int, AP frac, MOD int, MOD frac]
-        LFO01 = [0x7f0000, 0x3e, 0x52, 0x53, 0x21, 0x22,   # line 0  1.000x
-                 0x6cc000, 0x4f, 0x54, 0x55, 0x23, 0x24]   # line 1  1.168x
+        LFO01 = [0x7f0000, 0x81, 0x31, 0x33, 0x21, 0x22,   # line 0  1.000x
+                 0x6cc000, 0x4f, 0x34, 0x35, 0x23, 0x24]   # line 1  1.168x
         LFOTAB = [0x5b0000, 0x50, 0x56, 0x57,   # line 2  0.711x
                   0x4a0000, 0x51, 0x58, 0x59,   # line 3  0.578x
-                  0x760000, 0x47, 0x00, 0x01,   # line 4  0.922x
-                  0x610000, 0x48, 0x02, 0x03,   # line 5  0.758x
-                  0x4d0000, 0x49, 0x04, 0x05,   # line 6  0.602x
-                  0x370000, 0x4a, 0x06, 0x07]   # line 7  0.430x
+                  0x760000, 0x47, 0x74, 0x75,   # line 4  0.922x
+                  0x610000, 0x48, 0x76, 0x77,   # line 5  0.758x
+                  0x4d0000, 0x49, 0x7a, 0x7e,   # line 6  0.602x
+                  0x370000, 0x4a, 0x7f, 0x80]   # line 7  0.430x
         # ⚠️ THE TABLE MUST FOLLOW THE SOURCE. An engine that has not been
         # through the 17 Aug 0-1 roll reads record 2 FIRST, so prefixing the
         # 0/1 records unconditionally would feed line 0's data to line 2 --

@@ -1,9 +1,9 @@
 # SCENES KITS: the CC bridge
 
-Lets CC PAGE 2 and Octakit share the MIDI CC dispatch entry (`0x400d64a0`).
+Lets CC MAP and Octakit share the MIDI CC dispatch entry (`0x400d64a0`).
 `Kind.CF_PATCH`: one `Override`, nothing of its own to use.
 
-Her recipe installs `gk_stock_midi_control_parameter` at the entry; CC PAGE 2
+Her recipe installs `gk_stock_midi_control_parameter` at the entry; CC MAP
 repoints it to its cave. With the bridge the cave keeps the entry, its
 fall-through symbol `CC_NEXT` becomes her handler (the build defines it from
 her skipped write), and hers falls through to stock's. Order: CCs 62–73 ours,
@@ -12,7 +12,7 @@ then hers, then stock's.
 `schema.Override` is the mechanism: the build skips the overridden recipe
 write and, when the override names a `defsym`, defines it as the target the
 skipped write carried. The ledger owns the site to the bridge and still
-refuses CC PAGE 2 + OCTAKIT in a remix that does not carry it. The `octakit`
+refuses CC MAP + OCTAKIT in a remix that does not carry it. The `octakit`
 remix alone is unchanged.
 
 The apply_part entry (`0x40009094`) needed bridging until midisc 1.40MSCN6

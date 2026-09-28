@@ -313,10 +313,11 @@ namespace ot
 		}
 	}
 
-	void UsbDevice::isoPoll()
+	bool UsbDevice::isoPoll()
 	{
 		if(!connected() || !m_regs[R_EPLISTADDR / 4])
-			return;
+			return false;
+		bool missed = false;
 		for(int ep = 0; ep < g_endpoints; ++ep)
 		{
 			// A DISABLED endpoint (TXE/RXE clear, the stream torn down at
@@ -324,6 +325,11 @@ namespace ot
 			// primed on it, and a real host's IN gets no data.
 			const uint32_t epctrl = m_regs[(R_EPCTRL0 + 4u * ep) / 4];
 			const bool txDisabled = ep != 0 && !(epctrl & (1u << 23)), rxDisabled = ep != 0 && !(epctrl & (1u << 7));
+			if(!m_in[ep].pending && ep != 0 && !txDisabled && isIso(ep, true))
+			{
+				++m_stats.isoMissed;
+				missed = true;
+			}
 			if(m_in[ep].pending && (isIso(ep, true) || txDisabled))
 			{
 				if(m_regs[R_EPSR / 4] & (1u << (ep + 16)))
@@ -347,6 +353,7 @@ namespace ot
 				}
 			}
 		}
+		return missed;
 	}
 
 	// The controller answers the host's next EP0 IN/OUT with a STALL while
@@ -452,6 +459,11 @@ namespace ot
 		else if(l.rfind("speed ", 0) == 0)
 		{
 			m_speedHs = l.compare(6, 2, "hs") == 0;
+			_reply("ok\n");
+		}
+		else if(l.rfind("isohz ", 0) == 0)
+		{
+			m_isoHz = std::strtod(l.c_str() + 6, nullptr);
 			_reply("ok\n");
 		}
 		else if(l.rfind("poke ", 0) == 0 || l.rfind("call ", 0) == 0)

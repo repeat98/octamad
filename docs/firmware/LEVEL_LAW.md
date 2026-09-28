@@ -58,6 +58,16 @@ than an established one.
 ## 3. Open
 
 - Which of `0x8000005e`/`0x8000005f` is MAIN and which is CUE.
+- Whether these two bytes are the MAIN/CUE levels at all: the project
+  parse (`0x40087ae0..0x40087b64`, read 28 Sep 2026 from the image) stores
+  `METRONOME_CUE_VOLUME` at `0x8000005e` and `METRONOME_MAIN_VOLUME` at
+  `0x8000005f` (mirrors `0x100b14be/bf`), and `MAIN_LEVEL` / `CUE_LEVEL`
+  at `0x80000035` / `0x80000036` (`0x40087348`, `0x4008738c`; mirrors
+  `0x100b1495/96`). The dispatcher copy (`0x4000d2c6..0x4000d2da`) and the
+  DSP squaring below are as read; which bytes the encoder handlers
+  `0x40066b64`/`0x40066ba8` serve (the LEVEL knobs or the METRONOME menu)
+  decides it. Under the port neither pair poked after a load changes the
+  main output (`docs/remixer/EMU.md`, the voice-silence entry).
 - The +1/32 excess at CUE 32 and 64 (absent at 96, 127): candidates are the
   loop's other term (`seed + x1·y0`, `y0` from `Y:0x280`, neither read) or
   sweep-direction state (a first capture at 127 landed low, later ones

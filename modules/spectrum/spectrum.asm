@@ -1,12 +1,13 @@
 ; ---------------------------------------------------------------------------
-; SPECTRUM -- a filter pedal: LADR (the zero-delay Moog ladder), LP / BP (the
-; zero-delay SEM SVF), ISO (an isolator, Airwindows Capacitor2), VOWL (three
+; SPECTRUM -- a filter pedal: LADR (the zero-delay Moog ladder), SEM (the
+; zero-delay SEM SVF, LP -> BP -> HP by SHPE), ISO (an isolator, Airwindows Capacitor2), VOWL (three
 ; constant-peak-gain formant resonators morphed by FREQ); ENV and LFO onto
 ; the cutoff; mid/side WDTH. Insert
-; contract (modules/ripple/ripple_svf.asm): frames in place at
+; contract: frames in place at
 ; x:(r0)/x:(r0+n0), knobs from r6, state in this instance's r7 block. FX1
 ; only: init reads the allocator base and an FX2 instance runs as a dry pass.
-; Defaults are a bit-exact passthrough. Every mpy is `mpy x0,y1` but the
+; Defaults are a bit-exact passthrough. Every mpy is `mpy x0,y1` (fs_qs's
+; `mpy y0,x0` is the other audited-signed order) but the
 ; VOWL decode's `mpy x1,y1,b` (audited: R' > 0; build_bus.MPYSU_AUDITED);
 ; every clip is the store limiter; every Tcc reads the one compare above it
 ; with nothing but moves between.
@@ -24,7 +25,7 @@
 ;   $1e       the block's input peak (the follower's; written after the loop)
 ;   $1f $20 $21  c4, g2 (this block's target), R
 ;   $22       CAP's rotation count (persistent)
-;   $23 $24 $25  kLP kBP kHP
+;   $23 $24 $25  kLP kBP kHP (SHPE's crossfade, per block)
 ;   $26 $27   CAP lpBase (persistent chase), $27 free
 ;   $2c       WDTH's side gain / 2
 ;   $2d       the mode flag: 0 SVF 1 VOWL 2 LADR 3 CAP
@@ -36,13 +37,18 @@
 ;   $40..$45  CAP's rotation table 3 4 5 3 4 5 (init)
 ;   $46 $47   ENV fall, LFO inc; $48 vg/8 (VOWL); $49 lfo, then VOWL's frac
 ;   $4e $4f   the P table's base, FREQm
-;   $50..$5b  the SVF stream (dg, c4 d kLP kHP kBP x2, WDTH)
+;   $50..$56  the SVF stream (dg, c4 d kLP kHP kBP, WDTH); its steps $76..$7a
 ;   $5c..$5f  CAP's constants ring (gn/16 hpBase lpBase trim/2; m2 = 3)
 ;   $60..$69  the LADR stream (G' dG G^3(1-G) G^2(1-G) G(1-G) 1-G k/4 d/2 M/4 WDTH)
 ;   $68..$75  the VOWL stream (b0 m1 a2 gain x3, vg/8, WDTH; overlaps LADR's:
 ;             each is rebuilt by its own mode's prologue every block)
 ;   $7c..$7f  CAP's amounts ring (m1 = 3)
-;   free: $19..$1d, $27..$2b, $39..$3f, $4a..$4d, $76..$7b
+;   $2b       1 once this mode's ramped stream words started at their
+;             targets (0 at init and on a MODE change; fs_rset)
+;   $39..$3b  CAP's per-sample steps (gn/16 lpBase trim/2); $76..$7f the
+;             other modes' per-sample steps (per block, fs_rbase), CAP's
+;             gn/16 and trim/2 targets at $76/$77
+;   free: $19..$1d, $27..$2a, $3c..$3f, $4a..$4d
 ; ---------------------------------------------------------------------------
 
 init:
@@ -55,7 +61,7 @@ init:
 ; part that names this id on FX2 (the stock id both menus share) costs its
 ; core nothing: the rig's cycle envelope is priced with the stations on FX1
 ; only (tools/harness/pressure.py), and the FX2 chooser hides them.
-; sub/tst rather than cmp: the cmp-encodes-as-max family (CLAUDE.md).
+; sub/tst rather than cmp: the cmp-encodes-as-max family (AGENTS.md).
         move    x:>$213,r4
         move    #>$ffffff,m4
         move    x:(r4),x0
@@ -194,14 +200,17 @@ proc:
         add     y0,a
         move    a,x:(r7+$20)            ; g2 = tan(pi fc/fs)/2, this block's target
         move    x1,x:(r7+$4f)           ; FREQm, kept for VOWL's morph
-; ---- the cutoff RAMP: dg = (g2 - g2run)/16 per block, added
+; ---- the cutoff RAMP: dg = (g2 - g2run)/128 per block, added
 ; once per sample in the loop, so a fast FREQ sweep or LFO has no block-rate
-; step (the ~2.8 kHz comb of a per-block jump). A 15-sample block reaches
-; 15/16 of the way and the next block starts from where it got to.
-        move    x:(r7+$2e),x0           ; g2run, where the last block ended
-        sub     x0,a
-        asr     #$4,a,a
-        move    a,x:(r7+$2f)            ; dg
+; step (the ~2.8 kHz comb of a per-block jump). A 15-sample block covers
+; 15/128 of the way and the next block starts from where it got to (1/16
+; until 26 Sep 2026: a FREQ jump was a one-block ramp,
+; tools/verify/verify_knob_clicks.py). The first block after init or a MODE
+; change ($2b = 0) starts g2run AT g2.
+        move    a,y1                    ; g2: g2run ($2e) steps toward it by
+        lua     (r7+$2e),r1             ; dg ($2f), fs_rset's law (the post-
+        lua     (r7+$2f),r3             ; increments' results are not used, so
+        bsr     fs_rset                 ; m1/m3 do not matter here)
 ; ---- the SEM core's per-block words: c4 = (R + g2)/2 (so 4*c4 = 2R + g),
 ; d = 1/(1 + 2Rg + g^2) = (1/8) / (1/8 + R*g2/2 + g2^2/2) -- the one real
 ; division per block; den/8 <= 0.86 at every knob, d <= 1. Both frozen for
@@ -244,6 +253,7 @@ fs_mclr:
         nop
         move    a,x:(r7+$26)
         move    a,x:(r7+$27)
+        move    a,x:(r7+$2b)            ; the new mode's stream at its targets
 fs_msame:
         clr     a
         move    a,x:(r7+$2d)            ; the SVF alternative unless VOWL says so
@@ -252,35 +262,54 @@ fs_msame:
         move    a,x:(r7+$25)
         move    #>$7fffff,x0
         move    x:(r6+$c),a             ; MODE, slot 6 = $c's knob field
-        and     #>$ff0000,a             ; 0 LADR, 1 SEM, 2 BP, 3 ISO, 4 VOWL
+        and     #>$ff0000,a             ; 0 LADR, 1 SEM, 2 ISO, 3 VOWL
         beq     fs_mladr
         cmp     #>$20000,a
-        beq     fs_mbp
-        cmp     #>$30000,a
         beq     fs_mcap
-        cmp     #>$40000,a
+        cmp     #>$30000,a
         beq     fs_mvowl
-; SEM (and anything unexpected): SHPE, slot 7 in $c's companion field, is
-; the SEM's mode pot -- 0 LP, 64 notch (LP + HP), 127 HP (23 Sep 2026):
-; kHP = min(1, k/64), kLP = min(1, (127 - k)/63): both exactly 1 at 64; the
-; stores limit.
+; SEM (and anything unexpected): SHPE, slot 7 in $c's companion field,
+; sweeps LP -> BP -> HP (27 Sep 2026; 0 LP, 64 notch, 127 HP from 23 Sep):
+; d = (k - 64)/64 below 64, (k - 64)/63 above, and an equal-power crossfade
+; between neighbours, kHP = max(0, s(d)), kLP = max(0, -s(d)),
+; kBP = s(1 - |d|), s ~ sin(pi x/2) (fs_qs). Each is exactly 1 at its own
+; stop and exactly 0 at the others: s(1) > 1 and the stores limit it; 127's
+; d rounds up past 1, and kBP's argument is 3 LSB short of 1 - |d|, so it
+; floors to 0 at both ends. At the cutoff the three taps are equal in size
+; and LP/BP, BP/HP in quadrature, so the sum keeps its level across a fade.
         move    x:(r6+$c),a
         and     #>$7f00,a               ; k<<8
         move    a1,x0
         move    x0,a                    ; A2-clean (AND cleans A1 only)
-        asl     #$9,a,a                 ; k<<17 = k/64 as Q23
-        move    a,x:(r7+$25)            ; kHP
-        move    #>$7f00,b
-        sub     x0,b                    ; (127 - k)<<8
-        asl     #$8,b,b                 ; (127 - k)/128 as Q23
-        move    b,x0
-        move    #>$410410,y1            ; (128/63)/4
-        mpy     x0,y1,b
-        asl     #$2,b,b                 ; (127 - k)/63
-        move    b,x:(r7+$23)            ; kLP
-        bra     fs_mdone
-fs_mbp:
-        move    x0,x:(r7+$24)
+        move    #>$4000,x0
+        sub     x0,a                    ; (k - 64)<<8: its sign picks the half
+        move    #>$400000,b             ; below 64: x 1/2, x 4 below = 1/64
+        move    #>$410411,y0            ; above: (128/63)/4, rounded up
+        tgt     y0,b                    ; nothing but moves since the sub
+        move    b,y1
+        asl     #$8,a,a                 ; (k - 64)/128
+        move    a,x0
+        mpy     x0,y1,a
+        asl     #$2,a,a                 ; d, -1 .. 1.0000002
+        move    a,x0                    ; limited: 127's d lands on 1 - 2^-23
+        move    x0,x1                   ; d, kept (fs_qs leaves x1)
+        bsr     fs_qs                   ; a = s(d), odd
+        move    a,b
+        move    #$0,x0
+        tst     a
+        tmi     x0,a                    ; kHP = max(0, s(d))
+        move    a,x:(r7+$25)
+        neg     b
+        tmi     x0,b                    ; kLP = max(0, -s(d))
+        move    b,x:(r7+$23)
+        move    x1,a
+        abs     a
+        neg     a
+        add     #>$7ffffd,a             ; 1 - |d| - 3 LSB
+        tmi     x0,a                    ; floored at 0: the ends
+        move    a,x0
+        bsr     fs_qs
+        move    a,x:(r7+$24)            ; kBP = s(1 - |d|)
         bra     fs_mdone
 fs_mcap:
 ; ---- ISO: Airwindows Capacitor2 (Chris Johnson, MIT), the
@@ -304,8 +333,8 @@ fs_mcap:
         sub     x0,a
         asr     #$4,a,a
         add     x0,a
-        move    a,x:(r7+$26)            ; lpBase += (target - lpBase)/16
-        move    a,x:(r7+$5e)            ; ring 2: lpBase
+        move    a,x:(r7+$26)            ; lpBase += (target - lpBase)/16, the
+                                        ; ramp's target for ring 2 (fs_cap)
 ; the high-pass side is a fixed 2^-12 (a ~2 Hz corner: a DC block, never a
 ; frozen pole); RES is the dielectric's colour (COLR).
         move    #>$000800,x0
@@ -324,7 +353,8 @@ fs_mcap:
         rep     #$18
         div     x0,a
         move    a0,x0
-        move    x0,x:(r7+$5c)           ; ring 0: gn/16 = (1 + 15C)/(16 nl), <= 0.993
+        move    x0,x:(r7+$76)           ; gn/16 = (1 + 15C)/(16 nl), <= 0.993:
+                                        ; ring 0's target
         move    x:(r6+$1),x0
         move    x:(r6+$1),y1
         mpy     x0,y1,a                 ; C^2
@@ -335,7 +365,7 @@ fs_mcap:
         move    #>$fb6db7,y1            ; -0.036
         mac     x0,y1,a
         add     #>$322d0e,a             ; + 0.392: trim/2 = 0.75/cbrt(nl), fitted
-        move    a,x:(r7+$5f)            ; ring 3: trim/2
+        move    a,x:(r7+$77)            ; trim/2: ring 3's target
         bra     fs_mdone
 fs_mvowl:
         move    x:(r6+$1),a             ; RES/128
@@ -348,14 +378,15 @@ fs_mvowl:
 ; R = exp(-pi*bw/fs), m1 = R*cos(w0), a2 = R^2, b0 = (1-R^2)/2; gains
 ; 1 / 0.5 / 0.3. FREQm (post-modulation, so DPTH and the LFO sweep the
 ; vowels) morphs A E I O U: idx = FREQm >> 21 (0..3) picks the pair, frac =
-; the 5 bits under it. RES narrows the bandwidths: R' = R + 0.9(1-R)*RES.
+; the 21 bits under it. RES narrows the bandwidths: R' = R + 0.9(1-R)*RES.
         move    #>$1,x0
         move    x0,x:(r7+$2d)           ; the loop runs the bank, not the SVF
         move    x:(r7+$4f),a            ; FREQm
-        asr     #$10,a,a
-        and     #>$1f,a
-        asl     #$12,a,a                ; (FREQm >= 0, so a2 = 0 throughout)
-        move    a1,x:(r7+$49)           ; frac (the lfo park is dead by now)
+        and     #>$1fffff,a
+        asl     #$2,a,a                 ; (FREQm >= 0, so a2 = 0 throughout)
+        move    a1,x:(r7+$49)           ; frac, all 21 bits (the lfo park is
+                                        ; dead by now; 5 bits until 26 Sep
+                                        ; 2026: a turn stepped the formants)
         move    x:(r7+$4f),a
         asr     #$15,a,a                ; idx 0..3 (FREQm >= 0: a2 clean)
         move    a1,x0
@@ -477,10 +508,10 @@ fs_mladr:
         mpy     x0,y1,a
         move    a,x:(r7+$17)            ; G^3(1-G)
         move    x:(r7+$10),a            ; G
-        move    x:(r7+$16),x0           ; Grun, where the last block ended
-        sub     x0,a
-        asr     #$4,a,a
-        move    a,x:(r7+$15)            ; dG
+        move    a,y1                    ; G: Grun ($16) steps toward it by dG
+        lua     (r7+$16),r1             ; ($15), fs_rset's law
+        lua     (r7+$15),r3
+        bsr     fs_rset
 fs_mdone:
 ; ---- WDTH (slot 5): stereo width of the output, Character's mid/side,
 ; drawn -64..+63; the knob word IS WDTH/128 = the side gain HALVED (64 ->
@@ -535,7 +566,7 @@ fs_live:
         bra     fs_cap
 
 ; ---------------------------------------------------------------------------
-; SVF: the SEM zero-delay SVF, SEM (LP..notch..HP by SHPE) and BP
+; SVF: the SEM zero-delay SVF, LP -> BP -> HP by SHPE
 ; ---------------------------------------------------------------------------
 fs_svf:
 ; the stream at $50 on r4 (r1 walks a copy per sample): dg, then c4 d kLP
@@ -551,28 +582,21 @@ fs_svf:
         move    #>$ffffff,m1
         move    x:(r7+$2f),x0           ; dg
         move    x0,x:(r1)+
-        move    x:(r7+$1f),x0           ; c4
-        move    x0,x:(r1)+
-        move    x:(r7+$33),x0           ; d
-        move    x0,x:(r1)+
-        move    x:(r7+$23),x0           ; kLP
-        move    x0,x:(r1)+
-        move    x:(r7+$25),x0           ; kHP
-        move    x0,x:(r1)+
-        move    x:(r7+$24),x0           ; kBP
-        move    x0,x:(r1)+
-        move    x:(r7+$1f),x0           ; the same five for R
-        move    x0,x:(r1)+
-        move    x:(r7+$33),x0
-        move    x0,x:(r1)+
-        move    x:(r7+$23),x0
-        move    x0,x:(r1)+
-        move    x:(r7+$25),x0
-        move    x0,x:(r1)+
-        move    x:(r7+$24),x0
-        move    x0,x:(r1)+
+        bsr     fs_rbase                ; r3 -> the steps at $76
+        move    x:(r7+$1f),y1           ; c4
+        bsr     fs_rset
+        move    x:(r7+$33),y1           ; d
+        bsr     fs_rset
+        move    x:(r7+$23),y1           ; kLP
+        bsr     fs_rset
+        move    x:(r7+$25),y1           ; kHP
+        bsr     fs_rset
+        move    x:(r7+$24),y1           ; kBP
+        bsr     fs_rset
         move    x:(r7+$2c),x0           ; WDTH's side gain / 2
         move    x0,x:(r1)+
+        move    #>$1,x0
+        move    x0,x:(r7+$2b)           ; primed
         move    r7,r6
         move    #$34,n6
         move    (r6)+n6
@@ -597,8 +621,25 @@ fs_svf:
         move    a,x:(r7+$2e)            ; g2run (never past the rail: the
                                         ; target is <= 0.91 and the ramp
                                         ; stops at it)
-; ===================== channel L =====================
-        move    x:(r0),x1               ; x
+; ---- the stream's ramps: c4 d kLP kHP kBP, one step each (r3 walks the steps)
+        move    n3,r3
+        bsr     fs_r3                   ; c4 d kLP
+        move    x:(r3)+,x0
+        move    x:(r1),a
+        add     x0,a    x:(r3)+,x0
+        move    a,x:(r1)+               ; kHP
+        move    x:(r1),a
+        add     x0,a
+        move    a,x:(r1)+               ; kBP
+; ---- channels L then R: one body (27 Sep 2026; two copies before), the same
+; five stream words for both, the states walked on by r2; r3 (spent by the
+; ramps above) walks the frame. It paid for SHPE's crossfade in words; the
+; SVF loop is Spectrum's cheapest, and ISO's prices the station.
+        move    r0,r3
+        do      #2,>fs_sch
+        move    r4,r1
+        move    (r1)+                   ; on c4
+        move    x:(r3),x1               ; x
         move    x:(r2)+,x0              ; s0
         move    x0,y0                   ; s0, kept for bp
         move    x:(r1)+,y1              ; c4 = (R + g2)/2
@@ -629,61 +670,20 @@ fs_svf:
         move    a,x:(r2)+               ; s1' (r2 -> the next channel's s0)
 ; wetA = kLP*lp + kHP*hp + kBP*bp (exact in the accumulator, any order)
         move    x:(r1)+,y1              ; kLP
-        mpy     x0,y1,a
-        move    x1,x0                   ; hp
+        mpy     x0,y1,a     x1,x0       ; hp
         move    x:(r1)+,y1              ; kHP
-        mac     x0,y1,a
-        move    y0,x0                   ; bp
+        mac     x0,y1,a     y0,x0       ; bp
         move    x:(r1)+,y1              ; kBP
         mac     x0,y1,a
-        move    a,x:(r0)                ; out (limited)
-; ===================== channel R =====================
-        move    x:(r0+n0),x1            ; x
-        move    x:(r2)+,x0              ; s0
-        move    x0,y0                   ; s0, kept for bp
-        move    x:(r1)+,y1              ; c4 = (R + g2)/2
-        mpy     x0,y1,a
-        asl     #$2,a,a                 ; (2R + g) * s0
-        move    x:(r2)-,x0              ; s1 (r2 back on s0)
-        add     x0,a  x1,b              ; b = x
-        sub     a,b                     ; t
-        asr     #$3,b,b
-        move    b,x0                    ; t8, |t8| <= 0.63
-        move    x:(r1)+,y1              ; d
-        mpy     x0,y1,a
-        asl     #$3,a,a
-        move    a,x0                    ; hp, limited -- the resonance clamp
-        move    a,x1                    ; hp, kept for the tap (x is spent)
-        move    x:(r7+$2e),y1           ; g2 = g2run this sample
-        mpy     x0,y1,b
-        asl     b  y0,a                 ; p = g*hp; a = s0
-        add     b,a                     ; bp
-        add     b,a  a,y0               ; s0'; y0 = bp, limited, kept for the tap
-        move    a,x:(r2)+               ; s0' (r2 -> s1)
-        move    y0,x0
-        mpy     x0,y1,b                 ; y1 is still g2
-        asl     #$1,b,b                 ; q = g*bp
-        move    x:(r2),a                ; s1
-        add     b,a                     ; lp
-        add     b,a  a,x0               ; s1'; x0 = lp, limited, for the tap
-        move    a,x:(r2)+               ; s1'
-; wetA = kLP*lp + kHP*hp + kBP*bp (exact in the accumulator, any order)
-        move    x:(r1)+,y1              ; kLP
-        mpy     x0,y1,a
-        move    x1,x0                   ; hp
-        move    x:(r1)+,y1              ; kHP
-        mac     x0,y1,a
-        move    y0,x0                   ; bp
-        move    x:(r1)+,y1              ; kBP
-        mac     x0,y1,a
-        move    a,x:(r0+n0)             ; out (limited)
+        move    a,x:(r3)+               ; out (limited)
+fs_sch:
+        nop
 ; WIDTH
         move    x:(r0),a                ; L
         move    x:(r0+n0),x0            ; R
         add     x0,a
         asr     #$1,a,a
-        move    a,x1                    ; mid
-        sub     x0,a                    ; mid - R = (L - R)/2, floor
+        sub     x0,a        a,x1        ; mid ; mid - R = (L - R)/2, floor
         move    a,x0                    ; side
         move    x:(r1)+,y1              ; side gain / 2
         mpy     x0,y1,a
@@ -714,34 +714,35 @@ fs_vowl:
         move    #>$ffffff,m5
         move    r5,r1
         move    #>$ffffff,m1
-        move    x:(r7+$16),x0
-        move    x0,x:(r1)+
-        move    x:(r7+$10),x0
-        move    x0,x:(r1)+
-        move    x:(r7+$13),x0
-        move    x0,x:(r1)+
-        move    #$40,x0                 ; formant 0's gain 1, halved
-        move    x0,x:(r1)+
-        move    x:(r7+$17),x0
-        move    x0,x:(r1)+
-        move    x:(r7+$11),x0
-        move    x0,x:(r1)+
-        move    x:(r7+$14),x0
-        move    x0,x:(r1)+
-        move    #$20,x0                 ; formant 1's gain 0.5, halved
-        move    x0,x:(r1)+
-        move    x:(r7+$18),x0
-        move    x0,x:(r1)+
-        move    x:(r7+$12),x0
-        move    x0,x:(r1)+
-        move    x:(r7+$15),x0
-        move    x0,x:(r1)+
-        move    #>$133333,x0            ; formant 2's gain 0.3, halved
-        move    x0,x:(r1)+
-        move    x:(r7+$48),x0           ; vg/8
-        move    x0,x:(r1)+
+        bsr     fs_rbase                ; r3 -> the steps at $76
+        move    r7,r2
+        move    #$10,n2
+        move    (r2)+n2                 ; r2 -> formant 0's m1 at $10
+        move    #>$ffffff,m2
+        do      #3,>fs_vbz
+        move    x:(r2+$6),y1            ; b0 ($16 + k)
+        bsr     fs_rset
+        move    x:(r2),y1               ; m1 ($10 + k)
+        bsr     fs_rset
+        move    x:(r2+$3),y1            ; a2 ($13 + k)
+        bsr     fs_rset
+        move    (r1)+                   ; the formant's gain (below)
+        move    (r2)+
+fs_vbz:
+        nop
+        move    #$40,x0                 ; the gains 1, 0.5, 0.3, halved
+        move    x0,x:(r7+$6b)
+        move    #$20,x0
+        move    x0,x:(r7+$6f)
+        move    #>$133333,x0
+        move    x0,x:(r7+$73)
+        move    x:(r7+$48),y1           ; vg/8
+        bsr     fs_rset
         move    x:(r7+$2c),x0           ; WDTH's side gain / 2
         move    x0,x:(r1)+
+        move    #>$1,x0
+        move    x0,x:(r7+$2b)           ; primed
+        move    n3,n4                   ; the loop walks the steps on r4
         move    #$2,n3
         move    #$0,r6                  ; the input peak
         do      n7,>fs_vz
@@ -754,6 +755,20 @@ fs_vowl:
         move    r6,b
         max     a,b
         move    b1,r6
+; ---- the stream's ramps: b0 m1 a2 per formant and vg/8, one step each (r3
+; walks the steps from n4; r1 the stream, reloaded by the L pass)
+        move    r5,r1
+        move    n4,r3
+        bsr     fs_r3                   ; formant 0
+        move    (r1)+                   ; its gain
+        bsr     fs_r3                   ; formant 1
+        move    (r1)+
+        bsr     fs_r3                   ; formant 2
+        move    (r1)+
+        move    x:(r3)+,x0
+        move    x:(r1),a
+        add     x0,a
+        move    a,x:(r1)+               ; vg/8
 ; ===================== channel L =====================
         move    x:(r0),x1               ; x
         move    r7,r3                   ; states at $00
@@ -917,8 +932,7 @@ fs_vowl:
         move    x:(r0+n0),x0
         add     x0,a
         asr     #$1,a,a
-        move    a,x1                    ; mid
-        sub     x0,a
+        sub     x0,a        a,x1        ; mid
         move    a,x0                    ; side
         move    x:(r1)+,y1              ; side gain / 2
         mpy     x0,y1,a
@@ -956,7 +970,7 @@ fs_ladr:
         move    #>$499999,x0            ; 2.3/4
         cmp     x0,a
         tgt     x0,a                    ; M <= 2.3
-        move    a,x1
+        move    a,y0                    ; (fs_rset clobbers x1)
         move    r7,r2
         move    #$60,n2
         move    (r2)+n2
@@ -975,13 +989,18 @@ fs_ladr:
         move    x0,x:(r1)+
         move    x:(r7+$18),x0
         move    x0,x:(r1)+
-        move    x:(r7+$13),x0
-        move    x0,x:(r1)+
-        move    x:(r7+$14),x0
-        move    x0,x:(r1)+
-        move    x1,x:(r1)+              ; M/4
+        bsr     fs_rbase                ; r3 -> the steps at $76
+        move    x:(r7+$13),y1           ; k/4
+        bsr     fs_rset
+        move    x:(r7+$14),y1           ; d/2
+        bsr     fs_rset
+        move    y0,y1                   ; M/4
+        bsr     fs_rset
         move    x:(r7+$2c),x0           ; WDTH's side gain / 2
         move    x0,x:(r1)+
+        move    #>$1,x0
+        move    x0,x:(r7+$2b)           ; primed
+        move    #$4,n1                  ; the loop's hop from G^3(1-G) to k/4
         move    x:(r7+$16),a            ; Grun, where the last block ended
         move    a1,n4
         move    #$0,r4                  ; the input peak
@@ -1003,6 +1022,11 @@ fs_ladr:
         add     x0,a
         move    a1,n4
         move    a,x:(r2)                ; G' (slot 0)
+; ---- the stream's ramps: k/4 d/2 M/4, one step each (r3 walks the steps)
+        move    (r1)+n1                 ; r1 -> k/4
+        move    n3,r3
+        bsr     fs_r3                   ; k/4 d/2 M/4
+        move    r6,r1                   ; back on G^3(1-G)
 ; ===================== channel L =====================
         move    x:(r0),b                ; x
         move    r7,r3                   ; states s0..s3 at $00
@@ -1026,8 +1050,7 @@ fs_ladr:
         move    x:(r0+n0),x0
         add     x0,a
         asr     #$1,a,a
-        move    a,x1                    ; mid
-        sub     x0,a
+        sub     x0,a        a,x1        ; mid
         move    a,x0                    ; side
         move    x:(r1)+,y1              ; side gain / 2
         mpy     x0,y1,a
@@ -1051,6 +1074,26 @@ fs_lz:
 ; CAP: Airwindows Capacitor2 (Chris Johnson, MIT), the isolator
 ; ---------------------------------------------------------------------------
 fs_cap:
+; ring 0, 2 and 3 (gn/16 lpBase trim/2) are run values stepped once per
+; sample toward the decode's targets (fs_rset, steps at $39..$3b); hpBase
+; is fixed
+        move    r7,r1
+        move    #$5c,n1
+        move    (r1)+n1
+        move    #>$ffffff,m1
+        move    r7,r3
+        move    #$39,n3
+        move    (r3)+n3
+        move    #>$ffffff,m3
+        move    x:(r7+$76),y1           ; gn/16
+        bsr     fs_rset
+        move    (r1)+                   ; hpBase
+        move    x:(r7+$26),y1           ; lpBase
+        bsr     fs_rset
+        move    x:(r7+$77),y1           ; trim/2
+        bsr     fs_rset
+        move    #>$1,x0
+        move    x0,x:(r7+$2b)           ; primed
 ; r1 -> the four-word amounts ring at $7c (m1 = 3: fs_ccore writes and reads
 ; it round once per pole pair), r2 -> the four-word constants ring at $5c
 ; (m2 = 3: gn/16 hpBase lpBase trim/2, written by the MODE decode, read once
@@ -1073,6 +1116,20 @@ fs_cap:
         move    a1,n2                   ; the rotation count
         move    #$0,r4                  ; the input peak
         do      n7,>fs_cz
+; ---- the ring's ramps: r2 walks it once (m2 = 3) --------------------------
+        move    x:(r7+$39),x0
+        move    x:(r2),a
+        add     x0,a
+        move    a,x:(r2)+               ; gn/16
+        move    (r2)+                   ; hpBase
+        move    x:(r7+$3a),x0
+        move    x:(r2),a
+        add     x0,a
+        move    a,x:(r2)+               ; lpBase
+        move    x:(r7+$3b),x0
+        move    x:(r2),a
+        add     x0,a
+        move    a,x:(r2)+               ; trim/2, and r2 is back on gn/16
 ; ---- input peak for the envelope follower (mono, pre-filter) --------------
         move    x:(r0),a
         move    x:(r0+n0),x0
@@ -1115,8 +1172,7 @@ fs_cap:
         move    x:(r0+n0),x0
         add     x0,a
         asr     #$1,a,a
-        move    a,x1                    ; mid
-        sub     x0,a
+        sub     x0,a        a,x1        ; mid
         move    a,x0                    ; side
         move    x:(r7+$2c),y1           ; side gain / 2
         mpy     x0,y1,a
@@ -1142,6 +1198,83 @@ fs_done:
         move    a,x:(r7+$1e)            ; the block's peak (SVF)
 fs_end:
         nop
+        rts
+
+; ---------------------------------------------------------------------------
+; fs_rbase -- r3 and n3 -> the ramps' steps at $76 (per block; the loops
+; walk them from n3 once per sample). Clobbers x0 and r3's modifier.
+; ---------------------------------------------------------------------------
+fs_rbase:
+        move    r7,r3
+        move    #$76,n3
+        move    (r3)+n3
+        move    #>$ffffff,m3
+        move    r3,n3
+        rts
+
+; ---------------------------------------------------------------------------
+; fs_r3 -- the loop's step for three ramped stream words: each += its step.
+; In: r1 -> the words, r3 -> their steps. Out: r1 and r3 three on.
+; Straight-line (cycle_count.py's rule for a loop callee); clobbers a, x0.
+; ---------------------------------------------------------------------------
+fs_r3:
+        move    x:(r3)+,x0
+        move    x:(r1),a
+        add     x0,a    x:(r3)+,x0
+        move    a,x:(r1)+
+        move    x:(r1),a
+        add     x0,a    x:(r3)+,x0
+        move    a,x:(r1)+
+        move    x:(r1),a
+        add     x0,a
+        move    a,x:(r1)+
+        rts
+
+; ---------------------------------------------------------------------------
+; fs_rset -- one ramped stream word, per block (26 Sep 2026). The word is a
+; RUN value the loop steps once per sample; its step is 1/128 of the way
+; from where the last block ended to this block's target, so a 15-sample
+; block covers 15/128 of the way and the next block carries on from it (the
+; cutoff ramp's form, g2run/dg): linear inside a block, a glide across them. A step that rounds to 0 puts the word on
+; the target. The first block of a mode ($2b = 0) starts the word AT the
+; target, so a knob at rest renders exactly as the rebuilt stream did.
+; In: y1 = the target, r1 -> the word, r3 -> its step. Out: r1, r3 each one
+; on. Clobbers a, b, x0, x1.
+; ---------------------------------------------------------------------------
+fs_rset:
+        move    x:(r7+$2b),b
+        tst     b
+        move    x:(r1),b                ; the run value (moves keep the flags)
+        teq     y1,b                    ; a new mode: at the target
+        move    b,x0
+        move    y1,a
+        sub     x0,a
+        asr     #$7,a,a                 ; the step per sample
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        tst     a
+        teq     y1,b                    ; a step of 0: at the target
+        move    a,x:(r3)+
+        move    b,x:(r1)+
+        rts
+
+; ---------------------------------------------------------------------------
+; fs_qs -- s(x) = x (A - B x^2), a quarter sine (sin(pi x/2) within 0.006,
+; s(x)^2 + s(1 - x)^2 within 0.05 dB of 1 on 0..1), odd; A - B = 1.00001, so
+; s(1) lands past 1 and a store limits it onto 1. The SHPE crossfade's law.
+; In: x0 = x. Out: a = s(x), unlimited. Clobbers x0, y0, y1 (x1 is kept).
+; ---------------------------------------------------------------------------
+fs_qs:
+        move    x0,y1
+        mpy     x0,y1,a                 ; x^2
+        move    a,x0
+        move    #>$22c3a0,y0            ; B/2 = 0.271595
+        mpy     y0,x0,a                 ; B/2 x^2 (y0,x0: the signed order)
+        neg     a
+        add     #>$62c3ca,a             ; A/2 = 0.7716
+        move    a,x0
+        mpy     x0,y1,a                 ; s/2 (x0,y1: x may be negative)
+        asl     #$1,a,a
         rts
 
 ; ---------------------------------------------------------------------------

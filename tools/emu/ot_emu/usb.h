@@ -35,7 +35,7 @@
 // on `UsbDevice::command`. ⚠️ Not modelled: timing. A lock-step emulator
 // serialises the host's polls, the frame interrupt and the eDMA, so a race
 // between the USB-audio producer and the read-back bank swap cannot show
-// here (CLAUDE.md, instrument blindness). Bytes, descriptors, hooks and
+// here (AGENTS.md, instrument blindness). Bytes, descriptors, hooks and
 // crashes from a bad queue head can.
 #pragma once
 
@@ -100,6 +100,9 @@ namespace ot
 		//   out <ep> [<hex>]   OUT transfer (bytes, or a ZLP) to EP n    -> out <ep> <count>|stall
 		//   reset              bus reset (URI + PCI, address cleared)    -> ok
 		//   speed hs|fs        the port speed PORTSC1 reports            -> ok
+		//   isohz <hz>         the isochronous poll rate the endpoint's
+		//                      bInterval sets (0: 4000 at high speed,
+		//                      1000 at full, the audio default)       -> ok
 		// `in`/`out` answer when the transfer completes, which may be after
 		// the guest primes the endpoint -- one outstanding op per endpoint
 		// direction. Replies go to `_reply`.
@@ -116,14 +119,16 @@ namespace ot
 		bool takeRequest(Request& _out);
 		void answerRequest(const std::string& _reply) { reply(_reply); }
 
-		// The host's isochronous poll, once per 500 us of DEVICE time (the
-		// bInterval-3 high-speed schedule): a pending IN on an isochronous
+		// The host's isochronous poll, once per isoPollHz() of DEVICE time
+		// (the audio endpoint's schedule: bInterval 2 at high speed, 250 us;
+		// bInterval 1 at full speed, 1 ms): a pending IN on an isochronous
 		// endpoint is served now if a packet is primed, else answered empty
 		// -- the zero-length packet a real host gets, an underrun the guest
 		// can count. A bulk IN is served the moment it can be (tryAll);
 		// an isochronous one only here, so a host script that polls as fast
 		// as the socket allows still drains at the device's own rate.
-		void isoPoll();
+		bool isoPoll();		// true when an enabled isochronous IN found no request waiting
+		double isoPollHz() const { return m_isoHz > 0 ? m_isoHz : m_speedHs ? 4000.0 : 1000.0; }
 		bool isIso(int _ep, bool _in) const;
 
 		// The host's start-of-frame, raised by the run loop per audio block
@@ -132,7 +137,10 @@ namespace ot
 		void sof();
 
 		// -- diagnostics -------------------------------------------------------
-		struct Stats { uint64_t setups = 0, ins = 0, outs = 0, bytesIn = 0, bytesOut = 0, sofs = 0, primes = 0, stalls = 0, badQh = 0; };
+		// isoMissed: polls of an enabled isochronous IN endpoint that found no
+		// IN request from the bench host waiting -- device time the host did
+		// not keep up with, which a real host's schedule never loses.
+		struct Stats { uint64_t setups = 0, ins = 0, outs = 0, bytesIn = 0, bytesOut = 0, sofs = 0, primes = 0, stalls = 0, badQh = 0, isoMissed = 0; };
 		const Stats& stats() const { return m_stats; }
 		bool running() const { return (m_regs[R_USBCMD / 4] & 1) != 0; }
 		uint32_t reg(uint32_t _off) const { return m_regs[_off / 4]; }
@@ -162,6 +170,7 @@ namespace ot
 		std::array<uint32_t, g_size / 4> m_regs = {};
 		uint32_t m_otgscIs = 0;				// the latched BSVIS
 		bool m_speedHs = true;
+		double m_isoHz = 0;					// isohz: 0 = by speed
 		bool m_hwFaithful = true;
 		std::array<uint32_t, 2 * g_endpoints> m_curTd = {};	// ep + 4*dir
 		std::array<InOp, g_endpoints> m_in;

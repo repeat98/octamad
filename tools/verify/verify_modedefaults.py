@@ -53,7 +53,10 @@ def expect_view(mod, mode):
 
 def run_port(image, card, set_name, name, track, call, dump, log):
     cmd = [str(EMU), "--image", str(image), "--card", str(card), "--set", set_name, "--project", name,
-           "--mount", "--load-ms", "20000", "--poke-early", f"0x80000000={track}", "--call", call,
+           "--mount", "--load-ms", "90000",
+           # both current-track bytes, as a track key moves them: Octakit's editor
+           # wrapper halts when the engine's (0x80000000) and the UI's (0x100b14cc) differ
+           "--poke-early", f"0x80000000={track};0x100b14cc={track}", "--call", call,
            "--mem-dump", f"{LANES:#x},576={dump}"]
     with open(log, "w") as f:
         f.write(" ".join(cmd) + "\n"); f.flush()
@@ -65,7 +68,7 @@ def run_port(image, card, set_name, name, track, call, dump, log):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("remix", nargs="?", default=registry.DEFAULT_REMIX)
+    ap.add_argument("remix", nargs="?", default=os.environ.get("REMIX"))
     ap.add_argument("--project", default=os.environ.get("OT_PROJECT", ""))
     ap.add_argument("--set-name", default="OCTABAM")
     ap.add_argument("--name", default="MODEDEF")
@@ -162,8 +165,8 @@ def main():
             ok = got == want
             print(f"  [{'ok' if ok else 'FAIL'}]   slot {slot:2d} {m.params[slot].name.decode():4s} untouched = {got} (default {want})")
             fails += not ok
-    # ---- the MIDI path: CC PAGE 2's cave calls the unit after its write --------
-    if "CC PAGE 2" in remix.modules and cases:
+    # ---- the MIDI path: CC MAP's cave calls the unit after its write --------
+    if "CC MAP" in remix.modules and cases:
         kind, k, m = cases[0]
         t = tracks[kind]
         slot2 = m.mode_slot - 6
@@ -175,7 +178,7 @@ def main():
             midi.write_text(f"40 B{chan:X} {cc:02X} {want_mode:02X}\n")
             dump, log = OUT / f"cc_{kind}_lanes.bin", OUT / f"cc_{kind}_port.txt"
             cmd = [str(EMU), "--image", str(image), "--card", str(card), "--set", a.set_name, "--project", a.name,
-                   "--mount", "--load-ms", "20000", "--sequencer", "--internal-clock", "--frames", "120",
+                   "--mount", "--load-ms", "90000", "--sequencer", "--internal-clock", "--frames", "120",
                    "--midi", str(midi), "--mem-dump", f"{LANES:#x},576={dump}"]
             with open(log, "w") as f:
                 f.write(" ".join(cmd) + "\n"); f.flush()
@@ -186,7 +189,7 @@ def main():
             got_mode = lane[PAGE2[kind] + slot2]
             view = expect_view(m, got_mode) if got_mode == want_mode else None
             ok = view is not None
-            print(f"  [{'ok' if ok else 'FAIL'}] {k} T{t + 1}: CC {cc} = {want_mode} over MIDI IN -> MODE {got_mode} (CC PAGE 2's cave calls the unit)")
+            print(f"  [{'ok' if ok else 'FAIL'}] {k} T{t + 1}: CC {cc} = {want_mode} over MIDI IN -> MODE {got_mode} (CC MAP's cave calls the unit)")
             fails += not ok
             if ok:
                 for slot, val in sorted(view.defaults.items()):

@@ -1,0 +1,221 @@
+#!/usr/bin/env python3
+"""TEMPO BUS under the port: the TEMPO key opens the bus screen, the knobs
+edit the hosts, the window closes clean.
+
+    python3 tools/verify/verify_tempobus.py bottleservice     # after verify_set
+    OT_PROJECT=<dir> make check REMIX=bottleservice            # the same, from make verify
+
+Boots the image and card verify_set staged (out/setverify/image.bin,
+card.img), drives the panel through `ot_emu --live` (key and encoder events
+on the panel link), dumps RAM at the end and checks:
+
+  window   TEMPO opens a 118 x 64 window (the menu window's size)
+  delay    rows MODE TIME WET TONE FDBK PING SIZE SCTR DENS PTCH, a mode's
+           --- slots left out. Row 0 MODE: A to 0 then +2 (REVERSE; with
+           MODE DEFAULTS its view: TIME, page-2 slot 11 = 20); row 2 WET,
+           A to 0 then +9 -> page-1 flat 29 = 9; row 4 FDBK, B to 0 then +5
+           -> flat 26 = 5; row 5 is SLEN with PING left out, B to 0 then +1
+           -> page-2 slot 3 = 1, PING (flat 28) stays 0
+  reverb   rows MODE TIME WET TONE SIZE DLY SHMR SHFT DIFF GATE. RIGHT: its
+           own cursor, row 0; UP held there; row 4 SIZE, B to 0 then +7 ->
+           flat 26 = 7; row 5 DLY, A to 0 then +11 -> page-2 slot 10 = 11;
+           row 1 TIME, A to 0 then +5 -> page-2 slot 11 = 5
+  tempo    LEVEL to the 30.0 floor and +5, then FUNC + LEVEL +3 -> 35.3 BPM
+           (project tempo 0x80000020 = BPM x 24; skipped while the pattern
+           tempo is on)
+  close    after TEMPO again the window handle is 0 and no input layer in
+           the list lies inside the module's code
+  run      the port ends on `quit`, not on a fault
+
+Writes out/tempobus/screen.png (the window before it closes is not kept;
+the last frame drawn is rendered from the second, reopened window).
+SKIPs without the port, without verify_set's staged card, or when the
+remix does not carry TEMPO BUS. What it cannot see: the LCD composition
+(the window planes are rendered from RAM), the MKII keymap (the port
+boots the MKI one; TEMPO, LEFT and RIGHT are the same codes in both).
+"""
+import os, pathlib, re, struct, subprocess, sys, tempfile, time, zlib
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
+from remix import registry  # noqa: E402
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+EMU = ROOT / "out/emu/ot_emu"
+SET = ROOT / "out/setverify"
+OUT = ROOT / "out/tempobus"
+WINH, LAYERS = 0x460d16a0, 0x460d165c
+TABLE, STRIDE, PLANES = 0x46c7d34c, 56, 0x460d1f7b
+LIVEB = 0x80000810
+DUMP_BASE, DUMP_LEN = 0x460d0000, 0xbb0000
+ROM_BASE, ROM_LEN = 0x400b0000, 0x28000        # the stock layers and ours live here
+KEY_TEMPO, KEY_NO, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_FUNC = 0x18, 0x32, 0x21, 0x33, 0x20, 0x2d
+TEMPO = 0x80000020
+
+
+def png(path, w, h, px, scale=4):
+    rows = []
+    for y in range(h * scale):
+        row = bytearray([0])
+        for x in range(w * scale):
+            row += b"\xe8\xf0\x60" if px[y // scale][x // scale] else b"\x1c\x24\x10"
+        rows.append(bytes(row))
+    def chunk(t, d):
+        return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
+    path.write_bytes(b"\x89PNG\r\n\x1a\n"
+                     + chunk(b"IHDR", struct.pack(">IIBBBBB", w * scale, h * scale, 8, 2, 0, 0, 0))
+                     + chunk(b"IDAT", zlib.compress(b"".join(rows))) + chunk(b"IEND", b""))
+
+
+def main():
+    remix = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("REMIX")
+    mods = registry.remix(remix).modules
+    if "TEMPO BUS" not in mods:
+        print(f"  [SKIP] verify_tempobus: {remix} does not carry TEMPO BUS")
+        return 0
+    if not EMU.exists():
+        print("  [SKIP] verify_tempobus: the ColdFire port is not built (make emu-cf)")
+        return 0
+    image, card = SET / "image.bin", SET / "card.img"
+    if not (image.is_file() and card.is_file()):
+        print("  [SKIP] verify_tempobus: no staged card (run verify_set with OT_PROJECT first)")
+        return 0
+    first = (SET / "port.txt").read_text().split("\n", 1)[0]
+    setname = re.search(r"--set (\S+)", first).group(1)
+    name = re.search(r"--project (\S+)", first).group(1)
+    OUT.mkdir(parents=True, exist_ok=True)
+    work = pathlib.Path(tempfile.mkdtemp(prefix="tempobus."))
+    run_card = work / "card.img"
+    run_card.write_bytes(card.read_bytes())
+    fifo = work / "live"
+    os.mkfifo(fifo)
+    dump, lanes, rom, log = work / "ram.bin", work / "lanes.bin", work / "rom.bin", OUT / "port.txt"
+    tmp = work / "tempo.bin"
+    cmd = [str(EMU), "--image", str(image), "--card", str(run_card), "--set", setname,
+           "--project", name, "--load-ms", "90000", "--live", str(fifo),
+           "--mem-dump", f"{DUMP_BASE:#x},{DUMP_LEN:#x}={dump};{LIVEB:#x},0x240={lanes};{TEMPO:#x},8={tmp};"
+                         f"{ROM_BASE:#x},{ROM_LEN:#x}={rom}"]
+    with open(log, "w") as lf:
+        proc = subprocess.Popen(cmd, cwd=ROOT, stdout=lf, stderr=subprocess.STDOUT)
+        fd = os.open(fifo, os.O_WRONLY)
+        for _ in range(3000):
+            if "live       : reading panel" in log.read_text():
+                break
+            if proc.poll() is not None:
+                break
+            time.sleep(0.1)
+        time.sleep(2)
+
+        def send(line, pause=0.2):
+            os.write(fd, (line + "\n").encode())
+            time.sleep(pause)
+
+        def key(code, pause=0.6):
+            send(f"key {code:#x} down", 0.1)
+            send(f"key {code:#x} up", pause)
+
+        key(KEY_NO, 1.0)                                  # the boot's date prompt
+        key(KEY_TEMPO, 1.0)
+        # rows (26 Sep 2026): MODE TIME WET TONE in both boxes, then each
+        # engine's own (delay FDBK PING SIZE SCTR DENS PTCH, reverb SIZE DLY
+        # SHMR SHFT DIFF GATE); DEL and REV are the host pages', and a mode's
+        # --- slots are left out
+        send("enc 0 -5"); send("enc 0 2", 0.6)            # row 0 MODE: A to REVERSE (its view)
+        key(KEY_DOWN, 0.3); key(KEY_DOWN, 0.3)            # row 2: WET
+        send("enc 0 -64"); send("enc 0 -64"); send("enc 0 9", 0.6)
+        key(KEY_DOWN, 0.3); key(KEY_DOWN, 0.3)            # row 4: FDBK
+        send("enc 1 -64"); send("enc 1 -64"); send("enc 1 5")
+        key(KEY_DOWN, 0.3)                                # row 5: SLEN, REVERSE's --- PING left out
+        send("enc 1 -64"); send("enc 1 -64"); send("enc 1 1", 0.6)
+        key(KEY_RIGHT)                                    # reverb: its own cursor, row 0 (MODE)
+        key(KEY_UP, 0.3)                                  # UP at row 0: held there
+        for _ in range(4):
+            key(KEY_DOWN, 0.3)                            # row 4: SIZE
+        send("enc 1 -64"); send("enc 1 -64"); send("enc 1 7", 0.6)
+        key(KEY_DOWN, 0.3)                                # row 5: DLY
+        send("enc 0 -64"); send("enc 0 -64"); send("enc 0 11", 0.6)
+        for _ in range(4):
+            key(KEY_UP, 0.3)                              # row 1: TIME
+        send("enc 0 -64"); send("enc 0 -64"); send("enc 0 5", 0.6)
+        send("enc 6 -128"); send("enc 6 -128")            # LEVEL: to the 30.0 floor
+        send("enc 6 5", 0.4)                              # LEVEL: +5 BPM
+        send(f"key {KEY_FUNC:#x} down", 0.2)
+        send("enc 6 3", 0.4)                              # FUNC + LEVEL: +0.3 BPM
+        send(f"key {KEY_FUNC:#x} up", 0.6)
+        key(KEY_TEMPO, 1.0)                               # close
+        send("quit", 1.0)
+        os.close(fd)
+        proc.wait(timeout=600)
+    text = log.read_text()
+
+    fails = 0
+    def check(label, ok, detail=""):
+        nonlocal fails
+        fails += 0 if ok else 1
+        print(f"  [{'ok' if ok else 'FAIL'}] {label}{'  ' + detail if detail else ''}")
+
+    check("run: the port ended on quit", "ended on quit" in text,
+          re.search(r"live       : .*ended .*", text).group(0) if "ended" in text else "no end line")
+    ram, lane, romb = dump.read_bytes(), lanes.read_bytes(), rom.read_bytes()
+
+    def rd(a, n):
+        if ROM_BASE <= a < ROM_BASE + ROM_LEN:
+            return romb[a - ROM_BASE:a - ROM_BASE + n]
+        return ram[a - DUMP_BASE:a - DUMP_BASE + n]
+    u32 = lambda a: struct.unpack(">I", rd(a, 4))[0]
+
+    # the host tracks: the part's live FX2 ids as verify_set dumped them
+    idb = (SET / "ids.bin").read_bytes()
+    fx2 = list(idb[8:16])
+    dly = next((t for t, v in enumerate(fx2) if v == registry.by_key("DELAY SERVER").menu.fx2_id), None)
+    vrb = next((t for t, v in enumerate(fx2) if v == registry.by_key("REVERB SERVER").menu.fx2_id), None)
+    L = lambda t, o: lane[t * 72 + o]
+
+    # the screen as it stood at the last draw: the plane is kept after the close
+    for i in range(5):
+        e = TABLE + i * STRIDE
+        w, h = struct.unpack(">ii", rd(e + 36, 8))
+        if (w, h) == (118, 64):
+            col = 8
+            px = [[0] * w for _ in range(h)]
+            for x in range(w):
+                bits = int.from_bytes(rd(PLANES + i * 0x400 + x * col, col), "big")
+                for y in range(h):
+                    px[h - 1 - y][x] = (bits >> (63 - y)) & 1
+            png(OUT / "screen.png", w, h, px)
+    check("window: TEMPO opened a 118 x 64 window", (OUT / "screen.png").is_file(),
+          str(OUT / "screen.png"))
+    if dly is None or vrb is None:
+        check("hosts: the staged part hosts BusDelay and BusVerb", False, f"FX2 ids {fx2}")
+    else:
+        check(f"delay: FDBK (T{dly + 1} page-1 flat 26) = 5", L(dly, 26) == 5, f"{L(dly, 26)}")
+        check(f"delay: MODE (T{dly + 1} page-2 slot 0) = 2, REVERSE", L(dly, 0x38) == 2, f"{L(dly, 0x38)}")
+        check(f"delay: row 2 set WET (page-1 flat 29) = 9", L(dly, 29) == 9, f"{L(dly, 29)}")
+        check(f"delay: REVERSE's --- PING left out, row 5 set SLEN (page-2 slot 3) = 1, PING stays 0",
+              L(dly, 0x3b) == 1 and L(dly, 28) == 0, f"SLEN {L(dly, 0x3b)}, PING {L(dly, 28)}")
+        if "MODE DEFAULTS" in mods:
+            check(f"delay: REVERSE's view landed (TIME, page-2 slot 11 = 20)", L(dly, 0x3d) == 20, f"{L(dly, 0x3d)}")
+        check(f"reverb: TIME (T{vrb + 1} page-2 slot 11) = 5, row 1", L(vrb, 0x3d) == 5, f"{L(vrb, 0x3d)}")
+        check(f"reverb: DLY (T{vrb + 1} page-2 slot 10) = 11, row 5", L(vrb, 0x3c) == 11, f"{L(vrb, 0x3c)}")
+        check(f"reverb: SIZE (T{vrb + 1} page-1 flat 26) = 7, row 4", L(vrb, 26) == 7, f"{L(vrb, 26)}")
+    traw, ptn = struct.unpack(">I", tmp.read_bytes()[:4])[0], tmp.read_bytes()[4]
+    if ptn:
+        print("  [SKIP] tempo: the pattern tempo is on")
+    else:
+        check("tempo: LEVEL floor +5, FUNC + LEVEL +3 -> 35.3 BPM",
+              traw // 24 == 35 and traw % 24 != 0, f"raw {traw} = {traw / 24:.2f} BPM")
+    check("close: the TEMPO window handle is 0", u32(WINH) == 0, f"{u32(WINH):#x}")
+    node, inside, walked = u32(LAYERS), [], 0
+    while node and walked < 32:
+        if 0x400d64e0 <= node < 0x400d6b00:          # the tempobus unit
+            inside.append(node)
+        node = u32(node) if (DUMP_BASE <= node < DUMP_BASE + DUMP_LEN
+                             or ROM_BASE <= node < ROM_BASE + ROM_LEN) else 0
+        walked += 1
+    check("close: no input layer from the module is left registered", not inside,
+          ", ".join(f"{n:#x}" for n in inside))
+    print(f"verify_tempobus: {fails} failure(s)")
+    return 1 if fails else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

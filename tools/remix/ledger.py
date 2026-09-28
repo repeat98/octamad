@@ -23,7 +23,7 @@ Checked, and how it knows:
   stock buffers      declared (Claims.stock_instance_buffer). A stock effect
                      that takes an instance buffer from the host's bump
                      allocator gets a per-track base -- the addresses
-                     BusVerb, Nimbus and BusDelay hardcode -- and the chooser
+                     BusVerb and BusDelay hardcode -- and the chooser
                      is one list for all eight tracks, so the build cannot
                      know which track it lands on. Refused beside any module
                      with fixed Y buffers.
@@ -126,6 +126,24 @@ def check(selected) -> list[str]:
                   f"0x{m.menu.fx2_id:02x}")
         ids[m.menu.fx2_id] = m.name
 
+    # ---- bridges: what they stand in for must be there ---------------------
+    keys = {m.key for m in selected}
+    for m in selected:
+        for need in getattr(m, "requires", ()):
+            if need not in keys:
+                problems.append(f"{m.name} requires {need} in the remix (its overrides "
+                                f"leave a site with nothing at it otherwise)")
+
+    # ---- Part-window bytes (Claims.part_window) -----------------------------
+    regions: list[tuple[int, int, str, str]] = []
+    for m in selected:
+        for off, length, what in (m.claims.part_window if m.claims else ()):
+            for o2, l2, owner, w2 in regions:
+                if _overlap(o2, l2, off, length):
+                    clash("Part window", f"{owner}'s {w2}", f"{m.name}'s {what}",
+                          f"bytes +0x{max(o2, off):05x}.. of every Part")
+            regions.append((off, length, m.name, what))
+
     # ---- ColdFire caves and hook sites ------------------------------------
     caves: list[tuple[int, int, str, str]] = []
     hooks: dict[int, str] = {}
@@ -201,7 +219,7 @@ def check(selected) -> list[str]:
     # A FLOATING emit cave's poke ADDRESSES do not depend on where the cave
     # lands -- only the values written do -- so it is evaluated at a probe
     # address purely to learn its sites. Until it was skipped,
-    # and the matrix said Octakit and CC PAGE 2 compose while the build
+    # and the matrix said Octakit and CC MAP compose while the build
     # refused them: both rewrite the MIDI control-parameter dispatch entry
     # at 0x400d64a0 (her seven midi-control-parameter writes, its repoint).
     PROBE_ADDR = 0x400D7000
@@ -308,8 +326,8 @@ def check(selected) -> list[str]:
     # ---- the per-core FX2 instance buffer region --------------------------
     # Y:0x4000-0xBFFF is TWO FX2 instance slots of 16,384 words, per core and
     # not per instance in any sense a module can rely on: BusVerb hardcodes
-    # its tank there and Nimbus hardcodes its granular line there, so two of
-    # them on one core write over each other. Each works perfectly alone.
+    # its tank there, and a second module with fixed buffers there writes
+    # over it. Each works perfectly alone.
     # Declared rather than scanned -- see Claims.owns_fx2_buffers for why a
     # scan cannot tell an address from a mask.
     # Per CORE: two owners on DIFFERENT payloads never meet (BusVerb's tank
@@ -346,7 +364,6 @@ def check(selected) -> list[str]:
     #   BusVerb   all four of its core's -- tank in tracks 1-2's slots,
     #              relocated buffers in tracks 3-4's. No track on that core
     #              can host an allocating stock effect.
-    #   Nimbus     tracks 1-2's slots of whichever core hosts it.
     #   BusDelay  tracks 3-4's (its lines are based at 0x38000/0x3c000), so
     #              on ITS core an allocating stock effect is safe on tracks
     #              1-2 and collides on 3-4.

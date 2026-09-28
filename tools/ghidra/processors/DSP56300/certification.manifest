@@ -1,0 +1,13 @@
+##VERSION: 2.0
+Module.manifest||GHIDRA||||END|
+README.md||GHIDRA||||END|
+data/languages/dsp56300.cspec||GHIDRA||||END|
+data/languages/dsp56300.ldefs||GHIDRA||||END|
+data/languages/dsp56300.pspec||GHIDRA||||END|
+data/languages/dsp56300.sinc||GHIDRA||||END|
+data/languages/dsp56300.sinc.in||GHIDRA||||END|
+data/languages/dsp56300.slaspec||GHIDRA||||END|
+data/languages/dsp56300_modulo.slaspec||GHIDRA||||END|
+data/languages/dsp56300_np.sinc.in||GHIDRA||||END|
+data/languages/dsp56300_root.sinc.in||GHIDRA||||END|
+tools/gen_sinc.py||GHIDRA||||END|

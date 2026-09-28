@@ -3,7 +3,7 @@
 A module is one contribution: a DSP effect, a bus client, a ColdFire
 behaviour patch, or a combination. A remix is a named selection of modules
 composed into one image. `make modules` prints what exists; `make bus
-REMIX=<name>` builds a selection. `CLAUDE.md` lists the traps; the ones a
+REMIX=<name>` builds a selection. `AGENTS.md` lists the traps; the ones a
 new module can walk into are repeated here where they apply.
 
 Decide first which kind you are writing.
@@ -11,7 +11,7 @@ Decide first which kind you are writing.
 - An **insert** processes its own track's frames in place: no bus role, no
   shared-window claim, placed in both payloads, runnable on any track and
   several at once. `bus_role=BusRole.NONE`, `ybase=YBase.NEVER`, and most
-  of the hazards below do not apply. `modules/hello/` is the worked example.
+  of the hazards below do not apply. `modules/character/` is the worked example.
 - A **server** owns a bus accumulator, is bank-bound to one core, and takes
   part in the rotation, the housekeeping election and the auto-gain. There
   are two; `docs/effects/XBUS.md`.
@@ -19,43 +19,41 @@ Decide first which kind you are writing.
 - A **ColdFire module** changes what the firmware does (parts, kits, menus,
   MIDI, bug fixes) and touches no audio; midisc (`modules/midi-scenes`)
   and Octakit (`modules/octakit`) are this shape. Skeleton
-  `modules/_template_cf/`, minimal example `modules/hello-dram/`, section
+  `modules/_template_cf/`, worked example `modules/repitch/`, section
   "Declaring a ColdFire module" below; `docs/remixer/PLACEMENT.md` says
   where the bytes land.
 
-## The worked example: HELLO WORLD
+## The worked example: CHARACTER
 
-`modules/hello/` is a linear volume knob: one page-1 knob, 27 words of DSP,
-stateless.
+`modules/character/` is an in-place insert: seven knobs, no bus role, no
+buffer, both payloads, any track.
 
 ```
-modules/hello/manifest.py    the declaration -- one knob, one donor, one id
-modules/hello/gain.asm       the engine -- init, proc, in place, 27 words
-modules/hello/README.md      status, measured vs inferred, what is open
-remixes/hello.py             the remix: HELLO WORLD alone
-tools/verify/verify_hello.py render gates with exactly predictable arithmetic
+modules/character/manifest.py      the declaration -- knobs, donor, id, ModeViews
+modules/character/character.asm    the engine -- init, proc, in place
+modules/character/README.md        status, measured vs inferred, what is open
+remixes/bottleservice/remix.py     a remix that carries it (FX1 and FX2)
+tools/verify/verify_character.py   render gates against a float reference
 ```
 
 ```bash
-make check REMIX=hello
-python3 tools/remix/audition.py hello out/dry/drums_110.wav GAIN=64
-python3 tools/verify/verify_hello.py            # ALL GATES PASSED, 0 LSB
+make check REMIX=bottleservice
+python3 tools/remix/audition.py character out/dry/drums_110.wav DRV=64
+python3 tools/verify/verify_character.py
 ```
 
 `modules/_template/` is the skeleton to copy: a manifest with every field
 commented and nothing else.
 
-`verify_hello.py` drives the effect with a full-scale bipolar ramp and
-asserts the output exactly: unity at GAIN=127 is bit-identical, GAIN=0 is
-all zero, every intermediate gain is `(in × g) >> 23` to 0 LSB; the
-negative half of the ramp proves the `mpy` did not become an `mpysu`. Give
-your module one gate whose answer you can compute by hand.
+Give your module one gate whose answer you can compute by hand: drive
+both signs of a full-scale signal (the negative half proves an `mpy` did
+not become an `mpysu`), predict the arithmetic, assert to the LSB.
 
 Make the gate name the effect it measures: an id the image does not
 implement aliases to the fallback, and dsp_host renders a plausible dry
-passthrough that a unity gate passes. `verify_hello.py` reads the id and
-the knob slot out of the manifest and refuses if they resolve to SEND's
-entry points.
+passthrough that a unity gate passes. Read the id and the knob slots out
+of the manifest and refuse if they resolve to SEND's entry points
+(`verify_character.py` does).
 
 ## The shape of a module
 
@@ -72,9 +70,58 @@ exports a `MODULE`; directories starting with `_` are skipped.
 `tools/remix/schema.py` is the vocabulary; its comments carry the reasoning
 behind each field.
 
+Five fields are the README's module table, rendered by `make docs`
+(`tools/remix/index.py --write`) and held current by `verify_docs`:
+
+```python
+    category=Category.TRACK,            # BUS, TRACK, MACHINES, PARTS, MIDI_USB, FIXES, REFERENCE
+    author="repeat98", author_url="https://github.com/repeat98",
+    proof=Proof.RENDER,                 # CHECK, RENDER, PORT, HARDWARE
+    proof_note="its own render gates; not on hardware",   # the unit, image, date; or the gate
+```
+
+`category` is where the module sits in the table, the index and the
+remixer's AVAILABLE pane. `proof` is the vocabulary of the last column:
+`CHECK` builds and boots under the port, `RENDER` was heard or measured
+locally and never flashed, `PORT` has a gate under the ColdFire port that
+pins its behaviour, `HARDWARE` ran on a unit. The selftest refuses a
+module without all of them. A module whose manifest is executed from an
+author's repository adds them with `dataclasses.replace` (`modules/synth`).
+
+Two more fields are the checks. `gates` names the verifiers `make check`
+runs when a remix carries the module, and `dear` its dearest knob
+settings:
+
+```python
+    gates=(Gate("tools/verify/verify_character.py", remix_arg=False),),
+    dear={"DRV": 127, "FOLD": 127, "COMP": 127, "MIX": 127, "WDTH": 127, "SAT": 0},
+```
+
+`tools/verify/module_gates.py` collects the selection's gates, runs each
+script once (two modules naming one gate share it) with `REMIX` and
+`BUILD` exported, the remix name as `argv[1]` when `remix_arg` is set,
+and `.venv/bin/python3` when `venv` is set and the venv exists. An
+`"isolated"` gate (the default) builds its own scratch image or none and
+runs before the selected image is restored; an `"image"` gate reads
+`out/mainos_bus.bin` and runs after `make bus` and the shared set gates
+(`verify_tempobus` reads the card `verify_set` staged). A script that
+does not exist fails; the shared gates (the ledger selftest, the menu,
+the dirty-state render, the docs, the knob census, the set under the
+port) stay in the Makefile. Until 27 Sep 2026 the Makefile listed every
+module's verifier by hand, each one written to SKIP when the remix
+lacked its module.
+
+`dear` is every knob at its dearest setting, by the Param's own name: the
+mode the pricer calls the worst loop, knobs that gate work (a send at 0
+registers nothing, MIX 0 short-circuits a stage) at their maximum. The
+pressure render and the stress fixture read it; `make accept` is blocked,
+by name, for a remix with a DSP module that has none. The schema checks
+each name against `params` when the manifest loads, so a knob rename
+refuses the build rather than failing a fixture after the merge.
+
 `make remix` opens the remixer (`tools/remix/app.py`, Textual, provisioned
 by `make emu-setup`; manual `docs/remixer/REMIXER.md`). It derives a
-category and a track range for every module (`tools/remix/rig.py`):
+placement role and a track range for every module (`tools/remix/rig.py`):
 
 - **bus effect** (`harness.is_server`): one payload, declared in
   `dsp.payloads`; payload A serves tracks 5-8, payload B tracks 1-4
@@ -195,7 +242,7 @@ A multi-mode effect reuses its knobs. Declare the difference:
 mode_slot=7,                       # which slot carries the MODE select
 mode_views=(
     ModeView(mode=0, defaults={0: 40, 1: 60}),          # CLEAN
-    ModeView(mode=1, names={6: b"SCAT", 8: b"DENS"},    # GRAIN
+    ModeView(mode=1, names={6: b"SCTR", 8: b"DENS"},    # GRAIN
              defaults={0: 36, 6: 40, 8: 127}),
 ),
 ```
@@ -206,8 +253,8 @@ operator arrives at this mode.
 
 | | the remixer | the unit |
 |---|---|---|
-| `names` | the UNIT pane's rows follow the current MODE (`Module.knob_map_in`); `send_probe --set SCAT=40` resolves the alias | `tools/build/mode_names.py` emits a MODE formatter that rewrites the descriptor's name fields before printing its own word |
-| `defaults` | applied the moment MODE changes | `modules/mode-defaults` (in the rig): the FX1 and FX2 page-2 editors are detoured, and a MODE turned on the panel writes the view -- page 1 through the stock page-1 writer, page 2 with the editor's own stores; without the module, `stamp-defaults` writes them; a MODE over CC PAGE 2 goes through the same unit (the cave calls it) |
+| `names` | the UNIT pane's rows follow the current MODE (`Module.knob_map_in`); `send_probe --set SCTR=40` resolves the alias | `tools/build/mode_names.py` emits a MODE formatter that rewrites the descriptor's name fields before printing its own word |
+| `defaults` | applied the moment MODE changes | `modules/mode-defaults` (in the rig): the FX1 and FX2 page-2 editors are detoured, and a MODE turned on the panel writes the view -- page 1 through the stock page-1 writer, page 2 with the editor's own stores; without the module, `stamp-defaults` writes them; a MODE over CC MAP goes through the same unit (the cave calls it) |
 
 The unit half needs no new hook: a descriptor carries its twelve parameter
 names as 12 × 6 bytes at `E+0x4e`, the clones are writable RAM, and every
@@ -268,15 +315,14 @@ instance). The build writes its list row and cursor position;
 `verify_menu` checks that its descriptor and id entry are byte-identical to
 stock. A stock effect a remix leaves out is left alone entirely: an old
 project that selects it still runs it, it just has no row.
-`remixes/restock.py` is the fourteen.
+`remixes/restock/remix.py` is the fourteen.
 
 Two rules, both enforced:
 
 - **Four stock effects allocate an instance buffer**: SPATIALIZER, FLANGER,
   CHORUS, COMB read `X:0x213` at init (measured by scanning the payload
   disassembly). The allocator hands out a base per track slot, and those
-  bases are the addresses BusVerb's tank, Nimbus's line and BusDelay's line
-  hardcode; the chooser is one list for all eight tracks, so an image cannot
+  bases are the addresses BusVerb's tank and BusDelay's line hardcode; the chooser is one list for all eight tracks, so an image cannot
   keep them apart. The ledger refuses the pair
   (`Claims.stock_instance_buffer` against any module with
   `owns_fx2_buffers` or a non-`NEVER` `ybase`). All four are legal in an
@@ -371,7 +417,7 @@ dsp=DspSection(
   spelled `$30000`, and the literal is censused.
 - **`ptable`**: a tuple of words the build parks in the stock curve bank
   (X:0x4840) and points the source's `$fab1e0` literal at.
-- **Program space is per core.** `make bus` prints the live ledger.
+- **Program space is per core.** `make bus REMIX=<name>` prints the live ledger.
 
 ## Declaring a ColdFire module
 
@@ -422,8 +468,10 @@ author's ROM layout byte for byte. A module whose DRAM is its own (a
 calls `fn(modules)` (the remix's modules by key), writes the text it
 returns beside the unit as `remix.inc`, and the source reaches it with
 `.include "remix.inc"` (`modules/mode-defaults`: the view table of every
-module in the image; `modules/usbmidi`: the USB configuration descriptors,
-grown with the audio function when USB AUDIO is in the remix). Works for
+module in the image; `modules/usb-midi`: the USB configuration descriptors,
+grown with the audio function when a USB AUDIO module is in the remix, with
+that module's channel count; `modules/usb-audio-*`: the layout `.set` that
+picks which of three builds of one source the unit is). Works for
 both forms since 25 Sep 2026.
 
 DRAM units are assembled for the chip itself (`-mcpu=54455`, ISA C):
@@ -528,7 +576,7 @@ example of every item.
 - **Serialized meanings.** Parts and locks store the bytes. Append enum
   values; never insert. A slot whose meaning changes is a data migration
   even when the image loads: test old bytes across their full range, not
-  the old default (`CLAUDE.md`, the MODE re-slot stall).
+  the old default (`AGENTS.md`, the MODE re-slot stall).
 - **Hooking the stock delay routine** means keeping its protocol: the
   scratch toggle at `0x40003624`, the state iterator `0x80006180 += 68`,
   a byte-for-byte fallback for every other id, and no ring sample held
@@ -552,6 +600,72 @@ example of every item.
   pads a `-Ttext` that is 2 mod 4 with a leading `nop`. Both are correct
   code and both break a byte-identity oracle; midisc's `gas_port.py` emits
   the six-byte words and strips the pad.
+
+## Settings on the card
+
+Three kinds of state, three homes:
+
+| state | where it lives | who formats it |
+|---|---|---|
+| an effect's twelve parameters | the Part (`docs/firmware/PARAM_PAGES.md`); a saved Part feeds a new layout its old bytes, and a value outside its count stalls the sequencer (`tools/hw/ot_project.py stamp-defaults`) | the descriptor |
+| personal material: Kits, grooves, presets, anything a musician would copy to another project on its own | files the module owns, beside the stock project files | the module |
+| the module's settings: how it behaves or looks (a checkbox, a menu option, a USB profile) | today: nowhere, or a private file (Octakit's Kits carry their own; octalab writes `octalab_grooves.map` and `octalab_generators.map`, "OTGM" v1). Proposed: one shared store per project, OTX | the shared core |
+
+OTX is specified in nordseele's
+[`docs/proposals/OTX_PROJECT_PROPOSAL.md`](../proposals/OTX_PROJECT_PROPOSAL.md)
+(draft 2, 26 Sep 2026; the format and the precedence) and
+[`docs/proposals/OTX_MODULE_GUIDELINES.md`](../proposals/OTX_MODULE_GUIDELINES.md)
+(what an author declares; the same texts are published in nordseele/octalab `docs/`). Nothing of it is implemented on 27 Sep 2026;
+the manifest API below is the proposal's illustration, not
+`tools/remix/schema.py`.
+
+What it fixes: `<set>/<project>/otx.work` (working) and `otx.strd`
+(written by SAVE PROJECT, read by RELOAD) hold every module's record in
+one file, `OTX1` magic, big-endian, records of typed TLVs, CRC-32 over
+the file and each payload. A firmware without a module skips that
+module's record on load and writes it back byte for byte on save; a
+newer minor's unknown keys get the same. An optional card-root UNIT file
+takes card-wide settings (USB AUDIO's profile is the first). One
+generated MAIN MENU root category (working label MODULES, name open)
+lists a GENERAL module and the modules in the image. Writes run from the
+storage task, coalesced ~2 s after the last edit, deferred while a
+recorder, CAPTURE or tape capture writes; `open("w")`, write, close, as
+stock's `project.work`.
+
+What a module declares (the proposal's syntax):
+
+```python
+store=Store(id="org.octalab.usbaudio", scope=Scope.UNIT),
+settings=(
+    Setting(key=1, name="USB AUDIO", group="audio", values=("OFF", "LIGHT", "FULL"),
+            default=0, apply=Apply.NEXT_CONNECT),
+),
+```
+
+- a stable namespaced module `id` (the build refuses a duplicate; a menu
+  label may change, the id may not);
+- per setting a numeric `key` never reused for another meaning, a type
+  (`Binary` 0/1, `Option` an append-only index, `Number` signed 16-bit
+  with min/max/step/unit, `Trigger` never saved, `Blob` with a declared
+  byte maximum and its own editor), a default, a `scope` (PROJECT or
+  UNIT), an apply policy (`LIVE`, `CALLBACK`, `NEXT_CONNECT`,
+  `NEXT_BOOT`), optionally a group id for the menu;
+- idempotent callbacks: after every load the core hands each one the
+  validated value or the default, and again after an edit; no card I/O
+  from an audio interrupt; never another module's record;
+- a compatibility test: with the module removed from the image, editing
+  another module's setting and saving leaves this module's record byte
+  for byte.
+
+What a module does not do: invent a settings file, a save hook or a menu
+root of its own for these values (`MAINMENU.md` §5: two modules that both
+grow one submenu cannot coexist). Its personal-material files stay its
+own.
+
+Open on 27 Sep 2026 (the proposal's §5): the UNIT filename and recovery
+policy, size ceilings, the menu's name and row structure, whether the
+stock project-copy commands carry the pair, boot ordering for UNIT
+before USB enumeration, write latency under CAPTURE.
 
 ## Declaring a ROM cave: `CavePatch`
 
@@ -674,25 +788,26 @@ per core, not per instance. Declare `Claims(reserved_private_y=…)` only for
 a word you mean to own but do not yet reference.
 
 `Y:0x4000`-`0xBFFF` is declared, not derived: `Claims(owns_fx2_buffers=True)`.
-That region is two FX2 instance slots per core; BusVerb's tank and Nimbus's
-line are hardcoded there, so two such modules on one core overwrite each
-other. A scan cannot tell an address from a mask (`and #>$7fff`), and
+That region is two FX2 instance slots per core; BusVerb's tank is
+hardcoded there, so two such modules on one core overwrite each other. A scan cannot tell an address from a mask (`and #>$7fff`), and
 static scanning could not locate the stock reverbs' buffers, which compute
 their bases at runtime (`docs/firmware/DSP.md` §7c).
 
 The shared 64K window (`Y:0x30000`-`0x3FFFF`) is not checked: the servers'
 buffer extents there are not established well enough to write down.
-`CLAUDE.md`'s ownership notes are the map: payload A's half is fully owned.
+`AGENTS.md`'s ownership notes are the map: payload A's half is fully owned.
 
 `python3 tools/remix/selftest.py` (in `make check`) proves the ledger
 catches each collision it claims to.
 
 ## Before you open a PR
 
-- `make check` is the floor. Never claim an effect works because it
-  assembled.
+- `make check REMIX=<name>` is the floor; there is no default remix.
+  Never claim an effect works because it assembled. `make reach` lists
+  the gates the branch's diff reaches; `RUN=1` runs them.
+- Your gates and your `dear` settings go in the manifest, in the same PR.
 - If you changed the build rather than a module: `scripts/refhash.sh save`
-  on a tree you trust, make the change, `scripts/refhash.sh check`; 26
+  on a tree you trust, make the change, `scripts/refhash.sh check`; 24
   configurations, artifacts and build reports, bit-identical.
 - Voicing is judged by ear, level-matched, A/B/A/B, wet-only
   (`docs/history/VOICING.md`). Render locally rather than flashing.
@@ -700,7 +815,7 @@ catches each collision it claims to.
   measures a bus accumulator and so analyses only modules whose harness
   says `is_server`; render an insert with `--direct`.
 - Disassemble what you assemble: `dsp_asm` mis-encodes several instructions
-  silently (`CLAUDE.md`).
+  silently (`AGENTS.md`).
 - Never attach a built image to an issue or PR.
 
 `dsp_host` boots both payloads (`-memB`; `tools/harness/rig_render.py` for
@@ -757,8 +872,8 @@ writes no byte.
 
 ```python
 REMIX = Remix(name="warped-fx1", doc="…",
-              modules=("WARPFOLD",), fallback="NONE",
-              fx1=("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "WARPFOLD",
+              modules=("SPECTRUM",), fallback="NONE",
+              fx1=("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "SPECTRUM",
                    "COMPRESSOR", "LO-FI"))
 ```
 
@@ -798,8 +913,7 @@ The first is measured (`docs/firmware/DSP.md` "wrong claim 1", bisected on
 hardware: a 16K layout at an FX1 base runs to `0x53ff`, through the other
 FX1 buffers and into FX2 slot 0).
 
-What is left is the insert class (WarpFold, Ripple, Rungs, Streamz,
-BodeShift, Hello World) plus SEND. Those keep all their state in their own
+What is left is the insert class (Spectrum, Character) plus SEND. Those keep all their state in their own
 `r7` block, which the dispatcher hands out per instance: FX1 instance *k*
 and FX2 instance *k* get different blocks.
 

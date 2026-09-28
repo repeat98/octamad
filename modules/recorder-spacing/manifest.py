@@ -36,7 +36,7 @@ Assemble: `m68k-elf-as -mcpu=5475 -o spacing.o spacing_cave.s`; the build
 re-assembles and compares against the pinned bytes below.
 """
 
-from remix.schema import CavePatch, Kind, Module
+from remix.schema import Category, Proof, CavePatch, Kind, Module
 
 SPACING_HOOK = 0x40006e0c
 SPACING_HOOK_STOCK = bytes.fromhex("2800" "5284" "e284")   # movel d0,d4; addql #1,d4; asrl #1,d4
@@ -70,6 +70,8 @@ MODULE = Module(
     name="recorder-spacing",
     key="RECORDER SPACING",
     kind=Kind.CF_PATCH,
+    category=Category.FIXES, author="sambanks", author_url="https://github.com/sambanks",
+    proof=Proof.HARDWARE, proof_note="OCTABAM83, 12 Sep 2026",
     doc="ColdFire cave: a fixed-RLEN recording is exactly as long as the gap to "
         "the next arm, derived from the current arm -- no lane, no stored state.",
     cf_patches=(

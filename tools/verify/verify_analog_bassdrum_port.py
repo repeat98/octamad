@@ -8,6 +8,7 @@ sys.path[:0]=[str(ROOT/'tools/hw'),str(ROOT/'tools/harness')]
 import ot_project as otp
 import blockdump as bd
 import recloop as rl
+import ab_source_probe
 from analog_bassdrum import DEFAULTS, wav
 SAMPLE808=os.environ.get("AB_SAMPLE808")=="1"
 REVERSE=os.environ.get("AB_REVERSE")=="1"
@@ -52,11 +53,13 @@ def main():
     knobbase=0x3630 if SAMPLE808 else 0x3130
     spans=';'.join(f'{symbols[name]:#x},4={OUT}/{name}.bin' for name in ('ab_render_calls','ab_hits'))
     spans+=f';0x40170f60,6322={OUT}/part.bin'
-    cmd=[os.environ.get('AB_EMU',str(ROOT/'out/emu/ot_emu')),'--image',str(image),'--card',str(card),'--set','OCTABAM','--project','RIG','--load-ms','20000','--sequencer','--internal-clock','--bank','1','--frames','450','--dsp','--main-level','64','--audio-out',str(basewav),'--block-dump',str(dump),'--mem-dump',spans]
-    cmd+=['--dsp-sample',f'{core}:{cont:x}:{sampler}:20000=X:418,1;X:0,32;X:{knobbase:x},13']
+    emu=ab_source_probe.build(OUT/'probe',core,cont,knobbase)
+    cmd=[str(emu),'--image',str(image),'--card',str(card),'--set','OCTABAM','--project','RIG','--load-ms','20000','--sequencer','--internal-clock','--bank','1','--frames','450','--dsp','--main-level','64','--audio-out',str(basewav),'--block-dump',str(dump),'--mem-dump',spans]
+    cmd+=['--dsp-pcwatch',f'{core}:{cont:x}']
     with open(OUT/'port.log','w') as log:
         log.write(' '.join(cmd)+'\n');log.flush()
-        subprocess.run(cmd,stdout=log,stderr=subprocess.STDOUT,cwd=ROOT,check=True,timeout=600)
+        subprocess.run(cmd,env={**os.environ,'AB_SOURCE_TRACE':str(sampler)},
+                       stdout=log,stderr=subprocess.STDOUT,cwd=ROOT,check=True,timeout=600)
     log=(OUT/'port.log').read_text()
     assert re.search(r'frames run : 450 .*run ended REACHED',log),log[-2000:]
     hits=int.from_bytes((OUT/'ab_hits.bin').read_bytes(),'big')

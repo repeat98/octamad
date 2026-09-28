@@ -341,15 +341,13 @@ md_chooser_open:
 | the port: the live byte came from the card's Part). This remains a
 | bridge through the FX2 DSP dispatch until a native machine render seam
 | replaces it.
+| md_ui_md_type and md_ui_md_track are the control engine's (md_ui_frame,
+| once a frame, one store each): until 28 Sep 2026 this loop also cleared
+| them on its first track and set them again at the MD track, and a redraw
+| that ran in between named the MD track FLEX (octemu, the MD focus).
 md_pack_fx2:
         lea     -12(%sp),%sp
         movem.l %d1/%a0-%a1,(%sp)
-        cmpi.l  #8,%d3
-        bne.s   .pack_next
-        clr.l   md_ui_md_type
-        moveq   #-1,%d0
-        move.l  %d0,md_ui_md_track
-.pack_next:
         moveq   #8,%d1
         sub.l   %d3,%d1
         cmpi.l  #4,%d1
@@ -367,9 +365,6 @@ md_pack_fx2:
         tst.l   %d0
         beq.s   .pack_unmark
         move.b  #MD_FX2,(%a1)            | the DSP dispatches the MD
-        lea     0x22(%a0,%d1.l),%a1       | this signed track's type byte
-        move.l  %a1,md_ui_md_type
-        move.l  %d1,md_ui_md_track
         move.l  %d1,%d0                  | tell the control engine the MD track
         addq.l  #1,%d0                   | (md_ctl.c: 1 + track, cleared per frame)
         move.l  %d0,md_parent_track

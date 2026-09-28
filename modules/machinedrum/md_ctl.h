@@ -132,7 +132,8 @@ typedef struct {
     uint8_t lane_sel, lane_track, lane_bank, lane_pattern;
     uint8_t snap[12], lane_snap[8];
     uint16_t eng_div;                /* SETUP E's stock divisor while ENG is geared */
-    uint8_t pad[8];
+    uint8_t redraw;                  /* the page or the name changed: md_ui_tick draws */
+    uint8_t pad[7];
     uint8_t desc[MD_DESC_BYTES + 2];
 } MdUi;
 
@@ -141,6 +142,24 @@ extern volatile uint32_t md_desc_p, md_ui_md_track, md_ui_md_type;
 extern char md_ui_name[12];
 unsigned md_ui_frame(void);
 void md_ui_select(unsigned key);
+
+/* WP-D7, MD focus (md_ui.c): the MD's input layer on its SRC page. The
+ * layer itself, {next, keys, encoders, 0, 0, -1, -1}, is in md_ui_tail.s. */
+#define MD_FOCUS_KEYS 17u                 /* trigs 0..15 and YES */
+typedef struct {
+    uint32_t saved[MD_FOCUS_KEYS][3];     /* press, release, repeat under the layer */
+    const char *labels[MD_ENGINE_IDS];    /* the engine list */
+    void (*cbs[MD_ENGINE_IDS])(void);
+    uint32_t mine;                        /* keys whose press the layer took; bit 16 YES */
+    uint32_t eng_sel;                     /* the list's selection (the list writes it) */
+    char names[MD_ENGINE_IDS][8];
+    uint8_t ids[MD_ENGINE_IDS];
+    uint8_t on, eng_n, pad;
+} MdFocus;
+extern MdFocus md_focus;
+extern volatile uint32_t md_layer[7];
+void md_layer_key(unsigned code, unsigned edge);
+void md_ui_tick(void);
 
 /* The engine table, the kits and the runtime (md_ctl_tail.s, handlers.s). */
 extern const MdEngine md_engines[MD_ENGINE_IDS];

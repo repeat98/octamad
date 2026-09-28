@@ -25,6 +25,7 @@
 #include "md_ctl.h"
 
 _Static_assert(sizeof(MdUi) == 40 + MD_DESC_BYTES + 2, "md_ctl_tail.s ui allocation");
+_Static_assert(sizeof(MdFocus) == 1456, "md_ui_tail.s focus allocation");
 
 #define U8(a) (*(volatile uint8_t *)(a))
 #define U32(a) (*(volatile uint32_t *)(a))
@@ -204,6 +205,7 @@ static void page_mirror(MdUi *u, volatile uint8_t *part, volatile uint8_t *sram,
         u->shown_track = (uint8_t)t;
         u->shown_part = (uint8_t)kit;
         u->shown_engine = kp->engine;
+        u->redraw = 1;
         return;
     }
     for (unsigned k = 0; k < 12; ++k) {
@@ -288,6 +290,123 @@ static void eng_gearing(MdUi *u, unsigned md_page) {
 void md_ui_select(unsigned key) {
     md_ui.sel = (uint8_t)(key & (MD_PARTS - 1));
     md_trig_request |= 1u << md_ui.sel;      /* play it, as the MD's pads do */
+}
+
+/* ---- WP-D7: MD focus -------------------------------------------------
+ * The MD track's SRC page is the kit editor (the user's choice, 28 Sep
+ * 2026). An input layer (md_ui_tail.s) takes the sixteen trig keys and YES
+ * while that page is on screen with nothing open over it: a trig selects
+ * and plays its part, as the MD's pads do, and YES opens the list of
+ * engines. The rest of the OT is stock:
+ *  - the layer is pushed only while the base layer is alone in the list
+ *    (a window, menu or popup each adds its own: under the port 28 Sep
+ *    2026, SRC SETUP's is 0x400bb7b4 over the base 0x400c090a), and a key
+ *    acts only while nothing is above the layer;
+ *  - a trig goes to stock with REC on, in any trig mode but 0 (holding
+ *    PTN, BANK or a scene key changes it: patterns, banks, scenes) or with
+ *    FUNC held; mode 0 is stock's manual trig of tracks 1-8 and the MIDI
+ *    tracks (0x40044584), which the MD's pads replace on this page only;
+ *  - a release goes where its press went (MAINMENU.md 6b: a swallowed
+ *    release leaves the trig held and the sequencer will not stop).
+ * The dispatcher calls a key handler (code, edge): 1 press, 0 release
+ * (measured under the port on 0x40060ce0). */
+enum {
+    OT_PAGE_KIND = 0x46c7d8d8u,      /* SRC 0, LFO 1, AMP 2, FX1 3, FX2 4 */
+    OT_LAYERS = 0x460d165cu,         /* the input layer list, the base first */
+    OT_KEY_CACHE = 0x46c7d8deu,      /* + code x 24: press, release, repeat */
+    OT_GRID_REC = 0x460d1736u,
+    OT_TRIG_MODE = 0x460d16f0u,
+    OT_KEY_ROWS = 0x46100b18u,       /* held keys: row code >> 3, bit code & 7 */
+    OT_LAYER_PUSH = 0x40031494u,
+    OT_LAYER_POP = 0x4003146cu,
+    OT_LIST_OPEN = 0x4006d94cu,      /* (count, sel, &sel, labels, callbacks) */
+    OT_DRAW_PAGE = 0x4004d780u,      /* the main page (a page switch: 0x4005577e) */
+    OT_DRAW_KNOBS = 0x4004d948u,     /* (slot): its knobs, -1 all */
+    KEY_YES = 0x31u, KEY_FUNC = 0x2du,
+};
+typedef void (*KeyFn)(unsigned code, unsigned edge);
+typedef void (*LayerFn)(volatile uint32_t *layer);
+typedef void (*ListFn)(unsigned n, unsigned sel, uint32_t *selp,
+                       const char **labels, void (**cbs)(void));
+
+static unsigned held(unsigned code) {
+    return U8(OT_KEY_ROWS + (code >> 3)) >> (code & 7) & 1u;
+}
+
+/* The list closes itself, stores the selection and then calls this. */
+static void eng_pick(void) {
+    MdFocus *f = &md_focus;
+    if (f->eng_sel < f->eng_n)
+        set_engine(&md_kit_cur()->part[md_ui.sel & (MD_PARTS - 1)], f->ids[f->eng_sel]);
+}
+
+static void eng_list(void) {
+    MdFocus *f = &md_focus;
+    if (!f->eng_n) {
+        f->eng_n = (uint8_t)choices(f->ids);
+        for (unsigned i = 0; i < f->eng_n; ++i) {
+            const char *name = md_engines[f->ids[i]].name;
+            for (unsigned c = 0; c < 6; ++c)
+                f->names[i][c] = name[0] && name[c] ? name[c] : '-';
+            f->names[i][6] = 0;
+            f->labels[i] = f->names[i];
+            f->cbs[i] = eng_pick;
+        }
+    }
+    f->eng_sel = choice_of(md_kit_cur()->part[md_ui.sel & (MD_PARTS - 1)].engine);
+    ((ListFn)OT_LIST_OPEN)(f->eng_n, f->eng_sel, &f->eng_sel, f->labels, f->cbs);
+}
+
+void md_layer_key(unsigned code, unsigned edge) {
+    MdFocus *f = &md_focus;
+    unsigned k = code < 16 ? code : 16u, bit = 1u << k;
+    if (edge == 1) {
+        if (f->on && !md_layer[0] && !U32(OT_GRID_REC) && !held(KEY_FUNC)
+            && (k == 16 || !U32(OT_TRIG_MODE))) {
+            f->mine |= bit;
+            if (k < 16) md_ui_select(code);
+            else eng_list();
+            return;
+        }
+    } else if (f->mine & bit) {
+        if (!edge) f->mine &= ~bit;
+        return;
+    }
+    uint32_t h = f->saved[k][edge == 1 ? 0 : edge == 0 ? 1 : 2];
+    if (h + 1u > 1u) ((KeyFn)h)(code, edge);       /* 0: none (-1 is never cached) */
+}
+
+/* The UI task's display loop, once a tick (md_ui_tail.s md_tick_hook).
+ * It also redraws the page when the interrupt side rebuilt it (a new part,
+ * engine or kit: md_ui.redraw) the way a page switch draws it (0x4005577e:
+ * the page, then every knob), and only while the layer is on top, so the
+ * MD page is never drawn over a window. Stock's manual trig redraws screen
+ * regions 7 and 0 instead (0x400502d4), which are the play state and the
+ * bottom line, not the knobs (octemu, 28 Sep 2026). */
+void md_ui_tick(void) {
+    MdFocus *f = &md_focus;
+    unsigned t = md_ui_md_track;
+    unsigned want = t < 4 && U8(OT_UI_TRACK) == t && U8(OT_PAGE_KIND) == 0;
+    if (f->on) {
+        if ((!want || md_layer[0]) && !f->mine) {
+            ((LayerFn)OT_LAYER_POP)(md_layer);
+            f->on = 0;
+        }
+    } else {
+        volatile uint32_t *base = (volatile uint32_t *)U32(OT_LAYERS);
+        if (!want || !base || base[0]) return;      /* something over the base */
+        for (unsigned k = 0; k < MD_FOCUS_KEYS; ++k)
+            for (unsigned e = 0; e < 3; ++e)
+                f->saved[k][e] = U32(OT_KEY_CACHE + 24u * (k < 16 ? k : KEY_YES) + 4u * e);
+        md_layer[0] = 0;
+        ((LayerFn)OT_LAYER_PUSH)(md_layer);
+        f->on = 1;
+    }
+    if (f->on && !md_layer[0] && md_ui.redraw) {       /* as a page switch */
+        md_ui.redraw = 0;
+        ((void (*)(void))OT_DRAW_PAGE)();
+        ((void (*)(int))OT_DRAW_KNOBS)(-1);
+    }
 }
 
 /* Once a frame, before the producer: find the MD track, then mirror. */

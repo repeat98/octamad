@@ -77,7 +77,7 @@ Statuses:
 | WP-D4 Grid-record view | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/HANDOFF-UI.md` | panel gate proves part select and REC+TRIG 5 lane bit; broader page/lock walk pending |
 | WP-D5 Parameter pages | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/HANDOFF-UI.md` | panel gate proves page-1 SYN 1, page-2 SYN 7 and ENG (one detent per engine, 25 Sep) |
 | WP-D6 The info box | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/HANDOFF-UI.md` | panel RAM shows `P02 TRX-SD` and name detours; visible LCD result pending |
-| WP-D7 MD focus: the kit editor in place on SRC | claimed | `machinedrum` | this commit | 2026-09-28 | | the user's choice (28 Sep): in place on the MD track's SRC page, one input layer; replaces D4's part chord and D5's ENG knob |
+| WP-D7 MD focus: the kit editor in place on SRC | claimed | `machinedrum` | this commit | 2026-09-28 | | steps 1-4 done: both machine lists reach and open on MACHINEDRUM (row 5); on the MD track's SRC page an input layer takes the trigs (select + play a part) and YES (the engine list), and the page redraws at once; all MD gates and `make check` pass, octemu screenshots; next: a port gate for the layer, the trig LEDs |
 | WP-E1 Persistence | review | `machinedrum` | this commit | 2026-09-25 | `machinedrum_reports/WP-E1.md` | 64 kits (one per Part) + 256 patterns: `machinedrum.work` on each bank save/load, the resident bank in SRAM; port gate `verify_md_persist.py`, SYNC and power cycle in octemu; saved-Part kits and SAVE TO NEW open |
 | WP-E2 MIDI | todo | | | | | |
 | WP-E3 Admission | todo | | | | | |

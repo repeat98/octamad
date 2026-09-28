@@ -167,6 +167,9 @@ MODULE = Module(
                "main chooser row highlights MD on a signed FLEX track"),
         Detour(0x400585DC, H("161079034879400bb704"), "mdmachine", "md_setup_open",
                "SRC SETUP opens on MACHINEDRUM for the MD track", pad_to=10),
+        # WP-D7: the MD's input layer on its SRC page, run from the UI task.
+        Detour(0x4005221E, H("4ebaff1c4eb94007e940"), "mdui", "md_tick_hook",
+               "the UI task's display loop pushes or pops the MD's input layer", pad_to=10),
         Detour(0x40078886, H("71102f004879460e7386"), "mdmachine", "md_chooser_open",
                "the track's machine list opens on MACHINEDRUM for the MD track", pad_to=10),
         Detour(0x40031E74, H("710541f9400d5f38"), "mdmachine", "md_resolve_pb",

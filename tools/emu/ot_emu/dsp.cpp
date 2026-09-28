@@ -215,7 +215,8 @@ namespace ot
 				// (O7b), so P:0x1d3 of core 1 ran the FIRST upload's instruction
 				// -- a Y write -- where the second had put `tfr b,a x:(r0)+,b0`,
 				// and the voice loop count at Y:0x42 became a raw host word.
-				if(_area == dsp56k::MemArea_P)
+				// Bridged writes outside P memory have no opcode-cache entry.
+				if(_area == dsp56k::MemArea_P && _off < c.mem->size(dsp56k::MemArea_P))
 					c.dsp->clearOpcodeCache(_off);
 				if(m_watchOn && i == m_watchCore && _off == m_watchAddr
 					&& _area == (m_watchSpace == 'Y' ? dsp56k::MemArea_Y : m_watchSpace == 'P' ? dsp56k::MemArea_P : dsp56k::MemArea_X))

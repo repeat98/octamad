@@ -1171,6 +1171,7 @@ def main():
     # recipe pins, so nothing lands here that does not match the author's
     # own build byte for byte. Nothing runs for a remix without a runtime.
     _appends = []
+    _platform_at = None
     _payloads = []                  # runtimes carried by octabam's loader (1e)
     for _k in REMIX.modules:
         _m = remix_modules()[_k]
@@ -1297,6 +1298,7 @@ def main():
         _exports.update(_psyms)
         for _p in _payloads:
             _exports.update({k: v for k, v in _p.get("symbols", {}).items() if k.startswith("gk_")})
+        _platform_at = len(_appends)
         _appends.append(("octabam loader + payloads (" + ", ".join(_pnames) + ")", _pappend))
         if "OCTAKIT" not in REMIX.modules:
             # Octakit's own recipe already routes the boot site through her
@@ -2994,6 +2996,38 @@ hostquit:
     # match the identity the recipe pins for exactly this (single-runtime)
     # composition; a remix that combines the runtime with other modules
     # cannot match it, and says so instead of failing.
+    # Analog BD replaces the source renderer on both cores. Its uploads
+    # must see the final DSP payloads, before they are packed for boot.
+    if "ANALOG BD" in REMIX.modules:
+        import ab_image
+        from remix import platform_build
+        if "SPRING REV" in REMIX.modules or "MACHINEDRUM" in REMIX.modules:
+            sys.exit("ANALOG BD owns SPRING REV's code and both DSP uploads; "
+                     "remove SPRING REV / MACHINEDRUM from this remix")
+        # Private X and source-stage placement are qualified with stock FX.
+        if any(_m.dsp is not None for _m in remix_modules().values()
+               if _m.key in REMIX.modules):
+            sys.exit("ANALOG BD's DSP source currently composes with stock effects only")
+        _pres, _apokes, _alog = ab_image.integrate(img, IMG.read_bytes())
+        print("\n=== Analog BD: DSP 808/909, both payloads, pre-boot loader ===")
+        for _l in _alog:
+            print(_l)
+        for _aa, _aexp, _aw, _anote in _apokes:
+            _got = bytes(img[_aa - BASE:_aa - BASE + len(_aexp)])
+            if _got != _aexp:
+                sys.exit(f"analog bd: 0x{_aa:08x} holds {_got.hex()}, not stock {_aexp.hex()}")
+            img[_aa - BASE:_aa - BASE + len(_aw)] = _aw
+            print(f"    poke 0x{_aa:08x}: {_aexp.hex()} -> {_aw.hex()}  {_anote}")
+        _pappend, _psyms2, _boot, _pnames = platform_build.build(
+            [(_m.key, _u) for _m, _u in _dram], _payloads, pathlib.Path("out/platform"),
+            reserve=_reserve, defsyms=_defsym_ovr, preboot=_pres,
+            includes={_u.label: _u.include({_k: remix_modules()[_k] for _k in REMIX.modules})
+                      for _m, _u in _dram if _u.include is not None})
+        if _psyms2 != _psyms or _platform_at is None:
+            sys.exit("analog bd: the platform runtime linked differently the second time")
+        _appends[_platform_at] = (
+            "octabam loader + payloads (" + ", ".join(_pnames) + ")", _pappend)
+
     _grown = ""
     for _aname, _append in _appends:
         img.extend(_append)

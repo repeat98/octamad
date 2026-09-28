@@ -1,0 +1,202 @@
+{
+ "_about": "TR-909 BD fit to the user's Drumazon 2 Init (SCENE > Init, v2.0.4), note 36, 44.1 kHz. Our measurements only: no plugin state or audio. Knob u is Drumazon's 0..1; OT knob i maps u = i/128 (i<=64), 0.5+(i-64)/126 above. Fitted 28 Sep 2026 by the scripts listed in DSP909.md (not yet in the tree).",
+ "nodes": [
+  0,
+  0.125,
+  0.25,
+  0.375,
+  0.5,
+  0.75,
+  1
+ ],
+ "pitch": {
+  "fb_hz": [
+   29.999927,
+   34.238169,
+   39.325205,
+   45.431077,
+   52.759919,
+   72.115144,
+   99.99992
+  ],
+  "A_hz": [
+   114.241607,
+   146.519756,
+   177.650744,
+   207.590987,
+   236.124753,
+   287.799768,
+   329.475975
+  ]
+ },
+ "tune": {
+  "tau_s": [
+   0.003403,
+   0.005779,
+   0.009175,
+   0.013718,
+   0.018873,
+   0.027761,
+   0.032356
+  ],
+  "A_hz": [
+   469.83,
+   328.446831,
+   277.391538,
+   250.223761,
+   236.124753,
+   224.708273,
+   221.364132
+  ],
+  "_tune0": "waveform fit, the crossing fit is ambiguous at a 3.4 ms sweep"
+ },
+ "depth": {
+  "A_hz": [
+   5.399227,
+   11.689738,
+   48.436843,
+   121.638043,
+   236.124753,
+   604.340892,
+   1178.120485
+  ],
+  "below_0.125_exponent": 2.17
+ },
+ "decay": {
+  "tau_s": [
+   0.008715,
+   0.011514,
+   0.015332,
+   0.02498,
+   0.090666,
+   0.220682,
+   0.453474
+  ]
+ },
+ "body": {
+  "t_r": 0.0024761,
+  "x_r": 0.0064734,
+  "G": 0.3520131,
+  "tau_a": 0.0007297,
+  "t_h": 0.0599209,
+  "tau_droop": 1.4004067,
+  "k0": 0.0611631,
+  "k_dc": 0.1245546,
+  "tau_dc": 0.4053796,
+  "c0": -0.0706532,
+  "c": [
+   1.829169,
+   -0.0220244,
+   0.5189846,
+   1.5686725,
+   -6.2075129,
+   -3.9603757,
+   10.8591995,
+   3.8560994,
+   -8.2607787,
+   -1.3422541,
+   2.3896601
+  ],
+  "c_note": "Shaper S(x) = c0 + sum c[k] x^(k+1), degree 11 (refit 28 Sep 2026): the steady cycles (150-900 ms) of cal-pitch-0, -0.5 and -1, weighted 1:2:1, are time-symmetric to -30..-41 dB, so S is read off the averaged cycle over the triangle and fitted by least squares, with H1 and DC held to the degree-7 time-domain fit (which ran H13-H64 8-13 dB above Drumazon)."
+ },
+ "theta": 0.505,
+ "thump_vs_A": {
+  "a": 0.0036,
+  "b": 0.0125,
+  "A0_hz": 100.0,
+  "A_ref_hz": 236.12
+ },
+ "pulse": {
+  "tau_r": 0.043669,
+  "f_hp": 613.6823424,
+  "f0": 5828.9666057,
+  "q": 1.8565507,
+  "k_w": 62.6951167,
+  "k_u": -1.0125373,
+  "f_u": 124.4156631,
+  "a_r": 0.0,
+  "tau_r2": 0.1
+ },
+ "noise": {
+  "f_hp": 230.4262419,
+  "f_lp1": 2366.7993977,
+  "f_lp2": 2367.055884,
+  "t1": 0.0051245,
+  "t2": 0.0043282,
+  "g": 0.1218617
+ },
+ "velocity": {
+  "body": "(v/100)^2",
+  "attack_v": [
+   1,
+   20,
+   40,
+   60,
+   80,
+   100,
+   110,
+   127
+  ],
+  "attack_gain": [
+   0.0001,
+   0.0284,
+   0.1196,
+   0.2907,
+   0.5707,
+   1.0,
+   1.2864,
+   1.9103
+  ]
+ },
+ "mackie": {
+  "_note": "SAT / LOW / HIGH: a Mackie-desk stage after the 909's output, with airwindows MackEQ (Chris Johnson, MIT) as the reference, not a port: its clip + x - k_sat x^5 curve at the input, in the bass and high bands and at the output stage, its band drive law 4u^2 and its one-pole crossover coefficients, and its output stage 9 dB (stage) above its input stage. Unlike MackEQ the split is complementary and each band's output is sqrt(2u), so LOW 64 / HIGH 64 is flat and SAT 0 is transparent (-75 dB from dry on the init patch).",
+  "k_sat": 0.1768,
+  "kb": 0.159,
+  "km": 0.236,
+  "stage": 2.8284271,
+  "top_db": 36.0,
+  "rise_note": "Unpadded RMS (0-300 ms, init patch, LOW/HIGH 64) above SAT 0, measured on the float design; the make-up table holds the rise to target_rise_db at SAT 127.",
+  "rise_knots": [
+   0,
+   8,
+   16,
+   24,
+   32,
+   40,
+   48,
+   56,
+   64,
+   72,
+   80,
+   88,
+   96,
+   104,
+   112,
+   120,
+   127
+  ],
+  "rise_db": [
+   0.0,
+   2.27,
+   4.53,
+   6.79,
+   9.04,
+   11.26,
+   13.42,
+   15.41,
+   16.96,
+   17.76,
+   18.37,
+   18.89,
+   19.35,
+   19.8,
+   20.32,
+   20.91,
+   21.47
+  ],
+  "target_rise_db": 6.0,
+  "k_hp": 0.001860867,
+  "hp_note": "The desk's input is AC-coupled (MackEQ's k_hp, ~13 Hz at 44.1 kHz); without it the 909's DC thump, times SAT's drive, pins the input stage and leaves a DC shelf after every hit. Its coefficient ramps from 0 at SAT 0 (DC-coupled, the calibrated 909) to k_hp at SAT hp_full, so the knob has no step.",
+  "hp_full": 16
+ }
+}

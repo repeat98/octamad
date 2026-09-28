@@ -55,6 +55,20 @@ def schema_errors(v, s, root, at="$"):
     return errs
 
 
+class SourcePressureTests(unittest.TestCase):
+    def test_cf_registered_dsp_cannot_report_not_applicable(self):
+        source = SimpleNamespace(key="SOURCE", dsp=None,
+                                 pressure_blocker="source load needs separate metering")
+        status, reason = a.pressure_profile([source])
+        self.assertEqual(status, "blocked")
+        self.assertIn("SOURCE", reason)
+        self.assertIn("separate metering", reason)
+
+    def test_plain_cf_remains_not_applicable(self):
+        self.assertEqual(a.pressure_profile([SimpleNamespace(key="CF", dsp=None)])[0],
+                         "not_applicable")
+
+
 class GateTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

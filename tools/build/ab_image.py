@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""The Analog BD's DSP 909 in an OT image (modules/analog-bassdrum/DSP909.md).
+"""Analog BD DSP 808/909 engines in an OT image (modules/analog-bassdrum/DSP909.md).
 
 build_bus.py calls integrate() last, when the remix carries ANALOG BD, after
 every DSP pass has written both payloads. For each payload it
 
-  1. assembles ab_glue.asm with bd909.asm behind it at the harvested SPRING
+  1. assembles ab_glue.asm with both bass-drum engines behind it at the harvested SPRING
      REV's P address (the remix does not list SPRING REV, so its code is on
      neither chooser: stock.harvested) and checks the bytes by disassembly
      (dsp909.assemble); the code is written over SPRING's own P words, in
@@ -17,14 +17,12 @@ every DSP pass has written both payloads. For each payload it
      a jsr to the glue;
   4. builds the payload's upload with one more X record: the 909's tables at
      X:0x2840 and four voice blocks after them, in private X that both
-     cores' ledgers measure free (CORE0_MEMORY.md, the Machinedrum's WP-A2
-     core-1 ledger). Not the shared window: stock PLATE and DARK write
+     cores' measured memory ledgers mark free. Not the shared window: stock PLATE and DARK write
      14,335 and 15,778 words into a 16K FX2 slot there, and the window runs
      code at one wait state.
 
-The two uploads go in as PRE-BOOT payloads of octabam's loader (as the
-Machinedrum's core-1 upload does, tools/build/ab_records.py), with the pokes
-that point the DSP boot's two uploads at them.
+The two uploads go in as PRE-BOOT payloads of octabam's loader, with the
+pokes that point the DSP boot's two uploads at them.
 """
 from __future__ import annotations
 
@@ -37,7 +35,7 @@ sys.path.insert(0, str(ROOT / "modules/analog-bassdrum"))
 sys.path.insert(0, str(ROOT / "tools/build"))
 import dsp808
 import dsp909  # noqa: E402
-import ab_records  # noqa: E402  (payload record walking, shared with the Machinedrum)
+import ab_records  # noqa: E402  (stock DSP upload record helpers)
 
 BASE = ab_records.BASE
 UNCACHED = ab_records.UNCACHED
@@ -65,7 +63,7 @@ KNOBS = 0x30                    # the knob block inside a voice block
 TABLES808 = 0x3200
 VOICES808 = 0x3600
 X_TOP = 0x3940                  # the lower of the two ledgers' free tops
-# pre-boot scratch: the MD's (ab_records.PRE_DST/PRE_STAGE) for B, beside it for A
+# Pre-boot destination and staging buffers for each DSP upload.
 PRE = {"A": (0x40B00000, 0x40B80000), "B": (0x40B40000, 0x40BC0000)}
 
 

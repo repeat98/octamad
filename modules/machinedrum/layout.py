@@ -109,6 +109,9 @@ LAYOUT = {
         "FIXED": 0x36330,
         "GAIN": 0x36340,
         "GAINR": 0x36350,
+        # The burn build's count (packet dest $c20, the word after the gains):
+        # 24 cycles/sample a step after the driver. 0 unless MDBURN=1 sends it.
+        "BURN": 0x36360,
         "MIX": 0x36380,
         "end": 0x363c0,
     },

@@ -175,9 +175,9 @@ xnosync:
         sub     #>$c00,b
         blt     xvoice
         add     x0,b
-        move    #>$20,y1
+        move    #>$21,y1
         cmp     y1,b
-        bgt     xpbad                   ; past the 32 gain words
+        bgt     xpbad                   ; past the 32 gain words and BURN
         move    x1,b
         add     #>@GAINOFF@,b
         move    b,r2
@@ -269,6 +269,21 @@ gdone:                                  ; the gates sample here: the half just r
         move    x0,m5
         move    x0,m6
         move    x0,m7
+; The burn build's measurement (MDBURN=1): BURN x 24 cycles/sample, as the
+; rig burn on SEND (dsp/burn_send.inc): 8 x BURN x 16 iterations of a
+; three-word body a frame, on the frame's first call. @BURN@ is 0 in every
+; image unless that build's ColdFire sends it (packet dest $c20); the zero
+; test is load-bearing (DO with a count of 0 loops 65536 times).
+        move    x:>@BURN@,a
+        tst     a
+        beq     gnoburn
+        asl     #$7,a,a                 ; 128 x BURN, at most 16,256
+        do      a1,gburnlp
+        nop
+        nop
+        nop
+gburnlp:
+gnoburn:
         move    y:>@HALF@,a
         tst     a
         bne     gsecnd                  ; slots 0-7 of a new period: play the second half

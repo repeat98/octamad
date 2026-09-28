@@ -853,7 +853,7 @@ md_ctl_chunk:
 	lea (12,%a0),%a0
 	tst.b -11(%a0)
 	jne .L171
-	cmp.l %a0,%d0
+	cmp.l %d0,%a0
 	jne .L172
 	moveq #63,%d0
 	and.l md_kit_index,%d0
@@ -892,7 +892,7 @@ md_ctl_chunk:
 	moveq #63,%d4
 	and.l md_kit_index,%d4
 	tst.b %d7
-	jeq .L215
+	jeq .L218
 	move.w %d4,%d1
 	move.l %a4,%a1
 	mulu.w #192,%d1
@@ -920,7 +920,7 @@ md_ctl_chunk:
 	lea (84,%a5),%a5
 	cmp.l %d2,%d5
 	jne .L190
-.L269:
+.L275:
 	moveq #1,%d6
 	move.b %d6,md_run+1563
 #APP
@@ -1029,7 +1029,7 @@ md_ctl_chunk:
 	subq.l #1,%d0
 	mvz.b %d0,%d0
 	cmp.l #253,%d0
-	jls .L262
+	jls .L268
 .L168:
 	move.l md_kit_active,%d2
 	move.l %d2,-24(%fp)
@@ -1098,47 +1098,75 @@ md_ctl_chunk:
 .L192:
 	addq.l #1,md_run+1548
 .L194:
+	move.l #md_burn_build,%d0
+	tst.l %d0
+	jeq .L200
+	move.l md_burn_sent,%d1
+	cmp.l md_burn.l,%d1
+	jeq .L200
+	move.l -8(%fp),%d0
+	move.l %d0,%d1
+	addq.l #4,%d1
+	cmp.l #445,%d1
+	jhi .L200
+	moveq #63,%d2
+	cmp.l %d6,%d2
+	jcs .L200
+	add.l %d0,%d0
+	moveq #127,%d2
+	addq.l #1,%d6
+	and.l md_burn,%d2
+	clr.w %d3
+	move.l %d0,%a0
+	add.l #md_run+1574,%a0
+	move.l #203423745,(%a0)
+	move.w %d2,6(%a0)
+	move.w %d3,4(%a0)
+	move.l %d2,md_burn_sent
+	move.l %d1,-8(%fp)
+	move.l %d6,-4(%fp)
+.L200:
 	clr.l %d4
 	lea md_run+1556,%a2
 	clr.l %d2
 	lea md_run,%a3
 	lea md_run+1344,%a4
-.L198:
+.L201:
 	move.w (%a2),%d0
-	jeq .L208
+	jeq .L211
 	mov3q.l #1,%d3
 	lsl.l %d2,%d3
 	and.l %d3,%d0
 	tst.w %d0
-	jeq .L199
+	jeq .L202
 	move.l -8(%fp),%d0
 	add.l #44,%d0
 	cmp.l #445,%d0
-	jhi .L200
-	moveq #63,%d1
-	cmp.l %d6,%d1
-	jcs .L200
-	mov3q.l #1,%d6
-	eor.l %d4,%d6
-	move.l %d6,-(%sp)
+	jhi .L203
+	moveq #63,%d0
+	cmp.l %d6,%d0
+	jcs .L203
+	mov3q.l #1,%d1
+	eor.l %d4,%d1
 	moveq #72,%d6
+	move.l %d1,-(%sp)
 	move.l %d2,-(%sp)
 	jsr (build_record.constprop.0)
 	mvz.b (%a4),%d1
 	addq.l #8,%sp
 	cmp.l %d1,%d6
-	jcs .L258
+	jcs .L264
 	moveq #52,%d6
 	muls.l %d1,%d6
 	lea md_engines,%a0
 	tst.l (%a0,%d6.l)
-	jeq .L258
+	jeq .L264
 	move.b 44(%a0,%d6.l),%d6
 	btst #0,%d6
-	jeq .L258
+	jeq .L264
 	tst.l %d4
-	jeq .L263
-.L206:
+	jeq .L269
+.L209:
 	mvz.w %d2,%d1
 	clr.l -(%sp)
 	move.l %d0,-(%sp)
@@ -1158,24 +1186,24 @@ md_ctl_chunk:
 	move.w md_run+1558,%d0
 	and.l %d0,%d3
 	move.w %d3,md_run+1558
-.L199:
+.L202:
 	addq.l #1,%d2
 	lea (84,%a3),%a3
 	moveq #16,%d0
 	lea (12,%a4),%a4
 	cmp.l %d2,%d0
-	jne .L198
-.L208:
+	jne .L201
+.L211:
 	lea md_run+1558,%a2
 	subq.l #1,%d4
 	tst.l %d4
-	jne .L217
-.L265:
+	jne .L220
+.L271:
 	tst.l -24(%fp)
-	jeq .L211
+	jeq .L214
 	tst.l %d6
-	jeq .L264
-.L212:
+	jeq .L270
+.L215:
 	clr.w %d1
 	move.l -12(%fp),%a0
 	move.l -8(%fp),%d0
@@ -1192,17 +1220,17 @@ md_ctl_chunk:
 	move.l #65535,(%a0)
 	unlk %fp
 	rts
-.L258:
+.L264:
 	clr.l %d1
 	tst.l %d4
-	jne .L206
-.L263:
+	jne .L209
+.L269:
 	move.l (%a3),%a0
 	tst.l %a0
-	jeq .L207
+	jeq .L210
 	move.l %d1,%a0
 	addq.l #1,%a0
-.L207:
+.L210:
 	mvz.w %d2,%d1
 	move.l %a0,-(%sp)
 	move.l %d0,-(%sp)
@@ -1228,21 +1256,21 @@ md_ctl_chunk:
 	moveq #16,%d0
 	move.w %d3,md_run+1558
 	cmp.l %d2,%d0
-	jne .L198
-	jra .L208
-.L200:
+	jne .L201
+	jra .L211
+.L203:
 	addq.l #1,md_run+1548
 	lea md_run+1558,%a2
 	subq.l #1,%d4
 	tst.l %d4
-	jeq .L265
-.L217:
+	jeq .L271
+.L220:
 	mov3q.l #1,%d4
 	lea md_run,%a3
 	clr.l %d2
 	lea md_run+1344,%a4
-	jra .L198
-.L264:
+	jra .L201
+.L270:
 	move.b md_run+1562,%d3
 	moveq #15,%d2
 	pea -16(%fp)
@@ -1302,9 +1330,9 @@ md_ctl_chunk:
 	jsr put
 	move.l -4(%fp),%d6
 	lea (40,%sp),%sp
-.L211:
+.L214:
 	tst.l %d6
-	jne .L212
+	jne .L215
 .L165:
 	movem.l -76(%fp),#15612
 	clr.l %d0
@@ -1316,39 +1344,39 @@ md_ctl_chunk:
 	muls.l %d2,%d1
 	lea md_kits,%a1
 	muls.l %d4,%d3
-	move.l %d1,-32(%fp)
-	move.l -32(%fp),%a0
+	move.l %d1,-36(%fp)
+	move.l -36(%fp),%a0
 	add.l %d3,%a0
-	move.l %d3,-36(%fp)
+	move.l %d3,-32(%fp)
 	mvz.b (%a1,%a0.l),%d3
 	mvz.b (%a4),%d1
 	cmp.l %d3,%d1
-	jne .L266
+	jne .L272
 	move.l %a3,%d3
 	sub.l %a0,%a0
 	move.w md_run+1558,%d1
 	clr.b %d6
 	lsl.l %d2,%d3
 	tst.b %d7
-	jne .L267
+	jne .L273
 .L181:
 	or.l %d3,%d1
 	addq.l #1,%a0
 	moveq #8,%d6
 	cmp.l %a0,%d6
 	jne .L181
-.L254:
+.L260:
 	move.w %d1,md_run+1558
 .L187:
 	tst.b %d7
 	jeq .L188
-	move.l -32(%fp),%a0
+	move.l -36(%fp),%a0
 	mvz.b 1(%a4),%d1
-	add.l -36(%fp),%a0
+	add.l -32(%fp),%a0
 	add.l #md_kits,%a0
 	mvz.b 1(%a0),%d3
 	cmp.l %d3,%d1
-	jeq .L268
+	jeq .L274
 .L188:
 	move.l %a3,%d1
 	move.w -26(%fp),%d3
@@ -1357,13 +1385,13 @@ md_ctl_chunk:
 	move.w %d1,-26(%fp)
 	move.w %d1,md_run+1560
 .L189:
-	move.l -32(%fp),%a0
+	move.l -36(%fp),%a0
 	move.l %a4,%a1
 	moveq #12,%d4
 	addq.l #1,%d2
 	lea (12,%a4),%a4
 	add.l #84,%d0
-	add.l -36(%fp),%a0
+	add.l -32(%fp),%a0
 	add.l %d4,-24(%fp)
 	lea (12,%a2),%a2
 	moveq #16,%d5
@@ -1374,8 +1402,8 @@ md_ctl_chunk:
 	move.l (%a0),(%a1)
 	cmp.l %d2,%d5
 	jne .L190
-	jra .L269
-.L267:
+	jra .L275
+.L273:
 	mulu.w #192,%d4
 	move.l %d4,%a1
 	add.l #md_kits,%a1
@@ -1384,19 +1412,19 @@ md_ctl_chunk:
 	mvz.b 4(%a1,%a0.l),%d5
 	mvz.b (%a2,%a0.l),%d4
 	cmp.l %d5,%d4
-	jeq .L270
+	jeq .L276
 .L183:
 	or.l %d3,%d1
 	addq.l #1,%a0
 	moveq #8,%d5
 	cmp.l %a0,%d5
-	jeq .L254
+	jeq .L260
 	mvz.b 4(%a1,%a0.l),%d5
 	mvz.b (%a2,%a0.l),%d4
 	moveq #1,%d6
 	cmp.l %d5,%d4
 	jne .L183
-.L270:
+.L276:
 	addq.l #1,%a0
 	moveq #8,%d4
 	cmp.l %a0,%d4
@@ -1405,7 +1433,7 @@ md_ctl_chunk:
 	jeq .L187
 	move.w %d1,md_run+1558
 	jra .L187
-.L268:
+.L274:
 	mvz.b 2(%a0),%d3
 	mvz.b 2(%a4),%d1
 	cmp.l %d3,%d1
@@ -1422,19 +1450,19 @@ md_ctl_chunk:
 	move.w %d1,-26(%fp)
 	move.w %d1,md_run+1560
 	jra .L189
-.L215:
+.L218:
 	mvz.w #192,%d5
 	moveq #12,%d3
 	muls.l %d2,%d3
 	move.l %a5,%a0
 	muls.l %d4,%d5
-	move.l %d3,-32(%fp)
-	move.l %d5,-36(%fp)
+	move.l %d3,-36(%fp)
+	move.l %d5,-32(%fp)
 .L180:
 	clr.l (%a0)+
 	cmp.l %d0,%a0
 	jne .L180
-.L271:
+.L277:
 	move.l %a3,%d3
 	sub.l %a0,%a0
 	move.w md_run+1558,%d1
@@ -1447,13 +1475,13 @@ md_ctl_chunk:
 	lsl.l %d2,%d3
 	tst.b %d7
 	jeq .L181
-	jra .L267
-.L266:
+	jra .L273
+.L272:
 	move.l %a5,%a0
 	clr.l (%a0)+
 	cmp.l %d0,%a0
 	jne .L180
-	jra .L271
+	jra .L277
 .L171:
 	move.l md_kit_active,%d0
 	mov3q.l #1,%d5
@@ -1481,7 +1509,7 @@ md_ctl_chunk:
 	move.l #md_run+84,%d0
 	move.w %d6,-26(%fp)
 	jra .L190
-.L262:
+.L268:
 	mvz.b %d1,%d0
 	addq.l #1,%d1
 	move.b %d1,md_run+1564
@@ -1638,6 +1666,7 @@ md_pan_q15:
 	.word	1146
 	.word	573
 	.word	0
+	.weak	md_burn_build
 
 | Appended to the generated md_ctl.s (generate_ctl.py).
 |
@@ -1688,6 +1717,11 @@ md_kits:
 md_kit:
         .zero   12288
 md_kit_index:
+        .long   0
+        .global md_burn, md_burn_sent
+md_burn:                           | the burn build's BURN (md_ctl.h)
+        .long   0
+md_burn_sent:
         .long   0
 md_run:
         .zero   2476

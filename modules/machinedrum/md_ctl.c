@@ -350,6 +350,12 @@ const uint16_t *md_ctl_chunk(void) {
         put(&c, MD_GAIN_LEFT + p, &left, 1, left);
         put(&c, MD_GAIN_RIGHT + p, &right, 1, right);
     }
+    /* The burn build's BURN (md_ctl.h), when it changes. */
+    if (MD_BURN_BUILD && md_burn != md_burn_sent && room(&c, 1)) {
+        uint32_t burn = md_burn & 0x7f;
+        put(&c, MD_BURN_DEST, &burn, 1, burn);
+        md_burn_sent = burn;
+    }
     /* 2. Trigs, then 3. edited records; what does not fit waits a frame. */
     for (unsigned pass = 0; pass < 2; ++pass) {
         uint16_t *mask = pass ? &r->resend : &r->trig;

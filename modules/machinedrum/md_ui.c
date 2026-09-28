@@ -121,7 +121,7 @@ static void build_desc(MdUi *u, unsigned id) {
     set_name(e + D_ABBR, "SYN", 5);
     set_name(e + D_NAME, "SYNTH", 6);
     const MdEngine *eng = &md_engines[id];
-    static const char *const page2[4] = {"VOL", "PAN", "ENG", "---"};
+    static const char *const page2[4] = {"VOL", "PAN", "ENG", "BURN"};
     uint32_t lo = 0, hi = 0;
     for (unsigned k = 0; k < 12; ++k) {
         const char *name;
@@ -137,7 +137,7 @@ static void build_desc(MdUi *u, unsigned id) {
             if (k == 8) def = 100;
             if (k == 9) def = 64;
             if (k == 10) { count = choices(0); fmt = (uint32_t)md_eng_fmt; def = 0; }
-            if (k == 11) on = 0;
+            if (k == 11 && !MD_BURN_BUILD) { name = "---"; on = 0; }
         }
         set_name(e + D_PNAME + 6 * k, name, len);
         e[D_DEFAULT + k] = (uint8_t)def;
@@ -162,7 +162,7 @@ static void page_values(unsigned p, uint8_t v[12]) {
     v[8] = part->vol;
     v[9] = part->pan;
     v[10] = (uint8_t)choice_of(part->engine);
-    v[11] = 0;
+    v[11] = MD_BURN_BUILD ? (uint8_t)(md_burn & 0x7f) : 0;
 }
 
 static volatile uint8_t *page_byte(volatile uint8_t *part, unsigned t, unsigned k) {
@@ -215,6 +215,7 @@ static void page_mirror(MdUi *u, volatile uint8_t *part, volatile uint8_t *sram,
             set_engine(kp, engine_of(now));
             u->shown_engine = 0xff;          /* next frame: new names, values */
         }
+        else if (k == 11 && MD_BURN_BUILD) md_burn = now & 0x7f;
     }
 }
 

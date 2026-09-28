@@ -187,7 +187,7 @@ def assemble_glue(place):
     g, d = LAYOUT["glue"], LAYOUT["driver"]
     syms = dict(l.split() for l in (SOURCE / "driver.sym").read_text().splitlines() if l.strip())
     vals = {k: g[k] for k in ("OWNER", "GOUT", "ONCE", "SAVER6", "SAVEN7", "TRIGS", "SINE16",
-                              "FIXED", "GAIN", "GAINR", "MIX", "LSEQ", "NAPPLY", "NWORDS", "SLIPS", "GAPS", "BAD", "NVOICE")}
+                              "FIXED", "GAIN", "GAINR", "BURN", "MIX", "LSEQ", "NAPPLY", "NWORDS", "SLIPS", "GAPS", "BAD", "NVOICE")}
     alloc = {r["name"]: r for r in LAYOUT["allocations"]}
     voice = alloc["voice_y_records"]["start"]
     state_names = ("stash", "outbuf", "loop_words", "mdsave", "phase_flags")

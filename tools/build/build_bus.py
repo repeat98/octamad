@@ -966,6 +966,14 @@ def main():
                              f"{_o.write!r} ({_data.hex()}) -- not a jmp abs.l or a pointer")
                 print(f"  {_k}: {_o.defsym} = 0x{_defsym_ovr[_o.defsym]:08x} "
                       f"({_o.module}'s {_o.write} at 0x{_o.site:08x}, bridged)")
+    # The Machinedrum's burn build (MDBURN=1): the same image with a BURN knob
+    # on the MD page (SRC SETUP page 2, F) that burns 24 cycles/sample a step
+    # on core 1 (md_glue.asm), to measure the unit's spare with the MD
+    # running. md_ui.c reads the flag as a weak symbol's address.
+    if "MACHINEDRUM" in REMIX.modules:
+        _defsym_ovr["md_burn_build"] = 1 if os.environ.get("MDBURN") == "1" else 0
+        if _defsym_ovr["md_burn_build"]:
+            print("  MACHINEDRUM: MDBURN=1, the burn build (BURN on SRC SETUP page 2, F)")
 
     for _c in _caves:
         _b = _c.pinned

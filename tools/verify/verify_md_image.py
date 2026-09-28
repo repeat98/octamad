@@ -144,10 +144,11 @@ def main():
     if a.gain_probe:
         # A gain-only chunk must reach core 1 without disabling the fixed
         # trigger. Address 0xc10 maps to the right gain for internal part 0.
-        # The second packet deliberately crosses the gain-table boundary.
-        # It must be rejected without touching DSP memory past 0xc1f.
+        # The second packet deliberately crosses the end of the gain table
+        # and the BURN word after it (0xc20). It must be rejected without
+        # touching DSP memory past 0xc20.
         chunk = [0, 2, 10, 0xc10, 1, 0, 0,
-                 0xc1f, 2, 0, 0, 0, 0, 0, 0xffff, 0]
+                 0xc20, 2, 0, 0, 0, 0, 0, 0xffff, 0]
         blob = b"".join(x.to_bytes(2, "big") for x in chunk)
         feed_file = OUT / "gain_probe.bin"
         feed_file.write_bytes(blob)

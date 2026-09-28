@@ -171,6 +171,15 @@ extern uint32_t md_gain_values[MD_PARTS][2];
  * Returns a chunk in md_feed's format, or 0 when nothing is to be sent. */
 const uint16_t *md_ctl_chunk(void);
 
+/* The burn build (MDBURN=1, build_bus.py): md_burn_build's ADDRESS is 1,
+ * weak so the compiler cannot assume it non-null; 0 in every other image.
+ * md_burn (0..127, SRC SETUP page 2 F) goes to the glue as packet dest
+ * $c20; the glue burns 24 cycles/sample a step after the driver. */
+extern const char md_burn_build[] __attribute__((weak));
+#define MD_BURN_BUILD ((uint32_t)md_burn_build != 0u)
+#define MD_BURN_DEST 0xc20u
+extern volatile uint32_t md_burn, md_burn_sent;
+
 /* WP-E1 (md_persist.c): the resident bank's SRAM mirror, a little every
  * frame. The card side runs in the tasks that save and load the project. */
 void md_persist_frame(void);

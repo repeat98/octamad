@@ -48,6 +48,11 @@ md_kit:
         .zero   12288
 md_kit_index:
         .long   0
+        .global md_burn, md_burn_sent
+md_burn:                           | the burn build's BURN (md_ctl.h)
+        .long   0
+md_burn_sent:
+        .long   0
 md_run:
         .zero   2476
 md_clock:

@@ -879,6 +879,9 @@ class Module:
     # against `params` at load, so a knob rename refuses the build instead
     # of failing a fixture after the merge (PR #396 on #415).
     dear: dict[str, int] = field(default_factory=dict)
+    # DSP work outside the FX pricer (for example a CF-registered source).
+    # An explicit gap must block pressure qualification, never report N/A.
+    pressure_blocker: str = ""
 
     def __post_init__(self):
         if self.params and len(self.params) != 12:

@@ -175,7 +175,11 @@ namespace ot
 		uint8_t read8(const uint32_t _a) override
 		{
 			if(const uint8_t* const p = m_pages[_a >> g_pageBits]; p != nullptr && !m_readSlow)
+			{
+				m_seqReads += _a == m_lastRead8 + 1;	// the stall check's progress (below)
+				m_lastRead8 = _a;
 				return p[_a & g_pageMask];
+			}
 			return read8Slow(_a);
 		}
 		uint16_t read16(const uint32_t _a) override
@@ -650,7 +654,9 @@ namespace ot
 		// Sequential RAM byte reads (addr == the previous byte read + 1): a hash or
 		// a compare walking memory makes progress without writing (the loader's
 		// 300 KB core-1 upload hash, Machinedrum 24 Sep 2026); a poll re-reads one
-		// address. The stall check counts both.
+		// address. The stall check counts both. Counted on the fast path and in
+		// read8Slow: a byte of mapped RAM takes the fast path since O15c, so
+		// counting only the slow one left the loader's hash a "spin" again.
 		uint64_t m_seqReads = 0; uint32_t m_lastRead8 = 0;
 		std::vector<uint64_t> m_windowSeqReads;
 	};

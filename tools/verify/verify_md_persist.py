@@ -111,6 +111,15 @@ def check_card(image, project_dir):
     print("verify_md_persist --card: PASS")
 
 
+# The port's LOAD PROJECT runs stock's project load twice, and the MD reads
+# its file after each: the handler's call (from 0x400853de, mask 0xffff) and
+# then the engine's (from 0x40084d66, mask 0xfffe -- the one the boot makes
+# after its SRAM restore). Measured with --watch-pc, 28 Sep 2026, once the
+# port ran the load until the engine was idle (upstream 1fd3ed7); the fixed
+# 20 s run before it ended between the two (inferred: it counted one).
+LOADS = 2
+
+
 def main():
     if len(sys.argv) == 4 and sys.argv[1] == "--card":
         return check_card(sys.argv[2], sys.argv[3])
@@ -130,7 +139,7 @@ def main():
     card = stage_with(source, "good", blob)
     st = ui.run("load", card, emu, image, spans(sym), [(2.0, "quit")])
     ready, bank, pos, project_hash, writes, reads, errors, bad = struct.unpack(">8I", st["persist"])
-    assert ready == 1 and reads == 1 and bad == 0, (ready, reads, bad)
+    assert ready == 1 and reads == LOADS and bad == 0, (ready, reads, bad)
     assert st["kits"][:KIT_BYTES] == kits[:KIT_BYTES], st["kits"][:24].hex()
     assert st["kits"][KIT_BYTES:] == bytes(KIT_BYTES * 3)
     assert st["pats"][:PATTERN_BYTES] == patterns[:PATTERN_BYTES], st["pats"][:12].hex()
@@ -145,7 +154,7 @@ def main():
     card_bad = stage_with(source, "damaged", bytes(damaged))
     st = ui.run("damaged", card_bad, emu, image, spans(sym), [(2.0, "quit")])
     ready, _, _, _, _, reads, _, bad = struct.unpack(">8I", st["persist"])
-    assert ready == 1 and reads == 0 and bad == 1, (ready, reads, bad)
+    assert ready == 1 and reads == 0 and bad == LOADS, (ready, reads, bad)
     assert st["kits"][0] == 0x10, f"default kit expected, part 1 engine {st['kits'][0]:#x}"
     assert st["pats"][:PATTERN_BYTES] == empty_pattern()
     print("damaged: the sum refuses it; the banks load empty and the MD gets its default kit")

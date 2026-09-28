@@ -24,7 +24,7 @@ this work. Phase 0 (inputs and subsystem map) is recorded in section 12.
 ## 1. Confirmed target
 
 Add one **MACHINEDRUM** audio-machine choice to Octamad, delivered as
-`modules/machinedrum/` and selected by `remixes/machinedrum.py`.
+`modules/machinedrum/` and selected by `remixes/machinedrum/remix.py`.
 
 **Every OT track assigned MACHINEDRUM hosts an independent, complete
 16-part Machinedrum sound module.** Each internal part can select from the
@@ -536,7 +536,7 @@ modules/machinedrum/
   dsp/adapter.asm              part dispatch, private state, parent output
   dsp/mixer.asm                adapter around native MD mixing/processing
   extraction.py                firmware/subsystem relocation recipes
-remixes/machinedrum.py          initial single-instance composition
+remixes/machinedrum/remix.py          initial single-instance composition
 docs/remixes/machinedrum.md     inputs, controls, limits, compatibility
 tools/harness/md_reference/     pinned host-side reference runner
 tools/harness/benchmark_md.py   full-instance and mixed-load measurements
@@ -1559,7 +1559,7 @@ disassembles the result back and refuses mis-encodings and label prefixes.
   `layout.py`: payload A's `P:0x1000–0x1aa4` PLATE/SPRING/DARK donor span and
   the contiguous shared allocations `0x30000–0x40000` for sine, code/tables,
   the six-voice P-I range, and the driver.
-- ✅ `remixes/machinedrum.py` omits BusVerb, BusDelay, SEND and TEMPO SYNC,
+- ✅ `remixes/machinedrum/remix.py` omits BusVerb, BusDelay, SEND and TEMPO SYNC,
   keeps the non-reverb stock inserts plus DELAY, and uses the safe no-bus
   `NONE` fallback. `make modules` lists the module and remix, and
   `make bus REMIX=machinedrum` completes its registry, placement, and

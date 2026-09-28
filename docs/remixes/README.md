@@ -38,6 +38,7 @@ A remix is a named selection of modules; `make image REMIX=<name>` builds it int
 
 | remix | contains | proof |
 |---|---|---|
+| [`machinedrum`](../../remixes/machinedrum/README.md) | Machinedrum machine on T1-T4, hidden DSP dispatch, stock inserts on the unaffected tracks. | ? |
 | [`restock`](../../remixes/restock/README.md) | every stock FX2 effect, all fourteen: put my unit back. | `make check` |
 
 ## Probes

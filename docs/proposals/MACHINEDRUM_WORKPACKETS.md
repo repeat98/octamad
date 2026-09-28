@@ -335,7 +335,7 @@ under the port.*
 ### Phase B: the OT image (M1)
 
 **WP-B1 Module and remix skeleton.** *Depends: WP-A2.*
-- **Do:** `modules/machinedrum/manifest.py` and `remixes/machinedrum.py`,
+- **Do:** `modules/machinedrum/manifest.py` and `remixes/machinedrum/remix.py`,
   following `docs/remixer/MODULES.md` and `CONTRIBUTING.md`. The remix:
   - omits the bus servers (BusVerb, BusDelay, SEND);
   - claims payload A's PLATE/SPRING/DARK donor region;

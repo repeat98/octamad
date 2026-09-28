@@ -17,7 +17,7 @@
   - the window: code at `0x34000–0x363ff`, tables at `0x36400–0x37fff`, the
     sine at `0x38000`.
 
-  `manifest.py` and `remixes/machinedrum.py` follow the new layout
+  `manifest.py` and `remixes/machinedrum/remix.py` follow the new layout
   (payload-B donor). `make modules` passes.
 - `md_flip.py --plan out/machinedrum/plan.json` packs the regions:
   - best fit, largest first, each region keeping its alignment (capped at

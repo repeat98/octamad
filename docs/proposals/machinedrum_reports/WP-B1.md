@@ -8,7 +8,7 @@
 ## What was done
 
 Added `modules/machinedrum/manifest.py`, its README, and
-`remixes/machinedrum.py`. The manifest is a no-byte `CF_PATCH` skeleton whose
+`remixes/machinedrum/remix.py`. The manifest is a no-byte `CF_PATCH` skeleton whose
 plain resource declaration is derived from `layout.py`: the payload-A donor
 span and the proposed shared allocations. The remix omits the bus servers and
 SEND, keeps the non-reverb stock inserts plus DELAY, and uses the no-bus

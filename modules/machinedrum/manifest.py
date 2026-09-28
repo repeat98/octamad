@@ -26,9 +26,9 @@ the target; the current payload already loads only the voice DSP.
 from pathlib import Path
 import runpy
 
-from remix.schema import (BusRole, Claims, Detour, DspSection, Formatter, Kind,
-                          Linked, MenuEntry, Module, Param, Poke, SymbolRef,
-                          YBase)
+from remix.schema import (BusRole, Category, Claims, Detour, DspSection,
+                          Formatter, Kind, Linked, MenuEntry, Module, Param,
+                          Poke, Proof, SymbolRef, YBase)
 
 H = bytes.fromhex
 U32 = lambda value: value.to_bytes(4, "big")
@@ -96,6 +96,8 @@ MODULE = Module(
     kind=Kind.HYBRID,
     doc=("Machinedrum on T1-T4 (FLEX plus signature): a 16-part kit and an "
          "embedded 16-lane sequencer on the parent track's grid."),
+    category=Category.MACHINES, author="repeat98", author_url="https://github.com/repeat98",
+    proof=Proof.PORT, proof_note="the MD gates under the ColdFire port (`make verify-md*`, `verify_md_persist`); not flashed",
 
     menu=MenuEntry(
         # Internal DSP dispatch id, hidden from FX2 by the remix. The

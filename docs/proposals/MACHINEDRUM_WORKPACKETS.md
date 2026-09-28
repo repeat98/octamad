@@ -66,7 +66,7 @@ Statuses:
 | WP-B2 Build-time extraction | review | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-B2.md`, `WP-B3-B4.md` | `payload_B.mem` (core 1) is now in the image: `md_image.py` builds the combined core-1 upload, which `loader.S` depacks before the DSP boot; `verify_dram_boot` reads it back from core 1 |
 | WP-B3 The dispatcher hook | review | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-B3-B4.md` | FX2 id 0x1e (MACHINEDRUM) on core 1 runs `md_glue.asm`; the other ids run the null stub there; `make verify-md` passes on the repo's dsp56300 pin |
 | WP-B4 The fixed trigger path | review | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-B3-B4.md` | trig = bit 16 of the track state's word $1e (a sample voice starting); slot 0 plays c10's TRX-BD, bit-identical to the MD reference for 171 periods under the port |
-| WP-B5 Gates and the M1 image | todo | | | | | the user flashes |
+| WP-B5 Gates and the M1 image | review | `machinedrum` | `7971f68` | 2026-09-28 | `out/MDRUM01_NOTES.txt` (not in the repo) | MDRUM01 and MDRUM01B (BURN knob) built on the merged tree, every MD gate and `make check` pass; the user flashes |
 | WP-C1 The record transport | done | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-C1.md` | full c01_16 stream: 33,503/33,503 voice blocks bit-identical to the interpreter replay; 19,335 words, no stream loss; test producer only, hardware timing unmeasured |
 | WP-C2 Port the parameter handlers | done | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-C2.md` | 450 map cases / 50 engines, 84 record bytes each match; 148 source operands relocated; TRX-S2 descriptor compared offline (live map uses empty handler) |
 | WP-C3 Machine registration | done | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/WP-C3.md`, `HANDOFF-UI.md` | signed FLEX T1 assignment, T2/T5 admission refusals, and T2 slot isolation pass the panel RAM gate |
@@ -77,6 +77,7 @@ Statuses:
 | WP-D4 Grid-record view | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/HANDOFF-UI.md` | panel gate proves part select and REC+TRIG 5 lane bit; broader page/lock walk pending |
 | WP-D5 Parameter pages | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/HANDOFF-UI.md` | panel gate proves page-1 SYN 1, page-2 SYN 7 and ENG (one detent per engine, 25 Sep) |
 | WP-D6 The info box | claimed | `machinedrum` | this commit | 2026-09-24 | `machinedrum_reports/HANDOFF-UI.md` | panel RAM shows `P02 TRX-SD` and name detours; visible LCD result pending |
+| WP-D7 MD focus: the kit editor in place on SRC | claimed | `machinedrum` | this commit | 2026-09-28 | | the user's choice (28 Sep): in place on the MD track's SRC page, one input layer; replaces D4's part chord and D5's ENG knob |
 | WP-E1 Persistence | review | `machinedrum` | this commit | 2026-09-25 | `machinedrum_reports/WP-E1.md` | 64 kits (one per Part) + 256 patterns: `machinedrum.work` on each bank save/load, the resident bank in SRAM; port gate `verify_md_persist.py`, SYNC and power cycle in octemu; saved-Part kits and SAVE TO NEW open |
 | WP-E2 MIDI | todo | | | | | |
 | WP-E3 Admission | todo | | | | | |
@@ -452,6 +453,40 @@ EFFECTS or master-effect pages. The parent OT FX pages remain separate.
 
 **WP-D6 The info box.** It shows the part and engine (e.g. `P05 E12-SD`),
 using the `PANEL.md` primitives.
+
+**WP-D7 MD focus: the kit editor in place on SRC.** *Replaces D4's
+hold-track chord and D5's geared ENG knob.* The user's report on octemu
+(28 Sep 2026): the SRC SETUP chooser and the track's own chooser behave
+differently, the MD could not be assigned "further down", and ENG did not
+change the engine. The user chose the in-place design: the MD track's SRC
+page is the kit editor, the rest of the OT stays stock.
+
+Measured (disassembly, 28 Sep 2026): a trig with REC off goes
+`0x40060ce0` → `0x400501d8`, which dispatches on the trig mode
+`0x460d16f0` (0–5); mode 0, the default, is `0x40044584`: trigs 1–8
+trigger audio tracks 1–8 by hand, 9–16 the MIDI tracks. Available
+mechanisms: input layers `0x40031494` / `0x4003146c` (`MAINMENU.md` §6c,
+tempo-bus uses them), the scrolling list `0x4006d94c` (Octakit uses it),
+the yes/no popup `0x4006d57c` (`PANEL.md`). The trap: trig press and
+release share `0x40060ce0`, and a layer that takes one and not the other
+leaves the trig held (`MAINMENU.md` §6b).
+
+1. Reproduce the three reports under the port and in octemu, each as a
+   gate that fails now.
+2. One commit for both choosers; a refusal opens the yes/no popup with
+   the reason (T1–T4 only; one MD per Part).
+3. An input layer, pushed while the MD track's SRC page (either page) is
+   on screen and popped otherwise. REC off: a trig selects and plays that
+   part, press and release both taken (the MD's pads replace the manual
+   track trigs on this page only). REC on: trigs pass through to stock
+   grid recording (the lane mirror). Every other key passes through.
+4. ENG: one key opens the list popup with every engine's full name; YES
+   takes it, NO leaves it. The key is chosen after measuring what stock
+   does with the candidates on the SRC page (YES, the MKII encoder
+   pushes). The ENG gearing goes.
+5. The trig LEDs with REC off: parts with steps lit, the selected part
+   blinking.
+6. Gates under the port for each step; an octemu package for the user.
 
 ### Phase E: completion (M4)
 

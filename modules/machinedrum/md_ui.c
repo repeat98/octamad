@@ -50,10 +50,16 @@ enum {
     OT_FLEX_P = 0x400d31aeu,
     OT_EMPTY_P = 0x400d34d2u,        /* NEIGHBOR's page: stock's entries 5 and 6 */
     OT_PB_TABLE = 0x400d5f38u,       /* seven entries, by machine row */
-    OT_ENC_CFG = 0x46c7dedeu,        /* per-encoder config, 20 bytes a slot */
-    OT_ENC_STRIDE = 20u,
-    OT_SETUP_EDIT = 0x4003a474u,     /* the SRC SETUP window's editor */
     OT_SETUP_ROW = 0x460d5c30u,      /* the machine row that window edits */
+    OT_AMP_E = 0x400d3950u,          /* stock AMP page descriptor (E), every track's */
+    /* Page 1 of LFO, AMP, FX1 and FX2 sit in page-kind order, 24 bytes a
+     * track from Part + 0x11a: AMP (kind 2) is the second six. The first six
+     * are LFO's (defaults 32 32 32 0 0 0), which this read as AMP until the
+     * UI gate's AMP step caught it (28 Sep 2026). The live lane has them in
+     * the same order after SRC: AMP at + 12. */
+    OT_AMP1 = 0x120u,                /* Part + this + track x 24: AMP page 1 */
+    OT_LANE_AMP = 12u,               /* the live lane's AMP page 1 */
+    AMP_VOL = 3u, AMP_PAN = 4u,      /* D and E, where stock's VOL and BAL are */
 };
 #define FLEX 1u
 #define MD_ROW 5u                    /* md_machine.s: MACHINEDRUM's row in both lists */
@@ -92,24 +98,6 @@ static unsigned choice_of(unsigned id) {
     return 0;
 }
 
-static unsigned engine_of(unsigned choice) {
-    uint8_t list[MD_ENGINE_IDS];
-    unsigned n = choices(list);
-    return choice < n ? list[choice] : 0;
-}
-
-/* ENG's formatter (stock signature: buf, value): four characters, "T-BD". */
-void md_eng_fmt(char *buf, int value) {
-    unsigned id = engine_of((unsigned)value);
-    const char *name = md_engines[id].name;
-    if (!id) { buf[0] = buf[1] = buf[2] = buf[3] = '-'; buf[4] = 0; return; }
-    buf[0] = name[0] == 'E' ? 'E' : name[0];
-    buf[1] = '-';
-    buf[2] = name[4];
-    buf[3] = name[5];
-    buf[4] = 0;
-}
-
 static void set_name(uint8_t *field, const char *src, unsigned len) {
     for (unsigned i = 0; i < 6; ++i)
         field[i] = (uint8_t)(i < len && src[i] ? src[i] : 0);
@@ -124,7 +112,7 @@ static void build_desc(MdUi *u, unsigned id) {
     set_name(e + D_ABBR, "SYN", 5);
     set_name(e + D_NAME, "SYNTH", 6);
     const MdEngine *eng = &md_engines[id];
-    static const char *const page2[4] = {"VOL", "PAN", "ENG", "BURN"};
+    static const char *const page2[4] = {"---", "---", "---", "BURN"};
     uint32_t lo = 0, hi = 0;
     for (unsigned k = 0; k < 12; ++k) {
         const char *name;
@@ -135,12 +123,9 @@ static void build_desc(MdUi *u, unsigned id) {
             name = eng->names[s];
             def = eng->defaults[s];
             if (!name[0]) { name = "---"; on = 0; }
-        } else {
+        } else {                          /* SYN 7-8 alone on page 2 (WP-D9) */
             name = page2[k - MD_SYN];
-            if (k == 8) def = 100;
-            if (k == 9) def = 64;
-            if (k == 10) { count = choices(0); fmt = (uint32_t)md_eng_fmt; def = 0; }
-            if (k == 11 && !MD_BURN_BUILD) { name = "---"; on = 0; }
+            if (k < 11 || !MD_BURN_BUILD) { name = "---"; on = 0; }
         }
         set_name(e + D_PNAME + 6 * k, name, len);
         e[D_DEFAULT + k] = (uint8_t)def;
@@ -162,9 +147,7 @@ static void build_desc(MdUi *u, unsigned id) {
 static void page_values(unsigned p, uint8_t v[12]) {
     const MdPart *part = &md_kit_cur()->part[p];
     for (unsigned i = 0; i < MD_SYN; ++i) v[i] = part->syn[i];
-    v[8] = part->vol;
-    v[9] = part->pan;
-    v[10] = (uint8_t)choice_of(part->engine);
+    v[8] = v[9] = v[10] = 0;
     v[11] = MD_BURN_BUILD ? (uint8_t)(md_burn & 0x7f) : 0;
 }
 
@@ -213,12 +196,6 @@ static void page_mirror(MdUi *u, volatile uint8_t *part, volatile uint8_t *sram,
         if (now == u->snap[k]) continue;
         u->snap[k] = now;
         if (k < MD_SYN) kp->syn[k] = now & 0x7f;
-        else if (k == 8) kp->vol = now & 0x7f;
-        else if (k == 9) kp->pan = now & 0x7f;
-        else if (k == 10) {
-            set_engine(kp, engine_of(now));
-            u->shown_engine = 0xff;          /* next frame: new names, values */
-        }
         else if (k == 11 && MD_BURN_BUILD) md_burn = now & 0x7f;
     }
 }
@@ -270,20 +247,66 @@ static void make_name(MdUi *u) {
     (void)u;
 }
 
-/* Stock turns an encoder's accumulated delta << 8 into steps of a per-slot
- * divisor (0x4003249c): 256 for a 0..127 knob, 819 for a select under 128
- * values, so ENG on SETUP's E would take about four detents per engine
- * (measured under the port, 25 Sep 2026). While that window edits the MD
- * track, one detent is one engine; the stock divisor comes back when it
- * edits anything else. */
-static void eng_gearing(MdUi *u, unsigned md_page) {
-    volatile uint32_t *e = (volatile uint32_t *)(OT_ENC_CFG + 4 * OT_ENC_STRIDE);
-    if (e[0] != OT_SETUP_EDIT) return;
-    if (md_page) {
-        if (e[2] != 256u) { u->eng_div = (uint16_t)e[2]; e[2] = 256u; }
-    } else if (u->eng_div && e[2] == 256u && e[4] < 128u) {
-        e[2] = u->eng_div;
-        u->eng_div = 0;
+/* ---- WP-D9: the MD track's AMP page is the selected part's mix ------
+ * The user's decision (28 Sep 2026): AMP holds the part's VOL and PAN, the
+ * MD's per-part effects stay out. They sit on D and E, where stock's VOL
+ * and BAL are; the other ten slots are off. The page is a copy of stock's
+ * AMP descriptor (made at run time from the image in RAM) with those
+ * changes; md_machine.s md_amp_pb serves it for the MD track alone. Its
+ * values live where stock keeps AMP page 1 for that track -- the parent's
+ * VOL and BAL bytes -- and are mirrored into the part as the SRC page's
+ * are. The parent's AMP settings shape its sample voice (the voice record,
+ * MIDI.md), whose audio the MD replaces at FX2 (inferred, not measured:
+ * the port's main out carries no track audio), so the MD track loses
+ * nothing by them. */
+static void build_amp(void) {
+    uint8_t *e = md_amp_desc;
+    const volatile uint8_t *amp = (const volatile uint8_t *)OT_AMP_E;
+    for (unsigned i = 0; i < MD_DESC_BYTES; ++i) e[i] = amp[i];
+    uint32_t lo = 0, hi = 0;
+    for (unsigned k = 0; k < 12; ++k) {
+        if (k == AMP_VOL) {                    /* stock VOL's fields, the MD's default */
+            set_name(e + D_PNAME + 6 * k, "VOL", 4);
+            e[D_DEFAULT + k] = 100;
+            put32(e + D_FMT + 4 * k, 0);
+            lo |= 1u << (4 * k);
+        } else if (k == AMP_PAN) {             /* stock BAL's: 64 centre, bipolar */
+            set_name(e + D_PNAME + 6 * k, "PAN", 4);
+            lo |= 1u << (4 * k);
+        } else {
+            set_name(e + D_PNAME + 6 * k, "---", 4);
+        }
+    }
+    put32(e + D_EN_LO, lo);
+    put32(e + D_EN_HI, hi);
+    md_amp_desc_p = (uint32_t)(e + 0x38);
+}
+
+static void amp_mirror(MdUi *u, volatile uint8_t *part, volatile uint8_t *sram,
+                       unsigned t, unsigned kit) {
+    unsigned p = u->sel & (MD_PARTS - 1), key = (kit & 63u) | t << 6;
+    MdPart *kp = &md_kit_cur()->part[p];
+    volatile uint8_t *a = part + OT_AMP1 + 24u * t, *s = sram + OT_AMP1 + 24u * t;
+    volatile uint8_t *lane = (volatile uint8_t *)(OT_LANE + 72u * t + OT_LANE_AMP);
+    if (u->amp_sel != p || u->amp_key != key) {
+        a[AMP_VOL] = s[AMP_VOL] = lane[AMP_VOL] = u->amp_snap[0] = kp->vol;
+        a[AMP_PAN] = s[AMP_PAN] = lane[AMP_PAN] = u->amp_snap[1] = kp->pan;
+        u->amp_sel = (uint8_t)p;
+        u->amp_key = (uint8_t)key;
+        return;
+    }
+    /* Both ways: a knob moved the byte, or the kit moved (the Part's default
+     * kit lands a frame after the first mirror, a project load, a lock). */
+    uint8_t *field[2] = {&kp->vol, &kp->pan};
+    static const uint8_t slot[2] = {AMP_VOL, AMP_PAN};
+    for (unsigned i = 0; i < 2; ++i) {
+        unsigned k = slot[i];
+        if (a[k] != u->amp_snap[i]) {
+            u->amp_snap[i] = a[k];
+            *field[i] = a[k] & 0x7f;
+        } else if (*field[i] != u->amp_snap[i]) {
+            a[k] = s[k] = lane[k] = u->amp_snap[i] = *field[i];
+        }
     }
 }
 
@@ -598,8 +621,7 @@ unsigned md_ui_frame(void) {
     if (t < 0) {
         md_ui_md_type = 0;
         U32(OT_PB_TABLE + 4 * MD_ROW) = OT_EMPTY_P;
-        u->shown_sel = u->lane_sel = 0xff;
-        eng_gearing(u, 0);
+        u->shown_sel = u->lane_sel = u->amp_sel = 0xff;
         return 0;
     }
     md_ui_md_type = (uint32_t)(part + 0x22 + t);
@@ -611,7 +633,8 @@ unsigned md_ui_frame(void) {
      * md_resolve_pb serves every track's own page by itself. */
     unsigned md_shown = U8(OT_UI_TRACK) == (unsigned)t && md_desc_p;
     U32(OT_PB_TABLE + 4 * MD_ROW) = md_shown ? md_desc_p : OT_EMPTY_P;
-    eng_gearing(u, md_shown && U32(OT_SETUP_ROW) == MD_ROW);
+    if (!md_amp_desc_p) build_amp();
+    amp_mirror(u, part, sram, (unsigned)t, md_kit_index);
     lane_mirror(u, (unsigned)t);
     return (unsigned)t + 1;
 }

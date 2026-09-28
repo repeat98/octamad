@@ -35,6 +35,7 @@
         .global md_setup_row, md_chooser_row
         .global md_setup_open, md_chooser_open
         .global md_src_commit2, md_setup_edit6, md_setup_draw6
+        .global md_amp_pb
         .global md_resolve_pb
         .global md_trig_key
         .global md_sig_check
@@ -313,6 +314,19 @@ md_setup_draw6:
         add.l   %d6,%d6
         sub.l   %d6,%d7
         jmp     (0x4003cda0).l
+
+| WP-D9: the page resolver (0x40031da4, track d3) gives every audio track
+| stock's AMP page (0x40031e88: move.l #0x400d3988,d0 / bra the exit). The
+| MD track gets its own (md_ui.c build_amp: the part's VOL and PAN) once it
+| is built. d1 is free at the exit (0x40031ed6 restores d2-d5 and returns).
+md_amp_pb:
+        move.l  #0x400d3988,%d0
+        cmp.l   md_ui_md_track,%d3
+        bne.s   1f
+        move.l  md_amp_desc_p,%d1
+        beq.s   1f
+        move.l  %d1,%d0
+1:      jmp     (0x40031ed6).l
 
 | The track's own machine list (double-tap the track key, then LEFT) syncs
 | its cursor from the type in 0x40078850 (0x40078886, measured 28 Sep

@@ -133,12 +133,17 @@ typedef struct {
     uint8_t snap[12], lane_snap[8];
     uint16_t eng_div;                /* SETUP E's stock divisor while ENG is geared */
     uint8_t redraw;                  /* the page or the name changed: md_ui_tick draws */
-    uint8_t pad[7];
+    uint8_t amp_sel, amp_key;        /* WP-D9: the part and kit | track the AMP page shows */
+    uint8_t amp_snap[2];             /* its VOL and PAN as last written */
+    uint8_t pad[3];
     uint8_t desc[MD_DESC_BYTES + 2];
 } MdUi;
 
 extern MdUi md_ui;
 extern volatile uint32_t md_desc_p, md_ui_md_track, md_ui_md_type;
+/* WP-D9: the MD track's AMP page (md_ui.c build_amp; md_machine.s md_amp_pb). */
+extern uint8_t md_amp_desc[MD_DESC_BYTES + 2];
+extern volatile uint32_t md_amp_desc_p;
 extern char md_ui_name[12];
 unsigned md_ui_frame(void);
 void md_ui_select(unsigned key);

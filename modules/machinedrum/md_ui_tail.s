@@ -16,8 +16,17 @@ md_tick_hook:
         .global md_ui
 md_ui:
         .byte 0,255,255,255,255,255,255,255,255,255
-        .zero 30
+        .zero 23
+        .byte 255,255                   | amp_sel, amp_key: unseen
+        .zero 5
         .zero 0x1cc
+
+| WP-D9: the MD track's AMP page and its address (0 until built).
+        .global md_amp_desc, md_amp_desc_p
+md_amp_desc:
+        .zero 0x1cc
+md_amp_desc_p:
+        .long 0
 
 | WP-D7: md_focus (MdFocus, md_ctl.h) and the MD's input layer, as the
 | stock ones: {next, keys, encoders, 0, 0, -1, -1}. Key records, 26 B:

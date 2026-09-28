@@ -30,7 +30,7 @@ Page 2 is unreachable from stock CC: `cc−16 < 30` and the writer derives
 **The generic writer `FUN_40054cd8(track, flat, value)`** ✅ resolves the
 descriptor via `FUN_40031da4(track, flat/6)`, refuses disabled slots,
 clamps to `[min, min+count−1]` from `P+0x6a/P+0x9a`, stores to the Part
-(`+0x8ee9a + track·24 + flat−6` for AMP/LFO/FX1/FX2), a shadow, and the
+(`+0x8ee9a + track·24 + flat−6` for LFO/AMP/FX1/FX2, in that order), a shadow, and the
 live byte `0x80000810[track·72 + flat]`; the frame builder `0x4000c0f0`
 copies those `<<8` into the DSP frame every frame (why knobs sit at bits
 16-23). The UI knob path is a near-copy, `FUN_40055008(slot, delta)`.
@@ -281,7 +281,12 @@ the same body. Steps, all measured:
 4. Audio track (`track ≤ 7`): storage address
    - PB page: `Part + 0x8edaa + track*30 + machine*6 + slot` (`0x40054d7e..88`
      computes `(m<<3) − m*2`; octalab's validator reading agrees, 13 Sep 2026)
-   - others: `Part + 0x8ee9a + track*24 + (flat − 6)` (24 B/track = AMP·LFO·FX1·FX2 × 6)
+   - others: `Part + 0x8ee9a + track*24 + (flat − 6)` (24 B/track = LFO·AMP·FX1·FX2 × 6,
+     page-kind order: flats 6–11 LFO, 12–17 AMP. ✅ under the port, 28 Sep 2026: the first
+     six read 32 32 32 0 0 0, LFO's defaults, and AMP's knob D landed at + 6 + 3, as
+     `tools/panel/param_map.json` had measured ("AMP: 0x8ee9a + 0*24 + 6").
+     ❌ This read "AMP·LFO·FX1·FX2" until then, and the Machinedrum's AMP mirror took the
+     LFO bytes for AMP's until its gate caught it.)
    plus a shadow copy at `0x100a4ef8`/`0x100a4fe8` + same offset.
 5. Clears a per-track lock bit `0x80001538[t] &= ~(1<<flat)` and byte
    `0x80001658[t*32+flat]` (p-lock/override state 🟡).

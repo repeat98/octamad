@@ -167,6 +167,10 @@ def pressure_profile(modules):
     """Ready when every DSP module of the selection declares its dearest
     settings (schema.Module.dear); blocked, by name, when one does not. A
     module is never rendered at default knobs and called covered."""
+    blockers = [f"{m.key}: {m.pressure_blocker}" for m in modules
+                if getattr(m, "pressure_blocker", "")]
+    if blockers:
+        return "blocked", "; ".join(sorted(blockers))
     dsp = [m for m in modules if _effect(m)]
     if not dsp:
         return "not_applicable", "remix has no DSP modules"

@@ -568,7 +568,7 @@ def main():
                  "DJ EQ", "COMB FILTER")
     _want = {"restock": (), "mods": (), "ok-ms": (), "usb-out-tracks-main-cue": (), "usb-out-tracks": (), "usb-out-master": (),
              "octatrick": (), "octatrick-usb": (), "usb-out-main-cue": (), "usb-out-main": (),     # stock effects + ColdFire modules, no DSP words
-             "repitch": (),
+             "repitch": (), "analog-bassdrum": ("SPRING REV",),
              # the twelve io remixes: the IN module's RX inject is placed in SPATIALIZER's words
              **{f"usb-io-{o}-{i}": ("SPATIALIZER",) for o in ("tracks", "tracks-main-cue", "main-cue", "main") for i in ("ab", "cd", "abcd")},
              "cfmeter": ("DARK REV",), "cfmeter-port": ("DARK REV",),   # the readout insert's words

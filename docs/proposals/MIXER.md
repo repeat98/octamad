@@ -619,3 +619,46 @@ right for the test remix and wrong for a shipping one, where an empty strip (bot
 dry) is the transparent start. It is one macro (`BOOT_MODEL` in `strip_xport.s`) and
 `boot.asm`'s record. The strip's MAIN level is stock's and is not stored here.
 
+
+## 16. Returns: the call site and the plan (29 Sep 2026)
+
+Nothing here is built. ✅ is read off `out/dsp/payload_A.asm` of this tree; the rest is ❓.
+
+**A frame on core 0, as the image has it.** The mixdown (P:0x238..0x2d5) reads the track
+blocks the previous frame's effects wrote; then the per-track loop (P:0x385..0x53c, four
+iterations, `x:$418` stepping 0x20 to 0x80) runs each track's FX1 and FX2 through the two
+`jsr (r2)` pairs at P:0x4be/0x4d7 and P:0x4f4/0x50d; then P:0x53e..0x558 rotates two
+buffer pointers and copies five words, and `jmp`s to P:0x4a, the poll loop. Nothing branches
+into P:0x53e (the disassembly names no label there), and every register that code reads it
+has written first (a, b, x0, r6, r7), so a `jsr` over P:0x53e's two-word `move x:>$415,a`
+(the seam's shape, §10) is a place where **all** registers are free and every track's effect
+of this frame has run. Whatever it computes reaches MAIN at the next frame's head, at the
+same age as an FX2 host's wet.
+
+**What that gives a return.** A "hostless" RET B: the strip calls BusVerb there as a track
+slot would, with its own record (r6), its own instance block (r7, X:0x7f00 is unused under the
+port), `r0` a block of 16 silent pairs, `n7` = 16, `a` = 1 (the dispatcher's call flag); the
+block comes back as `wet × WET` alone, and the next head adds it into D before the inserts.
+T5's FX2 stops being a host. Its sends are today's SEND accumulators, so tracks keep their
+`REV` knob.
+
+**What has to be true, and is not yet checked.**
+1. The server's guard and locks. With the strip as the only instance, the REVERB role lock
+   (`Y:0x9c2`) is claimed by its r7 every block; the housekeeping is elected among the SEND
+   clients, which run earlier in the frame. A remix that hides the engine gets `HOSTGUARD`
+   (r7 == 0x6200) at the top of `proc`, which the strip's r7 would fail: the guard must let
+   the strip's r7 through. ❓ falsified by the server rendering dry under the port.
+2. Cost. The reverb prices ~1,650 cycles a sample (§5) at the frame's end instead of in the
+   loop; that is inside the effect phase, not the mixdown's DMA window. ❓ no burn measurement.
+3. `b` at the call: the dispatcher passes `x:$41c` / `x:$41e` in `b` (P:0x4d5, P:0x50b);
+   whether the server reads it is not checked.
+4. A record: BusVerb reads twelve knobs from r6 (page 1 `+0..+5`, page 2 `+$c..+$e`).
+   The strip's model already ships records this way (§12); a return is one more, with
+   the reverb's ids and knobs on a RETURN B page (§7 decision 5).
+5. Storage: one 16-byte slot in the Part window, on the designer shape T6 (`+0x1742`),
+   beside the master strip's T7/T8 (§15); RETURN A would take T4/T5. ❓ same census caveats.
+
+**What it does not do.** No per-track send knobs beyond SEND's, no AUX A (the delay is on
+core 1: a hostless call there is the same shape at payload B's own frame end, not
+examined), no retirement of the SEND bus (§4). It is the step that frees T5's FX2 and
+puts a reverb on its own strip; the 12 × 4 mixer of §3 stays the destination.

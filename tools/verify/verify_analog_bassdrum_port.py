@@ -49,7 +49,7 @@ def main():
     sample_model=0 if SAMPLE808 else 1
     sample_track=next(t for t,m in MODELS if m==sample_model)
     core,cont=(1,0x221) if sample_track==0 else (0,0x426)
-    knobbase=0x3630 if SAMPLE808 else 0x3130
+    knobbase=0x3730
     spans=';'.join(f'{symbols[name]:#x},4={OUT}/{name}.bin' for name in ('ab_render_calls','ab_hits'))
     spans+=f';0x40170f60,6322={OUT}/part.bin'
     emu=ab_source_probe.build(OUT/'probe',core,cont,knobbase)
@@ -74,7 +74,7 @@ def main():
             addrs=(0x800021d0,0x80002c50) if trackcore==0 else (0x80001c90,0x80002710)
             records=sorted(sum((c.get(('>',0,trackcore,a),[]) for a in addrs),[]))
             signed=[w for _,w in records if w[0]==0xab09 and w[2]==0x909]
-            assert signed and any(w[3]==1 for w in signed), 'no DSP trigger record'
+            assert signed and any(w[3] in (1,2) for w in signed), 'no DSP trigger record'
             expected=DEFAULTS.copy();expected[6]=model
             assert all(list(w[8:20])==expected for w in signed), 'knob transport'
         if model==sample_model:

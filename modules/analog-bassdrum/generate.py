@@ -22,7 +22,7 @@ def main():
     check='--check' in sys.argv
     outputs={HERE/'tables.inc':tables()}
     with tempfile.TemporaryDirectory() as tmp:
-        for name in ('engine','control'):
+        for name in ('engine','control','loader'):
             if not (HERE/(name+'.c')).exists(): continue
             dest=pathlib.Path(tmp)/(name+'.s')
             # Local include is deliberately checked/generated before compiling.

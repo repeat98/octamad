@@ -7,6 +7,11 @@ flashed image was built from.
 
 ## Unreleased (main after image 43)
 
+- Experimental Analog BD Part loader: keep the engine catalogue in reserved
+  SDRAM and load each core's selected engine set through bounded, sequenced
+  source packets. Share code/tables across tracks and retain one pending hit
+  while loading. Part changes reset voices; hardware qualification is pending.
+
 - `make reach` is QUICK by default (29 Sep 2026): the remixes users flash
   that carry the change, one floor remix for tool and build changes, no
   identity, no `make accept`, two shards, background priority on macOS

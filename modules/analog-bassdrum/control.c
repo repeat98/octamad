@@ -116,6 +116,7 @@ int ab_validate_part(uint8_t *part) {
  * Header: source count, ring start, Q26 source rate, Q26 read position.
  * Stock transport converts the high 24 bits of each L/R long to DSP words.
  */
+extern void ab_load_record(const volatile uint8_t *,uint32_t,unsigned,unsigned,volatile uint32_t *);
 int ab_render(unsigned track,unsigned ping,unsigned start,unsigned end) {
     if(track>=8 || !signed_track(part_base(),track)) {
         return ((int (*)(unsigned,unsigned,unsigned,unsigned))0x40004008u)(track,ping,start,end);
@@ -145,6 +146,7 @@ int ab_render(unsigned track,unsigned ping,unsigned start,unsigned end) {
             record[0]=0xab090000u; record[1]=0x09090000u|trig;
             record[2]=record[3]=0;
             for(unsigned k=0;k<6;++k) record[4+k]=((uint32_t)p[2*k]<<16)|p[2*k+1];
+            ab_load_record(part_base(),U32(BANK),U8(PART_IDX)&3,track,record);
             if(trig) ++ab_hits;
         }
         U32(0x80001c80u)=(uint32_t)(uintptr_t)(cursor+4+2*n);

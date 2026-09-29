@@ -23,9 +23,9 @@ def build(out, core, pc, knobs):
             if(!output) std::abort();
             if(lines++ < 20000) {
                 std::fprintf(output, "%llu", static_cast<unsigned long long>(c.executed));
-                const unsigned bases[] = {0x418, 0, KNOBS};
-                const unsigned sizes[] = {1, 32, 13};
-                for(unsigned span = 0; span < 3; ++span) {
+                const unsigned bases[] = {0x418, 0, KNOBS, 0x3800};
+                const unsigned sizes[] = {1, 32, 13, 8};
+                for(unsigned span = 0; span < 4; ++span) {
                     std::fprintf(output, " |");
                     for(unsigned k = 0; k < sizes[span]; ++k)
                         std::fprintf(output, " %06x", c.mem->get(dsp56k::MemArea_X, bases[span]+k) & 0xffffff);

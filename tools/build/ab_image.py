@@ -1,28 +1,13 @@
 #!/usr/bin/env python3
-"""Analog BD DSP 808/909 engines in an OT image (modules/analog-bassdrum/DSP909.md).
+"""Part-resident Analog BD DSP engines.
 
-build_bus.py calls integrate() last, when the remix carries ANALOG BD, after
-every DSP pass has written both payloads. For each payload it
-
-  1. assembles ab_glue.asm with both bass-drum engines behind it at the harvested SPRING
-     REV's P address (the remix does not list SPRING REV, so its code is on
-     neither chooser: stock.harvested) and checks the bytes by disassembly
-     (dsp909.assemble); the code is written over SPRING's own P words, in
-     place, after checking they are still stock. A shared stock reverb helper
-     is copied to the reserved end of the region and its external callers
-     are retargeted before replacing the donor;
-  2. points SPRING's dispatch (id 0x15, X:0x22a/0x24a) at the null stub, so a
-     Part that still names SPRING REV runs a passthrough, not our code;
-  3. patches the source seam, `move a,x:>$20e` (A P:0x39c, B P:0x1a2), into
-     a jsr to the glue;
-  4. builds the payload's upload with one more X record: the 909's tables at
-     X:0x2840 and four voice blocks after them, in private X that both
-     cores' measured memory ledgers mark free. Not the shared window: stock PLATE and DARK write
-     14,335 and 15,778 words into a 16K FX2 slot there, and the window runs
-     code at one wait state.
-
-The two uploads go in as PRE-BOOT payloads of octabam's loader, with the
-pokes that point the DSP boot's two uploads at them.
+SPRING's P region holds a resident source dispatcher, bounded packet loader,
+shared desk and an initially empty engine pool. Its stock PLATE/DARK helper
+is preserved at the end. Both boot uploads carry only the common tables and
+zeroed voice/loader state. A third preboot payload puts our relocatable engine
+catalogue in reserved ColdFire SDRAM, declared and range-checked by the platform.
+The ColdFire source builder streams the active Part's packages through the
+normal per-track control records; the DSP admits them only after COMMIT.
 """
 from __future__ import annotations
 
@@ -33,13 +18,12 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "modules/analog-bassdrum"))
 sys.path.insert(0, str(ROOT / "tools/build"))
-import dsp808
+import dynamic
 import dsp909  # noqa: E402
 import ab_records  # noqa: E402  (stock DSP upload record helpers)
 
 BASE = ab_records.BASE
 UNCACHED = ab_records.UNCACHED
-GLUE = ROOT / "modules/analog-bassdrum/ab_glue.asm"
 OUT = ROOT / "out/analog-bassdrum/image"
 
 SPRING_ID = 0x15
@@ -58,10 +42,6 @@ SHARED_OFFSET = 0x334
 SHARED_SHA256 = "c411c03ac315959374f7f16b8cc3558f65dbcd60dcdaa912ff0a39dcea53752a"
 SHARED_CALLS = {"A": (0x17b3, 0x1998, 0x19c2), "B": (0x1573, 0x1758, 0x1782)}
 TABLES = 0x2840                 # X: the tables, then the voice blocks
-VOICE_STRIDE = 0x40             # 2 * x:$418 (0/$20/$40/$60)
-KNOBS = 0x30                    # the knob block inside a voice block
-TABLES808 = 0x3200
-VOICES808 = 0x3600
 X_TOP = 0x3940                  # the lower of the two ledgers' free tops
 # Pre-boot destination and staging buffers for each DSP upload.
 PRE = {"A": (0x40B00000, 0x40B80000), "B": (0x40B40000, 0x40BC0000)}
@@ -71,68 +51,27 @@ def die(msg):
     sys.exit(f"ab-image: {msg}")
 
 
-def layout():
-    lay = dsp909.default_layout(TABLES)
-    end = max(a + n for a, n in ((lay[k], len(v)) for k, v in
-                                  list(dsp909.tables()[0].items()) + list(dsp909.tables()[2].items())))
-    vbase = (end + 0x3F) & ~0x3F
-    if dsp909.SWORDS > KNOBS or KNOBS + 13 > VOICE_STRIDE:
-        die(f"a voice block holds {dsp909.SWORDS} state words and 13 knob words: "
-            f"stride {VOICE_STRIDE:#x} is too small")
-    if vbase + 4 * VOICE_STRIDE > X_TOP:
-        die(f"tables and voices end at X:{vbase + 4 * VOICE_STRIDE:05x}, past the free top {X_TOP:05x}")
-    return lay, vbase
-
-
-def x_image(lay, vbase):
-    """The X record: tables, then four voice blocks as zq02 leaves them."""
-    words = [0] * (VOICES808 + 4 * VOICE_STRIDE - TABLES)
-    assert vbase + 4 * VOICE_STRIDE <= TABLES808
-    assert VOICES808 + 4 * VOICE_STRIDE <= X_TOP
-    for name, vals in dsp808.tables().items():
-        start = dsp808.layout(TABLES808)[name]
-        assert start + len(vals) <= VOICES808
-        for i, v in enumerate(vals):
-            words[start - TABLES + i] = dsp909.q24(v)
-    tab, _, lists, _ = dsp909.tables()
-    for name, vals in list(tab.items()) + list(lists.items()):
-        for i, v in enumerate(vals):
-            words[lay[name] - TABLES + i] = dsp909.q24(v)
-    for k in range(4):
-        b = vbase - TABLES + k * VOICE_STRIDE
-        words[b + dsp909.OFF["C"]] = 0x7FFFFF
-        words[b + dsp909.OFF["KLPF"]] = 0x7FFFFF
-        words[b + dsp909.OFF["LCG"]] = dsp909.SEED
-    for k in range(4):
-        words[VOICES808 - TABLES + k * VOICE_STRIDE + 0x16] = 0x7fffff
-    return words
-
-
-def assemble(org, cont, lay, vbase, tag):
-    glue = GLUE.read_text().replace("@VBASE@", f"${vbase:x}").replace("@CONT@", f"${cont:x}")
-    glue = glue.replace("@V808@", f"${VOICES808:x}")
-    src = glue + "\n" + dsp909.source(lay) + "\n" + dsp808.source(dsp808.layout(TABLES808), lay)
-    OUT.mkdir(parents=True, exist_ok=True)
-    binf = OUT / f"ab_{tag}.bin"
-    syms, _ = dsp909.assemble(org, lay, binf, src)
-    blob = binf.read_bytes()
-    words = [blob[i] | blob[i + 1] << 8 | blob[i + 2] << 16 for i in range(0, len(blob), 3)]
-    if len(words) > SPRING_WORDS - SHARED_WORDS:
-        die(f"payload {tag}: glue + engine are {len(words)} words; SPRING's usable region is {SPRING_WORDS - SHARED_WORDS}")
-    return words, syms
-
-
 def integrate(img, stock_img):
     """Patch both payloads in `img` (bytearray); return ([pre-boot dicts], [pokes], log).
     `stock_img` is the pristine image: SPRING's words are checked against it."""
     from remix import runtime_build, platform_build
-    lay, vbase = layout()
-    xwords = x_image(lay, vbase)
+    assert dynamic.META+8 <= X_TOP
+    xwords = [0] * (dynamic.META+8-TABLES)
+    common = dsp909.tables()[0]
+    for name, addr in dynamic.common_layout().items():
+        for i, value in enumerate(common[name]): xwords[addr-TABLES+i] = dsp909.q24(value)
+    kernels=[]
     pres, pokes, log = [], [], []
     for tag, c in PAY.items():
         recs, term = ab_records.records(img, *c["payload"])
         srecs, _ = ab_records.records(stock_img, *c["payload"])
-        words, syms = assemble(c["spring"], c["cont"], lay, vbase, tag)
+        OUT.mkdir(parents=True,exist_ok=True)
+        pend=c['spring']+SPRING_WORDS-SHARED_WORDS
+        resident,syms,pbase=dynamic.kernel(c['spring'],c['cont'],pend,OUT/f'kernel_{tag}.bin')
+        kernels.append(dict(base=pbase,end=pend,symbols=syms))
+        words=resident+[0]*(pend-pbase)
+        assert len(resident)<SPRING_WORDS-SHARED_WORDS
+        log.append(f"  dynamic {tag}: resident {len(resident)} P words, engine pool {pend-pbase}, P:{pbase:05x}..{pend-1:05x}")
         helper_old = c["spring"] + SHARED_OFFSET
         helper_new = c["spring"] + SPRING_WORDS - SHARED_WORDS
         helper = [ab_records.rd(stock_img, ab_records.word_at(srecs, 0, helper_old + i))
@@ -170,7 +109,7 @@ def integrate(img, stock_img):
                 die(f"payload {tag}: X:{table + SPRING_ID:05x} holds {got:06x}, not SPRING's entry")
             ab_records.wr(img, off, stub)
         # 3. the seam
-        ab_records.patch(img, recs, 0, c["seam"], (0x567000, 0x00020E), (0x0BF080, syms["zg01"]),
+        ab_records.patch(img, recs, 0, c["seam"], (0x567000, 0x00020E), (0x0BF080, syms["zd01"]),
                        f"{tag} source seam -> jsr the Analog BD glue", log)
         # 4. the upload: the payload's records, the X record, its terminator
         p0 = c["payload"][0] - BASE
@@ -186,10 +125,20 @@ def integrate(img, stock_img):
                          rhash=platform_build.roll(raw)))
         pokes.append((c["pointer"], c["payload"][0].to_bytes(4, "big"), (dst + UNCACHED).to_bytes(4, "big"),
                       f"DSP boot: payload {tag}'s upload reads the Analog BD's"))
-        log.append(f"  analog bd {tag}: glue + 808/909 {len(words)} words at P:{c['spring']:05x} "
+        log.append(f"  analog bd {tag}: resident + empty engine pool {len(words)} words at P:{c['spring']:05x} "
                    f"(SPRING REV's region, {SPRING_WORDS}); id 0x{SPRING_ID:02x} -> null stub "
                    f"{c['null'][0]:05x}/{c['null'][1]:05x}; X:{TABLES:05x}..{TABLES + len(xwords) - 1:05x} "
-                   f"tables + voices (voice 0 at {vbase:05x}); upload {len(raw):,} B, packed {len(packed):,}")
+                   f"common tables + empty allocations (voice 0 at {dynamic.VOICE_BASE:05x}); upload {len(raw):,} B, packed {len(packed):,}")
         (OUT / f"upload_{tag}.bin").write_bytes(raw)
         (OUT / f"ab_{tag}.sym").write_text("".join(f"{k} {v:06x}\n" for k, v in sorted(syms.items(), key=lambda kv: kv[1])))
+    raw,packages=dynamic.library(kernels,OUT)
+    (OUT/'library.bin').write_bytes(raw)
+    import json
+    (OUT/'dynamic.json').write_text(json.dumps(dict(kernels=kernels,packages=packages),indent=2))
+    packed=runtime_build.PACKED_MAGIC+len(raw).to_bytes(4,'big')+runtime_build.pack(raw,platform_build.MAX_CANDIDATES)
+    assert len(packed)+4<=dynamic.LIBRARY_LIMIT
+    pres.append(dict(name='Analog BD engine library',blob=platform_build.SIGNATURE+packed,
+                     stage=dynamic.LIBRARY_STAGE+UNCACHED,dst=dynamic.LIBRARY+UNCACHED,
+                     rawlen=len(raw),rhash=platform_build.roll(raw)))
+    log.append(f"  dynamic library: {len(raw):,} B in SDRAM, {len(packages)} engines; no engine code resident at boot")
     return pres, pokes, log

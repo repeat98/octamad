@@ -1,5 +1,8 @@
 # Analog BD load measurements
 
+For the experimental Part-resident loader, see [DYNAMIC.md](DYNAMIC.md).
+The measurements below describe the earlier permanently resident engines.
+
 ## Default-level follow-up, 29 September 2026
 
 The 808 now applies a 0.215 trim after its final desk limiter: three extra

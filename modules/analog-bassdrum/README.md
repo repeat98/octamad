@@ -1,5 +1,10 @@
 # Analog BD
 
+This experimental branch uses a Part-scoped dynamic DSP loader. Engines are
+stored in reserved SDRAM and only the Part's selected set is uploaded to each
+core. See [DYNAMIC.md](DYNAMIC.md) for the protocol, current limits and measured
+loading behavior. The earlier MK1 report does not qualify this loader.
+
 One native Octatrack track machine with **808 / 909** selection in its
 sample-pool-style engine browser. Both original fixed-point synthesis engines run on
 the DSP, upstream of stock AMP and both track FX slots. No recordings are
@@ -84,7 +89,7 @@ OT_PROJECT=<stock-project> AB_SAMPLE808=1 python3 tools/verify/verify_analog_bas
 Repeat the port checks with `AB_REVERSE=1` for the opposite core assignment.
 WAVs, firmware and reference analysis remain under `out/`, never in commits.
 The retired ColdFire synthesis, its coefficient tables and audio gates
-have been removed. ColdFire retains only control transport and UI helpers. [CPU.md](CPU.md),
+have been removed. ColdFire handles control transport, the Part loader and UI helpers. [CPU.md](CPU.md),
 [SCHEMATIC.md](SCHEMATIC.md) and [REFERENCE.md](REFERENCE.md) retain the earlier
 ColdFire research, not the current DSP algorithm specification.
 

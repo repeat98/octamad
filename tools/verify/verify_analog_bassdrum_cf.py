@@ -34,6 +34,8 @@ def main():
     mapped = base & ~4095
     uc.mem_map(mapped, (base - mapped + len(data) + 4095) & ~4095)
     uc.mem_write(base, data)
+    uc.mem_map(0x40c00000,0x100000)
+    uc.mem_write(0x40c00000,(ROOT/"out/analog-bassdrum/image/library.bin").read_bytes())
     uc.mem_map(0x10000, 0x20000)
     stop, stack = 0x10000, 0x20000
     uc.reg_write(UC_M68K_REG_SR, 0x2000)
@@ -184,10 +186,81 @@ def main():
                 call('ab_render',track,ping,0,split)
                 call('ab_render',track,ping,split,16)
                 expected=struct.pack('>4I12H',0xab090000,0x09090001,0,0,*knobs)
-                assert bytes(uc.mem_read(cursor,len(expected)))==expected,split
+                actual=bytes(uc.mem_read(cursor,len(expected)))
+                assert actual[:7]==expected[:7] and actual[7] in (0,1,2) and actual[16:]==expected[16:],split
                 assert int.from_bytes(uc.mem_read(0x80001c80,4),'big')==cursor+160
                 assert bytes(uc.mem_read(cursor+160,40))==bytes([0xa5])*40
     print('PASS DSP control record: all 8 tracks, both ping buffers, all 16 trigger offsets, knobs and next-record boundary')
+
+    # Drive the actual compiled ColdFire planner, not a Python copy. Persist
+    # the packets for the DSP loader gate to consume through its source seam.
+    import json
+    scenarios=[]
+    planner_cost={}
+    uc.mem_write(symbols['old_bank'],bytes(4))
+    defaults=[64,80,80,64,64,0,0,64,127,64,64,0]
+    for si,models in ((0,[0]*8),(0,[0,1]*4),(1,[0,1]*4),(1,[1]*8),(2,[1,0]*4),(0,[0]*8)):
+        for t,model in enumerate(models): uc.mem_write(livepart+0x1e0+30*t,bytes([model]))
+        streams=[[],[]];done=[False,False]
+        for frame in range(400):
+            for t,model in enumerate(models):
+                c=1 if t<4 else 0
+                if done[c]: continue
+                knobs=defaults.copy();knobs[6]=model
+                record=struct.pack('>4I12H',0xab090000,0x09090000|(frame==0),0,0,*knobs)+bytes(120)
+                uc.mem_write(cursor,record)
+                before=instructions[0]
+                call('ab_load_record',livepart,bank,si,t,cursor)
+                cost=instructions[0]-before
+                packet=list(struct.unpack('>80H',bytes(uc.mem_read(cursor,160))))
+                planner_cost[packet[4]]=max(planner_cost.get(packet[4],0),cost)
+                streams[c].append([t%4,packet])
+                if packet[4]==4: done[c]=True
+            if all(done): break
+        assert all(done), ('planner did not commit',si)
+        assert all(stream[0][1][4]==3 for stream in streams)
+        # Drain queued hits after COMMIT; exactly one survives per track.
+        for t,model in enumerate(models):
+            knobs=defaults.copy();knobs[6]=model
+            record=struct.pack('>4I12H',0xab090000,0x09090000,0,0,*knobs)+bytes(120)
+            uc.mem_write(cursor,record)
+            call('ab_load_record',livepart,bank,si,t,cursor)
+            streams[1 if t<4 else 0].append([t%4,list(struct.unpack('>80H',bytes(uc.mem_read(cursor,160))))])
+        for stream in streams:
+            assert sorted(t for t,w in stream if w[3]==2)==[0,1,2,3], 'queued hit lost or repeated'
+        scenarios.append(dict(models=models,streams=streams))
+        generation=bytes(uc.mem_read(symbols['ab_load_generation'],4))
+        uc.mem_write(cursor,record)
+        before=instructions[0]
+        call('ab_load_record',livepart,bank,si,0,cursor)
+        planner_cost[0]=max(planner_cost.get(0,0),instructions[0]-before)
+        assert bytes(uc.mem_read(cursor+8,8))==bytes(8), 'unchanged Part reloads'
+        assert bytes(uc.mem_read(symbols['ab_load_generation'],4))==generation
+    target=ROOT/'out/analog-bassdrum/dynamic';target.mkdir(parents=True,exist_ok=True)
+    (target/'records.json').write_text(json.dumps(scenarios))
+    (target/'planner-cost.json').write_text(json.dumps(planner_cost,indent=2))
+    print('ColdFire planner peak instructions/call by command (0=resident, 1=P, 2=X, 3=begin, 4=commit):',planner_cost)
+    # Oversized/unknown saved engine selections fail closed at BEGIN.
+    for bad in ('unknown','capacity','combination'):
+        uc.mem_write(symbols['old_bank'],bytes(4))
+        saved=bytes(uc.mem_read(0x40c00000+(16+1)*4,4))
+        if bad=='unknown':uc.mem_write(livepart+0x1e0,b'\x7f')
+        elif bad=='capacity':uc.mem_write(0x40c00000+(16+1)*4,struct.pack('>I',0x10000))
+        else:
+            catalogue=(ROOT/'out/analog-bassdrum/image/library.bin').read_bytes()
+            words=struct.unpack('>'+str(len(catalogue)//4)+'I',catalogue)
+            uc.mem_write(0x40c00000+17*4,struct.pack('>I',words[7]-words[6]-words[29]+1))
+            uc.mem_write(livepart+0x1e0+30,b'\x01')
+        for i in range(2):
+            uc.mem_write(cursor,record)
+            call('ab_load_record',livepart,bank,0,0,cursor)
+            command=int.from_bytes(uc.mem_read(cursor+8,2),'big')
+            assert command==(3 if i==0 else 0),('bad Part activated',bad,i,command)
+        assert int.from_bytes(uc.mem_read(symbols['ab_load_error'],4),'big')&2
+        uc.mem_write(livepart+0x1e0,b'\0')
+        uc.mem_write(livepart+0x1e0+30,b'\0')
+        uc.mem_write(0x40c00000+(16+1)*4,saved)
+    print('PASS Part loader: 808/mixed/909, deduplicated engines, both cores, reload on Part/model change, stable Part stays resident')
 
     # Engine list commits update Part, SRAM, live byte and dirty flags together.
     for address,size in ((0x100a4000,0x9000),(0x100f8000,0x1000),

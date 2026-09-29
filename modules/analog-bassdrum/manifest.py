@@ -11,6 +11,7 @@ MODULE=Module(
     linked=(
         Linked("abmachine", "modules/analog-bassdrum/machine.s", dram=True),
         Linked("abcontrol", "modules/analog-bassdrum/control.s", dram=True),
+        Linked("abloader", "modules/analog-bassdrum/loader.s", dram=True),
         Linked("abengine", "modules/analog-bassdrum/engine.s", dram=True),
     ),
     symbol_refs=(SymbolRef(0x400d6438,0x40004008,"abcontrol","ab_render",
@@ -84,6 +85,8 @@ MODULE=Module(
            Gate("tools/harness/verify_analog_bd_reverbs.py", remix_arg=False, stage="image"),
            Gate("tools/verify/verify_analog_bassdrum_cf.py", remix_arg=False,
                 venv=True, stage="image"),
+           Gate("tools/harness/verify_analog_bd_loader.py", remix_arg=False, stage="image"),
+           Gate("tools/harness/verify_analog_bd_dynamic_audio.py", remix_arg=False, stage="image"),
            Gate("tools/verify/verify_analog_bassdrum_port.py", remix_arg=False,
                 stage="image"),
            Gate("tools/verify/verify_analog_bassdrum_ui.py", remix_arg=False,

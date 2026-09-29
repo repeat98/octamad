@@ -125,7 +125,7 @@ def run_case(emu,project,name,models,fx1,fx2,core,frames):
     for t,m in models.items():
         c=1 if t<4 else 0;a=0x80001c90+(0 if c else 1344)
         records=[w[168*(t%4):] for addr in (a,a+0xa80) for _,w in classes.get(('>',0,c,addr),[])]
-        assert any(w[0]==0xab09 and w[2]==0x909 and w[14]==m and w[3]==1 for w in records),(name,t,'missing AB trigger')
+        assert any(w[0]==0xab09 and w[2]==0x909 and w[14]==m and w[3] in (1,2) for w in records),(name,t,'missing AB trigger')
     row=dict(case=name,models=models,fx1=fx1,fx2=fx2,core=core,frames=len(counts),mean=statistics.mean(counts)/16,peak=max(counts)/16,minimum=min(counts)/16,tracks=tracks,image_sha256=sha(IMAGE))
     (work/'result.json').write_text(json.dumps(row,indent=2));print(json.dumps(row),flush=True);return row
 

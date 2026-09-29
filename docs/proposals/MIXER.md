@@ -658,6 +658,22 @@ T5's FX2 stops being a host. Its sends are today's SEND accumulators, so tracks 
 5. Storage: one 16-byte slot in the Part window, on the designer shape T6 (`+0x1742`),
    beside the master strip's T7/T8 (§15); RETURN A would take T4/T5. ❓ same census caveats.
 
+**Measured the same day: the words are the first limit (§5's open item).** Built
+(`make bus`, `MASTER STRIP` + `OXIDE` + `REVERB SERVER` + `SEND` beside stock effects, a scratch
+remix, not committed): payload A's default donor pool is 2,724 words (PLATE, SPRING, DARK) and
+the reverb server, its LFO table and SEND take 2,449 of them; the strip takes 581 (boot 34,
+head 113, tail 277, the mixdown copy 157) and OXIDE 272. Together 3,302, so **the build refuses**
+("MASTER STRIP's `boot` does not fit ... 3 words at most", and the mixdown copy needs 157). It builds when
+CHORUS and COMPRESSOR are taken off both menus (`Remix.fx1` without them, and no FX2 row): the
+region is CHORUS + the three reverbs + COMPRESSOR, 3,233 words, **88 free**, with the mixdown copy
+left out (needed only for the 12 × 4 mixer, §3; with it in, FLANGER's 289 words would go too). The
+hostless call's body is of the order of 40 words (register setup, a 32-word block clear as a `do`
+loop, the `jsr`, and the wet's add in the head), so it fits, thinly. Payload B is not the problem:
+the delay server, SEND and OXIDE use 2,007 of the same 3,233 there. What the user gives up is
+stock CHORUS and COMPRESSOR on FX1 and FX2 in any image that carries the reverb server and the strip;
+a listed effect with an instance buffer (FLANGER, CHORUS, SPATIALIZER, COMB) is refused beside the
+servers, so those four cannot be kept in the FX2 chooser anyway.
+
 **What it does not do.** No per-track send knobs beyond SEND's, no AUX A (the delay is on
 core 1: a hostless call there is the same shape at payload B's own frame end, not
 examined), no retirement of the SEND bus (§4). It is the step that frees T5's FX2 and

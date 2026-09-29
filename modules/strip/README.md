@@ -58,10 +58,18 @@ the pack, is added after them and is not processed.
   each parameter's range; **LEVEL** turns MAIN (the stock handler of A on the MIXER page).
   An empty slot, or a knob the effect does not draw, is an empty cell and turns nothing.
   The edit reaches core 0 in the next frame's record.
+- **YES** on MASTER opens the slot's SETUP, "INS 1 SETUP" or "INS 2 SETUP", drawn as
+  stock's EFFECT 2 SETUP: the strip's list on the left (NONE and the effects core 0 runs
+  on the strip, OXIDE for now), the slot's effect inverted and a cursor that **UP / DOWN**
+  move and **YES** takes; on the right the effect's page-2 knobs, which **A–F** turn,
+  lifting to show their value as stock's do. YES on an effect puts it on the slot with its
+  descriptor's defaults. **NO** closes the SETUP onto the MASTER page. It opens one window
+  level above the MIXER, which stays open under it (MIXER.md §14).
 - Three detours in the stock window: the opener's layer push (ours goes on top), the
-  close's layer pop (ours come off first) and the draw's entry (the stock draw, then the
-  page), so every stock redraw (a knob, a mute, FUNC) redraws the page too. The window
-  reopens on MIXER.
+  close's layer pop (ours come off first, the SETUP's with them) and the draw's entry
+  (the stock draw, then the page, then the SETUP when it is open), so every stock redraw
+  (a knob, a mute, FUNC, the knobs' lift) redraws the page too. The window reopens on
+  MIXER.
 
 Why split: the first version ran all 16 samples at P:0x2d5, and under the port the phones'
 first sample of every frame went out two frames stale, because the pass held stock's cue
@@ -70,16 +78,15 @@ mix back past the DMA (MIXER.md §11).
 ## `strip_model`
 
 Two slots of 16 bytes: the FX id at +0 (0 = none), three spare bytes, then the twelve knob
-values, page 1 at +4..+9 and page 2 at +10..+15. The MASTER page writes page 1 (the
-SETUP window, next, will write the id and page 2); each value must already be inside its
-parameter's count (the DSP only masks to 0..127, and a select read past its count is the
-trap in `AGENTS.md`), which the page's clamp holds.
+values, page 1 at +4..+9 and page 2 at +10..+15. The MASTER page writes page 1, the
+SETUP the id and page 2 (and page 1's defaults with a new id); each value must already be
+inside its parameter's count (the DSP only masks to 0..127, and a select read past its
+count is the trap in `AGENTS.md`), which both clamps hold.
 
 ## Not yet
 
-- No Part stores the model: it holds its boot value, plus the page's edits, until the
-  unit restarts. The slot's effect cannot be chosen yet, and page 2 cannot be edited:
-  both are the SETUP window (YES on a slot), next.
+- No Part stores the model: it holds its boot value, plus the pages' edits, until the
+  unit restarts. Next.
 - Only OXIDE is on the list. An insert joins it once it is shown to run correctly one frame
   per call with no dispatcher state: Character, for one, glides its knobs per call and reads
   X:0x213 at init.
@@ -121,5 +128,10 @@ MUTE band is stock's and its boxes draw as locked, with OXIDE's IN and OUT and f
 cells; INS 2 shows six empty cells; a trig mutes and leaves the page; A, B and LEVEL move
 IN, OUT and MAIN by exactly what A and LEVEL move MAIN and MIX by on the stock page, and
 the edit reaches core 0's record; MIXER, NO and FUNC + UP close the window and leave no
-layer behind. It cannot see the unit's LCD, the MKII keymap or a real encoder's
-acceleration.
+layer behind. The SETUP: its list is NONE and tail.asm's ids, the slot's effect inverted;
+with slot 1 poked to DELAY its knob grid equals stock's EFFECT 2 SETUP's pixel for pixel
+after the same turns (minimum, small steps, maximum, and a knob still lifted with its
+value); YES puts NONE or OXIDE on a slot, with the defaults, and core 0 runs it (or runs
+the slot dry) from the record; NO returns to the MASTER page, and every way out of the
+SETUP leaves no layer behind. It cannot see the unit's LCD, the MKII keymap, a real
+encoder's acceleration or a list longer than the window.

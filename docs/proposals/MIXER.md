@@ -218,8 +218,8 @@ Each step is flashable and checkable on its own.
 4. **AUX A and RET A on core 1.** Gate: `verify-twocore` with the cores skewed;
    on the unit, the track × delay-mode sweep used for the bus.
 5. **UI and storage on the ColdFire.** Pulled forward for the master strip (29 Sep
-   2026): the record is built (§12), and the MIXER pages (§13); the SETUP window and Part
-   storage are next, in that order.
+   2026): the record is built (§12), the MIXER pages (§13) and the slot SETUP (§14);
+   Part storage is next.
 6. **The 100 % wet delay as a ColdFire return** (Tape Echo over SDRAM, seconds of
    delay at little DSP cost). Needs AUX A delivered to the ColdFire and the result
    back.
@@ -475,6 +475,72 @@ planes); the MKII keymap (the MKI's boots under the port; the arrow keys, MIXER,
 the trigs have the same codes); a real encoder's acceleration beyond the port's one delta
 per event; anything on a unit. Not flashed.
 
-**Next:** the SETUP window (YES on a slot: its effect list and page-2 knobs), then Part
-storage of `strip_model`, then MIDI CC for the page's controls.
+**Next:** the SETUP window (YES on a slot: its effect list and page-2 knobs; built, §14),
+then Part storage of `strip_model`, then MIDI CC for the page's controls.
+
+## 14. The slot SETUP (29 Sep 2026)
+
+**YES on MASTER** opens the shown slot's SETUP, "INS 1 SETUP" or "INS 2 SETUP", as the
+locked mockup draws it: the window stock's EFFECT 2 SETUP opens (115 × 64, the same
+calls: `0x4005829c`, the plane clear, the title), the strip's list down the left and
+the slot's effect's page-2 knobs in the 3 × 2 grid on the right. **UP / DOWN** move the
+cursor (held, they repeat at stock's delay and rate), **YES** puts the cursor's effect on
+the slot, **NO** closes the SETUP back onto the MASTER page, **A–F** turn the page-2
+knobs. The keys are stock's SETUP layer's records with our handlers (UP / DOWN repeat at
+its delay 15 and rate 4). The list is NONE and the effects core 0 runs on the strip (`tail.asm`'s list:
+OXIDE). OXIDE has no page 2, so its grid is empty, as NONE's is. The list's names are the
+descriptors' full names, as stock's list prints them ("Oxide Tape", not the mockup's
+capitals).
+
+**Drawn and turned as stock's.** The draw is stock's `0x40037590` step for step (fill,
+rule, rows through the list widget `0x4007ec60..0x4007edb0`, the scroll arrows, the
+slot's effect's row inverted, the cursor boxed, the dotted grid, each knob by its
+descriptor's widget with its formatter, names by `0x40013904`) with our list and
+`strip_model` where stock reads the track's FX2. A knob is stock's page-2 editor
+`0x4003a9dc` over the model: the descriptor's stepper or `0x4003240c`, clamped to
+`MINS`/`COUNTS`, then the encoder's activity set to 20 (`0x4003256c`) so the knob lifts
+and shows its value. The tails are staged as stock's opener stages them (`0x400326d4`,
+page 2) on every open and every YES. The lift decays on the tick at `0x4005213c`, which
+redraws the MIXER while it is open; the MIXER's draw (our detour) redraws the SETUP over
+it. YES writes the chosen id and, for every knob the effect draws, its descriptor's default
+(P + 0x5e, the table stock's select `0x40052474` reads too; 0 for the rest); core 0
+takes it in the next frame's record.
+
+**One window above the MIXER.** `0x4005829c` closes every window at the new one's level
+or above (and calls their close routines), so stock's level 1 took the MIXER down under
+it: the SETUP opens at level 2, which stock uses too (`0x400647be`, `0x40080eb2`). Its
+close routine (the manager's callback, NO, and the MIXER's own close, which calls it
+first) destroys the window, pops its key layer and redraws the MIXER when it is still
+open. A stock window at level 1 or 2 opening over it would close it the same way (read
+from `0x4005829c`, not exercised).
+
+**Measured under the port** (`verify_mixerpages`, the user's project with DELAY on every
+track's FX2 in every part of every bank, MKI keymap, against the image with the three
+detour sites' stock bytes back and its stock EFFECT 2 SETUP from FUNC + FX2):
+
+| case | result |
+|---|---|
+| YES on MASTER | INS 1 SETUP over the open MIXER window; the list is `SU_IDS` = NONE, 0x1f (tail.asm's list); OXIDE's row inverted (258 of 343 lit), NONE's not (43); the SETUP's key layer registered last, after the MIXER pages' two; the grid equals NONE's, 0 pixels differ |
+| slot 1 poked to DELAY (0x08); A–F −127 each; then +3, +4, +2, +1, +5, +1; A–F +127; then LOCK +5, 200 ms later | against stock's SETUP after the same turns: 1,013 pixels differ, all in the title band and the list, 0 in the grid (frame, rule, the six knobs, their names, the lift and LOCK's "ON" included); the model holds DELAY's range ends (0 ×6; 1, 1, 127, 1, 1, 1) |
+| UP, YES; then NO | NONE on INS 1: its row inverted, the model's slot 1 all 0; NO closes the SETUP and its layer onto the MIXER's INS 1 page, now empty: 9 pixels differ from INS 2's empty page, all in the side label's digit |
+| DOWN, YES, DOWN, YES; then NO | OXIDE on INS 2 at its defaults (IN 48, OUT 80, the rest 0): INS 1's SETUP but for the title, 9 pixels; NO: INS 2's page differs from INS 1's only in the digit |
+| NO, NO / MIXER / FUNC + UP from the SETUP | both windows closed, no layer of the unit left |
+| YES, NO, YES | the SETUP again, 0 pixels differ |
+| YES, NO, then A +10, +40 | IN +49, as before the SETUP opened |
+| with the DSP: A +10, then OXIDE onto INS 2 | X:0x7c10 = `1f 1079 1f 1079` (slot 2 runs OXIDE, slot 1's proc); X:0x7c30 = `48 << 16`, `80 << 16` |
+| with the DSP: NONE onto INS 1 | X:0x7c10 = 0 0 0 0: slot 1 dry; its record 0 |
+
+**A harness finding on the way.** With this build `verify_strip`'s phones check failed
+on every fixture while the strip's DSP code was unchanged: the port's TX0 capture now
+frames the phones pair one sample behind MAIN's, and the reference (stock's code at the
+sites) shows the same lag in the same run, where the previous build's capture showed none
+(measured on the kept runs: phones / MAIN steadiest at lag 1 here, lag 0 before). The
+check now reads the lag off the reference and holds the built run to it: 0 of every
+fixture's samples off the gain, at lag 1 here and lag 0 on the previous build's runs. The
+lag moves with the ColdFire side's timing (inferred: only ColdFire code changed), not
+with the strip.
+
+**What the gate cannot see**, beyond §13's: a list longer than the window (one insert:
+the scroll arrows and paging are stock's widget's paths, not exercised here); the lift's
+timing on a unit (the port's tick is emulated time).
 

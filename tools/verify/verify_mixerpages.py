@@ -43,14 +43,48 @@ planes as tools/emu/lcd_view.py does.
             each of them; slot 2's bytes stay 0
   slots     DOWN then A +10 changes nothing (INS 2 is empty); UP then A +10
             moves INS 1's IN
-  dsp       with the DSP (`--dsp`): MASTER, A +10, and core 0's slot 1 record
-            (X:0x7c20) holds the new IN, v << 16, and OUT unchanged: the
-            page's knob reaches the DSP (verify_strip's record fixture shows
-            a model edit reaching MAIN's samples)
+  dsp       with the DSP (`--dsp`): MASTER, A +10, then OXIDE onto INS 2 in
+            its SETUP: core 0's slot 1 record (X:0x7c20) holds the new IN,
+            v << 16, and OUT unchanged; slot 2 runs OXIDE (X:0x7c12, the
+            same proc as slot 1's) on the defaults its SETUP wrote (X:0x7c30):
+            the page's knob and the SETUP's choice reach the DSP
+            (verify_strip's record fixture shows a model edit reaching
+            MAIN's samples)
+  dsp_none  with the DSP: NONE onto INS 1 in its SETUP, and slot 1 is dry
+            (X:0x7c10, id and proc 0)
+
+The slot's SETUP (YES on MASTER), against the reference's stock EFFECT 2
+SETUP (FUNC + FX2) with DELAY on every track's FX2 (ot_project.set_fx on the
+staged copy, every part of every bank):
+  su        the list is the unit's (NONE, then the ids core 0 runs, as
+            verify_strip reads tail.asm's), the slot's effect's row inverted
+            and the other not; the SETUP's key layer is registered last,
+            after the MIXER pages' two; the MIXER window stays open under it
+  grid      slot 1 poked to DELAY (0x08): A-F to their minimum, then small
+            steps, then their maximum, each left to settle, and a turn left
+            lifted: every pixel that differs from stock's SETUP after the
+            same turns is in the title band or the list, and some in the
+            title (the frame, the rule, the six knobs, their names, their
+            lift and their value text are stock's); the model holds each
+            knob's range end
+  choose    UP, YES: NONE onto INS 1, its row inverted, the model's slot 1 id
+            and values 0; NO: the SETUP closed (its layer gone), the MIXER
+            window open on the empty INS 1 page, which differs from INS 2's
+            only in the side label's digit
+  choose2   DOWN, YES, DOWN, YES: OXIDE onto INS 2 with its descriptor's
+            defaults (IN 48, OUT 80, the rest 0), the screen INS 1's SETUP
+            but for the title band; NO: the MASTER page for INS 2 differs
+            from INS 1's only in the digit
+  su_close  NO then NO, MIXER, FUNC + UP from the SETUP: the MIXER window and
+            the SETUP's are closed and no layer of the unit is left; YES,
+            NO, YES is the SETUP again, pixel for pixel; YES, NO then A +10
+            and +40 steps IN as the MIXER page did before the SETUP opened
 
 MIXERPAGES_KEEP=<dir> keeps the runs there, each case's screen as a PNG.
 
-What it cannot see: the unit's LCD (the port composites the firmware's
+What it cannot see: a list longer than the window (the strip runs one
+insert; the scroll arrows and paging are stock's code paths, not exercised);
+the unit's LCD (the port composites the firmware's
 window planes; a window the firmware draws another way would not show);
 the MKII keymap (the port boots the MKI's; the arrow keys, MIXER and the
 trigs are the same codes); a real encoder's acceleration (the port delivers
@@ -74,7 +108,8 @@ PLANES = ((0x46c7e0ea, 0x400), (0x46c7d34c, 280), (0x460d1f7b, 0x2800))   # lcd_
 CFG = 0x80000000                      # MIX at +0x32, MAIN at +0x35
 WINH, LAYERS, STOCK_LAYER = 0x460e7424, 0x460d165c, 0x400d0384
 ROM_BASE, ROM_LEN = 0x400b0000, 0x28000
-KEYS = dict(NO=0x32, MIXER=0x30, FUNC=0x2d, UP=0x33, DOWN=0x20, LEFT=0x34, RIGHT=0x21, TRIG1=0x00)
+KEYS = dict(NO=0x32, YES=0x31, MIXER=0x30, FUNC=0x2d, UP=0x33, DOWN=0x20, LEFT=0x34, RIGHT=0x21,
+            TRIG1=0x00, FX2=0x26)
 IN_KNOB, OUT_KNOB, MAIN0 = 48, 80, 64
 # Screen boxes (x0, y0, x1, y1), inclusive, screen coordinates (y down): the
 # window is at x 10, its surface y up (screen y = 63 - surface y).
@@ -88,6 +123,13 @@ RULE_Y = 26                           # box 2's horizontal dotted rule
 CELLS = [(44, 11, 66, 25), (68, 11, 89, 25), (91, 11, 112, 25),
          (44, 27, 66, 41), (68, 27, 89, 41), (91, 27, 112, 41)]
 DIGIT = (37, 32, 42, 38)              # the side label's last character
+# The SETUP window (x 0, stock's): screen x = surface x + 7, y = 63 - surface y.
+SU_TITLE = (0, 0, 127, 8)             # the title band
+SU_LIST = (10, 9, 58, 61)             # the list, left of the rule at surface x 0x34
+SU_ROW = lambda r: (10, 11 + 7 * r, 58, 17 + 7 * r)   # list row r: surface y 46..52 - 7 r
+SU_GRID = (60, 9, 127, 61)            # the knobs' grid, right of the rule
+DELAY_ID = 0x08
+MINS6 = [f"enc {k} -127" for k in range(6)]
 
 fails = 0
 
@@ -99,8 +141,9 @@ def check(label, ok, detail=""):
     return ok
 
 
-def script(path, steps):
-    """A panel script: the boot's date prompt answered, then `steps`."""
+def script(path, steps, tail=800):
+    """A panel script: the boot's date prompt answered, then `steps`, then
+    `tail` ms."""
     t, out = [1500.0], []
 
     def at(line, pause):
@@ -114,13 +157,15 @@ def script(path, steps):
     for s in steps:
         if s.startswith("enc"):
             at(s, 300)
+        elif s.startswith("wait "):
+            t[0] += int(s[5:])
         elif s.startswith("FUNC+"):             # held across the other key's press
             at(f"key {KEYS['FUNC']:#x} down", 100)
             key(s[5:], 100)
             at(f"key {KEYS['FUNC']:#x} up", 250)
         else:
             key(s)
-    t[0] += 800
+    t[0] += tail
     out.append(f"{t[0]:.0f} quit")
     path.write_text("\n".join(out) + "\n")
 
@@ -155,7 +200,29 @@ CASES = {
     "knobs": ("built", ["MIXER", "RIGHT", "enc 0 10", "enc 0 40", "enc 1 -5", "enc 1 -20",
                         "enc 6 10", "enc 6 40"]),
     "slots": ("built", ["MIXER", "RIGHT", "DOWN", "enc 0 10", "UP", "enc 0 10"]),
+    # the SETUP
+    "su1": ("built", ["MIXER", "RIGHT", "YES"]),
+    "su_none": ("built", ["MIXER", "RIGHT", "YES", "UP", "YES"]),
+    "su_none_no": ("built", ["MIXER", "RIGHT", "YES", "UP", "YES", "NO"]),
+    "su2": ("built", ["MIXER", "RIGHT", "DOWN", "YES", "DOWN", "YES"]),
+    "su2_no": ("built", ["MIXER", "RIGHT", "DOWN", "YES", "DOWN", "YES", "NO"]),
+    "su_nono": ("built", ["MIXER", "RIGHT", "YES", "NO", "NO"]),
+    "su_mixer": ("built", ["MIXER", "RIGHT", "YES", "MIXER"]),
+    "su_fu": ("built", ["MIXER", "RIGHT", "YES", "FUNC+UP"]),
+    "su_again": ("built", ["MIXER", "RIGHT", "YES", "NO", "YES"]),
+    "su_knobs": ("built", ["MIXER", "RIGHT", "YES", "NO", "enc 0 10", "enc 0 40"]),
 }
+# The SETUP's grid against stock's: (steps after the SETUP opens, tail ms).
+# Built: slot 1 poked to DELAY, MIXER RIGHT YES; reference: FUNC + FX2.
+GRID = {
+    "g_min": (MINS6 + ["wait 3000"], 800),
+    "g_mid": (MINS6 + ["enc 0 3", "enc 1 4", "enc 2 2", "enc 3 1", "enc 4 5", "enc 5 1", "wait 3000"], 800),
+    "g_max": ([f"enc {k} 127" for k in range(6)] + ["wait 3000"], 800),
+    "g_lift": (MINS6 + ["wait 3000", "enc 4 5"], 200),     # LOCK turned, still lifted
+}
+for g, (steps, tail) in GRID.items():
+    CASES[g] = ("built", ["MIXER", "RIGHT", "YES"] + steps, tail, "delay")
+    CASES["ref_" + g] = ("ref", ["FUNC+FX2"] + steps, tail)
 
 
 def port(name, built, project, sym):
@@ -181,6 +248,9 @@ def port(name, built, project, sym):
         proj = work / "src"
         shutil.copytree(pathlib.Path(project).expanduser(), proj,
                         ignore=shutil.ignore_patterns("*.wav", "*.WAV", "*.ot"))
+        with contextlib.redirect_stdout(open(os.devnull, "w")):
+            for t in range(1, 9):                         # stock's SETUP shows DELAY's page 2
+                otp.set_fx(proj, "fx2", t, DELAY_ID, guard=False)
         raw = (proj / "project.work").read_bytes()
         bank = int(re.search(rb"\r\nBANK=(\d+)\r\n", raw).group(1)) + 1
         pat_part, _ = otp.bank_info(proj, bank)
@@ -192,45 +262,50 @@ def port(name, built, project, sym):
             d = work / c
             spec = ";".join(f"{a:#x},{n:#x}={d}.{i}" for i, (a, n) in enumerate(PLANES))
             return (spec + f";{CFG:#x},0x100={d}.cfg;{model:#x},32={d}.model;{WINH:#x},4={d}.win;"
+                    f"{sym['su_win']:#x},4={d}.suwin;"
                     f"{LAYERS:#x},4={d}.head;{ROM_BASE:#x},{ROM_LEN:#x}={d}.rom;{lo:#x},{hi - lo:#x}={d}.unit")
         runs = []
         for tag in ("built", "ref"):
             args = []
-            for c, (img, steps) in CASES.items():
+            for c, (img, steps, *more) in CASES.items():
                 if img != tag:
                     continue
-                script(work / f"{c}.txt", steps)
-                args += ["--scenario", f"{work / c}.log --live-script {work / c}.txt --mem-dump {dumps(c)}"]
+                script(work / f"{c}.txt", steps, *more[:1])
+                poke = f" --poke {model:#x}={DELAY_ID:#x}" if more[1:] == ["delay"] else ""
+                args += ["--scenario", f"{work / c}.log --live-script {work / c}.txt --mem-dump {dumps(c)}{poke}"]
             shutil.copy2(card, work / f"card_{tag}.img")
             cmd = [str(vds.EMU), "--image", str(work / f"{tag}.bin"), "--card", str(work / f"card_{tag}.img"),
                    "--set", "OCTABAM", "--project", "RIG", "--load-ms", "90000", "--scenario-jobs", "4"] + args
             runs.append(subprocess.Popen(cmd, cwd=ROOT, stdout=open(work / f"{tag}.txt", "w"),
                                          stderr=subprocess.STDOUT))
-        # the DSP case on its own load: --dsp is the parent's
-        script(work / "dsp.txt", ["MIXER", "RIGHT", "enc 0 10"])
-        shutil.copy2(card, work / "card_dsp.img")
-        cmd = [str(vds.EMU), "--image", str(work / "built.bin"), "--card", str(work / "card_dsp.img"),
-               "--set", "OCTABAM", "--project", "RIG", "--load-ms", "90000", "--dsp",
-               "--live-script", str(work / "dsp.txt"), "--dsp-peek", "0:X:7c20,2",
-               "--mem-dump", f"{model:#x},32={work / 'dsp'}.model"]
-        runs.append(subprocess.Popen(cmd, cwd=ROOT, stdout=open(work / "dsp.log", "w"),
-                                     stderr=subprocess.STDOUT))
+        # the DSP cases, each on its own load: --dsp is the parent's
+        for c, steps in (("dsp", ["MIXER", "RIGHT", "enc 0 10", "DOWN", "YES", "DOWN", "YES", "NO"]),
+                         ("dsp_none", ["MIXER", "RIGHT", "YES", "UP", "YES", "NO"])):
+            script(work / f"{c}.txt", steps)
+            shutil.copy2(card, work / f"card_{c}.img")
+            cmd = [str(vds.EMU), "--image", str(work / "built.bin"), "--card", str(work / f"card_{c}.img"),
+                   "--set", "OCTABAM", "--project", "RIG", "--load-ms", "90000", "--dsp",
+                   "--live-script", str(work / f"{c}.txt"), "--dsp-peek", "0:X:7c10,4;0:X:7c20,2;0:X:7c30,2",
+                   "--mem-dump", f"{model:#x},32={work / c}.model"]
+            runs.append(subprocess.Popen(cmd, cwd=ROOT, stdout=open(work / f"{c}.log", "w"),
+                                         stderr=subprocess.STDOUT))
         codes = [p.wait() for p in runs]
         check("port: every load ran", all(c == 0 for c in codes), f"exit codes {codes}")
 
         R = {}
-        for c in list(CASES) + ["dsp"]:
+        for c in list(CASES) + ["dsp", "dsp_none"]:
             log = (work / f"{c}.log").read_text() if (work / f"{c}.log").exists() else ""
             if not check(f"port: {c}: the panel script ended on quit", "ended on quit" in log,
                          (re.search(r"live script: .*", log) or re.search(r".*$", log)).group(0)[:120]):
                 continue
             r = {"log": log}
-            if c != "dsp":
+            if not c.startswith("dsp"):
                 r["screen"] = lcd_view.screen(b"".join((work / f"{c}.{i}").read_bytes() for i in range(len(PLANES))))
                 if keep:
                     lcd_view.png(r["screen"], str(work / f"{c}.png"))
                 r["cfg"] = (work / f"{c}.cfg").read_bytes()
                 r["win"] = struct.unpack(">I", (work / f"{c}.win").read_bytes())[0]
+                r["suwin"] = struct.unpack(">I", (work / f"{c}.suwin").read_bytes())[0]
                 r["head"] = struct.unpack(">I", (work / f"{c}.head").read_bytes())[0]
                 r["rom"], r["unit"] = (work / f"{c}.rom").read_bytes(), (work / f"{c}.unit").read_bytes()
             r["model"] = list((work / f"{c}.model").read_bytes())
@@ -338,12 +413,121 @@ def checks(R, sym, lo, hi):
         check("slots: A on the empty INS 2 changes nothing, on INS 1 again moves IN",
               mdl[16:] == [0] * 16 and mdl[4] > IN_KNOB and mdl[5] == OUT_KNOB, f"{mdl}")
     if need("dsp"):
-        m = re.search(r"core 0 X:0x07c20: ([0-9a-f]{6}) ([0-9a-f]{6})", R["dsp"]["log"])
-        mdl = R["dsp"]["model"]
-        words = (int(m.group(1), 16), int(m.group(2), 16)) if m else None
+        mdl, x = R["dsp"]["model"], peek(R["dsp"]["log"])
+        words = x.get(0x7c20)
         check("dsp: core 0's slot 1 record holds the page's IN and OUT, v << 16",
-              words == (mdl[4] << 16, mdl[5] << 16) and mdl[4] != IN_KNOB,
-              f"X:0x7c20 {words and [f'{w:06x}' for w in words]}, model IN {mdl[4]} OUT {mdl[5]}")
+              words == [mdl[4] << 16, mdl[5] << 16] and mdl[4] != IN_KNOB,
+              f"X:0x7c20 {hexs(words)}, model IN {mdl[4]} OUT {mdl[5]}")
+        sl = x.get(0x7c10)
+        check(f"dsp: OXIDE chosen in INS 2's SETUP runs on core 0's slot 2 (id 0x{vst.INSERT_ID:02x}, "
+              "slot 1's proc)", sl is not None and sl[0] == sl[2] == vst.INSERT_ID and sl[1] and sl[3] == sl[1]
+              and mdl[16] == vst.INSERT_ID, f"X:0x7c10 {hexs(sl)}, model slot 2 id {mdl[16]:#x}")
+        check("dsp: slot 2's record is the defaults the SETUP wrote, IN 48 and OUT 80",
+              x.get(0x7c30) == [IN_KNOB << 16, OUT_KNOB << 16] and mdl[20:22] == [IN_KNOB, OUT_KNOB],
+              f"X:0x7c30 {hexs(x.get(0x7c30))}, model {mdl[20:22]}")
+    if need("dsp_none"):
+        mdl, x = R["dsp_none"]["model"], peek(R["dsp_none"]["log"])
+        sl = x.get(0x7c10)
+        check("dsp_none: NONE chosen in INS 1's SETUP leaves core 0's slot 1 dry (id and proc 0)",
+              sl is not None and sl[:2] == [0, 0] and mdl[0] == 0 and x.get(0x7c20) == [0, 0],
+              f"X:0x7c10 {hexs(sl)}, X:0x7c20 {hexs(x.get(0x7c20))}, model slot 1 id {mdl[0]:#x}")
+    setup_checks(R, sym, lo, hi, need)
+
+
+def peek(log):
+    """--dsp-peek's lines: {address: [words]}."""
+    return {int(a, 16): [int(w, 16) for w in ws.split()]
+            for a, ws in re.findall(r"core 0 X:0x([0-9a-f]+): ((?:[0-9a-f]{6} ?)+)", log)}
+
+
+def hexs(ws):
+    return ws and [f"{w:06x}" for w in ws]
+
+
+def setup_checks(R, sym, lo, hi, need):
+    keyl, encl, sukl = sym.get("MX_KEYL"), sym.get("MX_ENCL"), sym.get("SU_KEYL")
+    fmt = lambda ls: " ".join(f"{n:#x}" if isinstance(n, int) else n for n in ls)
+    row = lambda s, r: lit(s, SU_ROW(r))
+    band = (SU_ROW(0)[2] - SU_ROW(0)[0] + 1) * 7
+    if need("su1"):
+        r = R["su1"]
+        ids_at, n = sym.get("SU_IDS"), sym.get("SU_N")
+        ids = list(r["unit"][ids_at - lo:ids_at - lo + n]) if ids_at and n else None
+        check("su: the list is NONE and the ids core 0 runs (tail.asm's, as verify_strip reads it)",
+              ids == [0, vst.INSERT_ID], f"SU_IDS {ids}")
+        s = r["screen"]
+        check("su: YES on MASTER opens INS 1's SETUP over the MIXER window, OXIDE's row inverted",
+              r["suwin"] and r["win"] and row(s, 1) > band // 2 > row(s, 0) and not lit(s, SU_ROW(2)),
+              f"SETUP {r['suwin']:#x}, MIXER {r['win']:#x}, lit rows {row(s, 0)} {row(s, 1)} {row(s, 2)} of {band}")
+        ls = layers(r, lo, hi)
+        check("su: the SETUP's key layer is last, after the MIXER pages' two",
+              ls[-3:] == [keyl, encl, sukl] and ls.index(keyl) > ls.index(STOCK_LAYER), fmt(ls))
+        grid = lit(s, SU_GRID)
+        if need("su_none"):
+            check("su: OXIDE has no page 2: the grid is NONE's", not diff(s, R["su_none"]["screen"], SU_GRID),
+                  f"{len(diff(s, R['su_none']['screen'], SU_GRID))} px differ, {grid} lit")
+    empty = lit(R["su_none"]["screen"], SU_GRID) if need("su_none") else 0     # the rules alone
+    for g in GRID:
+        if need(g, "ref_" + g):
+            d = diff(R[g]["screen"], R["ref_" + g]["screen"])
+            out = [p for p in d if not inside(p, SU_TITLE) and not inside(p, SU_LIST)]
+            n = lit(R[g]["screen"], SU_GRID)
+            check(f"grid: {g}: DELAY's page 2 is drawn as stock's SETUP draws it after the same turns",
+                  not out and any(inside(p, SU_TITLE) for p in d) and n > empty + 200,
+                  f"{len(d)} px differ, {len(out)} outside the title band and the list; "
+                  f"{n} lit in the grid, {empty} with no page 2")
+    if need(*GRID):
+        moved = [len(diff(R[a]["screen"], R[b]["screen"], SU_GRID))
+                 for a, b in (("g_min", "g_mid"), ("g_mid", "g_max"), ("g_min", "g_max"), ("g_min", "g_lift"))]
+        check("grid: the turns moved the knobs (min, mid, max and a lifted knob draw apart)", all(moved),
+              f"px differ min/mid {moved[0]}, mid/max {moved[1]}, min/max {moved[2]}, min/lift {moved[3]}")
+    if need("g_min", "g_max"):
+        lo_, hi_ = R["g_min"]["model"][10:16], R["g_max"]["model"][10:16]
+        check("grid: A-F move the model to DELAY's page-2 range ends",
+              R["g_max"]["model"][0] == DELAY_ID and lo_ == [0] * 6 and hi_ == [1, 1, 127, 1, 1, 1],
+              f"min {lo_}, max {hi_}")
+    if need("su_none"):
+        r = R["su_none"]
+        s = r["screen"]
+        check("choose: UP, YES puts NONE on INS 1: its row inverted, the model's slot 1 zero",
+              row(s, 0) > band // 2 > row(s, 1) and r["model"][:16] == [0] * 16 and r["suwin"],
+              f"lit rows {row(s, 0)} {row(s, 1)}, slot 1 {r['model'][:16]}")
+    if need("su_none_no", "ins2"):
+        r = R["su_none_no"]
+        ls = layers(r, lo, hi)
+        d = diff(r["screen"], R["ins2"]["screen"])
+        check("choose: NO closes the SETUP (its layer gone) onto the MIXER window's INS 1 page, now empty",
+              r["win"] and not r["suwin"] and sukl not in ls and ls[-2:] == [keyl, encl]
+              and d and all(inside(p, DIGIT) for p in d),
+              f"MIXER {r['win']:#x}, SETUP {r['suwin']:#x}, {len(d)} px differ from INS 2's page, "
+              f"{sum(1 for p in d if not inside(p, DIGIT))} outside the digit; layers {fmt(ls)}")
+    if need("su2", "su1"):
+        r = R["su2"]
+        d = diff(r["screen"], R["su1"]["screen"])
+        check("choose2: DOWN, YES puts OXIDE on INS 2 with its defaults; the screen is INS 1's SETUP "
+              "but for the title", r["model"][16:32] == r["model"][:16] == R["su1"]["model"][:16]
+              and r["model"][16] == vst.INSERT_ID and d and all(inside(p, SU_TITLE) for p in d),
+              f"slot 2 {r['model'][16:32]}, {len(d)} px differ, "
+              f"{sum(1 for p in d if not inside(p, SU_TITLE))} outside the title band")
+    if need("su2_no", "master"):
+        d = diff(R["su2_no"]["screen"], R["master"]["screen"])
+        check("choose2: NO: INS 2's MASTER page differs from INS 1's only in the digit",
+              d and all(inside(p, DIGIT) for p in d), f"{len(d)} px differ")
+    for c, how in (("su_nono", "NO, NO"), ("su_mixer", "MIXER"), ("su_fu", "FUNC+UP")):
+        if need(c):
+            r = R[c]
+            ls = layers(r, lo, hi)
+            check(f"su_close: {how} from the SETUP closes both windows and leaves no layer of the unit",
+                  r["win"] == 0 and r["suwin"] == 0 and "?" not in ls
+                  and not any(lo <= n < hi for n in ls if isinstance(n, int)) and STOCK_LAYER not in ls,
+                  f"MIXER {r['win']:#x}, SETUP {r['suwin']:#x}, layers {fmt(ls)}")
+    if need("su_again", "su1"):
+        d = diff(R["su_again"]["screen"], R["su1"]["screen"])
+        check("su_close: YES, NO, YES is the SETUP again, pixel for pixel", not d, f"{len(d)} px differ")
+    if need("su_knobs", "knobs"):
+        got, want = R["su_knobs"]["model"][4] - IN_KNOB, R["knobs"]["model"][4] - IN_KNOB
+        check("su_close: after the SETUP, A steps IN on MASTER as it did before", got == want and got > 0,
+              f"IN {got:+}, before {want:+}")
 
 
 def main():

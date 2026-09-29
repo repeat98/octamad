@@ -30,10 +30,12 @@ its own list (OXIDE for now). State and records live at X:0x7c00..0x7eff
 A second (strip_ui.s) pages the MIXER window, in the layout Jannik locked
 on 29 Sep 2026: LEFT/RIGHT walk the strips (MIXER, MASTER), UP/DOWN the
 master's slots (INS 1, INS 2), A-F turn the shown slot's page-1 knobs in
-strip_model with a stock MIXER knob's step, LEVEL turns MAIN. Three
-detours: the window's opener and close register and remove its input
-layers, and the stock draw's entry (every caller) draws the page after
-the stock page.
+strip_model with a stock MIXER knob's step, LEVEL turns MAIN, YES opens
+the slot's SETUP (the strip's effect list and the effect's page-2 knobs,
+drawn and turned as stock's EFFECT 2 SETUP, one window level above the
+MIXER). Three detours: the window's opener and close register and remove
+its input layers, and the stock draw's entry (every caller) draws the
+page after the stock page.
 
 The replaced words are pinned by hash, read from the user's own image at
 build time; the manifest holds no Elektron byte.
@@ -56,8 +58,9 @@ MODULE = Module(
                "stock's; edits of the ColdFire's model mid-run (a knob, an empty slot, a new id, "
                "the second slot) reach MAIN on a frame boundary, 0 LSB. `verify_mixerpages`: "
                "the MIXER page is stock's but for its arrow, MASTER draws its slots, the knobs "
-               "step as stock's and reach core 0's record, mutes and close as stock "
-               "(29 Sep 2026); not flashed",
+               "step as stock's and reach core 0's record, mutes and close as stock; the "
+               "slot SETUP's knob grid is stock EFFECT 2 SETUP's pixel for pixel after the "
+               "same turns, and its choice reaches core 0 (29 Sep 2026); not flashed",
     doc="Two insert slots on the summed MAIN, inline after the mixdown (payload A, P:0x2d5 "
         "and P:0x35d), their effects and knobs sent from a ColdFire model every frame; "
         "a MASTER page in the MIXER window edits them.",
@@ -65,7 +68,8 @@ MODULE = Module(
     # The record: strip_model, sent to core 0 every frame by one more burst
     # in the host-transfer chain, before stock state 3 (DSP.md section 6c).
     # The MIXER window pages it (strip_ui.s): LEFT/RIGHT the strips, UP/DOWN
-    # the slots, A-F the slot's knobs, all writing strip_model.
+    # the slots, A-F the slot's knobs, YES the slot's SETUP, all writing
+    # strip_model.
     linked=(Linked("stripxport", "modules/strip/strip_xport.s", dram=True),
             Linked("stripui", "modules/strip/strip_ui.s", dram=True)),
     detours=(

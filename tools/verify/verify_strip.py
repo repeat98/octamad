@@ -33,7 +33,9 @@ host-port block:
             plus a gain on MAIN, both ramped from Y:0x40, stored limited) of
             the processed MAIN: it differs from the reference only where MAIN
             does, and there by MAIN's own change at the reference's gain
-            (within the truncation of the store) -- the phones' MAIN share
+            (within the truncation of the store; at the lag between the two
+            pairs the reference's capture shows, 0 or 1 sample, which moves
+            with the build and not with the strip) -- the phones' MAIN share
             hears the insert, as MIXER.md section 3 asks. Sample 0 of every
             frame included: the first version ran the whole pass before
             stock's tail and the output DMA took that sample two frames stale
@@ -299,6 +301,22 @@ def port_half(name, built, project, frames, sym):
             port_checks(var, work / var, blockdump)
 
 
+def phones_lag(ph, main, lags=(0, 1, -1, 2, -2)):
+    """The k in phones[i] = g * main[i - k] the reference's capture shows:
+    the lag where the ratio over MAIN's large samples varies least."""
+    n = len(main)
+    best = None
+    for k in lags:
+        rs = [ph[i] / main[i - k] for i in range(max(k, 0), min(n, n + k)) if abs(main[i - k]) >= 50000]
+        if len(rs) < 64:
+            continue
+        mu = sum(rs) / len(rs)
+        sd = (sum((x - mu) ** 2 for x in rs) / len(rs)) ** 0.5
+        if best is None or sd < best[0]:
+            best = (sd, k)
+    return best[1] if best else 0
+
+
 def port_checks(var, vdir, blockdump):
     b, r = tx0(vdir / "built_core0.wav"), tx0(vdir / "ref_core0.wav")
     # The port stops on the ColdFire's frame count, and where that falls in
@@ -314,13 +332,23 @@ def port_checks(var, vdir, blockdump):
           not others, f"slots {others} differ" if others else "")
     cue_silent = not any(r[0]) and not any(r[1])
     for s, m, side in zip(PHONES, MAIN, "LR"):
-        stray = sum(1 for i in range(n) if b[s][i] != r[s][i] and b[m][i] == r[m][i])
+        # The capture can frame the phones pair one sample behind MAIN's: the
+        # reference (stock's code at the sites) came out at lag 0 from one
+        # build and at lag 1 from the next, with only ColdFire code between
+        # them (29 Sep 2026, the MIXER SETUP). The lag is read off the
+        # reference, where phones / MAIN is steadiest, and the built run is
+        # held to it.
+        k = phones_lag(r[s], r[m]) if cue_silent else 0
+        at = lambda i: i - k if 0 <= i - k < n else None
+        stray = sum(1 for i in range(n) if at(i) is not None and b[s][i] != r[s][i] and b[m][at(i)] == r[m][at(i)])
         # With CUE silent (both runs: slots 0/1 are checked identical above) the
         # phones sample is trunc(g * MAIN); g is read off the reference where MAIN
         # is large enough to pin it, and must carry the processed MAIN too.
         far, tested = 0, 0
         for i in range(n if cue_silent else 0):
-            rm, bm = r[m][i], b[m][i]
+            if at(i) is None:
+                continue
+            rm, bm = r[m][at(i)], b[m][at(i)]
             if b[s][i] == r[s][i] or abs(rm) < 256:
                 continue
             tested += 1
@@ -330,7 +358,8 @@ def port_checks(var, vdir, blockdump):
               + (", by MAIN's change at the reference's gain" if cue_silent else
                  " (CUE is not silent: the gain is not checked)"),
               stray == 0 and far == 0 and (tested > 0 or not cue_silent),
-              f"{stray} changed where MAIN did not, {far} of {tested} off the gain")
+              f"{stray} changed where MAIN did not, {far} of {tested} off the gain"
+              + (f"; the capture's phones lag MAIN by {k} sample(s), on the reference" if cue_silent else ""))
     ca, cr = (blockdump.classes(blockdump.read(vdir / f"{t}.dump")) for t in ("built", "ref"))
     differ = sorted(k for k in set(ca) | set(cr) if k not in ca or k not in cr or ca[k] != cr[k])
     pack = differ[0] if len(differ) == 1 else None

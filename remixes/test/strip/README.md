@@ -21,5 +21,6 @@ carry OXIDE's model of the stock MAIN, with and without the metronome and from d
 and every other output word and host-port block is stock's; edits of the ColdFire's model
 mid-run reach MAIN on a frame boundary (`docs/proposals/MIXER.md` §11, §12). The MIXER
 window's pages draw and page as locked, their knobs step as stock's and reach the DSP, and
-every close leaves nothing registered (§13, `verify_mixerpages`). Not flashed; nothing here
-is measured on a unit.
+every close leaves nothing registered (§13, `verify_mixerpages`); a slot's SETUP chooses its
+effect and draws its page-2 knobs as stock's EFFECT 2 SETUP does, pixel for pixel (§14).
+Not flashed; nothing here is measured on a unit.

@@ -209,7 +209,10 @@ field they checked was right. `verify_menu` now checks the renderer against
 the count (`count < 128` → the enumerated pair with `0x12a` zero; `128` → both
 formatters zero). **The general form: when you clone a descriptor, every field
 you did not explicitly write is the donor's, and some of them outrank the ones
-you did.** Same family as "a slot can draw a knob and publish nothing" — the
+you did.** Growing a stock slot in place is the same trap: REPITCH took TSTR
+from 4 to 5 values with a new formatter and drew a BLANK fifth value on the
+unit (16 Sep 2026), because the PLAYBACK select widget bounds itself
+(`cmp #3`) -- and a probe that calls the formatter alone cannot see it. Same family as "a slot can draw a knob and publish nothing" — the
 panel and the DSP are separate mechanisms and neither validates the other.
 
 **STOCK UNICORN HALVES EVERY ColdFire FRACTIONAL-MODE MULTIPLY AND ADDS
@@ -277,6 +280,12 @@ both on 17 Aug 2026, both costing hours:
 - XBUS step 3 concluded "synchronisation not needed" from a cross-core send
   measured **through the reverb** — the one consumer that smears per-sample
   damage into a multi-second tail. It shipped a cross-core race for months.
+- REPITCH (16 Sep 2026) was declared working because a sine loop measured
+  330 Hz after 120 -> 90 BPM. A sine's pitch follows the playback increment
+  alone; the renderer was still moving the sample at the OLD tempo and
+  skipping to keep up, which the unit played as a timestretch (image 80).
+  **Pitch does not tell you speed:** measure where the sample position goes
+  (a write watch on voice `+68`), and run a real timestretch as the control.
 **Before trusting a null result, ask what the instrument physically cannot
 see.** A reverb cannot show you a discontinuity. A harmonic metric cannot show
 you an inharmonic one. A lock-step emulator cannot show you a race between

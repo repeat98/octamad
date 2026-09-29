@@ -527,3 +527,78 @@ were built on it.
 **Fix.** The watch follows a `jsr (abs).l` at the site and accepts the
 store from the detour's own code; `--bank N` overrides. A port watch keyed
 on a stock PC is blind to any module that detours that PC.
+
+## TSTR REPITCH drew a blank value on the SRC SETUP page ✅ measured (emulator)
+
+**Symptom** (user's MKII, `repitch` remix from `codex/repitch`, 16 Sep
+2026). Turning TSTR to its new fifth value left the value blank.
+
+**Cause (measured 16 Sep 2026, `tools/verify/verify_repitch_ui.py`).** The
+count grew 4 -> 5 and the formatter printed the new label, but the slot's
+widget (array B, `P+0xfa`) stayed stock's four-position select
+`0x40046c28`, which returns before drawing anything when the value is
+above 3 (`cmp #3` at `0x40046c7c`). The same "a clone keeps the donor's
+renderer" trap as the FX descriptors (`CLAUDE.md`), on a machine page.
+The branch's probe called the formatter directly, so it could not see the
+widget.
+
+**Fix.** TSTR's widget is stock's own five-position select `0x40046ab4`
+(unreferenced in stock, identical but for its bound and icon table), and
+the label is four characters (`RPCH`: the cell is 18 px, the font 4 px a
+character). The PICKUP descriptor is no longer touched.
+
+## REPITCH pitched the sample but kept its tempo, and sounded time-stretched ✅ measured (port)
+
+**Symptom** (user's MKII, image OCTABAM80 from `codex/repitch`, 16 Sep
+2026). The panel was right (RPCH on SRC SETUP, REPITCH in ATTR, PTCH
+empty), but the sample did not play at the speed the tempo asked for and
+still sounded like a timestretch.
+
+**Cause (measured 16 Sep 2026, under the port on image 80's own MAIN OS,
+extracted from the `.syx`).** The voice renderer (`0x40007960`) reads the
+resolved TSTR (voice `+24`) at nine sites; the image gated two of them.
+Among the other seven, `0x4000886c` (and `0x40008e42` in reverse) advances
+the sample position by the chunk's OUTPUT samples for any nonzero TSTR,
+where OFF advances it by the frames the DSP consumed. REPITCH (4) is
+nonzero, and its ratio was 1:1, so the position kept real time while the
+DSP read at the scaled increment: at 90 BPM on a 120 BPM loop, the pitch
+fell to 0.75 and the position still advanced at **1.0013 frames per
+output sample** (a write watch on voice `+68`), skipping a quarter of
+every chunk. Pitch down, length unchanged, choppy: a crude timestretch.
+The reverse twins of the rate gate (`0x400089de`) were ungated too.
+
+**Why no check saw it.** `verify_repitch.py` measured a sine's pitch
+(median zero-crossing period), which follows the increment alone: it read
+330 Hz. The skips showed as "block-boundary glitches and level dips" and
+were put down to the port. The port does step at block boundaries (a ramp
+loop shows it at unity speed on OFF too), and that made the second cause
+easy to miss. The same trap as the harmonic THD metric (`CLAUDE.md`): the
+instrument could not see what it was used to rule out.
+
+**Fix.** One detour at the renderer's resolution (`0x40007d96`) turns
+REPITCH into 0 before it is stored, so every renderer site takes OFF's
+path, forwards and backwards; the two partial gates are gone. The builder's
+hooks resolve REPITCH on their own and never read voice `+24`. A PICKUP is
+never REPITCH (stock's next line turns its 0 into 2, and the rate hook
+skips it). `verify_repitch.py` now measures the position speed beside the
+pitch, with a NORM control (pitch kept, speed 0.75): REPITCH must read
+pitch 0.75 AND speed 0.75 AND resolved TSTR 0. On image 80 it fails.
+
+## REPITCH selected, nothing audible 🔴 cause open on hardware
+
+**Symptom** (same flash). With TSTR on REPITCH the user heard no repitch.
+
+**Measured under the port (16 Sep 2026, `tools/verify/verify_repitch.py`).**
+The branch's image, FLEX and STATIC, TSTR from the project or turned on
+through the firmware's own SETUP editor while playing (`0x4003a474`), a
+120 BPM loop at 90 BPM or a live 120 -> 90 change through the tempo
+setter: 440 Hz -> 330 Hz each time. The increment is rebuilt every frame
+(the per-frame builder call passes the recompute flag, `0x4000d518`).
+
+**Open.** Not reproduced. Candidates the port cannot see: the sample's
+ORIGINAL TEMPO equal to the project tempo (REPITCH then changes nothing
+until the tempo moves), a per-sample REPITCH that stock could not select,
+PICKUP (never had a source tempo). The first image also had the position
+defect above (it gated the same two renderer sites; 🟡 inferred from its
+source, not run), so any tempo change on it would have pitched without
+changing the length.

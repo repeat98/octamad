@@ -195,6 +195,13 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	python3 tools/verify/verify_twocore.py
 	python3 tools/verify/verify_onebus.py
 	python3 tools/verify/verify_tempo.py $(REMIX)
+	@# REPITCH: its hooks through the firmware's own code, its page drawings,
+	@# and with OT_PROJECT a live tempo change under the port (SKIPs parts it
+	@# cannot run; a remix without REPITCH is a one-line pass).
+	python3 tools/verify/verify_repitch.py $(REMIX)
+	@# PREVIEW VOL: both preview starters queue AMP VOL 64, and with
+	@# OT_PROJECT the preview level under the port at track VOL 0/64/127.
+	python3 tools/verify/verify_previewvol.py $(REMIX)
 	@# A real project on the built image under the ColdFire port (ids, page-2
 	@# delivery, chain audio, the main out); SKIPs without OT_PROJECT (above).
 	python3 tools/verify/verify_set.py $(REMIX)

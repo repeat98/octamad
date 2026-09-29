@@ -1,0 +1,22 @@
+"""strip -- the master strip on MAIN: OXIDE inline after the mixdown.
+
+MIXDOWN COPY (the stock mixdown from a placed copy, which exits into the
+strip's site), MASTER STRIP and the insert it runs, OXIDE, beside the stock
+effects without the three reverbs (their words are the region the bodies go
+in). The remix tools/verify/verify_strip.py builds (docs/proposals/MIXER.md,
+step 2). Not flashed.
+"""
+
+from remix.schema import Proof, Remix
+
+REMIX = Remix(
+    name="strip",
+    family="reference", proof=Proof.PORT,
+    proof_note="`verify_strip`: the main out, the phones and the recorder/USB pack carry OXIDE's model of "
+               "the stock MAIN under the port, with and without the metronome (29 Sep 2026)",
+    doc="OXIDE on the summed MAIN, inline after the mixdown: the master strip, step 2.",
+    modules=("MIXDOWN COPY", "MASTER STRIP", "OXIDE", "FILTER", "EQUALIZER", "DJ EQ",
+             "PHASER", "FLANGER", "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR",
+             "LO-FI", "DELAY"),
+    fallback="NONE",
+)

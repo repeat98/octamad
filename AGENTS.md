@@ -125,7 +125,11 @@ sites are counted per module in `build_bus.MPYSU_AUDITED`, and since 23 Sep
 2026 every `assemble()` round-trips its bytes through the disassembler and
 stops on any other mismatch or on a count that differs from the table). `mpysu` treats the SECOND operand as unsigned, so
 a negative multiplier there is silently corrupted. `mpy x0,y1` and
-`mpy y0,x0` encode signed. Both assemble clean and do the wrong thing.
+`mpy y0,x0` encode signed -- but not under an XY parallel move: `mpy
+y0,x0,b x:(r3)+,x0 y:(r4)+,y0` (stock's cue-mix form) assembled as a bare
+`mpysu y0,x0,b` with both moves dropped (29 Sep 2026, `modules/strip`; the
+build's mpysu audit refuses it; split the Y move off). Both assemble clean and
+do the wrong thing.
 **Disassemble what you assemble** when a result surprises you — and always
 for a new `mpy` whose second operand can go negative. A related family bit
 us in shipping code: `cmp a,b` had encoded as `max a,b`, which updates only

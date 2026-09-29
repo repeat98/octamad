@@ -102,6 +102,13 @@ click / MD  (the P:0x2ec path)   │
   the inline pass a race with the DMA: the race only exists if a sample is produced
   slower than it is read. A frame late remains the fallback if the burn knob shows the
   real margin thinner than the port's.
+- ✅ **Corrected by the build (§11): that arithmetic counted MAIN's deadline only.**
+  Stock's tail after P:0x2d5 also writes sample 0 of the click (into CUE and MAIN) and
+  of the phones' cue mix, with the same deadline, and a whole pass ahead of it holds
+  them back: under the port the phones' first sample of every frame went out two frames
+  stale. The strip is therefore split: the insert runs on sample 0 at P:0x2d5, stock's
+  tail runs on time, and samples 1..15 run at P:0x35d, after the cue mix, which redoes
+  what the tail made from them (MAIN plus the click, the phones, the recorder's pack).
 - **A strip needs what a track has and a strip does not: parameters and state.** An
   effect reads its twelve knobs through `r6` (a track's 84-word record from the
   ColdFire, per core) and keeps its state at `r7` (an instance block). The master strip
@@ -140,7 +147,7 @@ the pricer's static counts unless marked.
 |---|---|---|
 | widened mixer, 12 × 4 instead of 10 × 2 | ❓ +60–100 | — |
 | returns | reverb ~1,650 (✅ measured on the unit) | delay 476 CLEAN / 1,191 GRAIN |
-| master inserts | Oxide 164; Character 639 | — |
+| master inserts | Oxide 164 (✅ 268 instructions a sample as the strip runs it under the port, §11); Character 639 | — |
 | left for FX1/FX2 on the tracks | ~1,200 with Oxide only; ~600 with Character too | ~2,640 / ~1,930, shared with the MD |
 
 The returns cost about what the hosts cost today: the win is routing, a free FX2 on
@@ -195,7 +202,9 @@ Each step is flashable and checkable on its own.
    port cannot give.
 2. **Master strip, Oxide as INS 1, inline at P:0x2d5.** Gate: with the strip's gains at
    unity the output equals stock bit for bit (no delay: it is inline); a recording of
-   MAIN includes the insert; the cue pair's main share does too.
+   MAIN includes the insert; the cue pair's main share does too. **Done under the port
+   with fixed parameters (§11)**; the gate is Oxide's model rather than stock (Oxide at
+   its 0 dB points is not an identity). Still to do: the ColdFire record (§7 decision 6).
 3. **AUX B and RET B** (BusVerb as a pure-wet strip). Gate: a runaway test with
    the self-send raised.
 4. **AUX A and RET A on core 1.** Gate: `verify-twocore` with the cores skewed;
@@ -285,3 +294,57 @@ purpose: a site that *changes* the sound has no automatic gate beyond structure,
 the gate compares to "the same image without the jump", which is only the right reference
 for an identity. That module's own gate is its job (the mixer's, §8 step 2: unity sends
 equal stock bit for bit).
+
+## 11. Step 2: the master strip, measured (29 Sep 2026)
+
+`modules/strip` (**MASTER STRIP**) runs OXIDE on MAIN at its 0 dB points (IN 48, OUT 80,
+fixed until §7 decision 6), reaching it through the stock dispatch tables by its id as a
+track slot does, with its instance block and record at X:0x7c00..0x7cff (outside every X
+module; no non-zero write there under the port, `--dsp-writes`, 900 frames). Three DSP
+sites on payload A: `boot` (P:0x40, once per DSP boot: OXIDE's init and the record),
+`head` (P:0x2d5) and `tail` (P:0x35d). The remix is `strip`; the gate is
+`tools/verify/verify_strip.py`.
+
+**The first version failed its own gate.** It called the insert once per sample for all
+16 samples at P:0x2d5. MAIN matched Oxide's model at 0 LSB, but the phones (TX0 slots
+4/5) were wrong at the first sample of a frame and nowhere else: 271 of the 293 frame
+starts the gate tested on L (the first 16 frames were right), 269 of them
+equal to the correct value of the sample 32 earlier (two frames: the ring half's previous
+content). ✅ measured under the port. 🟡 Inferred
+cause: the pass held stock's click and cue mix back past the output DMA's read of sample
+0 (§3's correction). Nothing on MAIN showed it, because the strip writes MAIN itself,
+early.
+
+**The split.** `head` gathers MAIN's 16 dry pairs into a buffer, runs the insert on
+sample 0 and puts it back; stock's pack, click, gain ramp and cue mix then run as stock
+runs them. `tail` runs samples 1..15 in order, one call each: the click is the ring's
+MAIN minus the dry sample (stock's click is a plain add), MAIN is the insert's output
+plus that click, stored limited; the phones are the cue mix's own arithmetic on its own
+ramped gains (Y:0x40 + 2j) and its L/R test word; then stock's pack routine runs again
+on the processed buffer at its stock destination.
+
+| check (port, the user's project, 300 frames, built vs the same image with all three sites' stock words back) | tones | tones + click |
+|---|---|---|
+| TX0 slots other than MAIN and the phones | identical | identical |
+| phones: change only where MAIN does, by MAIN's change at the reference's gain | 0 of 4,703 / 4,701 off | 0 of 4,712 / 4,714 off |
+| host-port blocks: classes that differ | 1 of 27, the pack | 1 of 27, the pack |
+| the pack's CUE half | identical | identical |
+| the pack's MAIN (recorder, USB) = `design.fixed()` of the reference's | 0 LSB, 4,800 samples | 0 LSB |
+| TX0 MAIN | = `fixed()` of the stock MAIN, 0 LSB, 529,646 samples; IN 49 does not match | = `fixed()` of the pack's MAIN plus the click, 0 LSB; click on 2,227 of 4,800 samples; without the click does not match |
+| `--dsp-stopwatch 0:238:35a` (mixdown start to cue mix end), instructions per frame | stock 1,620, strip 1,974 | the same |
+
+The click fixture sets `METRONOME_ENABLED=1`, `METRONOME_MAIN_VOLUME=64` (tones plus click
+do not clip) and `METRONOME_CUE_VOLUME=0` (CUE silent, so the phones' gain stays
+checkable).
+
+**Cost** (✅ instructions, the port's stopwatch; not cycles): `head` 333 per frame,
+`tail` 3,948, so about 268 per sample against OXIDE's 158 in a track slot. The difference
+is OXIDE's per-call setup (its two knob tables, sixteen calls a frame) and the strip's
+bookkeeping. One call for samples 1..15 would save most of the setup but writes sample 1
+only after all fifteen: inside the DMA arithmetic for OXIDE, not for Character. Not done.
+
+**Not shown:** anything on a unit (the DMA margin above is the port's); track audio
+(none reaches the mixdown under the port, `docs/remixer/EMU.md`); MAIN plus the click
+clipping, where the tail's click (a difference of clipped values) and stock's differ;
+the MASTER TRACK path (§6).
+

@@ -1,17 +1,19 @@
 | POLY MACHINE -- four independent untimestretched playback positions per
 | audio track.  The stock voice is always the newest voice.  Immediately
-| before stock retriggers it, the active old state is copied into one of
-| three rotating extension records.  The stock renderer then renders the
-| primary and extension records into one track buffer, before the normal
-| per-track FX chain.
+| before stock retriggers it, the sounding old voice is moved into one of
+| three extension records.  The stock renderer then fetches every voice's
+| raw frames, and each is resampled, enveloped and mixed here into the one
+| track buffer, before the normal per-track FX chain.
 |
-| Each voice keeps the pitch it was triggered with: the stock renderer only
-| fetches raw source frames and the DSP resamples the track by the primary's
-| increment, so extensions are resampled here to the primary's source rate
-| (.render_ext).  Chromatic presses -- panel keys and MIDI notes alike -- are
-| queued so a chord is not collapsed into stock's one-command mailbox, and
-| releases address the voice that owns the key.  RATE, sample selection and
-| p-locks remain track-wide.
+| Each voice keeps its own pitch and its own AMP envelope.  The stock
+| renderer only fetches raw source frames and the DSP resamples each track
+| by one increment and applies one amp envelope; on a POLY track the DSP
+| runs at unity with its envelope held open (poly_increment_shift,
+| poly_amp_hook), and every voice is resampled (.render_voice) and enveloped
+| (.env_track) on the ColdFire.  Chromatic presses -- panel keys and MIDI
+| notes alike -- are queued so a chord is not collapsed into stock's
+| one-command mailbox, and releases address the voices that own the key.
+| RATE, sample selection, FX and p-locks remain track-wide.
         .text
         .global polyphony_call
         .global poly_config_type
@@ -42,6 +44,9 @@
         .global poly_release_held
         .global poly_kbd_fill
         .global poly_kbd_next
+        .global poly_amp_hook
+        .global poly_oct_number
+        .global poly_oct_led
         .global poly_release_note
         .global voice_pointer
         .global poly_voice_selector
@@ -173,12 +178,18 @@ poly_config_tstr:
 
 | Detour at 0x40004100, where the increment builder recomputes a track's
 | increment (only on a retrigger or a pitch change; otherwise it reuses
-| STATES+36).  This is the ratio the DSP resamples the track with and the
-| rate its source frames are fetched at, so a POLY key's octave shift must
-| land HERE; applied anywhere later it reaches neither.  Capped below 4.0:
-| the caller masks a chunk's source frames with 63, so 16 samples at 4.0
-| would wrap to zero -- octaves beyond the cap are dropped.
-        .equ    INCREMENT_CAP, 0x0fc00000
+| STATES+36).  STATES+36 is the ratio the DSP resamples the whole track by,
+| and the caller fetches the chunk's source frames at it.  On a POLY track
+| the DSP runs at unity instead: the builder's increment, with the key's
+| octave shift, becomes the newest voice's own (poly_voice_inc), and every
+| voice is resampled on the ColdFire (.render_voice).  While the DSP followed
+| each newest note, every new key changed the rate under the voices still
+| sounding and their waveforms stepped (octemu, 25 Sep 2026: about half of
+| full scale at a pitch-changing press, five times a same-pitch press).
+| Capped where a voice's fetch still fits poly_fetch: 16 frames at 5.75,
+| 30 semitones up.  With TSTR on, POLY renders stock mono: stock's rate.
+        .equ    INCREMENT_CAP, 0x17000000
+        .equ    INCREMENT_UNITY, 0x04000000
 poly_increment_shift:
         .word   0xa1c0                    | displaced movclr.l %acc0,%d0
         asr.l   %d6,%d0                   | displaced
@@ -188,6 +199,12 @@ poly_increment_shift:
         bsr.w   poly_is_track
         tst.l   %d0
         beq.s   .pis_done
+        move.l  64(%sp),%d0
+        moveq   #48,%d1
+        mulu.l  %d1,%d0
+        lea     (LANES).l,%a0
+        tst.b   28(%a0,%d0.l)             | TSTR on: stock mono, stock's rate
+        bne.s   .pis_done
         move.l  64(%sp),%d1
         lea     poly_primary_shift(%pc),%a0
         mvs.b   (%a0,%d1.l),%d1
@@ -212,6 +229,11 @@ poly_increment_shift:
         lsr.l   #1,%d0
         bra.s   .pis_cap
 .pis_store:
+        move.l  64(%sp),%d1
+        lsl.l   #4,%d1                    | the primary's voice index * 4
+        lea     poly_voice_inc(%pc),%a0
+        move.l  %d0,(%a0,%d1.l)
+        move.l  #INCREMENT_UNITY,%d0
         move.l  %d0,(%sp)
 .pis_done:
         movem.l (%sp),%d0-%d1/%a0
@@ -245,78 +267,90 @@ poly_stop_voice:
         jmp     (CONTINUE_STOP).l
 
 | Detour at 0x4000f450, the shared sample-machine voice initializer.  Its
-| first argument is the track at 4(sp).  Preserve the active primary before
-| stock overwrites it, rotating through the three extension records.  This
-| catches sequencer, manual and MIDI triggers at the common boundary.
+| first argument is the track at 4(sp).  Before stock overwrites a sounding
+| primary, the primary -- voice record, owning key, octave shift, increment
+| and envelope -- moves into an extension slot: a free one, else the quietest
+| voice already in its release, else the next in rotation.  The new primary
+| then starts its own envelope from zero.  This catches sequencer, manual and
+| MIDI triggers at the common boundary.
 poly_voice_trigger:
-        lea     -24(%sp),%sp
-        movem.l %d0-%d2/%a0-%a2,(%sp)
-        move.l  28(%sp),%d2
+        lea     -40(%sp),%sp
+        movem.l %d0-%d5/%a0-%a3,(%sp)
+        move.l  44(%sp),%d2               | track
         move.l  %d2,%d0
         bsr.w   poly_is_track
         tst.l   %d0
         beq.w   .pvt_done
 
         move.l  %d2,%d0
-        move.l  #VOICE_SIZE,%d1
-        mulu.l  %d1,%d0
+        move.l  #VOICE_SIZE,%d4
+        mulu.l  %d4,%d0
         lea     (VOICES).l,%a0
-        adda.l  %d0,%a0
+        adda.l  %d0,%a0                   | a0 = the primary's record
         tst.b   (%a0)
-        bne.s   .pvt_active
-        bsr.w   .pvt_set_primary_note
-        bsr.w   .pvt_set_primary_shift
-        bra.w   .pvt_done
-.pvt_active:
+        beq.w   .pvt_fresh
 
-        lea     poly_next(%pc),%a1
-        moveq   #0,%d0
-        move.b  (%a1,%d2.l),%d0          | extension slot 0..2
+        bsr.w   .pvt_pick_slot            | d0 = extension slot 0..2
+        move.l  %d0,%d3
         move.l  %d2,%d1
         add.l   %d2,%d1
         add.l   %d2,%d1
-        add.l   %d0,%d1                  | flat extension index
+        add.l   %d3,%d1                   | d1 = flat extension index
 
-        addq.l  #1,%d0
-        cmpi.l  #EXTRA_PER_TRACK,%d0
-        bcs.s   .pvt_store_next
-        moveq   #0,%d0
-.pvt_store_next:
-        move.b  %d0,(%a1,%d2.l)
-
-| Associate the voice slot with its chromatic pitch so each held panel key
-| can release its own voice instead of the stock "last key only" behavior.
         lea     poly_primary_note(%pc),%a2
         move.b  (%a2,%d2.l),%d0
         lea     poly_extra_note(%pc),%a2
         move.b  %d0,(%a2,%d1.l)
-        bsr.w   .pvt_set_primary_note
-
         lea     poly_primary_shift(%pc),%a2
         move.b  (%a2,%d2.l),%d0
         lea     poly_extra_shift(%pc),%a2
         move.b  %d0,(%a2,%d1.l)
-        bsr.w   .pvt_set_primary_shift
 
-| The extension keeps the old primary's own increment, which the render
-| publishes for that voice alone.  Measured order within a frame (octemu,
-| 22 Sep 2026): consumer -> this initializer -> increment recompute ->
-| render, so STATES+36 here still holds the OLD note's increment.  (Image 92
-| took it from the last render instead; with keys pressed together the queue
-| triggers the next note before the previous one has been rendered, the saved
-| increment was 0, and that voice played DC and never ended.)
-        move.l  %d2,%d0
-        lsl.l   #2,%d0
-        add.l   %d2,%d0
-        lsl.l   #3,%d0                  | track * 40
-        lea     (STATES).l,%a2
-        move.l  36(%a2,%d0.l),%d0
-        lea     poly_extra_increment(%pc),%a2
-        move.l  %d0,(%a2,%d1.l*4)
+| Its envelope, its own increment (poly_increment_shift) and its resampler
+| (phase, carried frames) move with it: a held note neither dips nor steps
+| when the next one starts.
+        move.l  %d2,%d4
+        lsl.l   #2,%d4                    | the primary's voice index
+        move.l  %d4,%d5
+        add.l   %d3,%d5
+        addq.l  #1,%d5                    | the extension's voice index
+        lea     poly_env_level(%pc),%a2
+        move.l  (%a2,%d4.l*4),%d0
+        move.l  %d0,(%a2,%d5.l*4)
+        lea     poly_env_timer(%pc),%a2
+        move.l  (%a2,%d4.l*4),%d0
+        move.l  %d0,(%a2,%d5.l*4)
+        lea     poly_env_stage(%pc),%a2
+        move.b  (%a2,%d4.l),%d0
+        move.b  %d0,(%a2,%d5.l)
+        lea     poly_env_gain(%pc),%a2
+        move.w  (%a2,%d4.l*2),%d0
+        move.w  %d0,(%a2,%d5.l*2)
+        lea     poly_voice_inc(%pc),%a2
+        move.l  (%a2,%d4.l*4),%d0
+        move.l  %d0,(%a2,%d5.l*4)
+        lea     poly_rs_phase(%pc),%a2
+        move.l  (%a2,%d4.l*4),%d0
+        move.l  %d0,(%a2,%d5.l*4)
+        lea     poly_rs_carry(%pc),%a2
+        move.l  (%a2,%d4.l*4),%d0
+        move.l  %d0,(%a2,%d5.l*4)
+        move.l  %d4,%d0
+        lsl.l   #4,%d0
+        lea     poly_rs_hist(%pc),%a2
+        adda.l  %d0,%a2
+        move.l  %d5,%d0
+        lsl.l   #4,%d0
+        lea     poly_rs_hist(%pc),%a3
+        adda.l  %d0,%a3
+        move.l  (%a2)+,(%a3)+
+        move.l  (%a2)+,(%a3)+
+        move.l  (%a2)+,(%a3)+
+        move.l  (%a2),(%a3)
 
         move.l  %d1,%d0
-        move.l  #VOICE_SIZE,%d2
-        mulu.l  %d2,%d0
+        move.l  #VOICE_SIZE,%d4
+        mulu.l  %d4,%d0
         lea     poly_extra_voices(%pc),%a1
         adda.l  %d0,%a1
         moveq   #41,%d0                   | 42 longs = 168 bytes
@@ -324,15 +358,84 @@ poly_voice_trigger:
         move.l  (%a0)+,(%a1)+
         subq.l  #1,%d0
         bpl.s   .pvt_copy
-        lea     poly_ext_phase(%pc),%a1   | its resampler starts fresh
-        clr.l   (%a1,%d1.l*4)
-        lea     poly_ext_carry(%pc),%a1
-        clr.l   (%a1,%d1.l*4)
-        bra.s   .pvt_done
+
+.pvt_fresh:
+        bsr.w   .pvt_set_primary_note
+        bsr.w   .pvt_set_primary_shift
+        move.l  %d2,%d4
+        lsl.l   #2,%d4                    | the new primary's envelope starts at 0
+        lea     poly_env_level(%pc),%a2
+        clr.l   (%a2,%d4.l*4)
+        lea     poly_env_timer(%pc),%a2
+        clr.l   (%a2,%d4.l*4)
+        lea     poly_env_gain(%pc),%a2
+        clr.w   (%a2,%d4.l*2)
+        lea     poly_env_stage(%pc),%a2
+        moveq   #ENV_ATTACK,%d0
+        move.b  %d0,(%a2,%d4.l)
+        lea     poly_rs_phase(%pc),%a2    | and its resampler starts fresh
+        clr.l   (%a2,%d4.l*4)
+        lea     poly_rs_carry(%pc),%a2
+        clr.l   (%a2,%d4.l*4)
+        bra.w   .pvt_done
+
+| Track d2: the extension slot a moving primary takes, in d0 (0..2).  A free
+| slot first; else the quietest voice already releasing; else the rotation.
+| The rotation then continues after the slot taken.  Clobbers d1/d3-d5/a1.
+.pvt_pick_slot:
+        move.l  %d2,%d0
+        move.l  #EXTRA_TRACK_SIZE,%d1
+        mulu.l  %d1,%d0
+        lea     poly_extra_voices(%pc),%a1
+        adda.l  %d0,%a1
+        moveq   #0,%d0
+.pps_free:
+        tst.b   (%a1)
+        beq.s   .pps_take
+        lea     VOICE_SIZE(%a1),%a1
+        addq.l  #1,%d0
+        cmpi.l  #EXTRA_PER_TRACK,%d0
+        bcs.s   .pps_free
+        moveq   #-1,%d0
+        move.l  #0x7fffffff,%d5           | the quietest level so far
+        move.l  %d2,%d4
+        lsl.l   #2,%d4
+        addq.l  #1,%d4                    | voice index of extension 0
+        moveq   #0,%d1
+.pps_release:
+        lea     poly_env_stage(%pc),%a1
+        mvz.b   (%a1,%d4.l),%d3
+        cmpi.l  #ENV_RELEASE,%d3
+        bne.s   .pps_next
+        lea     poly_env_level(%pc),%a1
+        move.l  (%a1,%d4.l*4),%d3
+        cmp.l   %d5,%d3
+        bcc.s   .pps_next
+        move.l  %d3,%d5
+        move.l  %d1,%d0
+.pps_next:
+        addq.l  #1,%d4
+        addq.l  #1,%d1
+        cmpi.l  #EXTRA_PER_TRACK,%d1
+        bcs.s   .pps_release
+        tst.l   %d0
+        bpl.s   .pps_take
+        lea     poly_next(%pc),%a1
+        mvz.b   (%a1,%d2.l),%d0
+.pps_take:
+        move.l  %d0,%d1
+        addq.l  #1,%d1
+        cmpi.l  #EXTRA_PER_TRACK,%d1
+        bcs.s   .pps_rot
+        moveq   #0,%d1
+.pps_rot:
+        lea     poly_next(%pc),%a1
+        move.b  %d1,(%a1,%d2.l)
+        rts
 
 | A chromatic press leaves its key and octave shift pending; the trigger it
-| causes consumes them.  Any other trigger (sequencer, MIDI, a trig key in
-| another mode) finds none: no owning key, and no octave shift.
+| causes consumes them.  Any other trigger (sequencer, a trig key in another
+| mode) finds none: no owning key, and no octave shift.
 .pvt_set_primary_note:
         lea     poly_pending_key(%pc),%a2
         move.b  (%a2,%d2.l),%d0
@@ -352,8 +455,8 @@ poly_voice_trigger:
         rts
 
 .pvt_done:
-        movem.l (%sp),%d0-%d2/%a0-%a2
-        lea     24(%sp),%sp
+        movem.l (%sp),%d0-%d5/%a0-%a3
+        lea     40(%sp),%sp
         lea     -60(%sp),%sp              | displaced initializer prologue
         movem.l %d2-%d7/%a2-%fp,(%sp)
         jmp     (CONTINUE_TRIGGER).l
@@ -362,6 +465,11 @@ poly_voice_trigger:
 | output, renderer arg2, track, source frames, output samples, and flags.
 | There is no JSR return address because the detour jumps here.  The wrapper
 | replays the displaced call cleanup itself.
+|
+| Each voice renders at unity, gets its own AMP envelope (.env_track) and
+| is mixed at that gain (.mix); voices whose release has ended stop
+| (.env_reap).  The DSP's one envelope per track is held open meanwhile
+| (poly_amp_hook).
 polyphony_call:
         lea     -40(%sp),%sp
         movem.l %d2-%d7/%a2-%a5,(%sp)
@@ -385,35 +493,8 @@ polyphony_call:
         cmpi.l  #MAX_SOURCE_FRAMES,%d5
         bhi.w   .reset_mono
 
-        move.l  %d2,%d0
-        move.l  #VOICE_SIZE,%d1
-        mulu.l  %d1,%d0
-        lea     (VOICES).l,%a3
-        adda.l  %d0,%a3                   | stock primary voice
-        move.l  %d2,%d0
-        move.l  #EXTRA_TRACK_SIZE,%d1
-        mulu.l  %d1,%d0
-        lea     poly_extra_voices(%pc),%a2
-        adda.l  %d0,%a2                   | first extension for this track
-
-        moveq   #0,%d4                    | active count before this chunk
-        tst.b   (%a3)
-        beq.s   .count_e0
-        addq.l  #1,%d4
-.count_e0:
-        tst.b   (%a2)
-        beq.s   .count_e1
-        addq.l  #1,%d4
-.count_e1:
-        tst.b   VOICE_SIZE(%a2)
-        beq.s   .count_e2
-        addq.l  #1,%d4
-.count_e2:
-        tst.b   VOICE_SIZE*2(%a2)
-        beq.s   .count_done
-        addq.l  #1,%d4
-.count_done:
-        tst.l   %d4
+        bsr.w   .env_track                | d6 = mask of active voices
+        tst.l   %d6
         beq.w   .mono                     | stock call clears the destination
 
         move.l  %d2,%d0
@@ -424,59 +505,24 @@ polyphony_call:
         lea     (STATES).l,%a0
         move.l  36(%a0,%d0.l),%d7         | primary increment (octave applied)
 
-| The renderer does not resample: it fetches RAW source frames (d5 of them,
-| the count the caller derived from the primary's increment) and the DSP
-| resamples the whole track by that one increment.  So the primary renders
-| as stock does, and each extension fetches its own frame count and is
-| resampled here to the primary's source rate before the mix (.render_ext).
-        clr.l   poly_voice_selector
-        movea.l 40(%a5),%a4
-        bsr.w   .render
-
-        moveq   #1,%d3
-.ext_loop:
+| The renderer does not resample: it fetches RAW source frames, and the DSP
+| resamples the whole track by STATES+36 -- unity on a POLY track
+| (poly_increment_shift).  So each voice, the primary too, fetches its own
+| frame count and is resampled here to d5 frames at d7 (.render_voice).
+        moveq   #0,%d3
+.voice_loop:
+        btst    %d3,%d6
+        beq.s   .voice_next
         move.l  %d3,poly_voice_selector
-        bsr.w   .render_ext
+        bsr.w   .render_voice
+.voice_next:
         addq.l  #1,%d3
-        cmpi.l  #EXTRA_PER_TRACK+1,%d3
-        bcs.s   .ext_loop
+        moveq   #4,%d0
+        cmp.l   %d0,%d3
+        bcs.s   .voice_loop
         clr.l   poly_voice_selector
-
-| Normalize according to voices that contributed to the chunk: unity for
-| one, /2 for two, and /4 for three or four.  The three-voice case keeps 6 dB
-| of safety rather than adding a slow divide in the audio task.
-        moveq   #0,%d6
-        moveq   #1,%d0
-        cmp.l   %d0,%d4
-        beq.s   .mix_setup
-        moveq   #1,%d6
-        moveq   #2,%d0
-        cmp.l   %d0,%d4
-        beq.s   .mix_setup
-        moveq   #2,%d6
-.mix_setup:
-        movea.l 40(%a5),%a0
-        lea     poly_scratch(%pc),%a1
-        lea     poly_scratch+512(%pc),%a2
-        lea     poly_scratch+1024(%pc),%a3
-        move.l  %d5,%d4
-        lsl.l   #1,%d4
-        subq.l  #1,%d4
-.mix:
-        move.l  (%a0),%d0
-        asr.l   %d6,%d0
-        move.l  (%a1)+,%d1
-        asr.l   %d6,%d1
-        add.l   %d1,%d0
-        move.l  (%a2)+,%d1
-        asr.l   %d6,%d1
-        add.l   %d1,%d0
-        move.l  (%a3)+,%d1
-        asr.l   %d6,%d1
-        add.l   %d1,%d0
-        move.l  %d0,(%a0)+
-        subq.l  #1,%d4
-        bpl.s   .mix
+        bsr.w   .mix
+        bsr.w   .env_reap
         bra.s   .done
 
 .reset_mono:
@@ -489,6 +535,8 @@ polyphony_call:
         clr.b   VOICE_SIZE(%a0)
         clr.b   VOICE_SIZE*2(%a0)
         lea     poly_next(%pc),%a0
+        clr.b   (%a0,%d2.l)
+        lea     poly_sounding(%pc),%a0
         clr.b   (%a0,%d2.l)
 .mono:
         clr.l   poly_voice_selector
@@ -526,50 +574,36 @@ polyphony_call:
         lea     24(%sp),%sp
         rts
 
-| Render extension d3 (1..3) of track d2 into poly_scratch + (d3-1)*512 as
-| d5 stereo frames at the PRIMARY's source rate (d7 = primary increment).
+| Render voice d3 (0 = the primary, 1..3 = the extensions) of track d2 into
+| poly_scratch + d3*512 as d5 stereo frames at d7 (STATES+36, unity on a
+| POLY track).
 |
-| r = inc_ext / inc_primary (Q16).  Output frame j sits at p + j*r in the
-| fetch buffer, linearly interpolated.  The renderer advances the voice by
-| every frame it fetches, so nothing fetched may be dropped: the frames from
-| the next start's floor onward (one or two) are carried to the next chunk,
-| and p stays in [0,1) relative to the first carried frame.  A voice fresh
-| from poly_voice_trigger has no carried frames and p = 0.
-.render_ext:
+| r = inc_voice / d7 (Q16).  Output frame j sits at p + j*r in the fetch
+| buffer, linearly interpolated.  The renderer advances the voice by every
+| frame it fetches, so nothing fetched may be dropped: the frames from the
+| next start's floor onward (one or two) are carried to the next chunk, and
+| p stays in [0,1) relative to the first carried frame.  A voice fresh from
+| poly_voice_trigger has no carried frames and p = 0; a voice that moves
+| slots takes its phase and carried frames along.
+.render_voice:
         lea     -36(%sp),%sp
         movem.l %d2-%d7/%a2-%a4,(%sp)
         move.l  %d2,%d4
-        add.l   %d2,%d4
-        add.l   %d2,%d4
-        add.l   %d3,%d4
-        subq.l  #1,%d4                    | d4 = flat extension index
+        lsl.l   #2,%d4
+        add.l   %d3,%d4                   | d4 = voice index
         move.l  %d3,%d1
-        subq.l  #1,%d1
         moveq   #9,%d0
         lsl.l   %d0,%d1
         lea     poly_scratch(%pc),%a3
         adda.l  %d1,%a3                   | a3 = output
-        move.l  %d4,%d0
-        move.l  #VOICE_SIZE,%d1
-        mulu.l  %d1,%d0
-        lea     poly_extra_voices(%pc),%a0
-        tst.b   (%a0,%d0.l)
-        bne.s   .re_active
-        move.l  %d5,%d0                   | idle voice: silence
-        bra.s   .re_zero_next
-.re_zero:
-        clr.l   (%a3)+
-        clr.l   (%a3)+
-.re_zero_next:
-        subq.l  #1,%d0
-        bpl.s   .re_zero
-        bra.w   .re_out
-
 .re_active:
-| r16 = inc_ext * 65536 / inc_primary, with 32-bit divides: both >> 8, then
-| the integer part and two 8-bit fraction digits.
-        lea     poly_extra_increment(%pc),%a0
+| r16 = inc_voice * 65536 / d7, with 32-bit divides: both >> 8, then the
+| integer part and two 8-bit fraction digits.  No increment yet: r = 1.
+        lea     poly_voice_inc(%pc),%a0
         move.l  (%a0,%d4.l*4),%d0
+        bne.s   .re_inc
+        move.l  %d7,%d0
+.re_inc:
         lsr.l   #8,%d0                    | a
         move.l  %d7,%d1
         lsr.l   #8,%d1                    | b
@@ -598,14 +632,32 @@ polyphony_call:
 .re_ratio_done:
         tst.l   %d5
         beq.w   .re_out                   | nothing to produce this chunk
+| At exactly the DSP's rate with nothing carried and no phase (a note at the
+| sample's own pitch, from its start), the frames ARE the output: fetch them
+| straight into place.
+        cmpi.l  #0x10000,%d6
+        bne.s   .re_resample
+        cmpi.l  #63,%d5
+        bhi.s   .re_resample
+        lea     poly_rs_carry(%pc),%a0
+        tst.l   (%a0,%d4.l*4)
+        bne.s   .re_resample
+        lea     poly_rs_phase(%pc),%a0
+        tst.l   (%a0,%d4.l*4)
+        bne.s   .re_resample
+        movea.l %a3,%a4
+        move.l  %d5,%d0
+        bsr.w   .render_count
+        bra.w   .re_out
+.re_resample:
 
 | Carried frames go to the front of the fetch buffer.
         lea     poly_fetch(%pc),%a4
-        lea     poly_ext_carry(%pc),%a0
+        lea     poly_rs_carry(%pc),%a0
         move.l  (%a0,%d4.l*4),%d2         | carried frames c (0..2)
         move.l  %d4,%d0
         lsl.l   #4,%d0                    | 16 bytes of history per voice
-        lea     poly_ext_hist(%pc),%a0
+        lea     poly_rs_hist(%pc),%a0
         adda.l  %d0,%a0
         move.l  (%a0)+,(%a4)
         move.l  (%a0)+,4(%a4)
@@ -613,7 +665,7 @@ polyphony_call:
         move.l  (%a0),12(%a4)
 
 | last = max(floor(p+(N-1)r)+1, floor(p+N*r)); frames needed = last+1.
-        lea     poly_ext_phase(%pc),%a0
+        lea     poly_rs_phase(%pc),%a0
         move.l  (%a0,%d4.l*4),%d3         | p
         move.l  %d5,%d0
         subq.l  #1,%d0
@@ -715,7 +767,7 @@ polyphony_call:
         move.l  %d1,%d0                   | capped fetch: hold at the end
 .re_k_ok:
         andi.l  #0xffff,%d2
-        lea     poly_ext_phase(%pc),%a0
+        lea     poly_rs_phase(%pc),%a0
         move.l  %d2,(%a0,%d4.l*4)
         move.l  %a2,%d1
         sub.l   %d0,%d1                   | frames carried (1 or 2)
@@ -723,13 +775,13 @@ polyphony_call:
         bls.s   .re_carry_n
         moveq   #2,%d1
 .re_carry_n:
-        lea     poly_ext_carry(%pc),%a0
+        lea     poly_rs_carry(%pc),%a0
         move.l  %d1,(%a0,%d4.l*4)
         lsl.l   #3,%d0
         lea     (%a4,%d0.l),%a1           | &buf[k]
         move.l  %d4,%d0
         lsl.l   #4,%d0
-        lea     poly_ext_hist(%pc),%a0
+        lea     poly_rs_hist(%pc),%a0
         adda.l  %d0,%a0
         move.l  (%a1)+,(%a0)+
         move.l  (%a1)+,(%a0)+
@@ -739,6 +791,560 @@ polyphony_call:
         movem.l (%sp),%d2-%d7/%a2-%a4
         lea     36(%sp),%sp
         rts
+
+| ---------------------------------------------------------------------------
+| Per-voice AMP.  Stock runs ONE amp envelope per track, on the DSP, after
+| the track's audio is summed: with POLY every new key restarted it (the
+| held voices dipped to zero), a released key could only be cut, and REL
+| applied only when the last key was up.  Each voice now carries its own
+| envelope, applied in the mix; the laws were measured from stock FLEX under
+| octemu (25 Sep 2026, STATUS.md): attack linear over 3.39 ms * 2^(ATK/8.39),
+| release exponential with time constant 0.337 ms * 2^(REL/8.64), REL 127 =
+| INF; hold for HOLD from stock's own table (0x400a9690, tempo-scaled when
+| SYNC is on), HOLD 127 = INF; release at whichever comes first, the hold's
+| end or the key coming up.  Levels are Q30 (ENV_FULL = unity), gains Q13.
+        .equ    ENV_ATTACK, 1
+        .equ    ENV_HOLD, 2
+        .equ    ENV_RELEASE, 3
+        .equ    ENV_FULL, 0x40000000
+        .equ    ENV_FLOOR, 0x20000          | -78 dB: the release has ended
+        .equ    ENV_UNITY, 8192
+        .equ    LIM_UNITY, 0x10000
+        .equ    LIM_FS, 0x10000000          | full scale of the Q28 sum
+        .equ    TEMPO24, 0x8000181c
+        .equ    HOLD_TABLE, 0x400a9690
+
+| One 16-sample frame of the four envelopes of track d2 (slot 0 = the
+| primary, 1..3 = the extensions).  Out: d6 = mask of active voices,
+| poly_g0 / poly_g1 = each voice's gain at the chunk's start and end,
+| poly_sounding[t].  Preserves d2/d5/a5; clobbers d0/d1/d3/d4/a0/a1/a3.
+.env_track:
+        moveq   #0,%d6
+        move.l  %d2,%d0
+        lsl.l   #2,%d0
+        lea     poly_amp(%pc),%a3
+        adda.l  %d0,%a3                   | ATK HOLD REL SYNC
+        move.l  #2880,%d4                 | the hold timer's base (stock 0x40004c44)
+        tst.b   3(%a3)
+        beq.s   .et_base
+        move.l  (TEMPO24).l,%d4
+.et_base:
+        lsl.l   #4,%d4                    | per 16-sample frame
+        moveq   #0,%d3
+.et_slot:
+        tst.l   %d3
+        bne.s   .et_ext
+        move.l  %d2,%d0
+        move.l  #VOICE_SIZE,%d1
+        mulu.l  %d1,%d0
+        lea     (VOICES).l,%a0
+        adda.l  %d0,%a0
+        bra.s   .et_record
+.et_ext:
+        move.l  %d2,%d0
+        add.l   %d2,%d0
+        add.l   %d2,%d0
+        add.l   %d3,%d0
+        subq.l  #1,%d0
+        move.l  #VOICE_SIZE,%d1
+        mulu.l  %d1,%d0
+        lea     poly_extra_voices(%pc),%a0
+        adda.l  %d0,%a0
+.et_record:
+        move.l  %d2,%d0
+        lsl.l   #2,%d0
+        add.l   %d3,%d0                   | voice index
+        lea     poly_env_gain(%pc),%a1
+        mvz.w   (%a1,%d0.l*2),%d1
+        lea     poly_g0(%pc),%a1
+        move.w  %d1,(%a1,%d3.l*2)
+        moveq   #0,%d1
+        tst.b   (%a0)
+        beq.s   .et_idle
+        bset    %d3,%d6
+        bsr.w   .env_voice                | d1 = gain at the chunk's end
+        bra.s   .et_gain
+.et_idle:
+        bsr.w   .env_clear
+.et_gain:
+        lea     poly_g1(%pc),%a1
+        move.w  %d1,(%a1,%d3.l*2)
+        addq.l  #1,%d3
+        moveq   #4,%d0
+        cmp.l   %d0,%d3
+        bcs.s   .et_slot
+        tst.l   %d6
+        sne     %d0
+        lea     poly_sounding(%pc),%a1
+        move.b  %d0,(%a1,%d2.l)
+        rts
+
+| One frame of voice d0's envelope (active; a3 = the track's ATK HOLD REL
+| SYNC, d4 = the hold timer's step).  Returns d1 = its gain at the chunk's
+| end (Q13).  Preserves every other register.
+.env_voice:
+        lea     -24(%sp),%sp
+        movem.l %d2-%d3/%d5-%d7/%a1,(%sp)
+        lea     poly_env_level(%pc),%a1
+        move.l  (%a1,%d0.l*4),%d2         | level
+        lea     poly_env_stage(%pc),%a1
+        mvz.b   (%a1,%d0.l),%d3           | stage
+        bne.s   .ev_staged
+        moveq   #ENV_ATTACK,%d3           | a voice with no envelope yet starts one
+        moveq   #0,%d2
+        lea     poly_env_timer(%pc),%a1
+        clr.l   (%a1,%d0.l*4)
+.ev_staged:
+        cmpi.l  #ENV_RELEASE,%d3
+        beq.s   .ev_release
+        lea     poly_env_timer(%pc),%a1   | the hold runs from the trigger
+        move.l  (%a1,%d0.l*4),%d5
+        add.l   %d4,%d5
+        move.l  %d5,(%a1,%d0.l*4)
+        cmpi.l  #ENV_ATTACK,%d3
+        bne.s   .ev_hold
+        mvz.b   (%a3),%d6                 | ATK
+        lea     poly_atk_step(%pc),%a1
+        add.l   (%a1,%d6.l*4),%d2
+        cmpi.l  #ENV_FULL,%d2
+        bcs.s   .ev_hold
+        move.l  #ENV_FULL,%d2
+        moveq   #ENV_HOLD,%d3
+.ev_hold:
+        mvz.b   1(%a3),%d6                | HOLD; 127 = INF, until the key is up
+        cmpi.l  #127,%d6
+        bcc.s   .ev_store
+        lea     (HOLD_TABLE).l,%a1
+        cmp.l   (%a1,%d6.l*4),%d5
+        bcs.s   .ev_store
+        moveq   #ENV_RELEASE,%d3          | held for HOLD: release, key or not
+        bra.s   .ev_store
+.ev_release:
+        mvz.b   2(%a3),%d6                | REL; 127 = INF, the level stays
+        lea     poly_rel_fall(%pc),%a1
+        move.l  (%a1,%d6.l*4),%d6         | the fall per frame, Q32
+        beq.s   .ev_store
+| level -= level * fall >> 32, in 16-bit products (level = lh*2^15 + ll,
+| fall = fh*2^16 + fl): lh*fh/2 + lh*fl/2^17 + ll*fh/2^16.
+        move.l  %d2,%d5
+        lsr.l   #8,%d5
+        lsr.l   #7,%d5                    | lh
+        move.l  %d2,%d7
+        andi.l  #0x7fff,%d7               | ll
+        move.l  %d6,%d1
+        swap    %d1                       | fh
+        andi.l  #0xffff,%d6               | fl
+        mulu.w  %d5,%d6
+        lsr.l   #8,%d6
+        lsr.l   #8,%d6
+        lsr.l   #1,%d6
+        mulu.w  %d1,%d7
+        clr.w   %d7
+        swap    %d7
+        mulu.w  %d1,%d5
+        lsr.l   #1,%d5
+        add.l   %d6,%d5
+        add.l   %d7,%d5
+        sub.l   %d5,%d2
+        cmpi.l  #ENV_FLOOR,%d2
+        bcc.s   .ev_store
+        moveq   #0,%d2                    | ended: .env_reap stops the voice
+.ev_store:
+        lea     poly_env_level(%pc),%a1
+        move.l  %d2,(%a1,%d0.l*4)
+        lea     poly_env_stage(%pc),%a1
+        move.b  %d3,(%a1,%d0.l)
+        move.l  %d2,%d1
+        moveq   #17,%d2
+        lsr.l   %d2,%d1                   | Q30 -> Q13
+        lea     poly_env_gain(%pc),%a1
+        move.w  %d1,(%a1,%d0.l*2)
+        movem.l (%sp),%d2-%d3/%d5-%d7/%a1
+        lea     24(%sp),%sp
+        rts
+
+| Voice d0 has no envelope.  Clobbers a1.
+.env_clear:
+        lea     poly_env_level(%pc),%a1
+        clr.l   (%a1,%d0.l*4)
+        lea     poly_env_timer(%pc),%a1
+        clr.l   (%a1,%d0.l*4)
+        lea     poly_env_gain(%pc),%a1
+        clr.w   (%a1,%d0.l*2)
+        lea     poly_env_stage(%pc),%a1
+        clr.b   (%a1,%d0.l)
+        rts
+
+| Voice d0's key is up: its envelope releases from where it is.  Called with
+| interrupts masked.  Clobbers d1/a1.
+.env_release:
+        lea     poly_env_stage(%pc),%a1
+        mvz.b   (%a1,%d0.l),%d1
+        beq.s   .enr_done                 | idle
+        moveq   #ENV_RELEASE,%d1
+        move.b  %d1,(%a1,%d0.l)
+.enr_done:
+        rts
+
+| Mix the active voices of track d2 (mask d6, gains poly_g0 / poly_g1, d5
+| frames) into the output buffer at 40(a5): each voice at its own envelope
+| gain, then a limiter that turns the sum down only where it would clip.
+| (Images <= 94 divided the sum by 2 or 4 by voice count, so a held chord
+| jumped 6 dB every time a voice started or stopped.)  Clobbers d0/d1/d3/
+| d4/d6/d7/a0-a2.
+.mix:
+| One voice, held at unity, the limiter at rest: its frames are the output.
+        move.l  %d6,%d0
+        subq.l  #1,%d0
+        and.l   %d6,%d0
+        bne.s   .mx_full                  | more than one voice
+        moveq   #0,%d3
+.mx_one:
+        btst    %d3,%d6
+        bne.s   .mx_one_got
+        addq.l  #1,%d3
+        bra.s   .mx_one
+.mx_one_got:
+        lea     poly_g0(%pc),%a1
+        mvz.w   (%a1,%d3.l*2),%d0
+        cmpi.l  #ENV_UNITY,%d0
+        bne.s   .mx_full
+        lea     poly_g1(%pc),%a1
+        mvz.w   (%a1,%d3.l*2),%d0
+        cmpi.l  #ENV_UNITY,%d0
+        bne.s   .mx_full
+        lea     poly_lim(%pc),%a1
+        move.l  (%a1,%d2.l*4),%d0
+        cmpi.l  #LIM_UNITY,%d0
+        bne.s   .mx_full
+        move.l  %d3,%d0
+        moveq   #9,%d1
+        lsl.l   %d1,%d0
+        lea     poly_scratch(%pc),%a0
+        adda.l  %d0,%a0
+        movea.l 40(%a5),%a1
+        move.l  %d5,%d7
+        add.l   %d7,%d7
+        subq.l  #1,%d7
+.mx_copy:
+        move.l  (%a0)+,(%a1)+
+        subq.l  #1,%d7
+        bpl.s   .mx_copy
+        rts
+.mx_full:
+        lea     poly_sum(%pc),%a0
+        move.l  %d5,%d0
+        add.l   %d0,%d0
+        subq.l  #1,%d0
+.mx_clear:
+        clr.l   (%a0)+
+        subq.l  #1,%d0
+        bpl.s   .mx_clear
+        moveq   #0,%d3
+.mx_voice:
+        btst    %d3,%d6
+        beq.w   .mx_next
+        move.l  %d3,%d0
+        moveq   #9,%d1
+        lsl.l   %d1,%d0
+        lea     poly_scratch(%pc),%a0
+        adda.l  %d0,%a0
+.mx_src:
+        lea     poly_g0(%pc),%a1
+        mvz.w   (%a1,%d3.l*2),%d0
+        lea     poly_g1(%pc),%a1
+        mvz.w   (%a1,%d3.l*2),%d1
+        move.l  %d0,%d4
+        or.l    %d1,%d4
+        beq.w   .mx_next                  | silent this chunk
+        cmpi.l  #ENV_UNITY,%d0            | held at unity: no multiply
+        bne.s   .mx_gain
+        cmp.l   %d0,%d1
+        bne.s   .mx_gain
+        lea     poly_sum(%pc),%a1
+        move.l  %d5,%d7
+        add.l   %d7,%d7
+        subq.l  #1,%d7
+.mx_unity:
+        move.l  (%a0)+,%d4
+        asr.l   #3,%d4                    | (PCM << 16) >> 14 * 8192 >> 2
+        add.l   %d4,(%a1)+
+        subq.l  #1,%d7
+        bpl.s   .mx_unity
+        bra.w   .mx_next
+.mx_gain:
+        sub.l   %d0,%d1
+        swap    %d1
+        clr.w   %d1
+        divs.l  %d5,%d1                   | gain step per frame, Q16.16
+        swap    %d0
+        clr.w   %d0                       | gain, Q16.16
+        lea     poly_sum(%pc),%a1
+        lea     -12(%sp),%sp
+        movem.l %d2-%d3/%d6,(%sp)
+        moveq   #14,%d4
+        move.l  %d5,%d7
+        subq.l  #1,%d7
+.mx_frame:
+        move.l  %d0,%d6
+        swap    %d6
+        ext.l   %d6                       | this frame's gain, Q13
+        move.l  (%a0)+,%d2                | left: sample (PCM << 16) >> 14 * gain
+        asr.l   %d4,%d2
+        muls.l  %d6,%d2
+        asr.l   #2,%d2                    | Q28
+        add.l   %d2,(%a1)+
+        move.l  (%a0)+,%d2                | right
+        asr.l   %d4,%d2
+        muls.l  %d6,%d2
+        asr.l   #2,%d2
+        add.l   %d2,(%a1)+
+        add.l   %d1,%d0
+        subq.l  #1,%d7
+        bpl.s   .mx_frame
+        movem.l (%sp),%d2-%d3/%d6
+        lea     12(%sp),%sp
+.mx_next:
+        addq.l  #1,%d3
+        moveq   #4,%d0
+        cmp.l   %d0,%d3
+        bcs.w   .mx_voice
+
+| The limiter: recover toward unity (time constant ~23 ms), never above the
+| gain that keeps this chunk's peak inside full scale.
+        lea     poly_sum(%pc),%a0
+        move.l  %d5,%d7
+        add.l   %d7,%d7
+        subq.l  #1,%d7
+        moveq   #0,%d0                    | peak
+.mx_peak:
+        move.l  (%a0)+,%d1
+        bpl.s   .mx_abs
+        neg.l   %d1
+.mx_abs:
+        cmp.l   %d0,%d1
+        bls.s   .mx_peak_next
+        move.l  %d1,%d0
+.mx_peak_next:
+        subq.l  #1,%d7
+        bpl.s   .mx_peak
+        lea     poly_lim(%pc),%a0
+        move.l  (%a0,%d2.l*4),%d6         | the gain the last chunk ended at
+        move.l  %d6,%d1
+        move.l  #LIM_UNITY,%d3
+        sub.l   %d1,%d3
+        asr.l   #6,%d3
+        add.l   %d3,%d1                   | recovering toward unity
+        cmpi.l  #LIM_FS,%d0
+        bls.s   .mx_lim
+        lsr.l   #8,%d0
+        lsr.l   #5,%d0
+        move.l  #0x7fffffff,%d3           | 2^31 / (peak >> 13) = FS / peak, Q16
+        divu.l  %d0,%d3
+        cmp.l   %d1,%d3
+        bcc.s   .mx_lim
+        move.l  %d3,%d1
+.mx_lim:
+        move.l  %d1,(%a0,%d2.l*4)         | this chunk ends at d1
+
+        lea     poly_sum(%pc),%a0
+        movea.l 40(%a5),%a1
+        move.l  %d5,%d7
+        subq.l  #1,%d7
+        move.l  #LIM_FS-1,%d3
+        move.l  #-LIM_FS,%d4
+        cmpi.l  #LIM_UNITY,%d6            | unity at both ends: no multiply
+        bne.s   .mx_ramp
+        cmpi.l  #LIM_UNITY,%d1
+        bne.s   .mx_ramp
+        add.l   %d7,%d7
+        addq.l  #1,%d7
+.mx_out:
+        move.l  (%a0)+,%d0
+        cmp.l   %d3,%d0
+        ble.s   .mx_hi
+        move.l  %d3,%d0
+.mx_hi:
+        cmp.l   %d4,%d0
+        bge.s   .mx_lo
+        move.l  %d4,%d0
+.mx_lo:
+        lsl.l   #3,%d0                    | Q28 -> PCM << 16
+        move.l  %d0,(%a1)+
+        subq.l  #1,%d7
+        bpl.s   .mx_out
+        rts
+| The limiter's gain moves linearly across the chunk (a gain that stepped
+| at each 16-sample boundary clicked while a chord was being held down).
+.mx_ramp:
+        sub.l   %d6,%d1
+        divs.l  %d5,%d1                   | per-frame step, Q16
+        lea     -8(%sp),%sp
+        movem.l %d2/%d5,(%sp)
+.mx_rframe:
+        move.l  %d6,%d5
+        lsr.l   #6,%d5                    | this frame's gain, Q10
+        move.l  (%a0)+,%d0
+        asr.l   #8,%d0
+        asr.l   #2,%d0
+        muls.l  %d5,%d0
+        cmp.l   %d3,%d0
+        ble.s   .mx_rhi
+        move.l  %d3,%d0
+.mx_rhi:
+        cmp.l   %d4,%d0
+        bge.s   .mx_rlo
+        move.l  %d4,%d0
+.mx_rlo:
+        lsl.l   #3,%d0
+        move.l  %d0,(%a1)+
+        move.l  (%a0)+,%d0
+        asr.l   #8,%d0
+        asr.l   #2,%d0
+        muls.l  %d5,%d0
+        cmp.l   %d3,%d0
+        ble.s   .mx_rhi2
+        move.l  %d3,%d0
+.mx_rhi2:
+        cmp.l   %d4,%d0
+        bge.s   .mx_rlo2
+        move.l  %d4,%d0
+.mx_rlo2:
+        lsl.l   #3,%d0
+        move.l  %d0,(%a1)+
+        add.l   %d1,%d6
+        subq.l  #1,%d7
+        bpl.s   .mx_rframe
+        movem.l (%sp),%d2/%d5
+        lea     8(%sp),%sp
+        rts
+
+| Voices of track d2 whose release has ended stop: an extension by clearing
+| its active byte, the primary through stock's stop (0x40006820, which stock
+| also calls from the frame interrupt, 0x4000d45a; the selector is 0 here so
+| poly_stop_voice passes it through).  Clobbers d0/d1/d3/a0/a1.
+.env_reap:
+        moveq   #0,%d3
+.er_slot:
+        move.l  %d2,%d0
+        lsl.l   #2,%d0
+        add.l   %d3,%d0
+        lea     poly_env_stage(%pc),%a1
+        mvz.b   (%a1,%d0.l),%d1
+        cmpi.l  #ENV_RELEASE,%d1
+        bne.s   .er_next
+        lea     poly_env_level(%pc),%a1
+        tst.l   (%a1,%d0.l*4)
+        bne.s   .er_next
+        bsr.w   .env_clear
+        tst.l   %d3
+        bne.s   .er_ext
+        move.l  %d2,-(%sp)
+        jsr     (STOCK_STOP).l
+        addq.l  #4,%sp
+        lea     poly_primary_note(%pc),%a1
+        moveq   #-1,%d0
+        move.b  %d0,(%a1,%d2.l)
+        bra.s   .er_next
+.er_ext:
+        move.l  %d2,%d0
+        add.l   %d2,%d0
+        add.l   %d2,%d0
+        add.l   %d3,%d0
+        subq.l  #1,%d0                    | flat extension index
+        lea     poly_extra_note(%pc),%a1
+        moveq   #-1,%d1
+        move.b  %d1,(%a1,%d0.l)
+        move.l  #VOICE_SIZE,%d1
+        mulu.l  %d1,%d0
+        lea     poly_extra_voices(%pc),%a1
+        clr.b   (%a1,%d0.l)
+.er_next:
+        addq.l  #1,%d3
+        moveq   #4,%d0
+        cmp.l   %d0,%d3
+        bcs.s   .er_slot
+        rts
+
+| Detour at 0x40004d66, the end of the per-track pass of the DSP record's
+| command-word builder (0x40004bd4: d4 = track, a2 = the track's record, a1
+| = its command word).  A POLY track's amp envelopes run per voice
+| (.env_track), so the DSP's single envelope must stay open: the record's ATK
+| goes to 0, HOLD to INF and the AMP mode to ANLG (a retrigger at full level
+| stays at full; RTRG, the default, restarted every held voice from zero on
+| each new key), and while any voice sounds the gate bit stays set and the
+| trigger, its sub-block offset and the release bit are dropped: a trigger
+| restarts the DSP's handling of the whole track (every sounding voice
+| stepped at each new key, octemu 25 Sep 2026), so an FX envelope now
+| retriggers only on a note that starts from silence.  The real values are
+| kept for .env_track first.
+poly_amp_hook:
+        movea.w 54(%sp),%a0               | displaced
+        move.w  %a0,62(%a2)               | displaced
+        lea     -12(%sp),%sp
+        movem.l %d0-%d1/%a0,(%sp)
+        move.l  %d4,%d0
+        bsr.w   poly_is_track             | d1/a0 scratch
+        tst.l   %d0
+        beq.s   .pah_done
+        move.l  %d4,%d0
+        lsl.l   #2,%d0
+        lea     poly_amp(%pc),%a0
+        adda.l  %d0,%a0
+        move.b  (%a2),(%a0)+              | ATK
+        move.b  2(%a2),(%a0)+             | HOLD
+        move.b  4(%a2),(%a0)+             | REL
+        move.b  0x2b(%a2),(%a0)           | SYNC
+        clr.w   (%a2)
+        move.l  #0x7f00,%d0
+        move.w  %d0,2(%a2)
+        clr.b   0x2a(%a2)
+        lea     poly_sounding(%pc),%a0
+        tst.b   (%a0,%d4.l)
+        beq.s   .pah_done
+        mvz.w   (%a1),%d0
+        andi.l  #0xff40,%d0               | no trigger, offset or release
+        ori.l   #0x40,%d0                 | gate held
+        move.w  %d0,(%a1)
+.pah_done:
+        movem.l (%sp),%d0-%d1/%a0
+        lea     12(%sp),%sp
+        jmp     (0x40004d6e).l
+
+| POLY keeps its own octave, -2..+2 (0 = stock's octave 0), in poly_octave;
+| stock's octave 0x460d16fc stays stock's (0/1): POLY images <= 94 walked it
+| 0..2 and a stock track left at octave 2 played only TRIG1.  Detour at
+| 0x400449b8, where the keyboard draw prints the octave: a POLY track shows
+| its own, signed.
+poly_oct_number:
+        mvz.b   (CURRENT_TRACK).l,%d0
+        bsr.w   poly_is_track             | d1/a0 are dead here
+        tst.l   %d0
+        beq.s   .pon_stock
+        mvs.b   poly_octave(%pc),%d0
+        jmp     (0x400449be).l
+.pon_stock:
+        move.l  (STOCK_OCTAVE).l,%d0
+        jmp     (0x400449be).l
+
+| Detour at 0x4004d442, where the chromatic LED routine picks the octave
+| lamp: four lamps for five octaves, -2 and -1 share the first.  (Stock
+| indexes two 8-entry stack arrays by 2*octave: any value above 3 smashed
+| its stack, image 92.)
+poly_oct_led:
+        mvz.b   (CURRENT_TRACK).l,%d0
+        bsr.w   poly_is_track             | d1/a0 are dead here
+        tst.l   %d0
+        beq.s   .pol_stock
+        mvs.b   poly_octave(%pc),%d0
+        addq.l  #1,%d0
+        bpl.s   .pol_lamp
+        moveq   #0,%d0
+.pol_lamp:
+        jmp     (0x4004d47e).l
+.pol_stock:
+        move.l  (STOCK_OCTAVE).l,%d0
+        jmp     (0x4004d47e).l
 
 | Detour at 0x40007978. d0 contains the track number. Selector zero rebuilds
 | the exact stock pointer; 1..3 select that track's extension record.
@@ -801,40 +1407,43 @@ poly_src_names:
         .long   0x400b7a63
         .long   .poly_name
 
-| Stock audio chromatic mode toggles only octave 0/1.  For POLY the same
-| buttons walk 0..POLY_OCTAVE_MAX.  Not further: the chromatic LED routine
-| writes two 8-entry stack arrays at 2*octave and 2*octave+1 (0x4004d47e),
-| so octave 4 smashed its stack and hung the UI (measured under octemu,
-| 22 Sep 2026, images <= 92 walked 0..10); and above octave 2 the keys pass
-| the +24-semitone fetch cap and only repeat the top octave.  Other machine
-| types retain the exact stock XOR toggle.
+| Stock audio chromatic mode toggles only octave 0/1.  A POLY track walks its
+| own octave, poly_octave, -2..+2 (FUNC+LEFT / FUNC+RIGHT stop at the ends);
+| stock's 0x460d16fc is left to stock tracks (images <= 94 walked it 0..2,
+| and a stock track left at 2 played only TRIG1).  Keys above +24 semitones
+| from the sample still fold down an octave: the stock caller fetches at most
+| 63 source frames per 16-sample chunk (poly_increment_shift).
+        .equ    POLY_OCTAVE_MIN, -2
         .equ    POLY_OCTAVE_MAX, 2
 poly_octave_button:
         move.l  %d0,-(%sp)
-        mvz.b   (0x100b14cc).l,%d0
+        mvz.b   (CURRENT_TRACK).l,%d0
         bsr.w   poly_is_track
         tst.l   %d0
         beq.s   .pob_stock
-        move.l  (0x460d16fc).l,%d0
+        mvs.b   poly_octave(%pc),%d0
         cmpi.l  #52,%d2                  | down button
         bne.s   .pob_up
         subq.l  #1,%d0
-        bpl.s   .pob_store
-        moveq   #POLY_OCTAVE_MAX,%d0
+        moveq   #POLY_OCTAVE_MIN,%d1
+        cmp.l   %d1,%d0
+        bge.s   .pob_store
+        move.l  %d1,%d0
         bra.s   .pob_store
 .pob_up:
         addq.l  #1,%d0
-        cmpi.l  #POLY_OCTAVE_MAX,%d0
-        bls.s   .pob_store
-        moveq   #0,%d0
+        moveq   #POLY_OCTAVE_MAX,%d1
+        cmp.l   %d1,%d0
+        ble.s   .pob_store
+        move.l  %d1,%d0
 .pob_store:
-        move.l  %d0,(0x460d16fc).l
+        move.b  %d0,poly_octave
         move.l  (%sp)+,%d0
         jmp     (CONTINUE_OCTAVE_BUTTON).l
 .pob_stock:
         move.l  (%sp)+,%d0
         moveq   #1,%d2
-        eor.l   %d2,(0x460d16fc).l
+        eor.l   %d2,(STOCK_OCTAVE).l
         jmp     (CONTINUE_OCTAVE_BUTTON).l
 
 | The stock sample chooser uses the machine-selector value itself as its
@@ -944,7 +1553,11 @@ poly_src_cursor_slot_lookup:
         .equ    CMD_TRIGGER, 29           | stock's chromatic trigger, 0x1d
         .equ    CMD_RELEASE, 0x40
         .equ    NOTE_OUT, 0x4003f3a8      | AUDIO NOTE OUT: (track, note, velocity)
-        .equ    NOTE_OUT_BASE, 72         | stock sends a key as MIDI note key + 72
+        .equ    POLY_KEY_ZERO, 36         | the panel key that plays the sample's pitch
+        .equ    NOTE_OUT_BASE, 84-POLY_KEY_ZERO | key K goes out as MIDI note K + 48 (84 = unison, as stock)
+        .equ    TRIG_KEYS, 17             | trigs 1-16 and the keyboard's 17th key
+        .equ    STOCK_OCTAVE, 0x460d16fc
+        .equ    CURRENT_TRACK, 0x100b14cc
         .equ    NOTE_CONFIG, 0x8000004c   | bit 0 INT (play the track), bit 1 EXT
         .equ    NOTE_OUT_HOLD, 0x46c7dd26 | stock sends no press note while set
         .equ    STOCK_HELD, 0x460d171d    | stock's held panel key per track, key + 1
@@ -952,42 +1565,73 @@ poly_src_cursor_slot_lookup:
 | Detour at 0x4004fb94, the panel chromatic key handler (track, key, edge).
 | Stock owns one held key per track and one pending command, so a second
 | press released the first and two presses in one frame collapsed into one.
-| POLY presses and releases each key on its own.  STATIC and FLEX replay the
-| exact displaced prologue.
+| POLY presses and releases each key on its own.  The caller's key is the
+| trig plus 12 * stock's octave (0x40050254); POLY takes the trig and adds its
+| own octave: key K = trig + 12 * (poly_octave + 2), K = POLY_KEY_ZERO plays
+| the sample's own pitch.  Each trig remembers the key it pressed, so its
+| release finds it whatever the octave is by then.  STATIC and FLEX replay
+| the exact displaced prologue.
 poly_chromatic_key:
         lea     -16(%sp),%sp
         movem.l %d2-%d4/%a2,(%sp)
-        move.l  24(%sp),%d1              | chromatic key 0..135
-        cmpi.l  #PANEL_KEYS-1,%d1
-        bhi.w   .pck_stock
         move.l  20(%sp),%d0              | track
         bsr.w   poly_is_track
         tst.l   %d0
         beq.w   .pck_stock
+        move.l  (STOCK_OCTAVE).l,%d0
+        move.l  %d0,%d1
+        lsl.l   #3,%d0
+        lsl.l   #2,%d1
+        add.l   %d1,%d0
+        move.l  24(%sp),%d4
+        sub.l   %d0,%d4                  | the trig, 0..16
+        cmpi.l  #TRIG_KEYS-1,%d4
+        bhi.w   .pck_stock
+        move.l  20(%sp),%d0
+        move.l  %d0,%d1
+        lsl.l   #4,%d1
+        add.l   %d0,%d1                  | track * 17
+        add.l   %d4,%d1
+        lea     poly_trig_key(%pc),%a2
+        adda.l  %d1,%a2                  | the key this trig pressed
 
         move.l  28(%sp),%d0              | edge: 1 press, 0 release
         beq.s   .pck_release
         cmpi.l  #1,%d0
         bne.w   .pck_stock
+        mvs.b   poly_octave(%pc),%d0
+        addq.l  #2,%d0
+        move.l  %d0,%d1
+        lsl.l   #3,%d0
+        lsl.l   #2,%d1
+        add.l   %d1,%d0
+        add.l   %d4,%d0
+        move.l  %d0,%d3                  | K
+        move.b  %d3,(%a2)
         moveq   #127,%d2
         mvs.b   (NOTE_CONFIG).l,%d0
         btst    #0,%d0
         beq.s   .pck_note_out            | INT off: stock plays nothing, sends only
         move.l  20(%sp),%d0
-        move.l  24(%sp),%d1
+        move.l  %d3,%d1
         bsr.w   poly_press_key
         tst.l   (NOTE_OUT_HOLD).l
         bne.s   .pck_done
         bra.s   .pck_note_out
 .pck_release:
+        mvz.b   (%a2),%d3
+        moveq   #-1,%d0
+        move.b  %d0,(%a2)
+        cmpi.l  #0xff,%d3
+        beq.s   .pck_done                | nothing pressed through POLY
         move.l  20(%sp),%d0
-        move.l  24(%sp),%d1
+        move.l  %d3,%d1
         bsr.w   poly_release_key
         moveq   #0,%d2
 .pck_note_out:
         move.l  %d2,-(%sp)               | velocity
-        move.l  28(%sp),%d0              | key
-        addi.l  #NOTE_OUT_BASE,%d0
+        move.l  %d3,%d0
+        addi.l  #NOTE_OUT_BASE,%d0       | the MIDI note stock would send for it
         move.l  %d0,-(%sp)
         move.l  28(%sp),-(%sp)           | track
         jsr     (NOTE_OUT).l
@@ -1070,13 +1714,14 @@ poly_midi_note_off:
 | (0x40043728, called by the UI on track and mode changes) looks only at its
 | one held-key byte, which POLY never sets, so keys held across a track
 | change left their voices ringing.  Release every PANEL key held on a POLY
-| track instead; MIDI notes stay held, as stock leaves them.  d3 = track;
-| d2/a2/a3 are the function's own and restored by its exit.
+| track instead, and forget which trig pressed what; MIDI notes stay held,
+| as stock leaves them.  d3 = track; d2/a2/a3 are the function's own and
+| restored by its exit.
 poly_release_held:
         move.l  %d3,%d0
         bsr.w   poly_is_track
         tst.l   %d0
-        beq.s   .prh_stock
+        beq.w   .prh_stock
         moveq   #0,%d2
 .prh_slot:
         move.l  %d3,%d0
@@ -1100,6 +1745,18 @@ poly_release_held:
         addq.l  #1,%d2
         cmpi.l  #HOLD_SLOTS,%d2
         bcs.s   .prh_slot
+        move.l  %d3,%d0
+        move.l  %d0,%d1
+        lsl.l   #4,%d1
+        add.l   %d0,%d1                  | track * 17
+        lea     poly_trig_key(%pc),%a2
+        adda.l  %d1,%a2
+        moveq   #TRIG_KEYS-1,%d2
+        moveq   #-1,%d0
+.prh_forget:
+        move.b  %d0,(%a2)+
+        subq.l  #1,%d2
+        bpl.s   .prh_forget
         jmp     (0x400438d2).l           | the function's exit
 .prh_stock:
         lea     (STOCK_HELD).l,%a0       | displaced
@@ -1315,9 +1972,9 @@ poly_release_key:
         rts
 
 | Owner d1 -> d3 = stock's PTCH lock byte, d2 = octave shift; d0 clobbered.
-| A panel key k plays pitch k mod 12 of octave k/12 - 1 (the shift reaches
-| the increment in poly_increment_shift); a MIDI note n takes stock's own
-| MIDI lock, 5n - 100, and no shift.
+| A panel key K plays pitch K mod 12 of octave K/12 - 3, K - POLY_KEY_ZERO
+| semitones (the shift reaches the increment in poly_increment_shift); a
+| MIDI note n takes stock's own MIDI lock, 5n - 100, and no shift.
 .pck_encode:
         cmpi.l  #PANEL_KEYS,%d1
         bcs.s   .pcke_panel
@@ -1331,7 +1988,7 @@ poly_release_key:
         rts
 .pcke_panel:
         move.l  %d1,%d0
-        moveq   #-1,%d2
+        moveq   #-POLY_KEY_ZERO/12,%d2
 .pcke_octave:
         cmpi.l  #12,%d0
         bcs.s   .pcke_pitch
@@ -1350,11 +2007,21 @@ poly_release_key:
 | boxes each track's held key from the eight bytes at STOCK_HELD (key + 1,
 | 0 = none), which POLY never sets: a POLY chord drew no box at all (octemu,
 | 25 Sep 2026).  The loop walks poly_kbd instead, HOLD_SLOTS entries per
-| track: stock's byte for any other machine, every held key for POLY (a MIDI
-| note n as key n - 72, the key stock's own note-out gives it).
+| track: stock's byte for any other machine, every held key for POLY, placed
+| on the keys shown for poly_octave (a MIDI note n as the key that plays it,
+| n - 48).  The draw boxes entry v at v - 1 - 12 * stock's octave.
 poly_kbd_fill:
-        lea     -24(%sp),%sp
-        movem.l %d0-%d3/%a0-%a1,(%sp)
+        lea     -28(%sp),%sp
+        movem.l %d0-%d4/%a0-%a1,(%sp)
+        mvs.b   poly_octave(%pc),%d4
+        addq.l  #2,%d4
+        move.l  (STOCK_OCTAVE).l,%d0
+        sub.l   %d0,%d4
+        move.l  %d4,%d0
+        lsl.l   #3,%d4
+        lsl.l   #2,%d0
+        add.l   %d0,%d4
+        subq.l  #1,%d4                   | v = K - d4
         lea     poly_kbd(%pc),%a1
         moveq   #0,%d2
 .pkf_track:
@@ -1384,7 +2051,7 @@ poly_kbd_fill:
         beq.s   .pkf_none
         subi.l  #MIDI_KEY+NOTE_OUT_BASE,%d0
 .pkf_value:
-        addq.l  #1,%d0
+        sub.l   %d4,%d0
         bra.s   .pkf_store
 .pkf_none:
         moveq   #0,%d0
@@ -1397,8 +2064,8 @@ poly_kbd_fill:
         moveq   #8,%d0
         cmp.l   %d0,%d2
         bcs.s   .pkf_track
-        movem.l (%sp),%d0-%d3/%a0-%a1
-        lea     24(%sp),%sp
+        movem.l (%sp),%d0-%d4/%a0-%a1
+        lea     28(%sp),%sp
         lea     poly_kbd(%pc),%a2
         jmp     (0x400449f6).l
 
@@ -1409,55 +2076,45 @@ poly_kbd_next:
         bne.s   1f
         jmp     (0x40044b68).l
 1:      jmp     (0x40044abc).l
-| d0=track, d1=owner key. Stop every matching primary or extension record.
-| This replaces the stock single-held-note release only for POLY; the same
-| key may legitimately own more than one stolen slot.
+| d0 = track, d1 = owner key.  Every primary or extension voice the key owns
+| enters its release (its own REL), and stops owning the key; .env_reap stops
+| the voice when the release has ended.  The same key may own more than one
+| stolen slot.  Runs with interrupts masked (poly_release_key).
 poly_release_note:
         lea     -20(%sp),%sp
-        movem.l %d2-%d3/%a0-%a2,(%sp)
+        movem.l %d2-%d4/%a0/%a1,(%sp)
         move.l  %d0,%d2
         move.l  %d1,%d3
-
-| The primary stops through stock's own stop routine: clearing only its
-| active byte left STATES+4, the voice generation counter and 0x4000672c's
-| bookkeeping behind, and the track never triggered again -- not from the
-| sequencer, not from a grid-record preview (measured under octemu, 22 Sep
-| 2026).  The UI task runs with the render idle, so the selector is 0 here
-| and poly_stop_voice passes the call straight to stock.
         lea     poly_primary_note(%pc),%a0
         cmp.b   (%a0,%d2.l),%d3
         bne.s   .prn_extra
-        move.l  %d2,-(%sp)
-        jsr     (STOCK_STOP).l
-        addq.l  #4,%sp
-        lea     poly_primary_note(%pc),%a0
-        st      %d0
-        move.b  %d0,(%a0,%d2.l)          | the voice no longer owns the key
+        moveq   #-1,%d0
+        move.b  %d0,(%a0,%d2.l)
+        move.l  %d2,%d0
+        lsl.l   #2,%d0
+        bsr.w   .env_release
 .prn_extra:
+        moveq   #0,%d4
+.prn_loop:
         move.l  %d2,%d0
         add.l   %d2,%d0
-        add.l   %d2,%d0                  | first flat extension index
+        add.l   %d2,%d0
+        add.l   %d4,%d0                  | flat extension index
         lea     poly_extra_note(%pc),%a0
-        lea     poly_extra_voices(%pc),%a1
-        moveq   #0,%d2
-.prn_loop:
-        move.l  %d0,%a2
-        add.l   %d2,%a2
-        cmp.b   (%a0,%a2.l),%d3
+        cmp.b   (%a0,%d0.l),%d3
         bne.s   .prn_next
-        move.l  %a2,%d1
-        move.l  #VOICE_SIZE,%d0
-        mulu.l  %d0,%d1
-        clr.b   (%a1,%d1.l)
         moveq   #-1,%d1
-        move.b  %d1,(%a0,%a2.l)          | the voice no longer owns the key
-        move.l  %a2,%d0
-        sub.l   %d2,%d0
+        move.b  %d1,(%a0,%d0.l)
+        move.l  %d2,%d0
+        lsl.l   #2,%d0
+        add.l   %d4,%d0
+        addq.l  #1,%d0                   | its voice index
+        bsr.w   .env_release
 .prn_next:
-        addq.l  #1,%d2
-        cmpi.l  #EXTRA_PER_TRACK,%d2
+        addq.l  #1,%d4
+        cmpi.l  #EXTRA_PER_TRACK,%d4
         bcs.s   .prn_loop
-        movem.l (%sp),%d2-%d3/%a0-%a2
+        movem.l (%sp),%d2-%d4/%a0/%a1
         lea     20(%sp),%sp
         rts
 
@@ -1506,6 +2163,45 @@ poly_chord_dequeue:
         lea     24(%sp),%sp
         lea     0x46c802a6.l,%a0          | displaced instruction
         jmp     (CONTINUE_CHORD_DEQUEUE).l
+| Per-frame envelope rates (16 samples at 44.1 kHz), from the laws measured
+| on stock (see Per-voice AMP): the attack's level step (Q30) and the
+| release's fall (Q32 fraction of the level); REL 127 = INF falls by 0.
+        .balign 4
+poly_atk_step:
+        .long   0x06d97bba,0x064e70be,0x05ce6c46,0x05588e81,0x04ec095f,0x04881f27,0x042c212a,0x03d76e93
+        .long   0x03897351,0x0341a70c,0x02ff8c3f,0x02c2af58,0x028aa5ef,0x02570e0c,0x02278d7b,0x01fbd131
+        .long   0x01d38cb6,0x01ae79a6,0x018c572e,0x016ce9a2,0x014ffa0f,0x013555de,0x011cce7d,0x01063908
+        .long   0x00f16e05,0x00de4918,0x00cca8ca,0x00bc6e4a,0x00ad7d39,0x009fbb77,0x009310f7,0x00876795
+        .long   0x007caaed,0x0072c839,0x0069ae31,0x00614ced,0x005995c4,0x00527b3a,0x004bf0e3,0x0045eb52
+        .long   0x00405ffd,0x003b4534,0x0036920a,0x00323e48,0x002e425d,0x002a9752,0x002736bd,0x00241ab7
+        .long   0x00213dd0,0x001e9b06,0x001c2dbe,0x0019f1ba,0x0017e312,0x0015fe2d,0x00143fba,0x0012a4af
+        .long   0x00112a3b,0x000fcdca,0x000e8cfa,0x000d659b,0x000c55a7,0x000b5b44,0x000a74bc,0x0009a07b
+        .long   0x0008dd0f,0x00082922,0x0007837a,0x0006eaf4,0x00065e87,0x0005dd3c,0x00056631,0x0004f897
+        .long   0x000493ae,0x000436c6,0x0003e13b,0x00039279,0x000349f5,0x00030732,0x0002c9ba,0x00029121
+        .long   0x00025d06,0x00022d0c,0x000200e0,0x0001d835,0x0001b2c4,0x0001904a,0x0001708c,0x00015353
+        .long   0x0001386b,0x00011fa5,0x000108d6,0x0000f3d6,0x0000e080,0x0000ceb3,0x0000be4f,0x0000af38
+        .long   0x0000a153,0x00009488,0x000088c1,0x00007de9,0x000073ed,0x00006abc,0x00006245,0x00005a7a
+        .long   0x0000534e,0x00004cb3,0x0000469e,0x00004104,0x00003bdc,0x0000371d,0x000032be,0x00002eb8
+        .long   0x00002b04,0x0000279b,0x00002477,0x00002193,0x00001ee9,0x00001c76,0x00001a34,0x00001820
+        .long   0x00001636,0x00001473,0x000012d4,0x00001156,0x00000ff6,0x00000eb2,0x00000d88,0x00000c75
+poly_rel_fall:
+        .long   0xa8c44f4c,0xa137c60d,0x99ac25a3,0x922d4213,0x8ac5cdfb,0x837f46cd,0x7c61ec8b,0x7574c316
+        .long   0x6ebd9b46,0x684121f8,0x6202f378,0x5c05b1d3,0x564b1ce1,0x50d42afc,0x4ba121a2,0x46b1ad52
+        .long   0x4204f844,0x3d99bf94,0x396e66c4,0x35810964,0x31cf8aeb,0x2e57a4bb,0x2b16f261,0x280afc40
+        .long   0x2531409b,0x22873b53,0x200a6c49,0x1db85caf,0x1b8ea34a,0x198ae7da,0x17aae5ba,0x15ec6dd5
+        .long   0x144d680a,0x12cbd417,0x1165ca17,0x10197ab1,0x0ee52ef8,0x0dc7481a,0x0cbe3ed9,0x0bc8a2e9
+        .long   0x0ae51a29,0x0a125fd0,0x094f4389,0x089aa882,0x07f38480,0x0758dee7,0x06c9cfc8,0x06457ef9
+        .long   0x05cb2324,0x055a00eb,0x04f16a0e,0x0490bc96,0x04376210,0x03e4cecd,0x0398812b,0x035200ed
+        .long   0x0310de94,0x02d4b2c9,0x029d1dcc,0x0269c6ea,0x023a5c03,0x020e910d,0x01e61fa7,0x01c0c6b4
+        .long   0x019e49f3,0x017e71ac,0x01610a54,0x0145e444,0x012cd36d,0x0115af15,0x01005197,0x00ec982a
+        .long   0x00da62a7,0x00c9935a,0x00ba0ed0,0x00abbbb1,0x009e828f,0x00924dc9,0x00870963,0x007ca2e9
+        .long   0x00730950,0x006a2cdb,0x0061ff02,0x005a7258,0x00537a79,0x004d0bf5,0x00471c3b,0x0041a18a
+        .long   0x003c92e1,0x0037e7f0,0x0033990a,0x002f9f1a,0x002bf396,0x00289073,0x00257020,0x00228d77
+        .long   0x001fe3b8,0x001d6e81,0x001b29c7,0x001911cd,0x00172321,0x00155a95,0x0013b537,0x00123053
+        .long   0x0010c968,0x000f7e27,0x000e4c6e,0x000d3245,0x000c2ddb,0x000b3d84,0x000a5fb3,0x000992fc
+        .long   0x0008d60c,0x000827ac,0x000786bd,0x0006f236,0x00066922,0x0005ea9f,0x000575dc,0x00050a1a
+        .long   0x0004a6a6,0x00044add,0x0003f627,0x0003a7f9,0x00035fd1,0x00031d3a,0x0002dfc5,0x00000000
+
 | Explicit initialization is intentional: this runtime is copied from the
 | loader image and is not a zeroed BSS.
         .balign 4
@@ -1540,21 +2236,51 @@ poly_held:
 poly_kbd:
         .zero   8*HOLD_SLOTS                | the keyboard draw's boxes, key + 1
 poly_kbd_end:
+poly_octave:
+        .byte   0                           | POLY's octave, -2..+2
+poly_trig_key:
+        .fill   8*TRIG_KEYS,1,0xff          | the key each trig pressed, 0xff = none
+poly_env_stage:
+        .zero   32                          | per voice (track * 4 + slot)
+poly_sounding:
+        .zero   8
+poly_amp:
+        .rept   8
+        .byte   0,127,127,1                 | ATK HOLD REL SYNC until the DSP record is read
+        .endr
+        .balign 2
+poly_env_gain:
+        .zero   64                          | Q13, at the end of the last chunk
+poly_g0:
+        .zero   8
+poly_g1:
+        .zero   8
         .balign 4
-poly_extra_increment:
-        .zero   96                          | 24 saved Q26 increments
-poly_ext_phase:
-        .zero   96                          | 24 resampler phases, Q16 in [0,1)
-poly_ext_carry:
-        .zero   96                          | 24 carried-frame counts (0..2)
-poly_ext_hist:
-        .zero   384                         | 24 * two carried stereo frames
+poly_env_level:
+        .zero   128                         | Q30
+poly_env_timer:
+        .zero   128
+poly_lim:
+        .rept   8
+        .long   LIM_UNITY
+        .endr
+poly_sum:
+        .zero   512                         | 64 frames * 2 * Q28
+        .balign 4
+poly_voice_inc:
+        .zero   128                         | per voice: its own Q26 increment
+poly_rs_phase:
+        .zero   128                         | per voice: resampler phase, Q16 in [0,1)
+poly_rs_carry:
+        .zero   128                         | per voice: carried frames (0..2)
+poly_rs_hist:
+        .zero   512                         | per voice: two carried stereo frames
 poly_fetch:
         .zero   (FETCH_FRAMES+2)*8          | one extension's raw source frames
 poly_extra_voices:
         .zero   4032                        | 8 tracks * 3 * 168 bytes
 poly_scratch:
-        .zero   1536                        | 3 * (64 frames * 2 * 4 bytes)
+        .zero   2048                        | 4 voices * (64 frames * 2 * 4 bytes)
 | objcopy omits trailing all-zero bytes. Keep all state inside the image.
 poly_runtime_end_marker:
         .long   0x504f4c59                  | "POLY"

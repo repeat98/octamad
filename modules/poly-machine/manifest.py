@@ -112,6 +112,17 @@ MODULE = Module(
                "the chromatic keyboard boxes every key held on a POLY track"),
         Detour(0x40044B5C, H("528ab5fc460d1725"), "polyphony", "poly_kbd_next",
                "the keyboard draw loop walks the POLY box list", pad_to=8),
+        # Per-voice AMP (image 95): the DSP runs one amp envelope per track,
+        # after the sum, so POLY's voices get their own in the mix and the
+        # DSP's is held open.
+        Detour(0x40004D66, H("306f00363548003e"), "polyphony", "poly_amp_hook",
+               "a POLY track's DSP amp envelope stays open; its values feed the voices'",
+               pad_to=8),
+        # POLY's own octave, -2..+2, shown where stock shows its 0/1.
+        Detour(0x400449B8, H("2039460d16fc"), "polyphony", "poly_oct_number",
+               "the chromatic keyboard prints a POLY track's own octave"),
+        Detour(0x4004D442, H("2039460d16fc"), "polyphony", "poly_oct_led",
+               "the octave lamps show a POLY track's own octave"),
     ),
     pokes=(
         Poke(0x4000244E, H("7204"), H("7205"),

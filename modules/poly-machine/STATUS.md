@@ -1,17 +1,112 @@
 # Poly Machine implementation status
 
-Updated: 2026-09-25 (image 94, packaged as `POLY94`: the keyboard boxes every
-held key, MIDI chromatic play is polyphonic. Image 93 is superseded, 92 must
-not be flashed -- see the 93 notes below)
+Updated: 2026-09-25 (image 95, packaged as `POLY95`: an AMP envelope per
+voice, a constant DSP rate on POLY tracks, POLY's own octave -2..+2. Images
+93-94 are superseded; 92 must not be flashed)
 
 This file is the engineering handoff for the `poly-machine` remix.
 
 ## Where it stands
 
-`out/OCTATRACK_POLY94.bin` (card) and `out/OCTATRACK_OS1.40C_POLY94.syx`
-(MIDI) are built from this tree, and `out/POLY94_OCTEMU/play.sh` boots the
-same image in octemu on a card whose T1 is already POLY with a tone loaded.
-`make check REMIX=poly-machine` passes (374 PASS, no FAIL). Not yet flashed.
+`out/OCTATRACK_POLY95.bin` (card) and `out/OCTATRACK_OS1.40C_POLY95.syx`
+(MIDI) are built from this tree, and `out/POLY95_OCTEMU/play.sh` boots the
+same image in octemu on a card whose T1 is POLY with a tone loaded.
+`make check REMIX=poly-machine` passes (@CHECK@). Not yet flashed.
+
+## Image 95 (25 Sep 2026), measured under octemu
+
+The user played POLY94 in the octemu window: the key boxes worked, but
+"a lot of envelope artifacts, and the release of the amp doesn't get
+respected -- we need an amp per voice, not fx per voice; extend the octave
+range".
+
+**Stock's AMP envelope, measured** (FLEX, TONE220 on T1, one chromatic key,
+knobs turned with the encoders; poking the Part or the live lane does NOT
+reach the DSP record -- the first sweep did that and changed nothing):
+
+- It runs on the DSP, once per track, after the voices are summed. The
+  ColdFire sends ATK/HOLD/REL/VOL/BAL/XVOL as record halfwords 0-5 and
+  events in the command word `+0x3c` (`0x40004bd4`): trigger `0x80` (+ a
+  sub-block offset in the low nibble), gate `0x40` (the DSP holds while it
+  is set every frame), release `0x20`. HOLD is timed on the ColdFire: a
+  timer from the trigger, `+ tempo24*16` per frame with SYNC on (2880*16
+  off), against `0x400a9690[HOLD]` (HOLD 16 = 1.125 steps = 141 ms at 120
+  BPM); 127 = INF. AMP page 2: mode ANLG/RTRG/R+T/TTRG (`+0x2a`), SYNC
+  (`+0x2b`), attack curve LIN/LOG.
+- Attack: linear, 0 -> full in 3.39 ms * 2^(ATK/8.39) (ATK 35: 61 ms, 51:
+  ~240 ms, 67: ~0.9 s, 83: ~3.3 s, 99: ~12 s). Fit to 6 points; RTRG (the
+  default) restarts from zero on every trigger.
+- Release: exponential, time constant 0.337 ms * 2^(REL/8.64) (REL 48: 15
+  ms, 64: 60 ms, 80: ~200 ms, 96: ~750 ms); 127 = INF (the level stays).
+- HOLD also ends a HELD key: HOLD 16 and 32 released at ~145 and ~285 ms
+  with the key still down. Release starts at the hold's end or key-up,
+  whichever comes first.
+
+**The artifacts, measured** with a click detector (the largest |second
+difference| of the output within 150 ms of an event; a smooth tone gives
+2-8). Walk: ATK 0, REL 64, hold C, add E, add G, release E, release C+G.
+
+| event | POLY94 | 95b (DSP at unity) | 95c (+ no DSP retrigger) | POLY95 (+ ramped limiter) |
+|---|---|---|---|---|
+| E added to a held C | 1034 | 1783 | 4 | 3 |
+| G added | 646 | 1878 | 263 | 5 |
+| E released | 190 | 139 | 55 | 7 |
+| C and G released | 518 | 3 | 3 | 3 |
+
+1. **Releases** clicked because a released voice was cut (clr.b / stock
+   stop). Each voice now has its own envelope (`.env_track`, `.env_voice`,
+   the stock laws above as 128-entry tables); a released key's voices enter
+   their release and `.env_reap` stops them at -78 dB.
+2. **A new key made every sounding voice step.** The DSP resampled the whole
+   track by the newest note's increment, and its trigger restarted the
+   track's DSP processing under the voices still sounding. POLY now keeps
+   the DSP at unity (`poly_increment_shift` stores the note's increment per
+   voice and gives STATES+36 2^26), resamples every voice on the ColdFire
+   (`.render_voice`; a voice that moves slots takes its phase and carried
+   frames along), and while any voice sounds `poly_amp_hook` drops the
+   trigger, its offset and the release from the command word and holds the
+   gate; the record's ATK/HOLD/mode go to 0/INF/ANLG. MEASURED: with the
+   trigger still passed (95b) the steps were larger; with it dropped (95c)
+   they went. Whether unity alone was needed is not separated.
+3. **Level jumps**: the sum was divided by 2 or 4 by voice count. Every
+   voice now plays at unity and a limiter turns the sum down only where it
+   would clip, its gain ramped across each chunk (a per-chunk step clicked:
+   the 263 and 55 of 95c).
+
+MEASURED also: E fades by its REL after its key-up (-23 dB at 200 ms, REL
+64) while C and G hold; the envelope states at every step (gdb) match;
+POLY octave -2 plays TRIG1 at 28.3 Hz (27.5 expected; 1.7 Hz FFT bins).
+
+**Octaves**: POLY keeps its own octave (`poly_octave`, -2..+2, 0 = stock's
+octave 0) instead of walking stock's 0x460d16fc (a stock track left at
+octave 2 by images <= 94 played only TRIG1: stock rejects keys above 24).
+The keyboard prints it signed (`0x400449b8`), the page lamps show it
+(`0x4004d442`: stock indexes two 8-entry stack arrays by 2*octave, which
+is why octave 4 hung image 92), and each trig remembers the key it pressed
+so its release matches after an octave change. With the DSP at unity a
+voice's own fetch sets the ceiling: 16 frames at 5.75 fit poly_fetch, about
++30 semitones (was +24).
+
+**CPU** (ColdFire port, `benchmark_polyphony.py`: 8 tracks x 4 looping
+voices, sequencer trigs on steps 1-4, all at the sample's own pitch):
+
+| build | instructions / 16-sample frame | vs stock mono (42,539) | frames on time |
+|---|---:|---:|---:|
+| POLY93 | 65,808 | 1.55x | 736 of 1,399 |
+| 95d, every voice through the resampler | 76,056 | 1.79x | -- |
+| POLY95 (fast paths) | 65,228 | 1.53x | 684 of 1,399 |
+
+"Frames on time" is the port's count of ColdFire frames delivered exactly
+16 DSP samples apart (stock mono: 1,354 of 1,399, spread 14-17; POLY 15-23).
+95d's load made the port's sequencer late enough that the fourth trig missed
+the 1,400-frame window (the benchmark's allocator check failed: 16 of 24
+extensions); POLY95's fast paths -- a voice at exactly the DSP's rate is
+fetched straight into place, a voice held at unity is added without a
+multiply, one voice alone at unity is copied -- bring the untransposed case
+back to POLY93's cost. The 95d figure is the measured cost when every voice
+is transposed (every voice resampled). A PTCH override of the fixture meant
+to measure that on POLY95 did not take (counts identical); not re-run.
+These are port instruction counts, not hardware cycles.
 
 ## Image 94 (25 Sep 2026), measured under octemu
 
@@ -153,9 +248,18 @@ resampler). Wide chords cost more; not measured.
 
 - Hardware: nothing above has run on a unit. CPU headroom with wide chords
   on eight tracks is the first thing to watch (see README).
-- A released key stops its voice at once, with no AMP release per voice; a
-  click is likely on a sustained sample (not measured). Only the track's last
-  key up releases the AMP envelope.
+- The per-voice AMP models ATK/HOLD/REL/SYNC only: the AMP mode
+  (ANLG/RTRG/R+T/TTRG) and the LOG attack curve are not modelled (every voice
+  starts at zero, linear). The laws are fits to octemu measurements of the
+  DSP's envelope, not read from the DSP code; tempo scaling of ATK/REL with
+  SYNC on was not tested (measured at 120 BPM).
+- While a POLY track sounds, a new note does not retrigger the DSP's track
+  processing, so an FX envelope (FILTER ENV) restarts only on a note from
+  silence.
+- Every voice, the newest too, is resampled by linear interpolation on the
+  ColdFire; aliasing at large upward transpositions was not measured.
+- The limiter engages only when the voices' sum would clip; its pumping on
+  loud chords was not listened to.
 - Live recording of panel chromatic keys on a POLY track: POLY's handler
   returns before stock's recorder calls (`0x40042d1c`, read from the code).
 - The track-side glyph for a POLY track reads `M` (F for FLEX, S for STATIC):

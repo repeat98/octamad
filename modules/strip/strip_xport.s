@@ -94,6 +94,7 @@ strip_xport:
         lea     -12(%sp),%sp
         movem.l %d2-%d4,(%sp)
         bsr.w   strip_sync              | the Part's copy, adopted when it changed
+        bsr.w   ret_sync                | and the returns' cells
         lea     strip_model,%a0
         move.l  #strip_tx+UNCACHED,%a1
         move.l  #MAGIC,%d2              | d2: the halfwords' running sum
@@ -408,8 +409,275 @@ ssdone: clr.b   strip_lock
         lea     20(%sp),%sp
         rts
 
-| ret_store: the Part keeps the returns' cells and the sends (stage 4b: not yet)
+| ------------------------------------------------ the returns' Part cells --
+| Five 16-byte cells at bank + RWOFF, the audio LFO designer's shapes T2..T6 (the strip's
+| two are T7, T8, beside them): 0 RET B's slot, 1 RET A's, 2 AUX A's sends, 3 AUX B's,
+| 4 the levels. A cell is stored as a slot is (byte 0 the id, 1 the tag, 2 the sum, 3 the
+| version, twelve values); cell 4's values are RET B's level and CUE send, RET A's. The
+| Part is the truth and ret_model, aux_model and retlvl_model (contiguous) its cache.
+        .equ    RWOFF,     0x90492      | in the bank: part 0's cell 0
+        .equ    RTWOFF,    0x1712       | the same in a part
+
+| rwin: as swin, for the returns' window
+rwin:   move.l  DBPTR,%a0
+        move.l  %a0,%d0
+        beq.s   1f
+        mvz.b   PARTSEL,%d1
+        moveq   #PARTS,%d0
+        cmp.l   %d0,%d1
+        bhs.s   1f
+        move.l  #PSTRIDE,%d0
+        mulu.l  %d1,%d0
+        add.l   %a0,%d0
+        add.l   #RWOFF,%d0
+        move.l  %d0,%a0
+        move.l  %d1,%d0
+        rts
+1:      moveq   #-1,%d0
+        rts
+
+| same80: Z set when the 80 bytes at a0 and at a1 are equal (clobbers d0-d2, a0, a1)
+same80: moveq   #40-1,%d1
+1:      mvz.w   (%a0)+,%d0
+        mvz.w   (%a1)+,%d2
+        cmp.l   %d2,%d0
+        bne.s   2f
+        subq.l  #1,%d1
+        bpl.s   1b
+        moveq   #0,%d0
+2:      rts
+
+| copy80: the 80 bytes at a0 to a1, a halfword at a time; clobbers a0, a1
+copy80: .rept   40
+        move.w  (%a0)+,(%a1)+
+        .endr
+        rts
+
+| chk16: Z set when the sixteen bytes at a0 have the tag, the version and a sum of 0
+| mod 256 (clobbers d0-d2, a1)
+chk16:  mvz.b   1(%a0),%d0
+        moveq   #TAG,%d1
+        cmp.l   %d1,%d0
+        bne.s   9f
+        mvz.b   3(%a0),%d0
+        moveq   #VERSION,%d1
+        cmp.l   %d1,%d0
+        bne.s   9f
+        moveq   #0,%d0
+        moveq   #16-1,%d1
+        move.l  %a0,%a1
+1:      mvz.b   (%a1)+,%d2
+        add.l   %d2,%d0
+        subq.l  #1,%d1
+        bpl.s   1b
+        and.l   #0xff,%d0
+        rts
+9:      moveq   #1,%d0
+        rts
+
+| rok_slot: Z set when the cell at a0 is a stored slot with an id on the returns' list
+rok_slot:
+        bsr.s   chk16
+        bne.s   9f
+        mvz.b   (%a0),%d0
+        lea     RIDS,%a1
+2:      mvz.b   (%a1)+,%d1
+        cmp.l   #0xff,%d1
+        beq.s   8f
+        cmp.l   %d1,%d0
+        bne.s   2b
+        moveq   #0,%d0
+        rts
+8:      moveq   #1,%d0
+9:      rts
+
+| rok_plain: Z set when the cell at a0 is a stored cell of values (id byte 0)
+rok_plain:
+        bsr.s   chk16
+        bne.s   9f
+        tst.b   (%a0)
+9:      rts
+
+RIDS:   .byte   0x00, 0x1f, 0x06, 0x07, 0xff
+        .balign 2
+
+| ret_sync: the ISR's look at the shown Part's returns' window, as strip_sync's
+ret_sync:
+        lea     -20(%sp),%sp
+        movem.l %d2-%d4/%a2-%a3,(%sp)
+        tst.b   strip_lock
+        bne.w   rsdone
+        bsr.w   rwin
+        tst.l   %d0
+        bmi.w   rsdone
+        move.l  %a0,%a2                 | a2 = the window
+        lea     ret_seen,%a1
+        bsr.w   same80
+        beq.w   rsdone                  | nothing new
+        move.l  %a2,%a0
+        lea     ret_cand,%a3
+        move.l  %a3,%a1
+        bsr.w   same80
+        beq.s   1f
+        move.l  %a2,%a0                 | changed since the last frame too: wait
+        move.l  %a3,%a1
+        bsr.w   copy80
+        bra.w   rsdone
+1:      move.l  %a2,%a0                 | held: adopt it
+        lea     ret_seen,%a1
+        bsr.w   copy80
+        move.l  %a2,%a0
+        bsr.w   rok_slot
+        bne.w   rdflt
+        lea     16(%a2),%a0
+        bsr.w   rok_slot
+        bne.w   rdflt
+        lea     32(%a2),%a0
+        bsr.w   rok_plain
+        bne.w   rdflt
+        lea     48(%a2),%a0
+        bsr.w   rok_plain
+        bne.w   rdflt
+        lea     64(%a2),%a0
+        bsr.w   rok_plain
+        bne.w   rdflt
+        lea     ret_model,%a1           | valid: cells 0 and 1 are the slots, spare bytes 0
+        move.l  %a2,%a0
+        moveq   #32-1,%d3
+2:      move.b  (%a0)+,(%a1)+
+        subq.l  #1,%d3
+        bpl.s   2b
+        lea     ret_model,%a1
+        clr.b   1(%a1)
+        clr.b   2(%a1)
+        clr.b   3(%a1)
+        clr.b   17(%a1)
+        clr.b   18(%a1)
+        clr.b   19(%a1)
+        lea     aux_model,%a1           | cells 2 and 3 the sends' cells, bytes 0..3 zero
+        lea     32(%a2),%a0
+        moveq   #32-1,%d3
+3:      move.b  (%a0)+,(%a1)+
+        subq.l  #1,%d3
+        bpl.s   3b
+        lea     aux_model,%a1
+        clr.b   (%a1)
+        clr.b   1(%a1)
+        clr.b   2(%a1)
+        clr.b   3(%a1)
+        clr.b   16(%a1)
+        clr.b   17(%a1)
+        clr.b   18(%a1)
+        clr.b   19(%a1)
+        lea     64+4(%a2),%a0           | cell 4: RET B's level, CUE send, RET A's
+        lea     retlvl_model+4,%a1
+        move.b  (%a0)+,(%a1)+
+        move.b  (%a0)+,(%a1)
+        lea     retlvl_model+16+4,%a1
+        move.b  (%a0)+,(%a1)+
+        move.b  (%a0)+,(%a1)
+        bra.s   rsdone
+rdflt:  lea     rmodels_default,%a0     | nobody's: the boot's
+        lea     ret_model,%a1
+        moveq   #24-1,%d3
+4:      move.l  (%a0)+,(%a1)+
+        subq.l  #1,%d3
+        bpl.s   4b
+rsdone: movem.l (%sp),%d2-%d4/%a2-%a3
+        lea     20(%sp),%sp
+        rts
+
+| pack16: the model cell at a0 (id, 3 spare, twelve values) into the stored cell at a1;
+| both advance past it (clobbers d0-d2)
+pack16: mvz.b   (%a0),%d0               | the id
+        move.b  %d0,(%a1)
+        moveq   #TAG,%d1
+        move.b  %d1,1(%a1)
+        add.l   %d1,%d0
+        moveq   #VERSION,%d1
+        move.b  %d1,3(%a1)
+        add.l   %d1,%d0
+        lea     4(%a0),%a0
+        lea     4(%a1),%a1
+        moveq   #12-1,%d2
+1:      mvz.b   (%a0)+,%d1
+        move.b  %d1,(%a1)+
+        add.l   %d1,%d0
+        subq.l  #1,%d2
+        bpl.s   1b
+        neg.l   %d0
+        move.b  %d0,-14(%a1)            | the checksum, byte 2 of the cell
+        rts
+
+| ret_store: the models are what the Part keeps now (the MIXER page's edits on a return,
+| main context, every register but d0/d1/a0/a1 kept): the five cells into ret_seen, from
+| there to the window, the part's SRAM twin and the stock editors' marks, as strip_store
 ret_store:
+        lea     -20(%sp),%sp
+        movem.l %d2-%d4/%a2-%a3,(%sp)
+        moveq   #1,%d0
+        move.b  %d0,strip_lock          | the ISR's looks wait
+        bsr.w   rwin
+        tst.l   %d0
+        bmi.w   rrdone
+        move.l  %d0,%d4                 | d4 = the part
+        move.l  %a0,%a2                 | a2 = its window
+        lea     lvl_cell,%a1            | cell 4's model: the levels, as one cell
+        clr.l   (%a1)
+        clr.l   8(%a1)
+        clr.l   12(%a1)
+        mvz.b   retlvl_model+4,%d0
+        move.b  %d0,4(%a1)
+        mvz.b   retlvl_model+5,%d0
+        move.b  %d0,5(%a1)
+        mvz.b   retlvl_model+16+4,%d0
+        move.b  %d0,6(%a1)
+        mvz.b   retlvl_model+16+5,%d0
+        move.b  %d0,7(%a1)
+        lea     ret_seen,%a3
+        move.l  %a3,%a1
+        lea     ret_model,%a0
+        bsr.w   pack16                  | cell 0: RET B's slot
+        bsr.w   pack16                  | cell 1: RET A's
+        lea     aux_model,%a0
+        bsr.w   pack16                  | cell 2: AUX A's sends
+        bsr.w   pack16                  | cell 3: AUX B's
+        lea     lvl_cell,%a0
+        bsr.w   pack16                  | cell 4: the levels
+        move.l  %a3,%a0
+        move.l  %a2,%a1
+        bsr.w   copy80                  | the working window
+        move.l  #PSTRIDE,%d0
+        mulu.l  %d4,%d0
+        add.l   #SRAM_PART+RTWOFF,%d0
+        move.l  %d0,%a1
+        move.l  %a3,%a0
+        bsr.w   copy80                  | its twin
+        move.l  %a3,%a0
+        lea     ret_cand,%a1
+        bsr.w   copy80                  | the ISR's look finds nothing new
+        move.l  DBPTR,%a0               | the stock editors' marks, as strip_store sets them
+        moveq   #1,%d1
+        lsl.l   %d4,%d1
+        move.l  %a0,%d0
+        add.l   #0x95048,%d0
+        move.l  %d0,%a1
+        mvz.b   (%a1),%d0
+        or.l    %d1,%d0
+        move.b  %d0,(%a1)
+        mvz.b   0x100b145e,%d0
+        or.l    %d1,%d0
+        move.b  %d0,0x100b145e
+        move.l  %a0,%d0
+        add.l   #0x9b332,%d0
+        move.l  %d0,%a1
+        moveq   #1,%d0
+        move.l  %d0,(%a1)
+        move.l  %d0,0x100f8598
+        jsr     DIRTY
+rrdone: clr.b   strip_lock
+        movem.l (%sp),%d2-%d4/%a2-%a3
+        lea     20(%sp),%sp
         rts
 
         .balign 4
@@ -429,12 +697,18 @@ strip_model:                            | two slots: id, 3 spare, 12 values
 strip_default:                          | what a Part nobody has written gives
         BOOT_MODEL
 ret_model:      .space  32              | RET B's slot then RET A's: id, 3 spare, 12 values (none)
+aux_model:      .space  32              | two cells, values at +4: AUX A's twelve sends (T1..T8, IN AB, IN CD,
+                                        | RET A, RET B), AUX B's; 0..127 (0 = off; zero at boot, so an
+                                        | image with sends at rest is stock's mix)
 retlvl_model:   .byte   0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0   | RET B's cell: level, CUE send at +4, +5
                 .byte   0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0   | RET A's
-aux_model:      .space  32              | two cells, values at +4: AUX A's twelve sends (T1..T8, IN AB, IN CD,
-                                        | RET A, RET B), AUX B's; 0..127
-                                        | (0 = off; zero at boot, so an image with sends
-                                        | at rest is stock's mix)
+rmodels_default:                        | what a Part nobody has written gives the three models
+                .space  64
+                .byte   0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+                .byte   0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+ret_seen:       .space  80              | the returns' window as adopted (stored form)
+ret_cand:       .space  80              | as last looked at
+lvl_cell:       .space  16              | cell 4's model, built by ret_store
 strip_seen:     .space  32              | the window as adopted (stored form)
 strip_cand:     .space  32              | the window as last looked at
 strip_lock:     .byte   0               | strip_store is writing: the ISR keeps out

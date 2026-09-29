@@ -87,7 +87,8 @@ MODULE = Module(
         "and P:0x35d), their effects and knobs sent from a ColdFire model every frame; "
         "a MASTER page in the MIXER window edits them.",
     requires=("OXIDE",),
-    claims=Claims(part_window=((0x904e2, 32, "master strip: slots 1 and 2 (LFO designer shapes T7, T8)"),)),
+    claims=Claims(part_window=((0x904e2, 32, "master strip: slots 1 and 2 (LFO designer shapes T7, T8)"),
+                               (0x90492, 80, "mixer returns: RET B and RET A slots, AUX sends, levels (shapes T2..T6)"))),
     # The record: strip_model, sent to core 0 every frame by one more burst
     # in the host-transfer chain, before stock state 3 (DSP.md section 6c).
     # The MIXER window pages it (strip_ui.s): LEFT/RIGHT the strips, UP/DOWN

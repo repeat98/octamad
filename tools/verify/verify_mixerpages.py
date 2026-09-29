@@ -213,6 +213,17 @@ CASES = {
     "su_fu": ("built", ["MIXER", "RIGHT", "YES", "FUNC+UP"]),
     "su_again": ("built", ["MIXER", "RIGHT", "YES", "NO", "YES"]),
     "su_knobs": ("built", ["MIXER", "RIGHT", "YES", "NO", "enc 0 10", "enc 0 40"]),
+    # the returns (MIXER.md section 20): RETURN A, RETURN B, their rows (INS 1, SND1, SND2, OUT)
+    "reta": ("built", ["MIXER", "RIGHT", "RIGHT"]),
+    "retb": ("built", ["MIXER", "RIGHT", "RIGHT", "RIGHT"]),
+    "retb_edge": ("built", ["MIXER", "RIGHT", "RIGHT", "RIGHT", "RIGHT"]),
+    "reta_snd1": ("built", ["MIXER", "RIGHT", "RIGHT", "DOWN", "enc 0 10", "enc 5 20"]),
+    "reta_snd2": ("built", ["MIXER", "RIGHT", "RIGHT", "DOWN", "DOWN", "enc 0 10", "enc 4 30"]),
+    "reta_out": ("built", ["MIXER", "RIGHT", "RIGHT", "DOWN", "DOWN", "DOWN", "enc 0 -20", "enc 1 30", "enc 6 -10"]),
+    "retb_snd1": ("built", ["MIXER", "RIGHT", "RIGHT", "RIGHT", "DOWN", "enc 1 15"]),
+    "reta_fx": ("built", ["MIXER", "RIGHT", "RIGHT", "YES", "DOWN", "DOWN", "YES", "NO"]),
+    "retb_fx": ("built", ["MIXER", "RIGHT", "RIGHT", "RIGHT", "YES", "DOWN", "DOWN", "YES", "NO"]),
+    "retb_none_yes": ("built", ["MIXER", "RIGHT", "RIGHT", "RIGHT", "DOWN", "YES"]),
 }
 # The SETUP's grid against stock's: (steps after the SETUP opens, tail ms).
 # Built: slot 1 poked to DELAY, MIXER RIGHT YES; reference: FUNC + FX2.
@@ -264,6 +275,7 @@ def port(name, built, project, sym):
             d = work / c
             spec = ";".join(f"{a:#x},{n:#x}={d}.{i}" for i, (a, n) in enumerate(PLANES))
             return (spec + f";{CFG:#x},0x100={d}.cfg;{model:#x},32={d}.model;{WINH:#x},4={d}.win;"
+                    f"{sym['ret_model']:#x},32={d}.ret;{sym['aux_model']:#x},32={d}.aux;{sym['retlvl_model']:#x},32={d}.lvl;"
                     f"{sym['su_win']:#x},4={d}.suwin;"
                     f"{LAYERS:#x},4={d}.head;{ROM_BASE:#x},{ROM_LEN:#x}={d}.rom;{lo:#x},{hi - lo:#x}={d}.unit")
         runs = []
@@ -311,6 +323,9 @@ def port(name, built, project, sym):
                 r["head"] = struct.unpack(">I", (work / f"{c}.head").read_bytes())[0]
                 r["rom"], r["unit"] = (work / f"{c}.rom").read_bytes(), (work / f"{c}.unit").read_bytes()
             r["model"] = list((work / f"{c}.model").read_bytes())
+            if not c.startswith("dsp"):
+                for k in ("ret", "aux", "lvl"):
+                    r[k] = list((work / f"{c}.{k}").read_bytes())
             R[c] = r
         checks(R, sym, lo, hi)
 
@@ -366,8 +381,8 @@ def checks(R, sym, lo, hi):
         band = diff(m, s, (0, 44, 127, 63))
         check("master: the MUTE band and the frame below the boxes are the stock page's", not band,
               f"{len(band)} pixel(s) differ")
-        check("master: an arrow at the title's left end, none at its right",
-              diff(m, s, LEFT_ARROW) and not diff(m, s, RIGHT_ARROW),
+        check("master: an arrow at each end of the title (the returns lie to its right)",
+              diff(m, s, LEFT_ARROW) and diff(m, s, RIGHT_ARROW),
               f"left {len(diff(m, s, LEFT_ARROW))} px changed, right {len(diff(m, s, RIGHT_ARROW))}")
         edges = [(x, y) for (x0, y0, x1, y1) in (BOX1, BOX2) for x in range(x0, x1 + 1) for y in (y0, y1)]
         edges += [(x, y) for (x0, y0, x1, y1) in (BOX1, BOX2) for y in range(y0, y1 + 1) for x in (x0, x1)]
@@ -414,6 +429,42 @@ def checks(R, sym, lo, hi):
         mdl = R["slots"]["model"]
         check("slots: A on the empty INS 2 changes nothing, on INS 1 again moves IN",
               mdl[16:] == [0] * 16 and mdl[4] > IN_KNOB and mdl[5] == OUT_KNOB, f"{mdl}")
+    if need("reta", "retb", "master", "retb_edge"):
+        a_, b_, m_ = R["reta"]["screen"], R["retb"]["screen"], R["master"]["screen"]
+        title = (0, 0, 127, 10)
+        check("returns: RETURN A and RETURN B each draw their own title band, and differ from MASTER's",
+              diff(a_, m_, title) and diff(b_, a_, title), f"{len(diff(a_, m_, title))} / {len(diff(b_, a_, title))} px")
+        check("returns: RIGHT from RETURN B stays on it (the last strip), the page unchanged",
+              not diff(R["retb_edge"]["screen"], b_), f"{len(diff(R['retb_edge']['screen'], b_))} px differ")
+        check("returns: the models are untouched by looking: every cell zero but the levels at 100",
+              R["reta"]["aux"] == [0] * 32 and R["reta"]["ret"] == [0] * 32
+              and R["reta"]["lvl"][4] == 100 and R["reta"]["lvl"][20] == 100, f"lvl {R['reta']['lvl'][:6]}")
+    if need("reta_snd1"):
+        aux = R["reta_snd1"]["aux"]
+        check("returns: on RETURN A SND1, A +10 and F +20 step T1 and T6 into AUX A's cell, nothing else",
+              aux[4] > 0 and aux[9] > aux[4] and all(v == 0 for i, v in enumerate(aux) if i not in (4, 9)),
+              f"{aux}")
+    if need("reta_snd2"):
+        aux = R["reta_snd2"]["aux"]
+        check("returns: on SND2, A +10 and E +30 step T7 and RET A's send (cell offsets +10 and +14)",
+              aux[10] > 0 and aux[14] > aux[10] and aux[4:10] == [0] * 6, f"{aux}")
+    if need("reta_out"):
+        lv = R["reta_out"]["lvl"]
+        check("returns: on RETURN A OUT, A -20 lowers its level, B +30 raises the CUE send, LEVEL -10 lowers "
+              "the level again; RET B's cell untouched",
+              lv[20] < 100 - 20 and lv[21] > 0 and lv[4] == 100 and lv[5] == 0, f"{lv[:6]} {lv[16:22]}")
+    if need("retb_snd1"):
+        aux = R["retb_snd1"]["aux"]
+        check("returns: on RETURN B SND1, B +15 steps T2 in AUX B's cell (offset 16 + 5), AUX A's cell untouched",
+              aux[21] > 0 and aux[:16] == [0] * 16, f"{aux}")
+    if need("reta_fx", "retb_fx"):
+        ra, rb = R["reta_fx"]["ret"], R["retb_fx"]["ret"]
+        check("returns: the SETUP's list on RETURN A ends at the delay server (id 6) and on RETURN B at the "
+              "reverb server (id 7): each return's own slot (RET A the second cell)",
+              ra[16] == 6 and ra[0] == 0 and rb[0] == 7 and rb[16] == 0, f"RET A {ra[16]} RET B {rb[0]}")
+    if need("retb_none_yes"):
+        r_ = R["retb_none_yes"]
+        check("returns: YES on a sends row opens no SETUP", r_["suwin"] == 0, f"su_win {r_['suwin']:#x}")
     if need("dsp"):
         mdl, x = R["dsp"]["model"], peek(R["dsp"]["log"])
         words = x.get(0x7c20)

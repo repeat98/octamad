@@ -175,7 +175,7 @@ dear={"DRV": 127, "FOLD": 127, "COMP": 127, "MIX": 127, "WDTH": 127, "SAT": 0},
 | need | option | example |
 |---|---|---|
 | several calls, pokes and memory dumps on one load | `--step FRAME:call\|poke\|dump:SPEC`, repeatable; `-` = after the load before the transport, `N` = frame N after the transport start | `verify_modedefaults`: two editor calls, their lane dumps and a MIDI case on one load |
-| a panel sequence (keys, encoders, the level pot) | `--live-script FILE`: lines of `<emulated ms> key\|enc\|pot\|midi\|quit ...`, transport stopped, applied at emulated times | `verify_tempobus`: 65 panel lines, 7.1 s emulated, no wall-clock sleeps, the same on a loaded machine |
+| a panel sequence (keys, encoders, the level pot) | `--live-script FILE`: lines of `<emulated ms> key\|enc\|pot\|midi\|poke\|quit ...` (`poke ADDR=BYTE[;...]` is `--poke` at that time, since 29 Sep 2026), transport stopped, applied at emulated times | `verify_tempobus`: 65 panel lines, 7.1 s emulated, no wall-clock sleeps, the same on a loaded machine |
 | several runs that each need the machine exactly as it was after the load | `--scenario "LOG ARGS..."`, repeatable, `--scenario-jobs N` (default 3): the port loads once and forks one child per scenario; each child writes its stdout to LOG and takes ARGS as its post-load options (`--sequencer`, `--frames`, `--step`, `--poke`, `--call`, `--midi`, `--mem-dump`, `--live-script`, ...) | `verify_scenesp2`: three frame runs and the editor pass from one load |
 
    Boot-time options (`--dsp`, `--audio-in`, `--audio-out`'s capture, the

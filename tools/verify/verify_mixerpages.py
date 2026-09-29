@@ -159,6 +159,8 @@ def script(path, steps, tail=800):
             at(s, 300)
         elif s.startswith("wait "):
             t[0] += int(s[5:])
+        elif s.startswith("poke "):             # ot_emu's live-script poke: ADDR=BYTE[;...]
+            at(s, 50)
         elif s.startswith("FUNC+"):             # held across the other key's press
             at(f"key {KEYS['FUNC']:#x} down", 100)
             key(s[5:], 100)

@@ -99,7 +99,7 @@
         .equ    NAMES2,   0x3a         | P+: page 2's names
 
         .text
-        .globl  mx_push, mx_pop, mx_draw, mx_strip, mx_slot, su_win
+        .globl  mx_push, mx_pop, mx_draw, mx_strip, mx_slot, su_win, SU_IDS
 
 | ---- 0x4007d41c: the opener's `jsr LPUSH` of its layer lands here ------
 mx_push:
@@ -288,6 +288,7 @@ mx_enc: tst.l   WINH
         ble.s   2f
         move.l  %d4,%d0
 2:      move.b  %d0,4(%a2,%d2.l)
+        jsr     strip_store             | the Part keeps it
         bsr.w   mx_draw
         moveq   #1,%d0
         move.l  %d0,EDITED
@@ -490,6 +491,7 @@ su_yes: tst.l   su_win
         pea     SU_KEYL
         jsr     LPUSH
         addq.l  #4,%sp
+        jsr     strip_store             | the Part keeps the new effect
         moveq   #1,%d0
         move.l  %d0,EDITED
         bsr.w   su_draw
@@ -506,12 +508,12 @@ su_enc: tst.l   su_win
         movem.l %d2-%d4/%a2-%a3,(%sp)
         move.l  24(%sp),%d2            | the knob, 0..5
         bsr.w   sdesc
-        beq.s   8f
+        beq.w   8f
         moveq   #6,%d0
         add.l   %d2,%d0
         bsr.w   nib
         btst    #0,%d1
-        beq.s   8f                     | a knob the effect does not draw
+        beq.w   8f                     | a knob the effect does not draw
         move.l  %d2,%d0
         lsl.l   #2,%d0
         lea     STEP2(%a3),%a0
@@ -543,6 +545,7 @@ su_enc: tst.l   su_win
         ble.s   3f
         move.l  %d4,%d0
 3:      move.b  %d0,10(%a2,%d2.l)
+        jsr     strip_store             | the Part keeps it
         moveq   #1,%d0
         move.l  %d0,EDITED
         move.l  %d2,-(%sp)             | the knob lifts and shows its value, as
@@ -1122,7 +1125,7 @@ su_win: .long   0                      | the SETUP window's handle, 0 = closed
 | The strip's list: NONE, then what tail.asm runs (OXIDE); a row is an id,
 | its name the descriptor's
         .equ    SU_N, 2
-SU_IDS: .byte   0x00, 0x1f
+SU_IDS: .byte   0x00, 0x1f, 0xff              | 0xff ends it: strip_xport checks a stored id against it
 | A stock icon, 17 x 13 as MIX's headphones: {w, h, 1, pixels, mask}, a u32
 | per column, the top row at bit 19, lit = 1. A speaker, dark on the lit tile:
 |   ......#......

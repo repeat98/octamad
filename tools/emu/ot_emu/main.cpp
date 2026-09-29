@@ -1252,7 +1252,7 @@ int main(int _argc, char** _argv)
 	std::vector<std::string> scenarios;	// 29 Sep 2026: --scenario "LOG ARGS...", repeatable: after the load the port forks one child per scenario; each starts from the same loaded machine (the snapshot is the fork), writes its stdout to LOG and takes ARGS as its post-load options (--sequencer, --frames, --step, --poke, --call, --midi, --mem-dump, --live-script, ...). One LOAD PROJECT instead of one per run
 	int scenarioJobs = 3;		// children at a time (four boots at once contend on a four-performance-core machine)
 	std::vector<std::string> steps;	// 28 Sep 2026: --step "FRAME:call:addr[,arg..]" | "FRAME:poke:addr=byte[;..]" | "FRAME:dump:addr,len=path[;..]", repeatable, in order. FRAME "-" = after the load, before the transport (in the order given); a number = that many frames after the transport start (with --sequencer). One boot carries a gate's whole script instead of one boot per call (an Octakit load is ~32 s emulated)
-	std::string liveScript;		// 28 Sep 2026: a file of "<emulated ms> <live line>" (key/enc/pot/midi/quit, as --live takes), applied at those emulated times from the start of the live phase, transport stopped: a panel script without wall-clock sleeps, the same on a loaded machine as on a quiet one
+	std::string liveScript;		// 28 Sep 2026: a file of "<emulated ms> <live line>" (key/enc/pot/midi/quit, as --live takes; poke ADDR=BYTE[;...] since 29 Sep), applied at those emulated times from the start of the live phase, transport stopped: a panel script without wall-clock sleeps, the same on a loaded machine as on a quiet one
 	std::string livePath;		// a FIFO (or file) of panel events, read while the RTOS runs: "key <code> down|up", "enc <n> <delta>", "pot <0..255>", "midi <hex>...", "quit" -- tools/emu/lcd_view.py --panel writes it
 	std::string midiOut;		// MIDI OUT: UART0's transmit bytes, raw, to FILE at the very end (the firmware's CC echo and CC FEEDBACK's dumps; a summary line counts them)
 	std::string midiFile;		// with --sequencer: MIDI IN bytes onto UART0, one event per line: "<frames after the transport start> <hex byte>..." (e.g. "20 B0 28 7F" = CC 40 to 127 on channel 1) or "pre <hex byte>..." before the transport start ("pre C0 10" = program change 16 while stopped)
@@ -1361,7 +1361,7 @@ int main(int _argc, char** _argv)
 			"              [--usb-host SOCKET] [--usb-notify FILE] [--usb-fs]   the USB device controller + a scripted host (usb.h)\n"
 			"              [--interactive] [--rtc host|off|EPOCH] [--dsp-rt]    the line protocol on stdin/stdout (tools/panel)\n"
 			"              [--step FRAME:call|poke|dump:SPEC]...              a gate's whole script on one boot: FRAME '-' = after the load, N = N frames after the transport start\n"
-			"              [--live-script FILE]                              '<emulated ms> key|enc|pot|midi|quit ...' lines, transport stopped, no wall-clock pacing\n"
+			"              [--live-script FILE]                              '<emulated ms> key|enc|pot|midi|poke|quit ...' lines, transport stopped, no wall-clock pacing\n"
 			"              [--scenario \"LOG ARGS...\"]... [--scenario-jobs N]  load once, fork one child per scenario (stdout to LOG, ARGS its post-load options)\n");
 			return false;
 		}
@@ -2225,6 +2225,16 @@ int main(int _argc, char** _argv)
 					while(is >> hex)
 						bytes.push_back(static_cast<uint8_t>(std::strtoul(hex.c_str(), nullptr, 16)));
 					rtos.midiIn(bytes);
+				}
+				else if(what == "poke")
+				{
+					// 29 Sep 2026: "poke ADDR=BYTE[;ADDR=BYTE...]", --poke's spec at this emulated time: a
+					// Part Reload or a part change happens to a running unit, and a gate needs to do that
+					// to one after the frames have run
+					std::string spec;
+					std::getline(is, spec);
+					const auto b = spec.find_first_not_of(' ');
+					pokeBytes(b == std::string::npos ? std::string() : spec.substr(b), "live");
 				}
 				else
 					std::printf("live       : unknown line '%s'\n", _line.c_str());

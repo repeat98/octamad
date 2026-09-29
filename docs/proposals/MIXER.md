@@ -197,7 +197,7 @@ answer.
    like a track's, and Y space for the state. Proposed: the ColdFire ships one record per
    strip on the host-transfer chain, from a Part-stored block. **Built for the master
    strip (§12)**, X space rather than Y (the inserts on its list use no Y); the
-   Part-stored block is still to do.
+   Part-stored block is built (§15).
 
 ## 8. Order of work
 
@@ -218,8 +218,8 @@ Each step is flashable and checkable on its own.
 4. **AUX A and RET A on core 1.** Gate: `verify-twocore` with the cores skewed;
    on the unit, the track × delay-mode sweep used for the bus.
 5. **UI and storage on the ColdFire.** Pulled forward for the master strip (29 Sep
-   2026): the record is built (§12), the MIXER pages (§13) and the slot SETUP (§14);
-   Part storage is next.
+   2026): the record is built (§12), the MIXER pages (§13), the slot SETUP (§14) and
+   the Part storage (§15); MIDI CC for the page's controls is next.
 6. **The 100 % wet delay as a ColdFire return** (Tape Echo over SDRAM, seconds of
    delay at little DSP cost). Needs AUX A delivered to the ColdFire and the result
    back.
@@ -476,7 +476,7 @@ the trigs have the same codes); a real encoder's acceleration beyond the port's 
 per event; anything on a unit. Not flashed.
 
 **Next:** the SETUP window (YES on a slot: its effect list and page-2 knobs; built, §14),
-then Part storage of `strip_model`, then MIDI CC for the page's controls.
+Part storage of `strip_model` (built, §15), then MIDI CC for the page's controls.
 
 ## 14. The slot SETUP (29 Sep 2026)
 
@@ -543,4 +543,79 @@ with the strip.
 **What the gate cannot see**, beyond §13's: a list longer than the window (one insert:
 the scroll arrows and paging are stock's widget's paths, not exercised here); the lift's
 timing on a unit (the port's tick is emulated time).
+
+## 15. The strip in the Part (29 Sep 2026)
+
+**Each Part keeps the strip.** The two slots, 32 bytes, live in every Part window at
+bank + `0x904e2` (Part offset `0x1762`): the audio LFO designer's shapes **T7 and T8**.
+A slot is stored as `strip_model` holds it but for its three spare bytes: byte 0 the
+effect id, byte 1 the tag `0x53`, byte 2 the checksum that makes the sixteen sum to 0
+mod 256, byte 3 the version `1`, then the twelve values. The Part is the truth and
+`strip_model` its cache. `strip_sync` (in the host-transfer chain's ISR, once a frame,
+before the record is packed) reads the window of the part the panel edits (`0x100b14cf`)
+in the resident bank (`0x46c82456`); a window that differs from the one adopted and has
+held still for two frames is adopted: both slots valid (tag, version, sum, an id on the
+strip's list) is the model, anything else (a Part nobody wrote, a designer shape drawn
+over it) is the boot default. So a Part Save, a Part Reload, a part change, a bank change
+and a project load need no hook of their own: each changes the window, and the strip
+follows. `strip_store`, called after each of the MIXER page's three edits (a page-1 knob,
+YES on the SETUP's list, a SETUP knob), writes the slots into the working window, into
+the part's SRAM twin (`0x100a4ece` + part × `0x18b2`, the copy that survives a power
+cycle) and sets the marks the FX2 page-2 editor sets after its store (`0x4003aab6..
+0x4003aae4`: the part's bit in the bank at `+0x95048` and in `0x100b145e`, the bank's
+edited word `+0x9b332` and `0x100f8598`, then `0x40027e00`), holding the ISR's look off
+while it writes. A panel part that is not one of stock's four (an Octakit kit's window)
+keeps the model to itself.
+
+**Why those bytes, and what it costs (measured from the image and the project, not on a
+unit).** No byte of a Part is spare. Stock addresses the tail of the window at three
+bases: `+0x1702 + 16 n` and `+0x1792 + 16 n` (`n` 0..7; the LFO designer's shapes, audio
+and MIDI, copied by apply-part into the LFO engine when a WAVE of 11 + n is chosen: the
+audio loop at `0x400092ea..0x40009328`, the MIDI base from `LFO.md` section 7), the words
+between them (`+0x1782 + 2 n`, the shapes' interpolation bits, `0x80001508 + 2 i`), and
+`+0x1832 + 16 k` (`0x400260d0` writes it, `0x400799e6` clears a byte of it; what it is
+was not established). In the user's project all 128 Part records (16 banks, the working
+and the saved copies) are 0 at `0x1702..0x1822`, `0xff` at `0x1822..0x1832` and 0 at
+`0x1832..0x18b2`: no shape is drawn. The strip takes T7 and T8 of the audio LFO: at
+worst a project that chooses DSGN T7 or T8 on an LFO plays the strip's bytes as that
+shape's steps, and drawing over them resets the strip to its boot default (the tag,
+version, sum and id are checked before any byte is used). It is one run of the window that
+both midi-scenes (a freeze twin at `0x90492..0x90522`) and scenes-p2 (a pool at
+`0x90522`) already use, but on the bytes scenes-p2 does not take; the ledger refuses the
+strip with midi-scenes by name (`Claims.part_window`) and accepts it beside scenes-p2.
+**A side finding, not changed here:** the same census puts midi-scenes' 288 bytes and
+scenes-p2's 144 on stock's designer shapes (T2..T8 audio and the MIDI shapes), which
+`schema.py`'s comment calls "known free"; they are free while no shape is drawn.
+
+**Measured under the port** (`verify_stripstore`, the user's project on the same staged
+card as `verify_mixerpages`, one load, a panel script per case; `poke` is `--poke` at an
+emulated time, so the window changes while the unit runs, as a Part Reload changes it):
+
+| case | result |
+|---|---|
+| nothing written or edited | the model is the boot default (OXIDE IN 48, OUT 80, slot 2 empty); both windows and twins zero; the edited words 0 (the part's dirty bit is 1 from the load itself) |
+| MIXER, RIGHT, A +10 | IN 48 → 57; the window is `[31, 83, 4, 1, 57, 80, 0, ..]` then `[0, 83, 172, 1, 0, ..]` (decimal bytes), both slots valid; the SRAM twin and `strip_seen` the same; the two edited words 1; part 1's window and twin untouched; `strip_lock` 0 |
+| NONE onto INS 1 in the SETUP | the model's slot 1 is 0; the window keeps it, valid |
+| a valid record (OXIDE IN 20 / OUT 100; slot 2 NONE) poked into the window | the model is the record, spare bytes 0; the window is left alone; no twin write, no mark (a read writes nothing) |
+| the same with one value changed (checksum stale); a designer's shape | the boot default; the window left as poked |
+| the record, then zeros (a Part Reload to a blank Part) | the model follows the record, then the default again |
+| part 1's window poked with a record and the panel's part set to 1 | the model is part 1's; an edit lands in part 1's window and twin, sets bit 1 of `+0x95048` and `0x100b145e` and the edited words, part 0's bit and window as the load left them |
+| the panel's part set to 4 | the edit reaches the model (IN 20 + the stock step 9) and no window, twin or mark; `strip_lock` 0 |
+| with the DSP: the record poked into the window | X:0x7c20 = `140000 640000` (IN 20, OUT 100, `v << 16`); X:0x7c10 = `1f 1079 0 0`: slot 1 runs OXIDE, slot 2 nothing |
+
+**What the gate cannot see.** A Part Save or Reload through the panel: the port writes no
+card and did not reach the PART menu, so the poke of the window stands in for what stock's
+routines do to it (copy the whole Part), and the bank file itself (stock's save writes
+the window as it writes every Part byte) is read, not run. A part change through the panel
+(the panel's part byte is poked). The Octakit's kit operations, which copy the window
+whole (`modules/scenes-p2/README.md`; `part 4` is only the guard). Which part is meant when
+the panel's part and the playing pattern's differ (a pattern edited while another plays):
+the strip follows the panel's, as the FX editors' stores do (inferred). The ISR's cost
+(about a hundred instructions a frame when nothing changed, counted from the code, not measured). What a
+project's own designer shape on T7 or T8 looks like on a unit after the strip took it.
+
+**Open.** What a Part nobody wrote gives: the boot default, OXIDE at 0 dB on slot 1, is
+right for the test remix and wrong for a shipping one, where an empty strip (both NONE,
+dry) is the transparent start. It is one macro (`BOOT_MODEL` in `strip_xport.s`) and
+`boot.asm`'s record. The strip's MAIN level is stock's and is not stored here.
 

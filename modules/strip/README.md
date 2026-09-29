@@ -3,8 +3,8 @@
 Two insert slots on the summed MAIN, run inline after payload A's mixdown: the master strip
 of `docs/proposals/MIXER.md` (step 2, §11 to §13). Which effect each slot runs and its
 knobs come from a model on the ColdFire, `strip_model`, which the MASTER page of the MIXER
-window edits and a Part will store; until then it starts at OXIDE on slot 1 at its 0 dB
-points (IN 48, OUT 80) and slot 2 empty. The main out, the recorder and USB audio (stock's pack) and the
+window edits and each Part stores (below); a Part nobody has written gives OXIDE on slot 1
+at its 0 dB points (IN 48, OUT 80) and slot 2 empty. The main out, the recorder and USB audio (stock's pack) and the
 phones' MAIN share all hear the slots; the metronome click, which stock adds to MAIN after
 the pack, is added after them and is not processed.
 
@@ -75,6 +75,24 @@ Why split: the first version ran all 16 samples at P:0x2d5, and under the port t
 first sample of every frame went out two frames stale, because the pass held stock's cue
 mix back past the DMA (MIXER.md §11).
 
+## The Part keeps it
+
+Each Part window carries the two slots, 32 bytes at bank + `0x904e2`: the audio LFO
+designer's shapes **T7 and T8**. A slot is stored as `strip_model` holds it but for its
+spare bytes: a tag (`0x53`), the checksum byte (the sixteen sum to 0 mod 256) and a version
+(`1`). The Part is the truth, `strip_model` its cache: once a frame `strip_sync` reads the
+window of the part the panel edits, and a window that differs from the one adopted and has
+held for two frames becomes the model (both slots valid; otherwise the boot default). So a
+part change, a bank change, a Part Reload and a project load follow with no hook of their
+own. Each of the page's three edits calls `strip_store`: the window, the part's SRAM twin
+and the marks stock's editors set (the Part's asterisk, the edited words). Costs, from
+the image and the project (MIXER.md §15): no byte of a Part is spare, so a project that
+chooses DSGN T7 or T8 on an LFO plays the strip's bytes as its steps, and drawing a shape
+there resets the strip to the boot default; midi-scenes uses the same bytes and the ledger
+refuses the pair by name (`Claims.part_window`); scenes-p2's pool is beside them, not on
+them. Not the panel's Part Save or Reload (the port writes no card): a poke of the window
+stands in.
+
 ## `strip_model`
 
 Two slots of 16 bytes: the FX id at +0 (0 = none), three spare bytes, then the twelve knob
@@ -85,8 +103,10 @@ count is the trap in `AGENTS.md`), which both clamps hold.
 
 ## Not yet
 
-- No Part stores the model: it holds its boot value, plus the pages' edits, until the
-  unit restarts. Next.
+- A Part nobody has written gives OXIDE on slot 1 (the test remix's boot state); a shipping
+  remix wants an empty strip there (`BOOT_MODEL`, and `boot.asm`'s record). The MAIN level
+  on the page is stock's and is not stored. Part storage is not measured on a unit, and a
+  part that is not stock's four (an Octakit kit window) keeps the model to itself.
 - Only OXIDE is on the list. An insert joins it once it is shown to run correctly one frame
   per call with no dispatcher state: Character, for one, glides its knobs per call and reads
   X:0x213 at init.
@@ -135,3 +155,15 @@ value); YES puts NONE or OXIDE on a slot, with the defaults, and core 0 runs it 
 the slot dry) from the record; NO returns to the MASTER page, and every way out of the
 SETUP leaves no layer behind. It cannot see the unit's LCD, the MKII keymap, a real
 encoder's acceleration or a list longer than the window.
+
+`tools/verify/verify_stripstore.py`, under the port on the same card, one load and a panel
+script a case (`poke` lines change the window while the unit runs): a project nobody has
+written gives the boot default and writes nothing; A +10 on IN, and NONE onto INS 1, leave
+the window in the model's stored form with both slots valid, the SRAM twin the same bytes
+and the edited words set, part 1 untouched; a valid record poked into the window becomes
+the model (the window is not written back, no mark); a stale checksum and a designer's
+shape give the default; a record then zeros give the record then the default; the panel's
+part 1 shows and edits part 1's window and sets its dirty bit; part 4 keeps the model to
+itself and leaves the ISR's look free; with the DSP a record poked into the window reaches
+core 0 as slot 1's record. It cannot see the panel's Part Save or Reload, the bank file, an
+Octakit kit window or the strip's bytes under a real designer shape.

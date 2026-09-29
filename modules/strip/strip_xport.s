@@ -40,6 +40,25 @@
 | slot 1, slot 2 empty; boot.asm starts the DSP at the same state, so the
 | first frames before a record arrives run what the record then says.
 |
+| The Part keeps it. Each Part window (0x18b2 bytes a part, docs/firmware/
+| STORAGE.md section 3) carries the two slots at bank + 0x904e2: 32 bytes, the
+| audio LFO designer's shapes T7 and T8 (stock copies 16 bytes from
+| bank + 0x90482 + 16 n into the LFO when a WAVE of 11 + n is chosen: n = 0..7,
+| so T7 and T8 are 0x904e2 and 0x904f2; the audio census in docs/proposals/
+| MIXER.md section 15). A slot is stored as it is modelled but for its spare
+| bytes, which hold a tag (0x53), the checksum byte that makes the sixteen sum
+| to 0 mod 256, and the version (1). The Part is the truth and strip_model its
+| cache: strip_sync, once a frame before the record is packed, reads the window
+| of the part the panel edits (0x100b14cf) in the resident bank (0x46c82456)
+| and, when it has held one new value for two frames running, adopts it: both
+| slots valid, the model is the Part's; otherwise (a Part nobody has written,
+| a designer shape drawn over it) the boot default. Part Save, Part Reload,
+| a project load, a bank change and a part change are all this one look.
+| strip_store, the MIXER page's edits, writes the model to the window, to the
+| part's SRAM twin (0x100a4ece + part * 0x18b2, the copy that survives a power
+| cycle) and sets the stock editors' dirty marks (as the FX2 page-2 editor's
+| store does, 0x4003aab6..0x4003aaea), with the ISR's look held off meanwhile.
+|
 | ISR context: the chain's prologue saved d0-d1/a0-a1 only.
 
         .equ    STOCK3,    0x400049ca   | stock state 3: core 0's 64-word block
@@ -50,15 +69,27 @@
         .equ    MAGIC,     0x5354
         .equ    SLOTS,     2
         .equ    SLOT_HW,   10           | halfwords a slot: id, 6 page 1, 3 page 2
+        .equ    DBPTR,     0x46c82456   | long: the resident bank's DB (stock's UI code)
+        .equ    PARTSEL,   0x100b14cf   | byte: the part the panel edits
+        .equ    SRAM_PART, 0x100a4ece   | + part * PSTRIDE: the working parts' twin
+        .equ    DIRTY,     0x40027e00   | what stock's editors call after their stores
+        .equ    PSTRIDE,   0x18b2
+        .equ    PARTS,     4            | stock's; a kit's window (Octakit) is not ours
+        .equ    WOFF,      0x904e2      | in the bank: part 0's slot 1 (0x8ed80 + 0x1762)
+        .equ    TWOFF,     0x1762       | the same in a part
+        .equ    TAG,       0x53
+        .equ    VERSION,   1
 
         .text
         .global strip_xport, strip_model, strip_sent, strip_frames, strip_tx
+        .global strip_store, strip_default, strip_seen, strip_cand, strip_lock
 
 strip_xport:
         tst.b   strip_sent
         bne.w   sx_after                | our burst just completed: stock's turn
         lea     -12(%sp),%sp
         movem.l %d2-%d4,(%sp)
+        bsr.w   strip_sync              | the Part's copy, adopted when it changed
         lea     strip_model,%a0
         move.l  #strip_tx+UNCACHED,%a1
         move.l  #MAGIC,%d2              | d2: the halfwords' running sum
@@ -123,16 +154,228 @@ sx_after:
         clr.b   strip_sent
         jmp     STOCK3
 
+| ---------------------------------------------------------- the Part's copy --
+| swin: d0 = the part the panel edits (0..3), a0 = its window's slot 1; d0 = -1
+| when there is no bank yet or the part is not one of stock's four (clobbers
+| d1)
+swin:   move.l  DBPTR,%a0
+        move.l  %a0,%d0
+        beq.s   1f
+        mvz.b   PARTSEL,%d1
+        moveq   #PARTS,%d0
+        cmp.l   %d0,%d1
+        bhs.s   1f
+        move.l  #PSTRIDE,%d0
+        mulu.l  %d1,%d0
+        add.l   %a0,%d0
+        add.l   #WOFF,%d0
+        move.l  %d0,%a0
+        move.l  %d1,%d0
+        rts
+1:      moveq   #-1,%d0
+        rts
+
+| same32: Z set when the 32 bytes at a0 and at a1 are equal (clobbers d0-d2,
+| a0, a1)
+same32: moveq   #16-1,%d1
+1:      mvz.w   (%a0)+,%d0
+        mvz.w   (%a1)+,%d2
+        cmp.l   %d2,%d0
+        bne.s   2f
+        subq.l  #1,%d1
+        bpl.s   1b
+        moveq   #0,%d0
+2:      rts
+
+| copy32: the 32 bytes at a0 to a1, a halfword at a time (a window is 2 mod 4
+| from the second part on); clobbers a0, a1
+copy32: .rept   16
+        move.w  (%a0)+,(%a1)+
+        .endr
+        rts
+
+| ok16: Z set when the sixteen bytes at a0 are a stored slot: the tag, the
+| version, a sum of 0 mod 256, an effect id on the strip's list (SU_IDS, ended
+| by 0xff). Clobbers d0-d2, a1
+ok16:   mvz.b   1(%a0),%d0
+        moveq   #TAG,%d1
+        cmp.l   %d1,%d0
+        bne.s   9f
+        mvz.b   3(%a0),%d0
+        moveq   #VERSION,%d1
+        cmp.l   %d1,%d0
+        bne.s   9f
+        moveq   #0,%d0
+        moveq   #16-1,%d1
+        move.l  %a0,%a1
+1:      mvz.b   (%a1)+,%d2
+        add.l   %d2,%d0
+        subq.l  #1,%d1
+        bpl.s   1b
+        and.l   #0xff,%d0
+        bne.s   9f
+        mvz.b   (%a0),%d0
+        lea     SU_IDS,%a1
+2:      mvz.b   (%a1)+,%d1
+        cmp.l   #0xff,%d1
+        beq.s   9f
+        cmp.l   %d1,%d0
+        bne.s   2b
+        moveq   #0,%d0                  | on the list
+        rts
+9:      moveq   #1,%d0
+        rts
+
+| strip_sync: the ISR's look at the shown Part. A window that is not the one
+| adopted (strip_seen) is noted (strip_cand); the same window a frame later is
+| adopted: a Part being copied whole by stock is not read half written.
+strip_sync:
+        lea     -12(%sp),%sp
+        movem.l %d3/%a2-%a3,(%sp)
+        tst.b   strip_lock
+        bne.w   sydone
+        bsr.w   swin
+        tst.l   %d0
+        bmi.w   sydone
+        move.l  %a0,%a2                 | a2 = the window
+        lea     strip_seen,%a1
+        bsr.w   same32
+        beq.w   sydone                  | nothing new
+        move.l  %a2,%a0
+        lea     strip_cand,%a3
+        move.l  %a3,%a1
+        bsr.w   same32
+        beq.s   1f
+        move.l  %a2,%a0                 | changed since the last frame too: wait
+        move.l  %a3,%a1
+        bsr.w   copy32
+        bra.s   sydone
+1:      move.l  %a2,%a0                 | held: adopt it
+        lea     strip_seen,%a1
+        bsr.w   copy32
+        move.l  %a2,%a0
+        bsr.w   ok16
+        bne.s   dflt
+        lea     16(%a2),%a0
+        bsr.w   ok16
+        bne.s   dflt
+        lea     strip_model,%a1         | the Part's, spare bytes back to 0
+        move.l  %a2,%a0
+        moveq   #32-1,%d3
+2:      move.b  (%a0)+,(%a1)+
+        subq.l  #1,%d3
+        bpl.s   2b
+        lea     strip_model,%a1
+        clr.b   1(%a1)
+        clr.b   2(%a1)
+        clr.b   3(%a1)
+        clr.b   17(%a1)
+        clr.b   18(%a1)
+        clr.b   19(%a1)
+        bra.s   sydone
+dflt:   lea     strip_default,%a0       | nobody's: the boot's
+        lea     strip_model,%a1
+        moveq   #8-1,%d3
+3:      move.l  (%a0)+,(%a1)+
+        subq.l  #1,%d3
+        bpl.s   3b
+sydone: movem.l (%sp),%d3/%a2-%a3
+        lea     12(%sp),%sp
+        rts
+
+| strip_store: the model is what the Part keeps now. From the MIXER page's
+| edits (main context, every register but d0/d1/a0/a1 kept): the two slots
+| into strip_seen in their stored form, from there to the window and to the
+| part's SRAM twin, then the stock editors' dirty marks. A part that is not
+| stock's four keeps the model to itself.
+strip_store:
+        lea     -20(%sp),%sp
+        movem.l %d2-%d4/%a2-%a3,(%sp)
+        moveq   #1,%d0
+        move.b  %d0,strip_lock          | the ISR's look waits
+        bsr.w   swin
+        tst.l   %d0
+        bmi.w   ssdone
+        move.l  %d0,%d4                 | d4 = the part
+        move.l  %a0,%a2                 | a2 = its window
+        lea     strip_seen,%a3
+        lea     strip_model,%a0
+        move.l  %a3,%a1
+        moveq   #2-1,%d3
+1:      mvz.b   (%a0),%d0               | the id
+        move.b  %d0,(%a1)
+        moveq   #TAG,%d1
+        move.b  %d1,1(%a1)
+        add.l   %d1,%d0
+        moveq   #VERSION,%d1
+        move.b  %d1,3(%a1)
+        add.l   %d1,%d0
+        lea     4(%a0),%a0
+        lea     4(%a1),%a1
+        moveq   #12-1,%d2
+2:      mvz.b   (%a0)+,%d1
+        move.b  %d1,(%a1)+
+        add.l   %d1,%d0
+        subq.l  #1,%d2
+        bpl.s   2b
+        neg.l   %d0
+        move.b  %d0,-14(%a1)            | the checksum, byte 2 of the slot
+        subq.l  #1,%d3
+        bpl.s   1b
+        move.l  %a3,%a0
+        move.l  %a2,%a1
+        bsr.w   copy32                  | the working window
+        move.l  #PSTRIDE,%d0
+        mulu.l  %d4,%d0
+        add.l   #SRAM_PART+TWOFF,%d0
+        move.l  %d0,%a1
+        move.l  %a3,%a0
+        bsr.w   copy32                  | its twin
+        move.l  %a3,%a0
+        lea     strip_cand,%a1
+        bsr.w   copy32                  | the ISR's look finds nothing new
+        move.l  DBPTR,%a0               | the stock editors' marks (0x4003aac6..0x4003aae4)
+        moveq   #1,%d1
+        lsl.l   %d4,%d1
+        move.l  %a0,%d0
+        add.l   #0x95048,%d0
+        move.l  %d0,%a1
+        mvz.b   (%a1),%d0
+        or.l    %d1,%d0
+        move.b  %d0,(%a1)               | the part's dirty bit in the bank
+        mvz.b   0x100b145e,%d0
+        or.l    %d1,%d0
+        move.b  %d0,0x100b145e
+        move.l  %a0,%d0
+        add.l   #0x9b332,%d0
+        move.l  %d0,%a1
+        moveq   #1,%d0
+        move.l  %d0,(%a1)
+        move.l  %d0,0x100f8598
+        jsr     DIRTY
+ssdone: clr.b   strip_lock
+        movem.l (%sp),%d2-%d4/%a2-%a3
+        lea     20(%sp),%sp
+        rts
+
         .balign 4
 strip_frames:   .long   0               | records sent
 strip_sent:     .byte   0               | our burst is in flight
         .balign 4
-strip_model:                            | two slots: id, 3 spare, 12 values
+        .macro  BOOT_MODEL
         .byte   0x1f, 0, 0, 0           | slot 1: OXIDE
         .byte   48, 80, 0, 0, 0, 0      |   IN 48, OUT 80 (0 dB)
         .byte   0, 0, 0, 0, 0, 0
         .byte   0, 0, 0, 0              | slot 2: none
         .byte   0, 0, 0, 0, 0, 0
         .byte   0, 0, 0, 0, 0, 0
+        .endm
+strip_model:                            | two slots: id, 3 spare, 12 values
+        BOOT_MODEL
+strip_default:                          | what a Part nobody has written gives
+        BOOT_MODEL
+strip_seen:     .space  32              | the window as adopted (stored form)
+strip_cand:     .space  32              | the window as last looked at
+strip_lock:     .byte   0               | strip_store is writing: the ISR keeps out
         .balign 16
 strip_tx:       .space  TX_HW*2         | the block (the DMA's SADDR; 16-byte beats)

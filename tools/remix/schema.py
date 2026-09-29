@@ -478,7 +478,13 @@ class Claims:
     # part) is dense; the one run known free is 0x90492..0x905b2 (midisc's
     # 144-byte freeze twin then its 144-byte sparse blob, hardware since
     # 1.40MIDISC8). SCENES P2's pool is the same 144 bytes as the sparse
-    # blob, so the ledger refuses the pair by name.
+    # blob, so the ledger refuses the pair by name. CORRECTION (29 Sep 2026,
+    # docs/proposals/MIXER.md section 15): that run is not free of stock. Stock's
+    # apply-part copies the audio LFO designer's shapes from bank + 0x90482 + 16 n
+    # (n = 0..7, 0x400092ea..0x40009328) and reads their interpolation words at
+    # 0x90502, the MIDI shapes at 0x90512 (LFO.md section 7), so the run holds
+    # shapes T2..T8 and the MIDI shapes; the user's project draws none. MASTER
+    # STRIP's 32 bytes (0x904e2) are T7 and T8 of the audio LFO.
     part_window: tuple[tuple[int, int, str], ...] = ()
     # ON-CHIP SRAM a module's DMA engine reads or writes: (address, length,
     # what). 32 KB at 0x80000000; stock's highest static use ends at

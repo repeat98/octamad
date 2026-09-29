@@ -37,11 +37,20 @@ MIXER). Three detours: the window's opener and close register and remove
 its input layers, and the stock draw's entry (every caller) draws the
 page after the stock page.
 
+The Part keeps the strip: each Part window carries the two slots, 32 bytes at
+bank + 0x904e2 (the audio LFO designer's shapes T7 and T8), and strip_xport.s
+adopts the window of the part the panel edits (a Part Reload, a part or bank
+change and a project load are all that one look) and writes the model back on
+every edit of the MIXER page, with the stock editors' dirty marks. The claim
+below makes the ledger refuse midi-scenes, whose freeze twin covers the
+bytes; SCENES P2's pool (0x90522) is beside them, not on them.
+docs/proposals/MIXER.md section 15 says what was measured and what it costs.
+
 The replaced words are pinned by hash, read from the user's own image at
 build time; the manifest holds no Elektron byte.
 """
 
-from remix.schema import Category, Detour, DspSite, Gate, Kind, Linked, Module, Proof, SymbolRef
+from remix.schema import Category, Claims, Detour, DspSite, Gate, Kind, Linked, Module, Proof, SymbolRef
 
 H = bytes.fromhex
 
@@ -60,11 +69,15 @@ MODULE = Module(
                "the MIXER page is stock's but for its arrow, MASTER draws its slots, the knobs "
                "step as stock's and reach core 0's record, mutes and close as stock; the "
                "slot SETUP's knob grid is stock EFFECT 2 SETUP's pixel for pixel after the "
-               "same turns, and its choice reaches core 0 (29 Sep 2026); not flashed",
+               "same turns, and its choice reaches core 0 (29 Sep 2026). `verify_stripstore`: the Part keeps "
+               "the strip: a window poked while the unit runs is adopted, a bad one gives the default, "
+               "an edit lands in the window, its SRAM twin and the stock dirty marks, part 1 and a "
+               "non-stock part behave, and the record reaches core 0 (29 Sep 2026); not flashed",
     doc="Two insert slots on the summed MAIN, inline after the mixdown (payload A, P:0x2d5 "
         "and P:0x35d), their effects and knobs sent from a ColdFire model every frame; "
         "a MASTER page in the MIXER window edits them.",
     requires=("OXIDE",),
+    claims=Claims(part_window=((0x904e2, 32, "master strip: slots 1 and 2 (LFO designer shapes T7, T8)"),)),
     # The record: strip_model, sent to core 0 every frame by one more burst
     # in the host-transfer chain, before stock state 3 (DSP.md section 6c).
     # The MIXER window pages it (strip_ui.s): LEFT/RIGHT the strips, UP/DOWN
@@ -113,5 +126,6 @@ MODULE = Module(
             asm="modules/strip/tail.asm",
         ),
     ),
-    gates=(Gate("tools/verify/verify_strip.py"), Gate("tools/verify/verify_mixerpages.py")),
+    gates=(Gate("tools/verify/verify_strip.py"), Gate("tools/verify/verify_mixerpages.py"),
+           Gate("tools/verify/verify_stripstore.py")),
 )

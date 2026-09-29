@@ -22,5 +22,7 @@ and every other output word and host-port block is stock's; edits of the ColdFir
 mid-run reach MAIN on a frame boundary (`docs/proposals/MIXER.md` §11, §12). The MIXER
 window's pages draw and page as locked, their knobs step as stock's and reach the DSP, and
 every close leaves nothing registered (§13, `verify_mixerpages`); a slot's SETUP chooses its
-effect and draws its page-2 knobs as stock's EFFECT 2 SETUP does, pixel for pixel (§14).
+effect and draws its page-2 knobs as stock's EFFECT 2 SETUP does, pixel for pixel (§14),
+and the Part keeps the strip: the window of the part the panel edits is adopted, an edit is
+written back with the stock editors' dirty marks (§15, `verify_stripstore`).
 Not flashed; nothing here is measured on a unit.

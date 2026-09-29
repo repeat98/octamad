@@ -3,7 +3,8 @@
 This experimental branch uses a Part-scoped dynamic DSP loader. Engines are
 stored in reserved SDRAM and only the Part's selected set is uploaded to each
 core. See [DYNAMIC.md](DYNAMIC.md) for the protocol, current limits and measured
-loading behavior. The earlier MK1 report does not qualify this loader.
+loading behavior, and [MEMORY.md](MEMORY.md) for the two-core memory map and
+switching capture. The earlier MK1 report does not qualify this loader.
 
 One native Octatrack track machine with **808 / 909** selection in its
 sample-pool-style engine browser. Both original fixed-point synthesis engines run on

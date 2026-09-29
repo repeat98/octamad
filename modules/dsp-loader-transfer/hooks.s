@@ -113,3 +113,52 @@ dl_tick:
         .balign 4
 dl_phase: .long 0
 dl_rx_nbytes: .long 0
+
+        .text
+        .global dl_fx1_guard, dl_fx2_guard
+dl_fx1_guard:
+        clr.l -(%sp)
+        jsr dl_selection_guard
+        addq.l #4,%sp
+        tst.l %d0
+        beq dl_select_return
+        jsr dl_fx1_body
+        jsr dl_selection_applied
+        rts
+dl_fx1_body:
+        lea -68(%sp),%sp
+        movem.l %d2-%d7/%a2-%a6,(%sp)
+        jmp 0x400526ec
+
+dl_fx2_guard:
+        pea 1
+        jsr dl_selection_guard
+        addq.l #4,%sp
+        tst.l %d0
+        beq dl_select_return
+        jsr dl_fx2_body
+        jsr dl_selection_applied
+        rts
+dl_fx2_body:
+        lea -68(%sp),%sp
+        movem.l %d2-%d7/%a2-%a6,(%sp)
+        jmp 0x4005247c
+dl_select_return:
+        rts
+
+        .global dl_part_guard
+dl_part_guard:
+        move.l 4(%sp),-(%sp)
+        jsr dl_selection_part_guard
+        addq.l #4,%sp
+        tst.l %d0
+        beq dl_select_return
+        move.l 4(%sp),-(%sp)
+        jsr dl_part_body
+        addq.l #4,%sp
+        jsr dl_selection_applied
+        rts
+dl_part_body:
+        move.l %d2,-(%sp)
+        move.l 8(%sp),%d2
+        jmp 0x4004a8aa

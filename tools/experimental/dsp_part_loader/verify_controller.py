@@ -14,5 +14,11 @@ def main():
                         'tools/experimental/dsp_part_loader/test_transfer.c',
                         '-o',str(binary)],cwd=ROOT,check=True)
         subprocess.run([str(binary)],check=True)
-    print('PASS: firmware controller acknowledgements, rejection, timeout, UI deferral and sequence wrap')
+        subprocess.run(['cc','-std=c99','-Wall','-Wextra','-Werror','-DDL_NATIVE_TEST',
+                        '-Imodules/dsp-loader-transfer',
+                        'modules/dsp-loader-transfer/selection.c',
+                        'tools/experimental/dsp_part_loader/test_selection.c',
+                        '-o',str(binary)],cwd=ROOT,check=True)
+        subprocess.run([str(binary)],check=True)
+    print('PASS: firmware controller acknowledgements, rejection, timeout, UI deferral and sequence wrap; FX/Part guards, deferred retry and context cancellation')
 if __name__=='__main__': main()

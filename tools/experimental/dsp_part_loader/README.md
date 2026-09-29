@@ -1,4 +1,4 @@
-# Part-scoped DSP loading: host-side foundation
+# Part-scoped DSP loading: experimental foundation
 
 This is a separate experiment on `codex/dsp-part-loader`. It is not imported by
 any shipping build and is not part of the Analog BD PR. The separate
@@ -24,7 +24,7 @@ Do not merge that loader into the Analog BD PR or use it as a general FX ABI.
 - Admission distinguishes steady memory exhaustion, steady processing exhaustion,
   temporary transition memory/fragmentation and transition processing exhaustion.
   Refusal leaves the running Part intact. `Refused.modal` supplies proposed UI
-  text; the isolated firmware transport probe has a UI-task modal, but no chooser admission hook yet.
+  text; the isolated firmware probe has existing-control guards and a UI-task modal, but uses a diagnostic backend.
 - Both affected cores must acknowledge preparation before a model commit. A
   cancelled or foreign plan cannot commit. Outgoing allocations remain reserved
   until explicit transition retirement; another transition is refused meanwhile.
@@ -126,9 +126,9 @@ voices after their state and tails settle, or sharing bus processing by design.
   integration of this planner. The default QUICK policy was used.
 - `python3 tools/verify/verify_docs.py`: passed.
 
-Logs and generated JSON/audio evidence: `out/dsp-part-loader/`. No native
-ColdFire planner, live transfer, modal or hardware switch has been implemented
-or measured in this first slice.
+Logs and generated JSON/audio evidence: `out/dsp-part-loader/`. This initial foundation did not include firmware integration. The transport
+and selection-guard additions below have since been measured; the native
+allocator and seamless activation remain unfinished.
 
 ## Firmware transport probe
 
@@ -152,3 +152,26 @@ shared helpers and native P placement need adapters. PLATE/DARK conservatively
 retain SPRING as a dependency; a future helper-level split can reduce that
 reservation once qualified. This prevents a new module from silently taking
 memory that a selected stock effect still uses.
+
+
+## Existing selection paths
+
+The transport test remix now guards the original stock FX1/FX2 and manual
+Part-selection setters before they write saved or live state. There are no new
+controls. An asynchronous backend interface supports prepare, poll, cancel and a post-setter commit notification;
+the current diagnostic adapter only admits the resident stock selection.
+Nine port scenarios qualify refusal, deferred replay and stale-context
+cancellation, including pattern/Part linkage. See the module README for exact
+seams and the automatic/project-load paths still missing. Do not confuse this
+adapter with a connected, working dynamic allocator.
+
+### Selection-guard evidence (29 September 2026)
+
+- `DL_CARD=out/analog-bassdrum/ui-gate/card.img make check REMIX=dsp-loader-transfer`: all runnable checks passed, including both image gates and nine selector scenarios. The general `verify_set` gate skipped because no `OT_PROJECT` was supplied; loader gates used the explicit card fixture.
+- `python3 -m unittest tools.experimental.dsp_part_loader.test_loader`: 12 tests passed.
+- `python3 modules/dsp-loader-transfer/generate.py --check`: generated assembly matched.
+- `python3 tools/verify/verify_docs.py`: 46 modules, 37 remixes, zero problems.
+
+Full check log: `out/dsp-part-loader/selection-final-check.log`. Refusal and
+readiness in the selector cases are injected diagnostic results. These results
+do not qualify actual allocation, automatic Part changes or audio continuity.

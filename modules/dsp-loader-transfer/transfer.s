@@ -222,6 +222,7 @@ dl_frame:
 	.globl	dl_ui
 	.type	dl_ui, @function
 dl_ui:
+	jsr dl_selection_tick
 	tst.l dl_modal_pending
 	jeq .L34
 	move.l dl_modal_pending,%d0

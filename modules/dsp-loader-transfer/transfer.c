@@ -3,6 +3,7 @@
  * Buffers are accessed via the uncached alias on ColdFire, by DMA and software.
  */
 #include "transfer.h"
+#include "selection.h"
 volatile uint16_t dl_tx[2][DL_WORDS]={{0}}, dl_rx[2][32]={{0}};
 volatile uint32_t dl_frames=0, dl_accepted[2]={0}, dl_rejected[2]={0}, dl_errors=0;
 volatile uint32_t dl_request_probe=0, dl_request_stage=0, dl_modal_pending=0, dl_modal_shown=0;
@@ -58,6 +59,7 @@ unsigned dl_frame(void) {
 }
 /* UI-task-only. A DMA interrupt must never call a popup function. */
 void dl_ui(void) {
+    dl_selection_tick();
     if(dl_modal_pending) {
         unsigned reason=dl_modal_pending;
         dl_modal_pending=0;

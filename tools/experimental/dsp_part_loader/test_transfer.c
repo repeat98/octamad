@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <string.h>
 #include "transfer.h"
+void dl_selection_tick(void) {}
 static unsigned messages;
 static const char *last_message;
 void dl_show_message(const char *text, unsigned duration) {

@@ -64,12 +64,37 @@ installed).
 table, 32 segments, linear between), a TPT state-variable low shelf, two
 first-order sections, the output gain. Every stage is first-order or a
 state-variable filter because the poles sit at 5, 13 and 53 Hz, where a
-24-bit direct-form biquad cannot place them.
+24-bit direct-form biquad cannot place them. Every recursive section ends
+in `macr`/`mpyr`: with truncating moves the -1/2 LSB bias through the 5 Hz
+poles put a -51 dB DC offset on the curve's input and -70 dBFS of DC on
+the output (found by the gate's float-model residual, fixed before it
+shipped anywhere).
 
-The gate (`tools/verify/verify_oxide.py`) holds the emulator's render to
-`design.fixed()`, the asm replayed on integers, at 0 LSB, and checks every
-coefficient immediate against the design and every instruction by
-disassembly.
+The sixteen multipliers a channel uses sit in a ring in the instance block
+(`r7+$20`), walked modulo 16 and loaded as the parallel move of the
+multiply before each use; fourteen are copied from the P table's tail by
+the first proc after init, IN and OUT are rewritten every block.
+
+| | words | per stereo sample |
+|---|---|---|
+| code | 157 | |
+| P table (curve, IN, OUT, ring) | 114 | |
+| `dsp_host` meter, worst block | | 158 instructions |
+| `cycle_count.py` | | 164 cycles (4 on one core: 656 of 3,120) |
+
+(The first version, coefficients as long immediates: 189 / 226.)
+
+The 24-bit engine against the float model: -93 dB residual on drums and
+noise at 0 dBFS, -82 dB at -12 dBFS; a level-independent floor of about
+-101 dBFS RMS on broadband input, mostly 20-200 Hz (-110 dBFS on a 1 kHz
+tone). Silence renders exact zeros. The plugin's own hiss, noise reduction
+off, is -88 dBFS.
+
+The gate (`tools/verify/verify_oxide.py`, in `make verify`) holds the
+emulator's render to `design.fixed()`, the asm replayed on integers, at 0
+LSB: 15 stereo renders (different material per channel, five knob
+settings, 16-frame blocks). It also checks the ring order against the
+design and every instruction by disassembly.
 
 - `dsp_asm` drops XY parallel moves beside an ALU op and emits the `su`
   form, even for the stock mixdown's own encoding (measured 29 Sep 2026;

@@ -86,10 +86,19 @@ dl_selection_commit:
 	clr.l current
 	rts
 	.size	dl_selection_commit, .-dl_selection_commit
-	.local	current
-	.comm	current,4,2
-	.globl	dl_probe_selection_result
+	.align	2
+	.globl	dl_residency_tick
+	.type	dl_residency_tick, @function
+dl_residency_tick:
+	rts
+	.size	dl_residency_tick, .-dl_residency_tick
 	.data
+	.align	2
+	.type	current, @object
+	.size	current, 4
+current:
+	.zero	4
+	.globl	dl_probe_selection_result
 	.align	2
 	.type	dl_probe_selection_result, @object
 	.size	dl_probe_selection_result, 4

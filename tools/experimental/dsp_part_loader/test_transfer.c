@@ -4,6 +4,7 @@
 #include <string.h>
 #include "transfer.h"
 void dl_selection_tick(void) {}
+void dl_residency_tick(void) {}
 static unsigned messages;
 static const char *last_message;
 void dl_show_message(const char *text, unsigned duration) {
@@ -45,5 +46,34 @@ int main(void) {
         ack(0,0,0); ack(1,0,1); dl_frame();
     }
     assert(dl_accepted[0]==65537 && dl_accepted[1]==65537 && dl_errors==4);
+    /* Real job protocol: chunking, both relocation directions and readback. */
+    assert(dl_command_start(0,DL_PROBE,0,0,0)); dl_frame();
+    ack(0,0,0); dl_rx[0][6]=0x1000; dl_rx[0][7]=DL_RUNTIME_WORDS;
+    dl_frame(); assert(dl_pool_base[0]==0x1000 && dl_job_status(0)==1); dl_job_release(0);
+    uint32_t words[25]; for(unsigned i=0;i<25;++i) words[i]=i+1;
+    uint16_t reloc[2]={1,0x8018};
+    struct dl_upload u={words,reloc,25,2,64};
+    assert(dl_upload_start(0,&u)); assert(!dl_upload_start(0,&u)); dl_frame();
+    assert(dl_tx[0][2]==DL_WRITE && dl_tx[0][4]==24 && dl_tx[0][5]==64);
+    for(unsigned chunk=0;chunk<2;++chunk) {
+        unsigned n=chunk ? 1:24; uint32_t sum=0;
+        for(unsigned i=0;i<n;++i) {
+            unsigned index=chunk*24+i;
+            uint32_t expected=words[index];
+            if(index==1) expected+=0x1040;
+            if(index==24) expected=(expected-0x1040)&0xffffff;
+            uint32_t sent=((uint32_t)dl_tx[0][8+2*i]<<8)|dl_tx[0][9+2*i];
+            assert(sent==expected); sum=(sum+sent)&0xffffff;
+        }
+        ack(0,0,0); dl_rx[0][4]=sum&65535; dl_rx[0][5]=sum>>16;
+        dl_frame();
+    }
+    assert(dl_job_status(0)==1); dl_job_release(0);
+    assert(!dl_command_start(0,DL_BIND,12,63,80));
+    assert(dl_command_start(0,DL_BIND,12,64,80)); dl_frame();
+    ack(0,0,0); dl_frame(); assert(dl_job_status(0)==1); dl_job_release(0);
+    assert(dl_upload_start(0,&u)); dl_frame();
+    ack(0,0,0); dl_rx[0][4]=0; dl_rx[0][5]=0; dl_frame();
+    assert(dl_job_status(0)==-1); dl_job_release(0); /* corrupted readback */
     return 0;
 }

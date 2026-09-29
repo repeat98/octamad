@@ -4,11 +4,11 @@
 #include "selection.h"
 #include "transfer.h"
 #include <stddef.h>
-volatile uint32_t dl_selection_requested, dl_selection_completed;
-volatile uint32_t dl_selection_cancelled, dl_selection_refused;
-static struct dl_selection queued;
-static uint32_t serial, token, applying;
-static unsigned pending, replay;
+volatile uint32_t dl_selection_requested=0, dl_selection_completed=0;
+volatile uint32_t dl_selection_cancelled=0, dl_selection_refused=0;
+static struct dl_selection queued={0};
+static uint32_t serial=0, token=0, applying=0;
+static unsigned pending=0, replay=0;
 #ifdef DL_NATIVE_TEST
 extern unsigned dl_selection_capture(unsigned,unsigned,struct dl_selection *);
 extern void dl_selection_apply(unsigned,unsigned);

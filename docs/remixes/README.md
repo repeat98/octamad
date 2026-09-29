@@ -33,6 +33,7 @@ One module each, for that module's gates: `make check REMIX=<name>`.
 | [`bus`](../../remixes/test/bus/README.md) | The plain two-server image: BusVerb + BusDelay + send bus + tempo sync. | on hardware: under earlier names |
 | [`cfmeter`](../../remixes/test/cfmeter/README.md) | octatrick-usb + CF METER on T8's FX2: ColdFire idle time and frame-interrupt duration, over USB. | port-gated: the readout chain under the port |
 | [`cfmeter-port`](../../remixes/test/cfmeter-port/README.md) | cfmeter without the idle loop: the port gate for the readout chain and the interrupt timing. | port-gated: the readout chain under the port |
+| [`dsp-loader-runtime`](../../remixes/test/dsp-loader-runtime/README.md) | Experimental real residency and dispatch qualification. | port-gated: Emulator only; not for flashing. |
 | [`dsp-loader-transfer`](../../remixes/test/dsp-loader-transfer/README.md) | Two-core dynamic-loader transport qualification. | port-gated: Both-core DMA, bounded P staging and UI message; not for flashing. |
 | [`euclid`](../../remixes/test/euclid/README.md) | Euclid rhythmic modulation: 12 dB LP/BP/HP or AMP, both FX slots. | local render: the module's render gates |
 | [`lofi-amf-fix`](../../remixes/test/lofi-amf-fix/README.md) | Reference minimal build: the LO-FI AMF mpysu->mpyuu fix, alone. | `make check` |

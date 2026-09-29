@@ -5,169 +5,569 @@
 	.align	2
 	.type	packet, @function
 packet:
-	lea (-28,%sp),%sp
-	movem.l #1276,(%sp)
-	move.l 32(%sp),%d4
-	mvz.w %d4,%d1
-	lsl.l #7,%d1
-	move.l %d1,%a0
+	lea (-76,%sp),%sp
+	movem.l #31996,(%sp)
+	move.l 80(%sp),%d3
+	move.l 84(%sp),%d6
+	mvz.w %d3,%d4
+	lsl.l #7,%d4
+	move.l %d4,%a0
 	add.l #dl_tx+134217728,%a0
-	move.l %d1,%d2
-	move.l %a0,%a2
-	add.l #dl_tx+134217856,%d2
+	move.l %d4,%d0
 	move.l %a0,%a1
+	move.l %a0,54(%sp)
+	add.l #dl_tx+134217856,%d0
 .L2:
 	clr.w (%a1)+
-	cmp.l %a1,%d2
+	cmp.l %d0,%a1
 	jne .L2
 	lea sequence,%a1
-	move.w (%a1,%d4.l*2),%d0
-	addq.l #1,%d0
-	move.w %d0,%d5
-	jeq .L6
-	move.w %d0,%d6
+	move.w (%a1,%d3.l*2),%d1
+	addq.l #1,%d1
+	move.w %d1,%a2
+	move.w %d1,%d2
+	jeq .L14
+	move.w %d2,(%a1,%d3.l*2)
+	moveq #24,%d2
 	move.w #19524,(%a0)
-	move.w %d5,2(%a0)
-	move.w 38(%sp),4(%a0)
-	move.w %d4,6(%a0)
-	mvz.w %d0,%d3
-	move.l %d4,%d0
-	add.l #1193046,%d0
-	add.l #dl_tx+134217744,%d1
-	add.l %d3,%d0
-	move.w %d6,(%a1,%d4.l*2)
-	moveq #24,%d6
-	move.l %d0,%d7
-	add.l #127730520,%d7
-	move.w %d6,8(%a0)
+	mvz.w %d1,%d5
+	move.w %a2,2(%a0)
+	move.w %d6,4(%a0)
+	move.w %d3,6(%a0)
+	move.l %d3,%d1
+	add.l #1193046,%d1
+	add.l #dl_tx+134217744,%d4
+	add.l %d5,%d1
+	move.l %d1,%a3
+	add.l #127730520,%a3
+	move.w %d2,8(%a0)
+	move.l %d4,%d2
 .L4:
-	move.l %d0,%d6
-	lsr.l #8,%d6
-	move.l %d1,%a1
-	move.l %d0,%d3
-	mvz.b %d3,%d3
-	addq.l #4,%d1
-	move.w %d6,(%a1)+
-	add.l #5322105,%d0
-	move.w %d3,(%a1)
-	cmp.l %d0,%d7
+	move.l %d1,%d7
+	lsr.l #8,%d7
+	move.l %d2,%a1
+	move.l %d1,%d5
+	mvz.b %d5,%d5
+	addq.l #4,%d2
+	move.w %d7,(%a1)+
+	add.l #5322105,%d1
+	move.w %d5,(%a1)
+	cmp.l %a3,%d1
 	jne .L4
-	clr.w %d1
+	moveq #30,%d1
+	muls.l %d3,%d1
+	move.l %d1,%a1
+	add.l #jobs,%a1
+	move.l %d1,50(%sp)
+	mvz.w 28(%a1),%d1
+	subq.l #2,%d1
+	tst.l %d1
+	jeq .L25
 .L5:
-	move.w (%a0)+,%d0
-	add.l %d1,%d0
-	move.w %d0,%d1
-	cmp.l %a0,%d2
-	jne .L5
-	neg.l %d0
-	move.w %d0,12(%a2)
+	sub.l %a1,%a1
+.L13:
+	move.w (%a0)+,%d1
+	add.l %a1,%d1
+	move.w %d1,%a1
+	cmp.l %d0,%a0
+	jne .L13
 	clr.w %d0
+	move.l 54(%sp),%a0
+	neg.l %d1
+	move.w %d1,12(%a0)
 	lea pending,%a0
-	move.w %d5,(%a0,%d4.l*2)
+	move.w %a2,(%a0,%d3.l*2)
 	lea age,%a0
-	move.w %d0,(%a0,%d4.l*2)
-	movem.l (%sp),#1276
-	lea (28,%sp),%sp
+	move.w %d0,(%a0,%d3.l*2)
+	movem.l (%sp),#31996
+	lea (76,%sp),%sp
 	rts
-.L6:
-	moveq #1,%d6
-	moveq #1,%d5
+.L14:
+	moveq #1,%d2
+	move.w #1,%a2
 	move.w #19524,(%a0)
-	mov3q.l #1,%d3
-	move.l %d4,%d0
-	add.l #1193046,%d0
-	add.l %d3,%d0
-	move.l %d0,%d7
-	add.l #dl_tx+134217744,%d1
-	add.l #127730520,%d7
-	move.w %d6,(%a1,%d4.l*2)
-	moveq #24,%d6
-	move.w %d5,2(%a0)
-	move.w 38(%sp),4(%a0)
-	move.w %d4,6(%a0)
-	move.w %d6,8(%a0)
+	mov3q.l #1,%d5
+	move.l %d3,%d1
+	add.l #1193046,%d1
+	add.l #dl_tx+134217744,%d4
+	add.l %d5,%d1
+	move.l %d1,%a3
+	add.l #127730520,%a3
+	move.w %d2,(%a1,%d3.l*2)
+	moveq #24,%d2
+	move.w %a2,2(%a0)
+	move.w %d6,4(%a0)
+	move.w %d3,6(%a0)
+	move.w %d2,8(%a0)
+	move.l %d4,%d2
 	jra .L4
+.L25:
+	mov3q.l #3,%d1
+	cmp.l %d6,%d1
+	jeq .L26
+	subq.l #4,%d6
+	mov3q.l #1,%d1
+	cmp.l %d6,%d1
+	jcs .L5
+	move.w 22(%a1),8(%a0)
+	move.w 24(%a1),10(%a0)
+	move.w 26(%a1),14(%a0)
+	sub.l %a1,%a1
+	jra .L13
+.L26:
+	move.w 18(%a1),%d1
+	mvz.w 8(%a1),%d2
+	move.l %d2,%d6
+	mvz.w %d1,%d5
+	sub.l %d5,%d6
+	move.l %d6,58(%sp)
+	moveq #24,%d6
+	cmp.l 58(%sp),%d6
+	jcc .L7
+	move.l %d6,58(%sp)
+.L7:
+	move.l 50(%sp),%a1
+	add.l #jobs,%a1
+	clr.l 14(%a1)
+	move.w 12(%a1),%a4
+	move.w 60(%sp),8(%a0)
+	add.l %a4,%d1
+	move.w %d1,10(%a0)
+	cmp.l %d2,%d5
+	jeq .L5
+	move.w 10(%a1),%d7
+	mvz.w %a4,%d1
+	move.l 50(%sp),%a3
+	addq.l #4,%a1
+	move.l %a1,46(%sp)
+	lea jobs,%a1
+	clr.l %d6
+	move.l %d1,%a4
+	move.l %d5,%d2
+	move.w %a2,66(%sp)
+	move.l (%a1,%a3.l),%a6
+	move.l 46(%sp),%a2
+	sub.l %a3,%a3
+	mvz.w %d7,%d1
+	lea (%a6,%d2.l*4),%a6
+	lea dl_pool_base,%a5
+	move.l %d0,68(%sp)
+	add.l %d1,%d1
+	move.l %a0,72(%sp)
+	move.l %d1,62(%sp)
+.L12:
+	move.l (%a6)+,%d2
+	tst.w %d7
+	jeq .L8
+	move.l (%a2),%a0
+	move.l 62(%sp),%a1
+	add.l %a0,%a1
+.L11:
+	move.w (%a0)+,%d0
+	move.l %d0,%d1
+	and.l #32767,%d1
+	cmp.l %d1,%d5
+	jeq .L27
+	cmp.l %a1,%a0
+	jne .L11
+.L8:
+	move.l %d2,%d0
+	move.l %d4,%a0
+	and.l #16777215,%d0
+	mvz.b %d2,%d2
+	addq.l #1,%a3
+	addq.l #4,%d4
+	addq.l #1,%d5
+	move.l %d0,%d1
+	lsr.l #8,%d1
+	add.l %d0,%d6
+	and.l #16777215,%d6
+	move.w %d1,(%a0)+
+	move.w %d2,(%a0)
+	cmp.l 58(%sp),%a3
+	jcs .L12
+	move.l 50(%sp),%a3
+	lea jobs,%a1
+	move.w 66(%sp),%a2
+	move.l %d6,14(%a1,%a3.l)
+	move.l 68(%sp),%d0
+	sub.l %a1,%a1
+	move.l 72(%sp),%a0
+	jra .L13
+.L27:
+	move.l %a4,%d1
+	add.l (%a5,%d3.l*4),%d1
+	tst.w %d0
+	jlt .L28
+	add.l %d1,%d2
+	cmp.l %a1,%a0
+	jne .L11
+	jra .L8
+.L28:
+	sub.l %d1,%d2
+	cmp.l %a1,%a0
+	jne .L11
+	jra .L8
 	.size	packet, .-packet
+	.align	2
+	.globl	dl_upload_start
+	.type	dl_upload_start, @function
+dl_upload_start:
+	lea (-32,%sp),%sp
+	mov3q.l #1,%d1
+	move.l %a2,-(%sp)
+	move.l %d2,-(%sp)
+	move.l 44(%sp),%d0
+	cmp.l %d0,%d1
+	jcs .L30
+	moveq #30,%d1
+	muls.l %d0,%d1
+	lea jobs,%a1
+	tst.w 28(%a1,%d1.l)
+	jne .L30
+	lea dl_pool_base,%a0
+	tst.l (%a0,%d0.l*4)
+	jeq .L30
+	tst.l 48(%sp)
+	jeq .L30
+	move.l 48(%sp),%a0
+	move.l (%a0),22(%sp)
+	tst.l 22(%sp)
+	jeq .L30
+	move.w 8(%a0),%d0
+	move.w %d0,26(%sp)
+	jeq .L30
+	move.w 12(%a0),%d2
+	mvz.w %d2,%d0
+	move.w %d2,32(%sp)
+	moveq #63,%d2
+	cmp.l %d0,%d2
+	jcc .L30
+	mvz.w 26(%sp),%d2
+	move.l %d2,14(%sp)
+	add.l %d2,%d0
+	cmp.l #1408,%d0
+	jgt .L30
+	move.w 10(%a0),%d0
+	move.w %d0,34(%sp)
+	jeq .L33
+	tst.l 4(%a0)
+	jeq .L30
+.L33:
+	move.l 22(%sp),%a0
+	clr.l %d0
+.L34:
+	addq.l #4,%a0
+	addq.l #1,%d0
+	move.l #16777215,%d2
+	cmp.l -4(%a0),%d2
+	jcs .L30
+	cmp.l 14(%sp),%d0
+	jne .L34
+	move.l 48(%sp),%a0
+	move.l 4(%a0),%a0
+	move.l %a0,36(%sp)
+	tst.w 34(%sp)
+	jeq .L35
+	move.w (%a0),%d0
+	and.l #32767,%d0
+	cmp.l 14(%sp),%d0
+	jcc .L30
+	mvz.w 34(%sp),%d0
+	addq.l #2,%a0
+	clr.l 10(%sp)
+	move.l %d0,28(%sp)
+.L36:
+	move.l 28(%sp),%d0
+	addq.l #1,10(%sp)
+	cmp.l 10(%sp),%d0
+	jeq .L35
+	move.w (%a0),%d0
+	addq.l #2,%a0
+	and.l #32767,%d0
+	cmp.l 14(%sp),%d0
+	jcc .L30
+	move.w -4(%a0),%d2
+	and.l #32767,%d2
+	cmp.l %d0,%d2
+	jcs .L36
+.L30:
+	move.l (%sp)+,%d2
+	clr.l %d0
+	move.l (%sp)+,%a2
+	lea (32,%sp),%sp
+	rts
+.L35:
+	lea (%a1,%d1.l),%a0
+	move.w 26(%sp),8(%a0)
+	move.w 34(%sp),10(%a0)
+	move.w 32(%sp),12(%a0)
+	move.l 22(%sp),%d0
+	move.l 36(%sp),4(%a0)
+	move.l %d0,(%a1,%d1.l)
+	mov3q.l #3,18(%a1,%d1.l)
+	moveq #1,%d1
+	move.l (%sp)+,%d2
+	mov3q.l #1,%d0
+	move.l (%sp)+,%a2
+	move.w %d1,28(%a0)
+	lea (32,%sp),%sp
+	rts
+	.size	dl_upload_start, .-dl_upload_start
+	.align	2
+	.globl	dl_command_start
+	.type	dl_command_start, @function
+dl_command_start:
+	mov3q.l #1,%d0
+	cmp.l 4(%sp),%d0
+	jcs .L63
+	move.l 4(%sp),%d0
+	moveq #30,%d1
+	lea jobs,%a0
+	muls.l %d1,%d0
+	tst.w 28(%a0,%d0.l)
+	jne .L63
+	moveq #31,%d1
+	cmp.l 12(%sp),%d1
+	jcs .L63
+	mov3q.l #1,%d1
+	cmp.l 8(%sp),%d1
+	jeq .L64
+	mov3q.l #4,%d1
+	cmp.l 8(%sp),%d1
+	jeq .L65
+	mov3q.l #5,%d1
+	cmp.l 8(%sp),%d1
+	jeq .L64
+.L63:
+	clr.l %d0
+	rts
+.L65:
+	move.l 16(%sp),%d1
+	add.l #-64,%d1
+	cmp.l #1343,%d1
+	jhi .L63
+	move.l 20(%sp),%d1
+	add.l #-64,%d1
+	cmp.l #1343,%d1
+	jhi .L63
+.L64:
+	add.l %d0,%a0
+	move.w 10(%sp),20(%a0)
+	move.w 14(%sp),22(%a0)
+	move.w 18(%sp),24(%a0)
+	move.w 22(%sp),26(%a0)
+	moveq #1,%d0
+	move.w %d0,28(%a0)
+	mov3q.l #1,%d0
+	rts
+	.size	dl_command_start, .-dl_command_start
+	.align	2
+	.globl	dl_job_status
+	.type	dl_job_status, @function
+dl_job_status:
+	mov3q.l #1,%d0
+	cmp.l 4(%sp),%d0
+	jcs .L74
+	move.l 4(%sp),%d0
+	moveq #30,%d1
+	muls.l %d1,%d0
+	move.l %d0,%a0
+	add.l #jobs+28,%a0
+	mvz.w (%a0),%d0
+	mov3q.l #3,%d1
+	cmp.l %d0,%d1
+	jeq .L75
+	mov3q.l #4,%d1
+	cmp.l %d0,%d1
+	jeq .L74
+	tst.l %d0
+	jeq .L76
+	clr.l %d0
+	rts
+.L75:
+	mov3q.l #1,%d0
+	rts
+.L74:
+	mov3q.l #-1,%d0
+	rts
+.L76:
+	moveq #-2,%d0
+	rts
+	.size	dl_job_status, .-dl_job_status
+	.align	2
+	.globl	dl_job_release
+	.type	dl_job_release, @function
+dl_job_release:
+	mov3q.l #1,%d0
+	cmp.l 4(%sp),%d0
+	jcc .L86
+.L82:
+	rts
+.L86:
+	move.l 4(%sp),%d0
+	moveq #30,%d1
+	muls.l %d1,%d0
+	mov3q.l #2,%d1
+	move.l %d0,%a0
+	add.l #jobs+28,%a0
+	mvz.w (%a0),%d0
+	cmp.l %d0,%d1
+	jcc .L82
+	clr.w (%a0)
+	rts
+	.size	dl_job_release, .-dl_job_release
 	.align	2
 	.globl	dl_frame
 	.type	dl_frame, @function
 dl_frame:
-	lea (-20,%sp),%sp
+	lea (-44,%sp),%sp
 	clr.l %d0
-	movem.l #3084,(%sp)
+	movem.l #15372,(%sp)
 	addq.l #1,dl_frames
 	lea dl_tx+134217728,%a1
 	clr.l %d1
 	lea dl_rx+134217728,%a0
-	lea pending,%a2
-.L17:
-	move.w (%a2,%d0.l),%d2
-	jeq .L13
+	lea jobs+8,%a2
+	lea pending,%a3
+.L104:
+	move.w (%a3,%d0.l),%d2
+	jeq .L88
 	mvz.w (%a0),%d3
 	cmp.l #16715,%d3
-	jeq .L30
-.L14:
-	lea age,%a3
-	move.w (%a3,%d0.l),%d2
+	jeq .L150
+.L89:
+	lea age,%a4
+	move.w (%a4,%d0.l),%d2
 	addq.l #1,%d2
 	mvz.w %d2,%d3
-	move.w %d2,(%a3,%d0.l)
+	move.w %d2,(%a4,%d0.l)
 	moveq #63,%d2
 	cmp.l %d3,%d2
-	jcs .L31
-.L13:
+	jcs .L151
+.L88:
 	addq.l #1,%d1
 	lea (128,%a1),%a1
 	subq.l #2,%d0
 	lea (64,%a0),%a0
+	lea (30,%a2),%a2
 	tst.l %d0
-	jne .L23
-	move.l requests,%d3
+	jne .L120
+	lea jobs+20,%a3
+	lea pending+2,%a2
+	tst.w pending.l
+	jne .L134
+	clr.l %d2
+	moveq #30,%d0
+	muls.l %d2,%d0
+	move.l %d0,%a0
+	add.l #jobs+28,%a0
+	mvz.w (%a0),%d0
+	subq.l #1,%d0
+	tst.l %d0
+	jeq .L152
+.L105:
+	subq.l #1,%d2
+	tst.l %d2
+	jeq .L107
+.L134:
+	tst.w (%a2)
+	jne .L107
+	mov3q.l #1,%d2
+	moveq #30,%d0
+	addq.l #2,%a2
+	muls.l %d2,%d0
+	lea (30,%a3),%a3
+	move.l %d0,%a0
+	add.l #jobs+28,%a0
+	mvz.w (%a0),%d0
+	subq.l #1,%d0
+	tst.l %d0
+	jne .L105
+	jra .L152
+.L107:
+	move.l requests,%d1
 	move.l stages,%d2
-	cmp.l dl_request_probe.l,%d3
-	jeq .L18
+	cmp.l dl_request_probe.l,%d1
+	jeq .L109
 	move.l pending,%d0
 	tst.l %d0
-	jeq .L32
+	jeq .L153
 	move.l dl_request_stage,%d1
-.L21:
+.L113:
 	tst.l %d0
 	sne %d0
-	movem.l (%sp),#3084
+	movem.l (%sp),#15372
 	mvs.b %d0,%d0
 	neg.l %d0
-	lea (20,%sp),%sp
+	lea (44,%sp),%sp
 	rts
-.L23:
+.L120:
 	mov3q.l #2,%d0
-	jra .L17
-.L31:
-	addq.l #1,dl_errors
+	jra .L104
+.L151:
 	clr.w %d3
+	addq.l #1,dl_errors
+	moveq #30,%d2
+	muls.l %d1,%d2
+	move.w %d3,(%a3,%d0.l)
 	clr.w (%a1)
-	move.w %d3,(%a2,%d0.l)
+	move.l %d2,%a4
+	add.l #jobs+28,%a4
+	mvz.w (%a4),%d2
+	subq.l #2,%d2
+	tst.l %d2
+	jeq .L154
 	mov3q.l #1,dl_modal_pending
-	jra .L13
-.L30:
+	jra .L88
+.L150:
 	mvz.w %d2,%d2
 	mvz.w 2(%a0),%d3
 	cmp.l %d2,%d3
-	jne .L14
+	jne .L89
 	tst.w 4(%a0)
-	jne .L15
+	jne .L90
 	mvz.w 6(%a0),%d2
 	cmp.l %d2,%d1
-	jeq .L33
-.L15:
-	clr.w %d2
-	lea dl_rejected,%a3
-	addq.l #1,(%a3,%d1.l*4)
+	jeq .L155
+.L90:
+	moveq #30,%d2
+	muls.l %d1,%d2
+	lea jobs,%a4
+	move.w 28(%a4,%d2.l),%a5
+	lea 28(%a4,%d2.l),%a4
+	move.l %a4,%d2
+	move.l %d2,%a5
+	lea dl_rejected,%a4
+	addq.l #1,(%a4,%d1.l*4)
 	addq.l #1,dl_errors
 	mov3q.l #1,dl_modal_pending
+	mvz.w (%a5),%d3
+	move.l %d3,%a4
+	mov3q.l #2,%d3
+	cmp.l %a4,%d3
+	jeq .L156
+.L97:
+	clr.w %d2
+	move.w %d2,(%a3,%d0.l)
 	clr.w (%a1)
-	move.w %d2,(%a2,%d0.l)
-	jra .L13
-.L32:
+	jra .L88
+.L152:
+	move.w #2,(%a0)
+	mvz.w (%a3),%d0
+	move.l %d0,-(%sp)
+	move.l %d2,-(%sp)
+	jsr packet
+	addq.l #8,%sp
+	subq.l #1,%d2
+	tst.l %d2
+	jeq .L107
+	jra .L134
+.L153:
+	tst.w jobs+28.l
+	jne .L111
+	tst.w jobs+58.l
+	jne .L111
 	mov3q.l #1,-(%sp)
 	clr.l -(%sp)
 	lea dl_request_probe,%a0
@@ -178,37 +578,169 @@ dl_frame:
 	mov3q.l #1,-(%sp)
 	jsr (%a2)
 	lea (16,%sp),%sp
-.L18:
+.L109:
 	move.l pending,%d0
 	cmp.l dl_request_stage.l,%d2
-	jeq .L21
+	jeq .L113
 	tst.l %d0
-	jne .L21
+	jne .L113
+.L117:
+	tst.w jobs+28.l
+	jne .L116
+	tst.w jobs+58.l
+	jeq .L157
+.L116:
+	clr.l %d0
+	tst.l %d0
+	sne %d0
+	movem.l (%sp),#15372
+	mvs.b %d0,%d0
+	neg.l %d0
+	lea (44,%sp),%sp
+	rts
+.L154:
+	move.w #4,(%a4)
+	mov3q.l #1,dl_modal_pending
+	jra .L88
+.L111:
+	cmp.l dl_request_stage.l,%d2
+	jne .L117
+	tst.l %d0
+	sne %d0
+	movem.l (%sp),#15372
+	mvs.b %d0,%d0
+	neg.l %d0
+	lea (44,%sp),%sp
+	rts
+.L157:
 	mov3q.l #2,-(%sp)
 	clr.l -(%sp)
-	lea dl_request_stage,%a0
-	move.l (%a0),stages
+	lea dl_request_stage,%a4
 	lea packet,%a2
+	move.l (%a4),stages
 	jsr (%a2)
 	mov3q.l #2,-(%sp)
 	mov3q.l #1,-(%sp)
 	jsr (%a2)
 	lea (16,%sp),%sp
 	move.l pending,%d0
-	movem.l (%sp),#3084
+	movem.l (%sp),#15372
 	tst.l %d0
 	sne %d0
 	mvs.b %d0,%d0
 	neg.l %d0
-	lea (20,%sp),%sp
+	lea (44,%sp),%sp
 	rts
-.L33:
+.L156:
 	clr.w %d2
-	lea dl_accepted,%a3
-	addq.l #1,(%a3,%d1.l*4)
+	move.w #4,(%a5)
+	move.w %d2,(%a3,%d0.l)
 	clr.w (%a1)
-	move.w %d2,(%a2,%d0.l)
-	jra .L13
+	jra .L88
+.L155:
+	moveq #30,%d2
+	muls.l %d1,%d2
+	lea jobs,%a4
+	mvz.w 28(%a4,%d2.l),%d3
+	move.l %d3,24(%sp)
+	mov3q.l #2,%d3
+	cmp.l 24(%sp),%d3
+	jeq .L158
+.L91:
+	lea dl_accepted,%a5
+	addq.l #1,(%a5,%d1.l*4)
+	tst.w 12(%a0)
+	jeq .L94
+	mvz.w 12(%a0),%d3
+	cmp.l #8191,%d3
+	jhi .L94
+	mvz.w 14(%a0),%d3
+	cmp.l #1408,%d3
+	jeq .L98
+.L94:
+	mvz.w 28(%a4,%d2.l),%d3
+	move.l %d3,24(%sp)
+	mov3q.l #2,%d3
+	cmp.l 24(%sp),%d3
+	jne .L97
+	move.w 12(%a2),%a5
+	mvz.w %a5,%d3
+	move.w %a5,24(%sp)
+	move.l %d3,28(%sp)
+	mov3q.l #3,%d3
+	cmp.l 28(%sp),%d3
+	jeq .L159
+	moveq #3,%d3
+	move.w %d3,28(%a4,%d2.l)
+	clr.w %d2
+	move.w %d2,(%a3,%d0.l)
+	clr.w (%a1)
+	jra .L88
+.L158:
+	mvz.w 12(%a2),%d3
+	move.l %d3,24(%sp)
+	mov3q.l #3,%d3
+	cmp.l 24(%sp),%d3
+	jne .L91
+	move.w 10(%a0),%d3
+	move.w %d3,26(%sp)
+	mvz.w 8(%a0),%d3
+	move.l %d3,28(%sp)
+	move.w 26(%sp),%d3
+	swap %d3
+	clr.w %d3
+	or.l 28(%sp),%d3
+	cmp.l 6(%a2),%d3
+	jeq .L91
+	lea 28(%a4,%d2.l),%a4
+	move.l %a4,%d2
+	move.l %d2,%a5
+	lea dl_rejected,%a4
+	addq.l #1,(%a4,%d1.l*4)
+	addq.l #1,dl_errors
+	mov3q.l #1,dl_modal_pending
+	mvz.w (%a5),%d3
+	move.l %d3,%a4
+	mov3q.l #2,%d3
+	cmp.l %a4,%d3
+	jne .L97
+	jra .L156
+.L98:
+	mvz.w 12(%a0),%d3
+	lea dl_pool_base,%a5
+	move.l %d3,(%a5,%d1.l*4)
+	jra .L94
+.L159:
+	move.w 10(%a2),%a5
+	mvz.w (%a2),%d3
+	move.l %d3,36(%sp)
+	mvz.w %a5,%d3
+	move.w %a5,34(%sp)
+	move.l %d3,40(%sp)
+	move.l 36(%sp),%d3
+	sub.l 40(%sp),%d3
+	move.l %d3,28(%sp)
+	moveq #24,%d3
+	cmp.l 28(%sp),%d3
+	jcc .L101
+	move.l %d3,28(%sp)
+.L101:
+	move.w 34(%sp),%a5
+	add.l 28(%sp),%a5
+	mvz.w %a5,%d3
+	move.l %a5,28(%sp)
+	move.w 30(%sp),10(%a2)
+	cmp.l 36(%sp),%d3
+	jeq .L102
+	move.w #1,%a5
+	move.w %a5,24(%sp)
+.L102:
+	move.w 24(%sp),%d3
+	move.w %d3,28(%a4,%d2.l)
+	clr.w %d2
+	move.w %d2,(%a3,%d0.l)
+	clr.w (%a1)
+	jra .L88
 	.size	dl_frame, .-dl_frame
 	.section	.rodata.str1.1,"aMS",@progbits,1
 .LC0:
@@ -223,40 +755,52 @@ dl_frame:
 	.type	dl_ui, @function
 dl_ui:
 	jsr dl_selection_tick
+	jsr dl_residency_tick
 	tst.l dl_modal_pending
-	jeq .L34
+	jeq .L160
 	move.l dl_modal_pending,%d0
 	mov3q.l #2,%d1
 	clr.l dl_modal_pending
 	addq.l #1,dl_modal_shown
 	cmp.l %d0,%d1
-	jeq .L37
+	jeq .L163
 	subq.l #3,%d0
 	tst.l %d0
-	jeq .L44
+	jeq .L170
 	pea 48.w
 	move.l #.LC0,%d0
 	move.l %d0,-(%sp)
 	jsr 1074111160
 	addq.l #8,%sp
-.L34:
+.L160:
 	rts
-.L37:
+.L163:
 	pea 48.w
 	move.l #.LC1,%d0
 	move.l %d0,-(%sp)
 	jsr 1074111160
 	addq.l #8,%sp
-	jra .L34
-.L44:
+	jra .L160
+.L170:
 	pea 48.w
 	move.l #.LC2,%d0
 	move.l %d0,-(%sp)
 	jsr 1074111160
 	addq.l #8,%sp
-	jra .L34
+	jra .L160
 	.size	dl_ui, .-dl_ui
 	.data
+	.align	2
+	.type	jobs, @object
+	.size	jobs, 60
+jobs:
+	.zero	60
+	.globl	dl_pool_base
+	.align	2
+	.type	dl_pool_base, @object
+	.size	dl_pool_base, 8
+dl_pool_base:
+	.zero	8
 	.align	2
 	.type	stages, @object
 	.size	stages, 4

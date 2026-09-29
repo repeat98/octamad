@@ -1,12 +1,18 @@
-# Part-scoped DSP loading: experimental foundation
+# Part-scoped DSP loading: experimental runtime
 
 This is a separate experiment on `codex/dsp-part-loader`. It is not imported by
 any shipping build and is not part of the Analog BD PR. The separate
 `dsp-loader-transfer` test remix exercises firmware DMA and a bounded P staging
-area; it does not switch or execute uploaded code. The earlier source-packet loader remains on `codex/analog-bd-dynamic-engines`.
+area; it does not switch or execute uploaded code. The separate
+`dsp-loader-runtime` remix now connects a real P allocator, verified uploads and
+stock dispatch binding for three stock effects and Character. It still retains
+static originals as fallback; see the runtime boundary and evidence below. The earlier source-packet loader remains on `codex/analog-bd-dynamic-engines`.
 Do not merge that loader into the Analog BD PR or use it as a general FX ABI.
 
-## Implemented
+## Package/planner model
+
+This section describes the broader host-side model. The connected firmware
+backend is narrower and is documented under Real firmware residency runtime.
 
 - Immutable version-1 packages: 24-bit P/X/Y sections, aligned placement,
   explicit full-word relocations, init/proc offsets, source/content identities,
@@ -53,7 +59,10 @@ both payloads against two relocated copies. Its P origins are emulator test
 locations, not proposed hardware allocations. It never rewrites running code.
 Run it serially with other builds in this worktree; it restores the prior image.
 
-## Transition contract
+## Target transition contract
+
+The firmware backend does not yet satisfy the full pre-publication contract on
+automatic paths; its current static fallback is explicit below.
 
 1. Validate the requested Part, package identities, slot support and resource
    evidence. Account for any dependencies before allocating.
@@ -61,7 +70,7 @@ Run it serially with other builds in this worktree; it restores the prior image.
    code/tables/state in the remaining holes. Never compact live code or delay
    lines. Current first-fit placement is conservative and can reject a layout
    that a more expensive packer could fit.
-3. A future transport uploads and verifies staged data without overwriting live
+3. Transport uploads and verifies staged data without overwriting live
    allocations. Acknowledgement must cover both code and staged dispatch/state.
 4. A future audio scheduler switches affected cores at the same agreed block
    boundary, retaining outgoing instances for the crossfade/tail policy.
@@ -81,7 +90,7 @@ explicit operation later. Preloading the next Part, or the union of a bank's
 Parts when it fits, reduces the number of transitions needing transfers. Neither
 strategy guarantees arbitrary instantaneous switches at a full DSP budget.
 
-## Next steps before firmware integration
+## Remaining integration requirements
 
 - Measure and declare resident P/X/Y ranges and cycle reserves on both cores;
   stock memory that merely looks empty at boot is not an available pool.
@@ -90,12 +99,12 @@ strategy guarantees arbitrary instantaneous switches at a full DSP budget.
 - Verify relocation through execution on both payloads, preserving r7 state and
   firmware register contracts. Four assembly origins are useful evidence, not
   proof that every address is executable or every absolute dependency relocated.
-- Implement a general transfer/dispatch protocol outside source-render calls,
-  with bounded per-block transfer work, integrity checks, cancellation, rollback
-  and a coordinated activation handshake. Model acknowledgement alone does not
-  prove an atomic cross-core hardware switch.
-- Add the ColdFire selection guard and info modal before changing a saved/live
-  Part. Include project load, Part copy/reload and both FX chooser paths.
+- Extend the implemented bounded P transport to the remaining ABI resources,
+  with coordinated activation for different algorithms. Verified per-core
+  relocation does not prove an atomic cross-core hardware switch.
+- Extend the existing ColdFire FX/manual-Part guards to all automatic
+  pre-publication paths, including project load and Part copy/reload. The live
+  ID observer follows those changes but does not guard their publication.
 - Measure dry/main audio during switching, retained tails, repeated edits and
   failed transfers under full audio load; qualify on hardware.
 - Extend the ABI with per-instance delay-buffer sizes/alignment and lifecycle
@@ -128,7 +137,9 @@ voices after their state and tails settle, or sharing bus processing by design.
 
 Logs and generated JSON/audio evidence: `out/dsp-part-loader/`. This initial foundation did not include firmware integration. The transport
 and selection-guard additions below have since been measured; the native
-allocator and seamless activation remain unfinished.
+allocator and runtime additions are described below. Seamless relocation has
+emulator evidence; reclaiming original code still requires pre-publication
+guards on automatic paths.
 
 ## Firmware transport probe
 
@@ -175,3 +186,64 @@ adapter with a connected, working dynamic allocator.
 Full check log: `out/dsp-part-loader/selection-final-check.log`. Refusal and
 readiness in the selector cases are injected diagnostic results. These results
 do not qualify actual allocation, automatic Part changes or audio continuity.
+
+## Real firmware residency runtime
+
+The isolated `dsp-loader-runtime` remix links the freestanding C allocator and
+transport backend instead of the diagnostic selector adapter. It allocates code
+once per algorithm/core in a build-owned 1,344-word P arena, uploads at most 24
+words per transaction, verifies DSP readback sums, then changes init/proc dispatch
+at that core's frame head. Outgoing memory remains reserved until unbind is
+acknowledged. Failed uploads and cancelled selections drain and roll back;
+failed unbinds retain their allocations and retry.
+
+EQUALIZER, PHASER and COMPRESSOR are extracted from the user's stock image at
+build time. Character comes from its unchanged source. External relative helper
+branches and DO loop endpoints are relocated; their dependencies stay pinned.
+Other stock effects remain resident. This runtime does not allocate delay lines,
+shared X/Y storage, or new source-engine state. The earlier Python planner's
+broader resource model must not be confused with this narrower firmware backend.
+
+Existing FX/manual Part guards now use real capacity results. An observer also
+loads the actual live FX set after automatic Part application and project load.
+**This observer runs after publication: static originals remain required.** It
+cannot reject or roll back an already-published project, and this experiment
+therefore does not yet save the originals' memory or allow arbitrary catalogue
+size. Removing those originals requires qualified preparation before every
+publication path, including queued patterns, reload/copy and project replacement.
+
+Rebinding identical code preserves r7 state and the existing processing schedule.
+It needs no extra old/new algorithm instance, and unloading unused code alone
+saves no processing. Hardware loader overhead, different-sound transitions and
+tail policies remain unqualified. The runtime is not a flash candidate.
+
+Local runtime evidence:
+
+- Native allocator/controller/backend checks cover actual capacity refusal,
+  sharing, 2,000 seeded transitions, stale acknowledgements, cancellation,
+  readback failures and retaining memory after an unacknowledged unbind.
+- 72 exact stereo comparisons: four algorithms, both cores, three sub-block
+  lengths and three parameter sets. This caught a missing PHASER external-helper
+  relocation before firmware use.
+- Seven port scenarios passed: both cores, Character, cancellation, real memory
+  exhaustion, manual Part application and automatic application. Uploaded P words
+  and dispatch entries are verified, not just the controller's counters.
+- Actual LOAD PROJECT populated both cores from saved EQ/Character assignments,
+  without chooser calls or effect injection. Exact uploaded code and dispatch
+  matched, with no controller or transport errors.
+- Continuous eight-track stereo chain output and the main capture matched static
+  execution sample-for-sample through four automatic Part applications, including
+  upload, binding and retirement (65,760 samples/channel). This qualifies the
+  tested relocation paths, not arbitrary seamless algorithm changes.
+
+Run `OT_PROJECT=<fixture> make check REMIX=dsp-loader-runtime`. The gates normalize
+owned fixture copies; they never edit the source project. Reports, captures and
+logs are under `out/dsp-part-loader/`. See
+[`modules/dsp-loader-runtime/README.md`](../../../modules/dsp-loader-runtime/README.md)
+for the transport, ABI and static-fallback limitations.
+
+Queued-pattern evidence: `OT_PROJECT=<fixture> python3 -m tools.experimental.dsp_part_loader.verify_pattern_audio` sends a MIDI program
+change to the running sequencer. Both the pattern and Part must actually change.
+The eight stereo chains and main capture matched static execution exactly over
+8,192 frames, with no residency/transport errors. This exercises the normal
+queued pattern path; static fallback still handles the interval before upload.

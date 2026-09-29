@@ -507,20 +507,38 @@ dl_selection_tick:
 	jsr (%a0)
 	jra .L89
 	.size	dl_selection_tick, .-dl_selection_tick
-	.local	replay
-	.comm	replay,4,2
-	.local	pending
-	.comm	pending,4,2
-	.local	applying
-	.comm	applying,4,2
-	.local	token
-	.comm	token,4,2
-	.local	serial
-	.comm	serial,4,2
-	.local	queued
-	.comm	queued,76,2
+	.data
+	.align	2
+	.type	replay, @object
+	.size	replay, 4
+replay:
+	.zero	4
+	.align	2
+	.type	pending, @object
+	.size	pending, 4
+pending:
+	.zero	4
+	.align	2
+	.type	applying, @object
+	.size	applying, 4
+applying:
+	.zero	4
+	.align	2
+	.type	token, @object
+	.size	token, 4
+token:
+	.zero	4
+	.align	2
+	.type	serial, @object
+	.size	serial, 4
+serial:
+	.zero	4
+	.align	2
+	.type	queued, @object
+	.size	queued, 76
+queued:
+	.zero	76
 	.globl	dl_selection_refused
-	.section	.bss
 	.align	2
 	.type	dl_selection_refused, @object
 	.size	dl_selection_refused, 4

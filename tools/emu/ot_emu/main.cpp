@@ -2036,18 +2036,27 @@ int main(int _argc, char** _argv)
 				av.push_back(toks[0].data());
 				for(size_t w = 2; w < toks.size(); ++w)
 					av.push_back(toks[w].data());
-				// The block dump is one stream opened at boot, its file offset
-				// shared by every child: only a scenario that names the same
-				// --block-dump path keeps writing it; the others close their copy.
+				// Reopen scenario captures after fork: inherited stream offsets are
+				// shared with the parent and siblings, even for identical paths.
+				// Each child must name its own output path.
 				const std::string bootBlockDump = blockDump;
 				blockDump.clear();
 				if(!parseArgs(static_cast<int>(av.size()), av.data()))
 					::_exit(2);
-				if(blockDump.empty() || blockDump != bootBlockDump)
-					rtos.closeBlockDump();
+				rtos.closeBlockDump();
+				if(!blockDump.empty())
+				{
+					if(blockDump == bootBlockDump)
+					{
+						std::printf("scenario   : block dump must differ from the boot capture path\n");
+						::_exit(2);
+					}
+					rtos.setBlockDump(blockDump);
+				}
 
 				if(dspPair)
 				{
+					dspPair->setAudioCapture(!audioOut.empty());
 					std::vector<std::pair<uint8_t*, size_t>> ranges;
 					dspPair->memoryRanges(ranges);
 					std::string why;

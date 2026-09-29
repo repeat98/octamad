@@ -55,7 +55,9 @@
 ; * After the `and` the extension byte of b is stale: frac leaves as b1,
 ;   never through the limiter.
 ; * n1/n2 are written four instructions before the table reads use them;
-;   m3 is written outside the loop.
+;   m3 is written outside the loop and put back to linear before proc
+;   returns: it leaked wrapped addressing into whatever ran next on the
+;   core, which dsp_host cannot show (it calls proc alone).
 ; * Every recursive section ends in macr/mpyr (convergent, unbiased): with
 ;   the plain truncating move, the -1/2 LSB bias through the 5 Hz poles put a
 ;   -51 dB DC offset on the curve's input (even harmonics the tape does not
@@ -123,8 +125,8 @@ oxd_rok:
         move    (r0)+n0                 ; the frame advance: n0 is 1, two steps
         move    (r0)+n0
 oxd_end:
-        nop
-        rts
+        move    #>$ffffff,m3            ; the ring's modulo back to linear: the dispatcher's
+        rts                             ; next effect on this core owns r3 (Character does the same)
 
 ; ---------------------------------------------------------------------------
 ; oxd_gain -- a knob through a 17-point table. In: a = the knob word

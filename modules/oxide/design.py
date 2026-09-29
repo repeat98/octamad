@@ -209,12 +209,20 @@ def _rnd(a):
     return r << 24
 
 
-def fixed(xs, in_knob=IN_ZERO, out_knob=OUT_ZERO):
-    """xs: one channel of signed 24-bit ints. Returns the DSP's output ints."""
+STATE = ("X1", "H1", "S1", "C1", "C2", "Y1", "Z1", "Q1")
+
+
+def fixed(xs, in_knob=IN_ZERO, out_knob=OUT_ZERO, state=None):
+    """xs: one channel of signed 24-bit ints. Returns the DSP's output ints.
+
+    `state`: a dict of the channel's filter states (STATE), read at the start
+    and written back at the end, so a run can go on where another stopped
+    (the master strip's gate changes the knobs between frames); None starts
+    from zero, as init leaves the instance block."""
     C = coefficients_q23(); vt, st = curve_tables(); gi, go = gain_tables()
     gin = _knob(gi, in_knob); cout = _knob(go, out_knob)
     # (the ring's order changes no arithmetic: every product is exact)
-    X1 = H1 = S1 = C1 = C2 = Y1 = Z1 = Q1 = 0
+    X1, H1, S1, C1, C2, Y1, Z1, Q1 = (state.get(k, 0) for k in STATE) if state is not None else (0,) * 8
     out = []
     for x in xs:
         # E1a: hh = (c/2) x - (c/2) x1 + p1 hh1
@@ -255,6 +263,8 @@ def fixed(xs, in_knob=IN_ZERO, out_knob=OUT_ZERO):
         q = _lim(_rnd(a)); Q1 = q                      # macr
         # out
         out.append(_lim(_mpy(q, cout) << 6))
+    if state is not None:
+        state.update(zip(STATE, (X1, H1, S1, C1, C2, Y1, Z1, Q1)))
     return out
 
 

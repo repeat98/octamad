@@ -187,10 +187,17 @@ answer.
    not built). Proposed: per Part.
 3. **Pre- or post-fader sends.** Proposed: post-fader.
 4. **Core split.** Reverb on core 0, delay on core 1.
-5. **The MIXER page layout.** Not designed.
+5. **The MIXER page layout.** Decided 29 Sep 2026 (Jannik, on the painted mockups): the
+   stock MIXER page stays; LEFT/RIGHT walk the strips (MIXER, MASTER, RETURN A,
+   RETURN B) and UP/DOWN a strip's slots, so the tempo nudge is off while the MIXER is
+   open; YES opens a slot's SETUP (effect list and page-2 knobs, drawn like EFFECT 1
+   SETUP); values as numbers; LEVEL is the strip's level; the MUTE band stays and the
+   trigs keep muting. MIDI CC for these controls later.
 6. **Where a strip's parameters and instance block come from** (§3): a record delivered
    like a track's, and Y space for the state. Proposed: the ColdFire ships one record per
-   strip on the host-transfer chain, from a Part-stored block.
+   strip on the host-transfer chain, from a Part-stored block. **Built for the master
+   strip (§12)**, X space rather than Y (the inserts on its list use no Y); the
+   Part-stored block is still to do.
 
 ## 8. Order of work
 
@@ -204,13 +211,15 @@ Each step is flashable and checkable on its own.
    unity the output equals stock bit for bit (no delay: it is inline); a recording of
    MAIN includes the insert; the cue pair's main share does too. **Done under the port
    with fixed parameters (§11)**; the gate is Oxide's model rather than stock (Oxide at
-   its 0 dB points is not an identity). Still to do: the ColdFire record (§7 decision 6).
+   its 0 dB points is not an identity). **The ColdFire record is built (§12)**: two slots,
+   their effects and knobs from a model the page will edit.
 3. **AUX B and RET B** (BusVerb as a pure-wet strip). Gate: a runaway test with
    the self-send raised.
 4. **AUX A and RET A on core 1.** Gate: `verify-twocore` with the cores skewed;
    on the unit, the track × delay-mode sweep used for the bus.
-5. **UI and storage on the ColdFire.** Until then a test remix drives the gains
-   from a control page.
+5. **UI and storage on the ColdFire.** Pulled forward for the master strip (29 Sep
+   2026): the record is built (§12); the MIXER pages, the SETUP window and Part storage
+   are next, in that order.
 6. **The 100 % wet delay as a ColdFire return** (Tape Echo over SDRAM, seconds of
    delay at little DSP cost). Needs AUX A delivered to the ColdFire and the result
    back.
@@ -298,9 +307,10 @@ equal stock bit for bit).
 ## 11. Step 2: the master strip, measured (29 Sep 2026)
 
 `modules/strip` (**MASTER STRIP**) runs OXIDE on MAIN at its 0 dB points (IN 48, OUT 80,
-fixed until §7 decision 6), reaching it through the stock dispatch tables by its id as a
-track slot does, with its instance block and record at X:0x7c00..0x7cff (outside every X
-module; no non-zero write there under the port, `--dsp-writes`, 900 frames). Three DSP
+fixed until §7 decision 6; §12 replaces this), reaching it through the stock dispatch
+tables by its id as a track slot does, with its instance block and record at
+X:0x7c00..0x7cff (outside every X module; no non-zero write there under the port,
+`--dsp-writes`, 900 frames). Three DSP
 sites on payload A: `boot` (P:0x40, once per DSP boot: OXIDE's init and the record),
 `head` (P:0x2d5) and `tail` (P:0x35d). The remix is `strip`; the gate is
 `tools/verify/verify_strip.py`.
@@ -347,4 +357,67 @@ only after all fifteen: inside the DMA arithmetic for OXIDE, not for Character. 
 (none reaches the mixdown under the port, `docs/remixer/EMU.md`); MAIN plus the click
 clipping, where the tail's click (a difference of clipped values) and stock's differ;
 the MASTER TRACK path (§6).
+
+## 12. The strip's record: two slots from the ColdFire (29 Sep 2026)
+
+The strip now runs **two slots**, each an FX id and its twelve knob values, from a model
+on the ColdFire, `strip_model` in `modules/strip/strip_xport.s` (a DRAM unit). The MIXER
+page will edit that model and a Part will store it; this step builds the path from the
+model to the samples.
+
+**The transport.** `strip_xport` takes the host-transfer chain's state 3 entry
+(`0x400ab626`, stock `0x400049ca`: core 0's 64-word block, which sets its own NBYTES).
+The first visit packs the model into 32 halfwords and sends them to core 0 as one more
+64-byte burst, then leaves through the chain's exit; the burst's completion re-enters
+state 3 and stock runs. The Machinedrum's transport (`origin/machinedrum`,
+`md_xport.s`) is the template and takes state 5, so the two stay combinable. The block
+goes to X:0x7c80; payload A's host handler (P:0x588) masks it with 0x3fff or 0x5fff,
+alternately per frame, so it lands at X:0x3c80 or 0x5c80, the bank the DSP works in the
+next frame, `x:$205 + $1480` there. Layout: the magic 0x5354; per slot the id, six page-1
+halfwords `v << 8` and three page-2 halfwords `(v << 8) | w`; zeros; a checksum that makes
+the 32 halfwords sum to 0 mod 2^16. Each halfword `h` is the record word `h << 8`.
+
+**The apply.** Last in the tail (after the pack), for the next frame: a record whose
+magic or sum fails is not used (the bank holds garbage until the first burst; zeros fail
+the magic). Otherwise per slot every value is masked to 0..127 and copied to the slot's
+record (page 1 at r6+0..5, page 2 at r6+$c..$e), and an id that differs from the one the
+slot runs gets that effect's init (r1 the id, r6 the record, r7 the slot's block, as the
+dispatcher calls it) and its proc. Id 0 and ids off the strip's list leave the slot dry.
+The list is OXIDE: an insert joins it once it is shown to run correctly one frame per call
+with no dispatcher state (Character glides its knobs per call and reads X:0x213 at init).
+The head and the tail run slot 1 then slot 2 on each sample, with the track slot's
+contract, n0 = 1 now set before every call (the head had run on the 1 stock happened to
+leave there; OXIDE reads R at `x:(r0+n0)`). `boot` starts the slots where the model
+starts, OXIDE at IN 48 / OUT 80 on slot 1 and slot 2 empty.
+
+**Memory.** X:0x7c00..0x7cff the strip's block (saves, the two slots' ids, procs and
+records, D and C), X:0x7d00 and 0x7e00 the slots' instance blocks, X:0x3c80/0x5c80 the
+record. ✅ No non-zero write in 0x3c00..0x3cff, 0x5c00..0x5cff or 0x7d00..0x7fff under the
+port on the user's project before this step (`--dsp-writes`, 300 frames, core 0).
+
+**Measured under the port** (`verify_strip`, the user's project, 300 frames, against the
+same image with the three sites' stock words back):
+
+| fixture | result |
+|---|---|
+| tones | MAIN = `fixed()` at IN 48 / OUT 80, 0 LSB: the record flows every frame and changes nothing |
+| dirty (tones, both cores' X/Y filled with garbage before the boot) | the same, 0 LSB |
+| click | MAIN = `fixed()` of the pack's MAIN plus the click, 0 LSB |
+| record (`strip_model` poked at frames 60, 120, 180, 240) | every pack frame is its phase's model or the next one's, 0 LSB; all four switches, on frame boundaries, three frames after each poke: IN 48 → 96 with OXIDE's state carried, slot 1 → none (dry), back to OXIDE (state from zero), OXIDE on slot 2 as well (on slot 1's output) |
+
+In every fixture the phones differ only by MAIN's change at the cue mix's gain, the pack's
+CUE half and every other TX0 word and host-port block are identical (28 classes now: the
+record's burst is one, identical in both images). The capture lengths may differ by a
+sample: the port stops on the ColdFire's frame count, and where that falls in ESAI time
+moves with the DSP's load (the record fixture's built run ended one ESAI frame short with
+OXIDE on both slots); the gate compares the common length.
+
+**Cost** (✅ instructions per frame, the port's stopwatch): head 120 with both slots
+empty to 602 with OXIDE on both; tail 1,108 to 7,690, the apply included. With both
+slots, sample j's writes finish well inside the output DMA's 2,000 + 4,160 j cycles
+(§3), by the port's count.
+
+**Not shown:** anything on a unit; the page that edits the model and the Part that
+stores it (next); a record lost in transit on the unit (the DSP would keep the previous
+frame's slots).
 

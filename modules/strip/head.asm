@@ -17,36 +17,38 @@
 ; P:0x35d) does samples 1..15 and redoes what stock's tail made from them.
 ;
 ; Here: gather MAIN's 16 dry pairs into D (X:0x7c40, L/R adjacent, the
-; tail's source for 1..15), run the insert on D's sample 0, and put it back
-; in the ring. The pack, the click and the cue mix then read it as stock
-; reads MAIN.
+; tail's source for 1..15), run the two slots on D's sample 0, slot 1 then
+; slot 2, and put it back in the ring. The pack, the click and the cue mix
+; then read it as stock reads MAIN.
 ;
-; The insert contract is a track slot's: r0 the frames (L, R adjacent), r6
-; the parameter record, r7 the instance block, n7 the frame count. Every
-; register this body writes that stock might read after the return is saved
-; and put back; x0/x1 and the accumulators are written by stock before it
-; reads them (func_00055a loads them), and the insert leaves m1..m4 linear,
-; as stock effects leave them (stock's frame code never sets m1, m3, m4).
+; The slot contract is a track slot's: r0 the frames (L at x:(r0), R at
+; x:(r0+n0), n0 = 1), r6 the parameter record, r7 the instance block, n7
+; the frame count (boot.asm has the map). n0 is set before every call: the
+; head used to run on the 1 stock happened to leave there. Every register this body writes that stock might read after
+; the return is saved and put back; x0/x1 and the accumulators are written
+; by stock before it reads them (func_00055a loads them), and the effects
+; leave m1..m4 linear, as stock effects leave them (stock's frame code never
+; sets m1, m3, m4).
 ; ---------------------------------------------------------------------------
 entry:
-        move    r7,x:>$7c3f             ; the caller's r7
+        move    r7,x:>$7c0f             ; the caller's r7
         move    #>$7c00,r7              ; -> the strip's block (boot.asm's map)
-        move    r1,x:(r7+$30)
-        move    r2,x:(r7+$31)
-        move    r3,x:(r7+$32)
-        move    r4,x:(r7+$33)
-        move    r5,x:(r7+$34)
-        move    r6,x:(r7+$35)
+        move    r1,x:(r7+$0)
+        move    r2,x:(r7+$1)
+        move    r3,x:(r7+$2)
+        move    r4,x:(r7+$3)
+        move    r5,x:(r7+$4)
+        move    r6,x:(r7+$5)
         move    n0,x0
-        move    x0,x:(r7+$36)
+        move    x0,x:(r7+$6)
         move    n1,x0
-        move    x0,x:(r7+$37)
+        move    x0,x:(r7+$7)
         move    n2,x0
-        move    x0,x:(r7+$38)
+        move    x0,x:(r7+$8)
         move    n3,x0
-        move    x0,x:(r7+$39)
+        move    x0,x:(r7+$9)
         move    n7,x0
-        move    x0,x:(r7+$3a)
+        move    x0,x:(r7+$a)
 ; ---- gather MAIN, dry, into D ------------------------------------------------
         move    x:>$203,r1              ; the ring the mixdown wrote
         lua     (r1+$2),r1              ; sample 0's MAIN L
@@ -58,12 +60,9 @@ entry:
         move    x0,x:(r0)+
         move    x1,x:(r0)+
 hgath:
-; ---- the insert on sample 0, back into the ring ----------------------------
+; ---- the slots on sample 0, back into the ring --------------------------------
         move    #>$7c40,r0              ; D's sample 0
-        move    #>$7c80,r6              ; the strip's parameter record
-        move    #$1,n7                  ; one frame
-        move    x:>$254,r2              ; PROC_TABLE[0x1f]: OXIDE's proc
-        jsr     (r2)
+        bsr     hrun
         move    #>$7c40,r0
         move    x:>$203,r1
         lua     (r1+$2),r1
@@ -72,17 +71,46 @@ hgath:
         move    x:(r0)+,x0
         move    x0,x:(r1)+
 ; ---- back as stock left them -------------------------------------------------
-        move    x:(r7+$3a),n7
-        move    x:(r7+$39),n3
-        move    x:(r7+$38),n2
-        move    x:(r7+$37),n1
-        move    x:(r7+$36),n0
-        move    x:(r7+$35),r6
-        move    x:(r7+$34),r5
-        move    x:(r7+$33),r4
-        move    x:(r7+$32),r3
-        move    x:(r7+$31),r2
-        move    x:(r7+$30),r1
-        move    x:>$7c3f,r7
+        move    x:(r7+$a),n7
+        move    x:(r7+$9),n3
+        move    x:(r7+$8),n2
+        move    x:(r7+$7),n1
+        move    x:(r7+$6),n0
+        move    x:(r7+$5),r6
+        move    x:(r7+$4),r5
+        move    x:(r7+$3),r4
+        move    x:(r7+$2),r3
+        move    x:(r7+$1),r2
+        move    x:(r7+$0),r1
+        move    x:>$7c0f,r7
         move    x:>$206,r0              ; the displaced instruction, as stock has it
+        rts
+
+; ---- the two slots on one pair at r0, in place; r7 the strip's block, and
+; again on return. A slot whose proc word is 0 is dry (tail.asm's apply).
+hrun:
+        move    r0,x:(r7+$14)
+        move    x:(r7+$11),a            ; slot 1's proc
+        tst     a
+        beq     hskp1
+        move    x:(r7+$11),r2
+        move    #>$7c20,r6              ; its record
+        move    #>$7d00,r7              ; its instance block
+        move    #$1,n7                  ; one frame
+        move    #$1,n0                  ; R next to L (the contract's x:(r0+n0))
+        jsr     (r2)
+        move    #>$7c00,r7
+        move    x:(r7+$14),r0
+hskp1:
+        move    x:(r7+$13),a            ; slot 2's proc
+        tst     a
+        beq     hskp2
+        move    x:(r7+$13),r2
+        move    #>$7c30,r6
+        move    #>$7e00,r7
+        move    #$1,n7
+        move    #$1,n0
+        jsr     (r2)
+        move    #>$7c00,r7
+hskp2:
         rts

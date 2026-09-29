@@ -13,8 +13,9 @@ REMIX = Remix(
     name="strip",
     family="reference", proof=Proof.PORT,
     proof_note="`verify_strip`: the main out, the phones and the recorder/USB pack carry OXIDE's model of "
-               "the stock MAIN under the port, with and without the metronome (29 Sep 2026)",
-    doc="OXIDE on the summed MAIN, inline after the mixdown: the master strip, step 2.",
+               "the stock MAIN under the port, with and without the metronome and from dirty RAM; the "
+               "ColdFire's slot record reaches MAIN on a frame boundary (29 Sep 2026)",
+    doc="Two insert slots on the summed MAIN, inline after the mixdown: the master strip, step 2.",
     modules=("MIXDOWN COPY", "MASTER STRIP", "OXIDE", "FILTER", "EQUALIZER", "DJ EQ",
              "PHASER", "FLANGER", "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR",
              "LO-FI", "DELAY"),

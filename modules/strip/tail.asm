@@ -1,11 +1,12 @@
 ; ---------------------------------------------------------------------------
-; MASTER STRIP -- tail: MAIN's samples 1..15, after stock's tail.
+; MASTER STRIP -- tail: MAIN's samples 1..15 after stock's tail, then the
+; next frame's slots from the ColdFire's record.
 ;
 ; Reached by `jsr` over P:0x35d's two-word `move x:>$207,r0`, after the cue
 ; mix: stock has packed MAIN for the recorder and USB audio (P:0x2df), added
 ; the metronome click into CUE and MAIN (P:0x2ec..) and mixed the phones
 ; (P:0x33f..), all from a MAIN whose sample 0 the head (head.asm) already
-; ran through the insert and whose samples 1..15 are dry. The output DMA
+; ran through the slots and whose samples 1..15 are dry. The output DMA
 ; reads sample j about 2,000 + 4,160 j cycles after the mixdown (MIXER.md
 ; section 3), so samples 1..15 still have thousands of cycles to spare; each
 ; is finished here, in order, before the next is started.
@@ -14,7 +15,7 @@
 ;   click   C_j = ring MAIN_j - D_j: what the click added (D holds the dry
 ;           pair the head gathered; the click is a plain add, so this is it
 ;           exactly unless MAIN + click clipped, where stock clips too)
-;   insert  the insert on D_j, in place: P_j
+;   slots   slot 1 then slot 2 on D_j, in place: P_j
 ;   MAIN    ring MAIN_j = P_j + C_j, stored limited, as the click's store is
 ;   phones  ring phones_j = g_cue CUE_j + g_main MAIN_j, the cue mix's own
 ;           arithmetic on its own gains (Y:0x40 + 2j, which the ramp at
@@ -23,29 +24,50 @@
 ; then the MAIN pack again, from D (P_0..P_15, before the click, as stock
 ; packs it), through the stock routine at its stock destination.
 ;
+; THE RECORD. Last, the slots the next frame runs: strip_xport.s sends the
+; MIXER's model (strip_model) to core 0 every frame, and it lands in this
+; frame's bank at x:$205 + $1480 (the host handler's mask folds its X:0x7c80
+; there). Thirty-two words, the halfword in bits 15..0 of each (the top byte
+; is not zero): the magic 0x5354, then per slot its id, six page-1 words
+; (v << 8) and three page-2 words ((v << 8) | w), then zeros and a checksum
+; that makes the 32 halfwords sum to 0 mod 2^16. A record whose magic or sum
+; fails is not used (the bank holds what the RAM held until the ColdFire's
+; first burst, and the unit's RAM is not zeroed); the slots run on as they
+; were. Otherwise, per slot:
+;   knobs   the page-1 words to r6 + 0..5 as v << 16 and the page-2 words to
+;           r6 + $c..$e, each value masked to 0..127, every frame
+;   id      when it differs from the id the slot runs: an id on the strip's
+;           list gets its init (r1 the id, r6 the record, r7 the slot's
+;           block, as the dispatcher calls it) and its proc; 0 and any id
+;           off the list leave the slot dry. The list is OXIDE (0x1f): an
+;           insert joins it once it is shown to run one frame at a time with
+;           no dispatcher state (MIXER.md)
+; The knobs reach the samples of the next frame: the record is a frame old
+; when it lands and a frame older when it is heard.
+;
 ; Register discipline is the head's: everything stock might read after the
-; return is saved and put back, and nothing is kept in a register across the
-; insert (the loop's pointers live at $3b..$3d of the strip's block).
+; return is saved and put back, and nothing is kept in a register across a
+; slot's call (the loop's pointers live at $0b..$0d of the strip's block).
 ; ---------------------------------------------------------------------------
 entry:
-        move    r7,x:>$7c3f             ; the caller's r7
+        move    r7,x:>$7c0f             ; the caller's r7
         move    #>$7c00,r7              ; -> the strip's block (boot.asm's map)
-        move    r1,x:(r7+$30)
-        move    r2,x:(r7+$31)
-        move    r3,x:(r7+$32)
-        move    r4,x:(r7+$33)
-        move    r5,x:(r7+$34)
-        move    r6,x:(r7+$35)
+        move    r1,x:(r7+$0)
+        move    r2,x:(r7+$1)
+        move    r3,x:(r7+$2)
+        move    r4,x:(r7+$3)
+        move    r5,x:(r7+$4)
+        move    r6,x:(r7+$5)
         move    n0,x0
-        move    x0,x:(r7+$36)
+        move    x0,x:(r7+$6)
         move    n1,x0
-        move    x0,x:(r7+$37)
+        move    x0,x:(r7+$7)
         move    n2,x0
-        move    x0,x:(r7+$38)
+        move    x0,x:(r7+$8)
         move    n3,x0
-        move    x0,x:(r7+$39)
+        move    x0,x:(r7+$9)
         move    n7,x0
-        move    x0,x:(r7+$3a)
+        move    x0,x:(r7+$a)
 ; ---- the click, 1..15: C = ring MAIN - D ------------------------------------
         move    x:>$203,r1
         lua     (r1+$a),r1              ; sample 1's MAIN L
@@ -65,23 +87,20 @@ tclick:
         move    x:>$203,r1
         move    x:(r0+$2b),a            ; the word the cue mix tests (bit 0)
         and     #>$1,a
-        move    a1,x:(r7+$3e)           ; a1, not a: the and left a2 as it was
+        move    a1,x:(r7+$e)            ; a1, not a: the and left a2 as it was
         lua     (r1+$8),r1
-        move    r1,x:(r7+$3b)           ; ring, sample 1
+        move    r1,x:(r7+$b)            ; ring, sample 1
         move    #>$7c42,r1
-        move    r1,x:(r7+$3c)           ; D, sample 1
+        move    r1,x:(r7+$c)            ; D, sample 1
         move    #$42,r1
-        move    r1,x:(r7+$3d)           ; the cue mix's gains, sample 1
+        move    r1,x:(r7+$d)            ; the cue mix's gains, sample 1
         do      #$f,tloop
-; ---- the insert on D_j -------------------------------------------------------
-        move    x:(r7+$3c),r0
-        move    #>$7c80,r6              ; the strip's parameter record
-        move    #$1,n7                  ; one frame
-        move    x:>$254,r2              ; PROC_TABLE[0x1f]: OXIDE's proc
-        jsr     (r2)
+; ---- the slots on D_j ----------------------------------------------------------
+        move    x:(r7+$c),r0
+        bsr     trun
 ; ---- MAIN_j = P_j + C_j --------------------------------------------------------
-        move    x:(r7+$3c),r0           ; P_j
-        move    x:(r7+$3b),r3           ; the ring's sample j
+        move    x:(r7+$c),r0            ; P_j
+        move    x:(r7+$b),r3            ; the ring's sample j
         lua     (r0+$20),r1             ; C_j
         lua     (r3+$2),r2              ; its MAIN L
         move    x:(r0)+,a
@@ -90,9 +109,9 @@ tclick:
         move    x:(r1)+,x0
         add     x0,b            a,x:(r2)+
         move    b,x:(r2)+
-        move    r0,x:(r7+$3c)           ; D, the next sample
+        move    r0,x:(r7+$c)            ; D, the next sample
 ; ---- the phones: the cue mix on the new MAIN ----------------------------------
-        move    x:(r7+$3d),r4
+        move    x:(r7+$d),r4
         move    x:(r3)+,x0      y:(r4)+,y0      ; CUE L, g_cue
         mpy     y0,x0,a         x:(r3)+,x0              ; CUE R
         mpy     y0,x0,b         x:(r3)+,x0              ; MAIN L
@@ -100,16 +119,16 @@ tclick:
                                         ; mpy as a bare mpysu, so it stands alone)
         mac     y0,x0,a         x:(r3)+,x0              ; MAIN R
         mac     y0,x0,b
-        move    r4,x:(r7+$3d)           ; the gains, the next sample
-        move    x:(r7+$3e),n3           ; 0, or 1 when crossed
-        move    x:(r7+$3e),n1
+        move    r4,x:(r7+$d)            ; the gains, the next sample
+        move    x:(r7+$e),n3            ; 0, or 1 when crossed
+        move    x:(r7+$e),n1
         lua     (r3+$1),r1              ; r3 is at the phones L word; r1 at R
         lua     (r3)+n3,r2              ; the L mix's word: L, or R when crossed
         move    (r1)-n1                 ; the R mix's word: R, or L when crossed
         move    a,x:(r2)
         move    b,x:(r1)
         lua     (r3+$4),r3              ; past the unused pair: the next sample
-        move    r3,x:(r7+$3b)
+        move    r3,x:(r7+$b)
 tloop:
 ; ---- the MAIN pack again, from D ---------------------------------------------
         move    x:>$206,r0              ; stock's destination: x:$206 + $100
@@ -118,18 +137,125 @@ tloop:
         move    #$1,n1
         move    (r0)+n0
         jsr     $55a                    ; stock's pack (func_00055a), stock's own short form
+; ---- the record: the next frame's slots -----------------------------------------
+        move    x:>$205,r0
+        move    #>$1480,n0
+        move    (r0)+n0                 ; the record, in this frame's bank
+        move    r0,x:(r7+$16)
+        clr     b
+        do      #$20,tsum
+        move    x:(r0)+,a
+        and     #>$ffff,a               ; the halfword (a1: the and leaves a2)
+        move    a1,x0
+        add     x0,b
+tsum:
+        and     #>$ffff,b               ; b is clean and positive: 0 when it sums
+        bne     tdone
+        move    x:(r7+$16),r0
+        move    x:(r0)+,a
+        and     #>$ffff,a
+        move    a1,x0
+        move    #>$5354,a               ; the magic
+        sub     x0,a
+        bne     tdone
+        move    #>$7c10,r4              ; slot 1: its id and proc,
+        move    #>$7c20,r6              ; its record,
+        move    #>$7d00,r5              ; its instance block
+        bsr     tslot
+        move    #>$7c12,r4              ; slot 2
+        move    #>$7c30,r6
+        move    #>$7e00,r5
+        bsr     tslot
+tdone:
 ; ---- back as stock left them -------------------------------------------------
-        move    x:(r7+$3a),n7
-        move    x:(r7+$39),n3
-        move    x:(r7+$38),n2
-        move    x:(r7+$37),n1
-        move    x:(r7+$36),n0
-        move    x:(r7+$35),r6
-        move    x:(r7+$34),r5
-        move    x:(r7+$33),r4
-        move    x:(r7+$32),r3
-        move    x:(r7+$31),r2
-        move    x:(r7+$30),r1
-        move    x:>$7c3f,r7
+        move    x:(r7+$a),n7
+        move    x:(r7+$9),n3
+        move    x:(r7+$8),n2
+        move    x:(r7+$7),n1
+        move    x:(r7+$6),n0
+        move    x:(r7+$5),r6
+        move    x:(r7+$4),r5
+        move    x:(r7+$3),r4
+        move    x:(r7+$2),r3
+        move    x:(r7+$1),r2
+        move    x:(r7+$0),r1
+        move    x:>$7c0f,r7
         move    x:>$207,r0              ; the displaced instruction, as stock has it
+        rts
+
+; ---- the two slots on one pair at r0, in place; r7 the strip's block, and
+; again on return. A slot whose proc word is 0 is dry.
+trun:
+        move    r0,x:(r7+$14)
+        move    x:(r7+$11),a            ; slot 1's proc
+        tst     a
+        beq     tskp1
+        move    x:(r7+$11),r2
+        move    #>$7c20,r6              ; its record
+        move    #>$7d00,r7              ; its instance block
+        move    #$1,n7                  ; one frame
+        move    #$1,n0                  ; R next to L (the contract's x:(r0+n0))
+        jsr     (r2)
+        move    #>$7c00,r7
+        move    x:(r7+$14),r0
+tskp1:
+        move    x:(r7+$13),a            ; slot 2's proc
+        tst     a
+        beq     tskp2
+        move    x:(r7+$13),r2
+        move    #>$7c30,r6
+        move    #>$7e00,r7
+        move    #$1,n7
+        move    #$1,n0
+        jsr     (r2)
+        move    #>$7c00,r7
+tskp2:
+        rts
+
+; ---- one slot of the record: r0 at its id word, r4 its id/proc pair, r6 its
+; record, r5 its instance block, r7 the strip's block. Returns r0 past the
+; slot's ten words and r7 the strip's block; r1..r6 are the tail's to spend.
+tslot:
+        move    x:(r0)+,a
+        and     #>$ffff,a
+        move    a1,x:(r7+$15)           ; the id the record asks for
+        move    r6,r1
+        do      #$6,tpgone
+        move    x:(r0)+,a
+        and     #>$7f00,a               ; v << 8, v 0..127
+        asl     #$8,a,a                 ; v << 16 in a1 (a0 was 0; a2 is not read)
+        move    a1,x:(r1)+
+tpgone:
+        lua     (r6+$c),r1
+        do      #$3,tpgtwo
+        move    x:(r0)+,a
+        and     #>$7f7f,a               ; (v << 8) | w, both 0..127
+        asl     #$8,a,a
+        move    a1,x:(r1)+
+tpgtwo:
+        move    x:(r7+$15),a
+        move    x:(r4),x0               ; the id the slot runs
+        sub     x0,a
+        beq     tsame
+        move    x:(r7+$15),x0
+        move    x0,x:(r4)               ; the slot runs what was asked, from here
+        clr     a
+        move    a,x:(r4+$1)             ; dry, unless the id is on the list
+        move    x:(r7+$15),a
+        move    #>$1f,x0                ; OXIDE
+        sub     x0,a
+        bne     tsame
+        move    r0,x:(r7+$16)           ; park what init may take
+        move    r4,x:(r7+$17)
+        move    x:(r7+$15),r1           ; the id, where the dispatcher has it
+        move    x:(r1+$215),r2          ; INIT_TABLE[id]
+        move    r5,r7                   ; the slot's block
+        jsr     (r2)
+        move    #>$7c00,r7
+        move    x:(r7+$15),r1
+        move    x:(r1+$235),r2          ; PROC_TABLE[id]
+        move    x:(r7+$17),r4
+        move    r2,x:(r4+$1)            ; the slot runs it from the next frame
+        move    x:(r7+$16),r0
+tsame:
         rts

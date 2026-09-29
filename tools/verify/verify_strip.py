@@ -9,11 +9,16 @@ image without the jump" is the wrong reference for it; this is its own gate.
 
 Static, from the built image alone:
 
-  id        the strip reaches its insert through the stock dispatch tables at
-            a fixed id (boot.asm / head.asm / tail.asm read X:0x234 and
-            X:0x254): OXIDE must be id 0x1f, and those two words must be
+  id        the strip reaches its insert through the stock dispatch tables by
+            id (boot.asm reads X:0x234 and X:0x254, tail.asm runs 0x1f from
+            its list): OXIDE must be id 0x1f, and those two words must be
             OXIDE's init and proc
-  record    the boot body writes the record the model below is run with
+  record    the boot body starts slot 1 at the record the model below is run
+            with, and the ColdFire's strip_model (strip_xport.s, in the
+            linked runtime) starts at the same: OXIDE, IN 48 / OUT 80, slot 2
+            empty
+  chain     the host-transfer chain's state 3 entry (0x400ab626) is
+            strip_xport
 
 The port half (a project, the ColdFire port): the built image and the same
 image with EVERY site's stock words put back (the bodies never run) on one
@@ -43,6 +48,20 @@ host-port block:
   audible   the reference MAIN is not silence
   control   the same model at IN 49 does NOT match: the comparison can fail
 
+The dirty variant is the tones one with both cores' X and Y filled with
+garbage before the boot (`--dsp-dirty`, both runs, one seed), as the unit
+leaves them: the strip starts from nothing it did not write, and the
+record's bank, garbage until the ColdFire's first burst, is not taken.
+
+The record variant (no click) edits strip_model mid-run with `--step` pokes,
+as the MIXER page will: slot 1's IN to 96, slot 1 to none, slot 1 back to
+OXIDE, then OXIDE on slot 2 too. Its pack's MAIN, frame by frame, must be the
+model of the phase it is in or of the next one, 0 LSB, and every phase must
+be reached in order: the knob reaches the samples with OXIDE's state carried
+on, none leaves the frame dry, a new id is init'ed (its state starts from
+zero), slot 2 runs after slot 1 on slot 1's output, and every switch lands
+on a frame boundary. MAIN out equals that pack's MAIN sample for sample.
+
 What it cannot see: track audio (under the port no track reaches the mixdown
 yet, docs/remixer/EMU.md, so MAIN carries the inputs only); the metronome
 click (the fixture has it off; tail.asm puts it back on the processed MAIN
@@ -64,8 +83,12 @@ import design  # noqa: E402
 
 KEY, INSERT, INSERT_ID = "MASTER STRIP", "OXIDE", 0x1f
 INIT_TABLE, PROC_TABLE = 0x215, 0x235
-RECORD = 0x7c80
-IN_KNOB, OUT_KNOB = 48, 80            # boot.asm's record
+RECORD = 0x7c20                       # slot 1's parameter record (boot.asm's map)
+IN_KNOB, OUT_KNOB = 48, 80            # boot.asm's record and strip_model's slot 1
+CHAIN_STATE3, STOCK_STATE3 = 0x400ab626, 0x400049ca
+CF_BASE = 0x40000400                  # the OS image's load address
+ELF = ROOT / "out/platform/runtime/runtime.elf"
+SLOT = 16                             # strip_model: a slot's bytes (id at +0, values at +4)
 MAIN = (2, 3)                         # TX0 slots: MAIN L/R (ring words 2/3)
 PHONES = (4, 5)                       # the cue mix (P:0x33f..): g_cue CUE + g_main MAIN, per sample
 PACK_WORDS = 128                      # a pack block: MAIN's 16 pairs, then CUE's, 4 words a pair
@@ -108,10 +131,36 @@ def static(name, built, report):
           + (f"P:0x{lo:05x}..0x{hi:05x}" if lo is not None else "?"))
     bt = vds.Payload(built, "A")
     d = next(d for d in registry.by_key(KEY).dsp_sites if d.label == "boot")
-    body = bt.span(bt.word(d.site + 1), bt.word(d.site + 1) + 16)
-    want = [0x44f400, IN_KNOB << 16, 0x447000, RECORD, 0x44f400, OUT_KNOB << 16, 0x447000, RECORD + 1]
-    check(f"{name}: the boot body writes IN {IN_KNOB} / OUT {OUT_KNOB} to X:0x{RECORD:04x}",
-          any(body[i:i + len(want)] == want for i in range(len(body) - len(want) + 1)))
+    body = bt.span(bt.word(d.site + 1), bt.word(d.site + 1) + 48)
+    has = lambda want: any(body[i:i + len(want)] == want for i in range(len(body) - len(want) + 1))
+    check(f"{name}: the boot body starts slot 1 at {INSERT} (X:0x7c10 = 0x{INSERT_ID:02x}) with IN "
+          f"{IN_KNOB} / OUT {OUT_KNOB} at X:0x{RECORD:04x}",
+          has([0x44f400, INSERT_ID, 0x447000, 0x7c10])
+          and has([0x44f400, IN_KNOB << 16, 0x447000, RECORD, 0x44f400, OUT_KNOB << 16, 0x447000, RECORD + 1]))
+    sym = symbols()
+    m = re.search(r"DRAM unit\(s\) linked at 0x([0-9a-f]+)", report)
+    blob = (ELF.parent / "runtime.bin").read_bytes() if ELF.parent.joinpath("runtime.bin").exists() else b""
+    model = None
+    if m and "strip_model" in sym:
+        o = sym["strip_model"] - int(m.group(1), 16)
+        model = list(blob[o:o + 2 * SLOT])
+    want = [INSERT_ID, 0, 0, 0, IN_KNOB, OUT_KNOB] + [0] * 10 + [0] * SLOT
+    check(f"{name}: strip_model starts where boot does: {INSERT} at IN {IN_KNOB} / OUT {OUT_KNOB}, "
+          f"slot 2 empty", model == want, f"got {model}" if model != want else "")
+    at = CHAIN_STATE3 - CF_BASE
+    entry = int.from_bytes(built[at:at + 4], "big")
+    check(f"{name}: the chain's state 3 entry (0x{CHAIN_STATE3:08x}) is strip_xport, not stock's "
+          f"0x{STOCK_STATE3:08x}", entry == sym.get("strip_xport"), f"0x{entry:08x}")
+    return sym
+
+
+def symbols():
+    """The linked runtime's symbols (the build just wrote it)."""
+    nm = shutil.which("m68k-elf-nm") or shutil.which("m68k-linux-gnu-nm")
+    if not nm or not ELF.exists():
+        return {}
+    out = subprocess.run([nm, str(ELF)], capture_output=True, text=True).stdout
+    return {p[2]: int(p[0], 16) for p in (l.split() for l in out.splitlines()) if len(p) == 3}
 
 
 def s24(hi, lo):
@@ -156,9 +205,27 @@ def _keep():
 # at a volume where tones plus click do not clip.
 VARIANTS = (
     ("tones", {b"DIR_AB": b"127", b"DIR_CD": b"127"}),
+    ("record", {b"DIR_AB": b"127", b"DIR_CD": b"127"}),
+    ("dirty", {b"DIR_AB": b"127", b"DIR_CD": b"127"}),
     ("click", {b"DIR_AB": b"127", b"DIR_CD": b"127", b"METRONOME_ENABLED": b"1",
                b"METRONOME_MAIN_VOLUME": b"64", b"METRONOME_CUE_VOLUME": b"0"}),
 )
+
+
+# The record variant's edits of strip_model: (frames after the transport
+# start, ((byte offset, value), ...), what it asks). A slot is id at +0, the
+# twelve values at +4.. (strip_xport.s); within one step the id goes last.
+SCHEDULE = (
+    (60, ((4, 96),), "slot 1 IN 96"),
+    (120, ((0, 0),), "slot 1 none"),
+    (180, ((0, INSERT_ID),), f"slot 1 {INSERT} again"),
+    (240, ((SLOT + 4, IN_KNOB), (SLOT + 5, OUT_KNOB), (SLOT, INSERT_ID)), f"{INSERT} on slot 2 too"),
+)
+
+
+def record_steps(sym):
+    base = sym["strip_model"]
+    return [f"{f}:poke:" + ";".join(f"{base + o:#x}={v}" for o, v in pokes) for f, pokes, _ in SCHEDULE]
 
 
 def align(pack, ring):
@@ -174,7 +241,7 @@ def lim24(v):
     return max(-(1 << 23), min((1 << 23) - 1, v))
 
 
-def port_half(name, built, project, frames):
+def port_half(name, built, project, frames, sym):
     import verify_set as vs
     import ot_project as otp
     import blockdump
@@ -218,6 +285,10 @@ def port_half(name, built, project, frames):
                        "--frames", str(frames), "--load-ms", "20000", "--dsp", "--main-level", "64",
                        "--audio-in", "tones", "--poke-trig", "2", "--audio-out", str(vdir / tag),
                        "--block-dump", str(vdir / f"{tag}.dump"), "--dsp-stopwatch", SAMPLE0_PATH]
+                if var == "record":
+                    cmd += [a for st in record_steps(sym) for a in ("--step", st)]
+                if var == "dirty":
+                    cmd += ["--dsp-dirty"]      # the unit never zeroes DSP RAM
                 runs[var, tag] = subprocess.Popen(cmd, cwd=ROOT, stdout=open(vdir / f"{tag}.txt", "w"),
                                                   stderr=subprocess.STDOUT)
         codes = {k: p.wait() for k, p in runs.items()}
@@ -230,8 +301,14 @@ def port_half(name, built, project, frames):
 
 def port_checks(var, vdir, blockdump):
     b, r = tx0(vdir / "built_core0.wav"), tx0(vdir / "ref_core0.wav")
-    n = len(r[0])
-    check(f"port: {var}: both captures have the same length ({n:,} frames)", len(b[0]) == n and n > 0)
+    # The port stops on the ColdFire's frame count, and where that falls in
+    # ESAI time moves with the DSP's load: with OXIDE on both slots (the
+    # record fixture's last phase) the built capture ended one ESAI frame
+    # short of the reference's (29 Sep 2026). Compared over the common length.
+    n = min(len(b[0]), len(r[0]))
+    check(f"port: {var}: both captures have the same length within a frame ({len(b[0]):,} / {len(r[0]):,})",
+          abs(len(b[0]) - len(r[0])) <= 16 and n > 0)
+    b, r = ({s: w[:n] for s, w in c.items()} for c in (b, r))
     others = [s for s in r if s not in MAIN + PHONES and b[s] != r[s]]
     check(f"port: {var}: every TX0 slot but MAIN and the phones byte-identical ({len(r) - 4} slots)",
           not others, f"slots {others} differ" if others else "")
@@ -268,6 +345,9 @@ def port_checks(var, vdir, blockdump):
     check(f"port: {var}: the pack's CUE half identical",
           all(list(wb[64:]) == list(wr[64:]) for (_, wb), (_, wr) in zip(ca[pack], cr[pack])))
     bp, rp = pack_main(ca[pack]), pack_main(cr[pack])
+    if var == "record":
+        record_checks(var, vdir, bp, rp)
+        return
     for side, bs, rs in zip("LR", bp, rp):
         want = design.fixed(rs, IN_KNOB, OUT_KNOB)
         bad = [i for i in range(len(bs)) if bs[i] != want[i]]
@@ -282,7 +362,7 @@ def port_checks(var, vdir, blockdump):
                   f"to sample 0's writes), instructions per frame mean {m.group(1)} max {m.group(3)}")
     audible = sum(1 for i in range(n) if r[MAIN[0]][i] or r[MAIN[1]][i])
     check(f"port: {var}: the reference MAIN is audible ({audible:,} non-zero frames)", audible > 1000)
-    if var == "tones":
+    if var in ("tones", "dirty"):
         # No click: MAIN out is the pack's MAIN, over the whole capture.
         for s, side in zip(MAIN, "LR"):
             want = design.fixed(r[s], IN_KNOB, OUT_KNOB)
@@ -317,6 +397,70 @@ def port_checks(var, vdir, blockdump):
                   any(b[s][off + i] != lim24(proc[i]) for i in range(m)))
 
 
+def _slots(model):
+    """[(id, IN, OUT)] of the two slots of a strip_model byte image."""
+    return [(model[k * SLOT], model[k * SLOT + 4], model[k * SLOT + 5]) for k in range(2)]
+
+
+def _run(cfg, states, xl, xr):
+    """One frame through the slots, in order; `states` is updated."""
+    for (sid, kin, kout), (sl, sr) in zip(cfg, states):
+        if sid == INSERT_ID:
+            xl = design.fixed(xl, kin, kout, state=sl)
+            xr = design.fixed(xr, kin, kout, state=sr)
+    return xl, xr
+
+
+def record_checks(var, vdir, bp, rp):
+    """The pack's MAIN, frame by frame, through the phases SCHEDULE asks for."""
+    model = [INSERT_ID, 0, 0, 0, IN_KNOB, OUT_KNOB] + [0] * 10 + [0] * SLOT
+    cfgs, fresh = [_slots(model)], [(False, False)]
+    for _, pokes, _ in SCHEDULE:
+        before = _slots(model)
+        for o, v in pokes:
+            model[o] = v
+        cfgs.append(_slots(model))
+        fresh.append(tuple(a[0] != b[0] for a, b in zip(before, cfgs[-1])))
+    new_states = lambda: [({}, {}), ({}, {})]
+    copy = lambda st: [({**a}, {**b}) for a, b in st]
+    states, phase, switched, bad = new_states(), 0, [], None
+    nf = len(bp[0]) // 16
+    for k in range(nf):
+        sl = slice(16 * k, 16 * k + 16)
+        want = (bp[0][sl], bp[1][sl])
+        trial = copy(states)
+        if _run(cfgs[phase], trial, rp[0][sl], rp[1][sl]) == want:
+            states = trial
+            continue
+        if phase + 1 < len(cfgs):
+            trial = copy(states)
+            for i, f in enumerate(fresh[phase + 1]):
+                if f:
+                    trial[i] = ({}, {})
+            if _run(cfgs[phase + 1], trial, rp[0][sl], rp[1][sl]) == want:
+                phase, states = phase + 1, trial
+                switched.append(k)
+                continue
+        bad = k
+        break
+    steps = ["boot"] + [what for _, _, what in SCHEDULE]
+    check(f"port: {var}: the pack's MAIN, every frame, is the model of its phase or the next "
+          f"(0 LSB, OXIDE's state carried, a new id from zero)", bad is None,
+          f"frame {bad} of {nf} matches neither '{steps[phase]}' nor "
+          f"'{steps[phase + 1] if phase + 1 < len(steps) else '-'}'" if bad is not None else f"{nf} frames")
+    check(f"port: {var}: every phase reached, in order", phase == len(cfgs) - 1,
+          ", ".join(f"'{steps[i + 1]}' from frame {f}" for i, f in enumerate(switched)))
+    for i, f in enumerate(switched):
+        print(f"  [info] port: {var}: '{steps[i + 1]}' poked at step frame {SCHEDULE[i][0]}, "
+              f"heard from pack frame {f}")
+    b = tx0(vdir / "built_core0.wav")
+    for s, side, bs in zip(MAIN, "LR", bp):
+        off = align(bs, b[s])
+        bad = [i for i in range(len(bs)) if b[s][off + i] != bs[i]]
+        check(f"port: {var}: MAIN {side} out is the pack's MAIN, sample for sample", not bad,
+              f"{len(bad):,} of {len(bs):,} differ" if bad else f"{len(bs):,} samples from TX0 {off:,}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("remix", nargs="*")
@@ -334,9 +478,9 @@ def main():
     for name in names:
         built, report = vds.build(name)
         print(f"{name}: {len(built):,} bytes built")
-        static(name, built, report)
+        sym = static(name, built, report)
         if a.project:
-            port_half(name, built, a.project, a.frames)
+            port_half(name, built, a.project, a.frames, sym)
         else:
             print(f"  [SKIP] {name}: port half -- no project (OT_PROJECT=<dir> or --project)")
     print(f"verify_strip: {fails} failure(s)")

@@ -41,7 +41,7 @@ One module each, for that module's gates: `make check REMIX=<name>`.
 | [`octakit`](../../remixes/test/octakit/README.md) | Em's Octakit alone -- must reproduce her own build byte for byte. | `make check`: on hardware inside `ok-ms` |
 | [`oxide`](../../remixes/test/oxide/README.md) | The OXIDE tape insert, alone. | ? |
 | [`repitch`](../../remixes/test/repitch/README.md) | stock effects with variable-speed REPITCH in the TSTR selector. | on hardware: repeat98's MKII, 16 Sep 2026 (OCTABAM81) |
-| [`strip`](../../remixes/test/strip/README.md) | OXIDE on the summed MAIN, inline after the mixdown: the master strip, step 2. | port-gated: `verify_strip`: the main out, the phones and the recorder/USB pack carry OXIDE's model of the stock MAIN under the port, with and without the metronome (29 Sep 2026) |
+| [`strip`](../../remixes/test/strip/README.md) | Two insert slots on the summed MAIN, inline after the mixdown: the master strip, step 2. | port-gated: `verify_strip`: the main out, the phones and the recorder/USB pack carry OXIDE's model of the stock MAIN under the port, with and without the metronome and from dirty RAM; the ColdFire's slot record reaches MAIN on a frame boundary (29 Sep 2026) |
 | [`tapeecho`](../../remixes/test/tapeecho/README.md) | Tape Echo replacing Spring Reverb, alone. | on hardware: the author's unit (OCTACLID4): six instances; a seventh freezes it, open |
 | [`usb`](../../remixes/test/usb/README.md) | The rig + USB MIDI (class-compliant, mirrors DIN). | `make check` |
 | [`usb-audio`](../../remixes/test/usb-audio/README.md) | usb + USB AUDIO: the tracks, MAIN and CUE over USB (UAC2, 20 channels). | on hardware: Sam's MKII, image 64, 25 Sep 2026 |

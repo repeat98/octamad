@@ -1,0 +1,90 @@
+[
+  {
+    "model": "bd808",
+    "case": "default",
+    "samples": 262144,
+    "sha256": "b195ed8c6cc77ae7ac27e1a3b4c9c23d4316a861999fb57c9c624009e695e730",
+    "before": 227.9375,
+    "after": 218.9375,
+    "audio_exact": true,
+    "state_exact": true,
+    "state_sha256": "ef74b22b9fb8256cbff9b01aba5f8a0663709093446da8fe4ec9b597e59c6953"
+  },
+  {
+    "model": "bd808",
+    "case": "minimum",
+    "samples": 262144,
+    "sha256": "17eef3e40e3719e5ce605660c7e1047c6ff406880baec81f72f8a6d6ed2ec06f",
+    "before": 227.9375,
+    "after": 218.9375,
+    "audio_exact": true,
+    "state_exact": true,
+    "state_sha256": "ad04d5df049c4016e69ebb31facacd6803f03dfc4653fc6b1239a75ba4fc6eec"
+  },
+  {
+    "model": "bd808",
+    "case": "maximum",
+    "samples": 262144,
+    "sha256": "6f403baedbe8279276e4d1540a4f169d8711f4321518913435f8a4791c624206",
+    "before": 227.9375,
+    "after": 218.9375,
+    "audio_exact": true,
+    "state_exact": true,
+    "state_sha256": "84f43896a25a22b6c27fe5ed92329be6646229966eb3ebd78b9949365f3c1626"
+  },
+  {
+    "model": "bd808",
+    "case": "automation",
+    "samples": 131072,
+    "sha256": "fc8b54c767c61f218c918b98beb349c44e50911cd20fca0b33bd0d3fddaee499",
+    "before": 227.9375,
+    "after": 218.9375,
+    "audio_exact": true,
+    "state_exact": true,
+    "state_sha256": "140c14a445a832fc9edca349e6198a4be95d868abf9638cffa5bd192a2a61964"
+  },
+  {
+    "model": "bd909",
+    "case": "default",
+    "samples": 262144,
+    "sha256": "91600594f79d83d537ce6cd0adc9616302b1bfbe878a1911834237d04a595092",
+    "before": 334.125,
+    "after": 322.125,
+    "audio_exact": true,
+    "state_exact": true,
+    "state_sha256": "dc1cb33188a2f9daa025398a18da215ab464c64e92fa0750cf1c0d3e6bba5254"
+  },
+  {
+    "model": "bd909",
+    "case": "minimum",
+    "samples": 262144,
+    "sha256": "655edcd9dd0b9a56863d1edb403ad618d8119821055371a4d6b7cd32a114b3d5",
+    "before": 334.125,
+    "after": 322.125,
+    "audio_exact": true,
+    "state_exact": true,
+    "state_sha256": "3f90d6900133995a71ea054a36994b0eefa2357acbb01e60b09f8a53b5eda541"
+  },
+  {
+    "model": "bd909",
+    "case": "maximum",
+    "samples": 262144,
+    "sha256": "1357f2992b1b0af1a204923dbe670775cd98eef9cfd79b3249e4429c1bff3f79",
+    "before": 334.125,
+    "after": 322.125,
+    "audio_exact": true,
+    "state_exact": true,
+    "state_sha256": "78db55fc0f3a8862b921ef7321e8db8960e81cf4b29e7ce659c146a1c9a00a0e"
+  },
+  {
+    "model": "bd909",
+    "case": "automation",
+    "samples": 131072,
+    "sha256": "f228d28f93196e8b62c33fc41787b454730bef7b4ef36e4905c5877863d44658",
+    "before": 334.125,
+    "after": 322.125,
+    "audio_exact": true,
+    "state_exact": true,
+    "state_sha256": "10a3f03a8717c5f288d1c97430e7beb56bd2b8a61f4b17d394931c711690eac0"
+  }
+]

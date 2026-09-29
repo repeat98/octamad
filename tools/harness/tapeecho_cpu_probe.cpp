@@ -290,7 +290,7 @@ static void dma_model(ot::Machine& m, ot::Edma& dma) {
         for(unsigned i=0;i<size;++i) m.write8(dst+i,b[i]);
     });
 }
-static void benchmark(const std::vector<uint8_t>& image,const std::vector<uint8_t>& raw,uint32_t base,uint32_t state,bool stress=false) {
+static void benchmark(const std::vector<uint8_t>& image,const std::vector<uint8_t>& raw,uint32_t base,uint32_t state,bool stress=false,bool stockOnly=false) {
     struct Case { const char* name; unsigned tapes,mode,wow; bool patched; };
     std::vector<Case> cases={
         {"stock DELAY x8 (original firmware)",0,0,0,false},
@@ -311,6 +311,7 @@ static void benchmark(const std::vector<uint8_t>& image,const std::vector<uint8_
         {"Tape x8, all controls moving, FREE/BEAT/tempo",8,4,127,true},
         {"Tape x8, all controls moving, full synthetic history",8,5,127,true},
     };
+    if(stockOnly) cases.resize(1);
     // Synchronized edits deliberately align work across tracks. Full history
     // avoids the cheap not-yet-recorded path. MIX=90 is the shipped default.
     const char* controlNames[]={"TIME", "FDBK", "WOW", "AGE", "SYNC", "MIX"};
@@ -501,6 +502,11 @@ static void benchmark(const std::vector<uint8_t>& image,const std::vector<uint8_
     std::puts("  [BENCH] Same 44.1kHz/16-sample routine and modelled DMA; 1500 warm-up + 1000 measured blocks, stereo tone, active wet/feedback. Host wall time, DSP cost, cache misses and DMA/bus stalls excluded; NOT hardware CPU percent.");
 }
 int main(int argc, char **argv) {
+    if(argc==2 && !std::strcmp(argv[1],"--stock-benchmark")) {
+        auto image=read("out/raw/section_3_MAIN_OS.bin");
+        if(image.empty()) return 2;
+        benchmark(image,{},0,0,false,true); return 0;
+    }
     if (argc != 5 && argc != 6) { std::fprintf(stderr, "probe IMAGE RUNTIME BASE STATE [--benchmark|--stress]\n"); return 2; }
     auto image = read(argv[1]), raw = read(argv[2]);
     uint32_t base = std::strtoul(argv[3], nullptr, 16), state = std::strtoul(argv[4], nullptr, 16);

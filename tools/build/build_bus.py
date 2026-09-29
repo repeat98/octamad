@@ -3001,6 +3001,38 @@ hostquit:
         print(f"  platform loader: payloads {', '.join(_pnames)}, append "
               f"{len(_pappend):,} B at 0x{platform_build.LOADER_AT:08x}")
 
+    # Analog BD replaces the source renderer on both cores. Its uploads
+    # must see the final DSP payloads, as the Machinedrum upload above does.
+    if "ANALOG BD" in REMIX.modules:
+        import ab_image
+        from remix import platform_build
+        if "SPRING REV" in REMIX.modules or "MACHINEDRUM" in REMIX.modules:
+            sys.exit("ANALOG BD owns SPRING REV's code and both DSP uploads; "
+                     "remove SPRING REV / MACHINEDRUM from this remix")
+        # Private X and source-stage placement are qualified with stock FX.
+        if any(_m.dsp is not None for _m in remix_modules().values()
+               if _m.key in REMIX.modules):
+            sys.exit("ANALOG BD's DSP source currently composes with stock effects only")
+        _pres, _apokes, _alog = ab_image.integrate(img, IMG.read_bytes())
+        print("\n=== Analog BD: DSP 909, both payloads, pre-boot loader ===")
+        for _l in _alog:
+            print(_l)
+        for _aa, _aexp, _aw, _anote in _apokes:
+            _got = bytes(img[_aa - BASE:_aa - BASE + len(_aexp)])
+            if _got != _aexp:
+                sys.exit(f"analog bd: 0x{_aa:08x} holds {_got.hex()}, not stock {_aexp.hex()}")
+            img[_aa - BASE:_aa - BASE + len(_aw)] = _aw
+            print(f"    poke 0x{_aa:08x}: {_aexp.hex()} -> {_aw.hex()}  {_anote}")
+        _pappend, _psyms2, _boot, _pnames = platform_build.build(
+            [(_m.key, _u) for _m, _u in _dram], _payloads, pathlib.Path("out/platform"),
+            reserve=_reserve, defsyms=_defsym_ovr, preboot=_pres,
+            includes={_u.label: _u.include({_k: remix_modules()[_k] for _k in REMIX.modules})
+                      for _m, _u in _dram if _u.include is not None})
+        if _psyms2 != _psyms or _platform_at is None:
+            sys.exit("analog bd: the platform runtime linked differently the second time")
+        _appends[_platform_at] = (
+            "octabam loader + payloads (" + ", ".join(_pnames) + ")", _pappend)
+
     _grown = ""
     for _aname, _append in _appends:
         img.extend(_append)

@@ -547,7 +547,7 @@ def main():
                  "DJ EQ", "COMB FILTER")
     _want = {"restock": (), "recfix": (), "mods": (), "ok-ms": (), "usb-lean": (), "usb-full": (), "usb-master": (),
              "octatrick": (), "octatrick-usb": (),     # stock effects + ColdFire modules, no DSP words
-             "repitch": (),
+             "repitch": (), "analog-bassdrum": ("SPRING REV",),  # DSP 909 source consumes SPRING
              "cfmeter": ("DARK REV",), "cfmeter-port": ("DARK REV",),   # the readout insert's words
              "euclid": ("SPATIALIZER", "FLANGER", "CHORUS", "COMB FILTER"),
              "rig-scenes": _rig, "rig-kits": _rig,

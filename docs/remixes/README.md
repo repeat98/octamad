@@ -23,6 +23,7 @@ A remix is a named selection of modules; `make image REMIX=<name>` builds it int
 
 | remix | contains | proof |
 |---|---|---|
+| [`analog-bassdrum`](../../remixes/analog-bassdrum/README.md) | Analog BD source machine, switchable 808/909, stock AMP and FX. | port-gated: source audio on both cores and machine chooser under the port; not flashed |
 | [`kits`](../../remixes/kits/README.md) | All the firmware mods of the Octakit family, no effects: 256 Kits, the LO-FI AMF fix, CC to page 2. | port-gated |
 | [`mods`](../../remixes/mods/README.md) | MIDI SCENES + Octakit + the LO-FI AMF fix + CC to page 2, bridged, on the stock effects. | port-gated |
 | [`octatrick`](../../remixes/octatrick/README.md) | SYNTH MACHINE + SCALE QUANTIZER + DIRECT JUMP on the stock effects. | `make check` |

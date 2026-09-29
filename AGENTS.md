@@ -135,6 +135,11 @@ sites are counted per module in `build_bus.MPYSU_AUDITED`, and since 23 Sep
 stops on any other mismatch or on a count that differs from the table). `mpysu` treats the SECOND operand as unsigned, so
 a negative multiplier there is silently corrupted. `mpy x0,y1` and
 `mpy y0,x0` encode signed. Both assemble clean and do the wrong thing.
+**`mac` is the same family**: `mac x0,y0,b` and `mac -y0,y1,b` assembled
+to `macsu` (28 Sep 2026, the Analog BD's desk coupling; `mac y0,x0,b` and
+`mac -y1,y0,b` are signed). A listing cannot show it: it echoes the source
+text, so a check that greps the listing for `su` passes. Compare against
+`dsp56kDisassemble`'s decode, operands included (`dsp909.assemble`).
 **Disassemble what you assemble** when a result surprises you — and always
 for a new `mpy` whose second operand can go negative. A related family bit
 us in shipping code: `cmp a,b` had encoded as `max a,b`, which updates only

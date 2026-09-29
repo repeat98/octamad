@@ -212,8 +212,8 @@ def complete(mod, selector: int | None = None,
              views=None) -> dict[int, dict[int, bytes]]:
     """Every mode's FULL rename set for the slots ANY of its views touches.
 
-    A sparse table would leave a name behind: land on GRAIN (MDEP -> SCAT),
-    go back to CLEAN, and the knob would still read SCAT because CLEAN never
+    A sparse table would leave a name behind: land on GRAIN (MDEP -> SCTR),
+    go back to CLEAN, and the knob would still read SCTR because CLEAN never
     said otherwise. So each mode restores the Param's own name for every slot
     any view renames.
     """

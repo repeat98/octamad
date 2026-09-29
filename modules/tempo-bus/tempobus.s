@@ -1,0 +1,516 @@
+| TEMPO BUS -- the TEMPO window carries the bus engines' knobs.
+|
+| The TEMPO key opens the stock TEMPO window at the menu window's size;
+| its draw is replaced by a stock-style settings screen: the header
+| ("TEMPO 121.2" at the left, then the key: the four arrows, "A" and the
+| font's knob glyph; the rule) and two titled boxes, DELAY and REVERB, each
+| listing its engine's named parameters with values printed by the
+| engine's own formatters. UP/DOWN move the cursor in the focused box; A
+| (or B) edits the selected parameter on the host track, LEFT/RIGHT move
+| between the boxes, C-F are held while the window is open. LEVEL steps
+| whole BPM (the stock handler) and 0.1 BPM while FUNC is held (the step UP/DOWN made in the stock window). YES/NO/
+| TEMPO (close) stay the stock window's.
+|
+| Every drawing call is one the stock CONTROL INPUT and MIDI SYNC screens
+| make (0x40065674, 0x4006730c): header text and width, rule, titled
+| box, row text at a 7-pixel pitch, the invert bar; the key's dial is the
+| parameter pages' (0x400479b4) and its arrows are stock icons. Edits go through the
+| firmware's page-1 writer (FX2 flat 24..29) and, for page 2, the FX2
+| page-2 editor's stores (CC MAP's write path), then MODE DEFAULTS'
+| re-default when that module is in the image. The rows (each engine's
+| named slots) come from the manifests, generated per remix (remix.inc).
+| engine, getval and setval are helpers.s, linked first.
+        .set    WINH,     0x460d16a0   | long: TEMPO window handle, 0 = closed
+        .set    SCRDIRTY, 0x46c7c72c   | long: screen refresh request
+        .set    CLEAR,    0x40035624   | (surface): the stock TEMPO draw's first call
+        .set    FONT,     0x400ba876   | the small UI font
+        .set    TEXT,     0x40012bd8   | (font, surf, x, y, limit, str)
+        .set    TWIDTH,   0x40012f30   | (font, limit, str) -> pixels
+        .set    RULE,     0x40011910   | (surf, x, y, x2, 1)
+        .set    BOX,      0x4007efd0   | (surf, x, y, w, h, title, 0, focused)
+        .set    INVERT,   0x40012254   | (surf, x1, y1, x2, y2, -1)
+        .set    ICON,     0x400128a8   | (icon, surf, x, y)
+        .set    ARRUP,    0x400b9d8c   | stock icons, 7 x 5: the up triangle
+        .set    ARRDN,    0x400b9da0   | and the down one
+        .set    KEYX,     70           | the key's left edge (it ends at x 112)
+        .set    SPRINTF,  0x40013a08   | (buf, fmt, ...)
+        .set    TEMPOGET, 0x4009c5f4   | (&whole, &tenths)
+        .set    LPUSH,    0x40031494   | (layer): register an input layer
+        .set    LPOP,     0x4003146c   | (layer): unregister it
+        .set    PUSHED,   0x4003171c   | (key): nonzero while that key is held
+        .set    KROWS,    0x46100b18   | bytes: the panel's held keys, code = row*8 + bit
+        .set    KFUNC,    0x2d         | FUNCTION: row 5, bit 5
+        .set    KUP,      0x33
+        .set    TSTEP,    0x4004b824   | (whole, tenths): the stock tempo step, redraws
+        .set    TLEVEL,   0x4004b918   | (index, delta): the stock LEVEL handler, whole BPM
+        .set    P1WRITE,  0x40054cd8   | (track, flat, value): page-1 writer
+        .set    DESC2,    0x400d5fdc   | FX2 descriptor table [id] -> P
+        .set    DBPTR,    0x46c82456   | long: Part DB base
+        .set    PARTB,    0x80000003   | byte: the current part
+        .set    IDOFF,    0x8ed88      | Part: FX2 id per track
+        .set    P1OFF,    0x8ee9a      | Part: page-1 values, track*24, FX2 at +18
+        .set    P2OFF,    0x8f084      | Part: FX2 page-2 values, track*30
+        .set    SHADOW,   0x100a51d2   | FX2 page-2 shadow: +part*6322+track*30+slot2
+        .set    LIVEB,    0x80000810   | live block, 72 B per track; FX2 page 2 at +0x38
+        .set    CHGBITS,  0x95048      | DB+: |= 1<<part
+        .set    MODBITS,  0x100b145e   | byte: |= 1<<part
+        .set    CHGFLAG,  0x9b332      | DB+: long = 1
+        .set    GCHG,     0x100f8598   | long = 1
+        .set    NAMES,    0x16         | P+: twelve 6-byte names
+        .set    MINS,     0x6a         | P+: twelve u32 minimums
+        .set    COUNTS,   0x9a         | P+: twelve u32 value counts
+        .set    FMTS,     0xca         | P+: twelve formatter pointers, 0 = plain
+        .set    ROWS,     5            | rows visible per box
+        .set    BOXW,     53
+        .set    BOXH,     41           | from y 4; 3 px under the rule
+
+
+        .text
+        .globl  tb_open, tb_draw, tb_close
+
+| ---- 0x40059f2c: the TEMPO opener's `jmp 0x4004b528` lands here ----------
+| The window exists and the stock layer is registered; ours goes on top.
+tb_open:
+        pea     TB_LAYER
+        jsr     LPUSH
+        addql   #4,%sp
+        bra.w   tb_draw
+
+| ---- 0x40056930: the TEMPO close, entry replayed after ours comes off -----
+tb_close:
+        tstl    WINH
+        beq.s   1f
+        bsr.s   lpop
+1:      tstl    WINH
+        jmp     0x40056936
+lpop:   pea     TB_LAYER
+        jsr     LPOP
+        addql   #4,%sp
+        rts
+
+| ---- encoders: (index, delta). The window gone takes the layer off. ------
+tb_enc:
+        tstl    WINH
+        beq.s   lpop
+        lea     %sp@(-44),%sp
+        movem.l %d2-%d7/%a2-%a6,%sp@
+        movel   %sp@(48),%d0           | index
+        movel   %sp@(52),%d7           | delta
+        moveq   #0,%d1
+        moveb   FOCUS,%d1              | d1 = box
+        lea     SEL,%a2
+        addal   %d1,%a2                | a2 = &SEL[box]
+        moveq   #1,%d3
+        cmpl    %d3,%d0
+        bhi.w   edone                  | C-F: held
+| A, B: the value, x7 while that knob is pushed (the stock fast turn)
+        addil   #0x38,%d0              | the knob's push key
+        movel   %d0,%sp@-
+        jsr     PUSHED
+        addql   #4,%sp
+        tstl    %d0
+        beq.s   1f
+        movel   %d7,%d0
+        lsll    #3,%d0
+        subl    %d7,%d0
+        movel   %d0,%d7
+1:      moveq   #0,%d1
+        moveb   FOCUS,%d1
+        moveq   #0,%d0
+        moveb   %a2@,%d0
+        bsr.w   slotof                 | d6 = slot, or -1
+        tstl    %d6
+        bmi.s   edone
+        movel   %d1,%d0
+        jsr     engine                 | d4 = track or -1, a3 = P, a4, d5
+        tstl    %d4
+        bmi.s   edone
+        jsr     getval                 | d2 = value
+        movel   %d6,%d0
+        lsll    #2,%d0
+        movel   %a3@(MINS,%d0:l),%d3   | min
+        lea     %a3@(COUNTS),%a0
+        movel   %a0@(0,%d0:l),%d1
+        addl    %d3,%d1
+        subql   #1,%d1                 | max
+        movel   %d2,%d0
+        addl    %d7,%d0
+        cmpl    %d3,%d0
+        bge.s   2f
+        movel   %d3,%d0
+2:      cmpl    %d1,%d0
+        ble.s   3f
+        movel   %d1,%d0
+3:      cmpl    %d2,%d0
+        beq.s   edone
+        movel   %d0,%d2                | d2 = new value
+        jsr     setval
+edone:  movem.l %sp@,%d2-%d7/%a2-%a6
+        lea     %sp@(44),%sp
+        bra.w   tb_draw
+
+| ---- LEFT / RIGHT: the focused box; each box keeps its own cursor ----
+tb_lr:  moveq   #0,%d0
+        moveq   #0x21,%d1              | RIGHT
+        cmpl    %sp@(4),%d1
+        bne.s   1f
+        moveq   #1,%d0
+1:      moveb   %d0,FOCUS
+        bra.w   tb_draw
+
+| ---- UP / DOWN: the cursor, one row, held at the box's ends -----------
+tb_ud:  movel   %d2,%sp@-
+        moveq   #1,%d0
+        moveq   #KUP,%d1
+        cmpl    %sp@(8),%d1
+        bne.s   1f
+        moveq   #-1,%d0
+1:      moveq   #0,%d1
+        moveb   FOCUS,%d1
+        lea     SEL,%a1
+        addal   %d1,%a1                | a1 = &SEL[box]
+        moveq   #0,%d2
+        moveb   %a1@,%d2
+        addl    %d0,%d2                | the row asked for
+        bmi.s   2f                     | above the first: stay
+        lea     NV,%a0
+        moveq   #0,%d0
+        moveb   %a0@(0,%d1:l),%d0
+        cmpl    %d0,%d2
+        bge.s   2f                     | past the last: stay
+        moveb   %d2,%a1@
+2:      movel   %sp@+,%d2
+        bra.w   tb_draw
+
+| ---- LEVEL: whole BPM (stock); 0.1 BPM while FUNC is held -------------
+tb_lvl: moveq   #0,%d0
+        moveb   KROWS+(KFUNC>>3),%d0
+        btst    #(KFUNC&7),%d0
+        bne.s   1f
+        jmp     TLEVEL
+1:      movel   %sp@(8),%sp@-          | tenths = delta
+        clrl    %sp@-                  | whole = 0
+        jsr     TSTEP
+        addql   #8,%sp
+        rts
+
+| ---- slotof: d1 = box, d0 = row -> d6 = the row's slot, -1 past the end.
+| The rows are the ones the last draw listed (VIS, NV).
+slotof: moveq   #-1,%d6
+        lea     NV,%a0
+        cmpb    %a0@(0,%d1:l),%d0
+        bcc.s   1f
+        movel   %d1,%d6
+        mulu.w  #12,%d6
+        addl    %d0,%d6
+        lea     VIS,%a0
+        moveb   %a0@(0,%d6:l),%d6
+        extb.l  %d6
+1:      rts
+
+| ---- text: d0 = x, d1 = y, a0 = str, on a5 (clobbers d0/d1/a0/a1) ------
+text:   movel   %a0,%sp@-
+        pea     -1
+        movel   %d1,%sp@-
+        movel   %d0,%sp@-
+        movel   %a5,%sp@-
+        pea     FONT
+        jsr     TEXT
+        lea     %sp@(24),%sp
+        rts
+
+| ---- tb_draw: the whole window ------------------------------------------
+| Locals at a6 (40 B): 0..15 buf, 16 whole, 20 tenths, 24 selected row,
+| 28 box, 32/36 rtext's parked x/y.
+tb_draw:
+        lea     %sp@(-84),%sp
+        movem.l %d2-%d7/%a2-%a6,%sp@
+        lea     %sp@(44),%a6
+        movel   WINH,%d0
+        beq.w   dexit
+        moveal  %d0,%a5
+        lea     %a5@(36),%a5           | a5 = the window's surface {w, h, ...}
+        movel   %a5,%sp@-
+        jsr     CLEAR
+        addql   #4,%sp
+        movel   %a5@(4),%d7
+        subil   #14,%d7                | d7 = h - 14: the header text 6 px under the top
+| header: "TEMPO 121.2" at the left, the key at the right, the rule
+        pea     %a6@(20)
+        pea     %a6@(16)
+        jsr     TEMPOGET
+        addql   #8,%sp
+        lea     T_PROJ,%a0             | PTN while the pattern tempo is on, as
+        tstb    0x80000024             | the stock TEMPO draw decides it
+        beq.s   1f                     | (0x4004b54c)
+        tstl    0x460d1aec
+        bne.s   1f
+        lea     T_PTN,%a0
+1:      movel   %a6@(20),%sp@-         | (buf, fmt, word, whole, tenths)
+        movel   %a6@(16),%sp@-
+        movel   %a0,%sp@-
+        pea     HDRFMT
+        pea     %a6@
+        jsr     SPRINTF
+        lea     %sp@(20),%sp
+        moveq   #4,%d0
+        movel   %d7,%d1
+        addql   #2,%d1
+        lea     %a6@,%a0
+        bsr.w   text
+| the key, right-aligned: the arrows for the cursor, then "A"
+| and the font's knob (0x02), the value knob, at the right edge. An icon's y is its bottom row,
+| as the text's.
+        moveq   #KEYX,%d0
+        movel   %d7,%d1
+        addql   #2,%d1
+        lea     T_KEY,%a0
+        bsr.w   text
+        moveq   #KEYX+6,%d0
+        moveq   #2,%d1
+        lea     ARRUP,%a0
+        bsr.s   icon
+        moveq   #KEYX+13,%d0
+        moveq   #2,%d1
+        lea     ARRDN,%a0
+        bsr.s   icon
+        pea     1
+        movel   %a5@,%d0
+        subql   #6,%d0
+        movel   %d0,%sp@-
+        movel   %d7,%d0
+        subql   #1,%d0
+        movel   %d0,%sp@-
+        pea     4
+        movel   %a5,%sp@-
+        jsr     RULE
+        lea     %sp@(20),%sp
+        moveq   #0,%d0
+        bsr.s   dbox
+        moveq   #1,%d0
+        bsr.s   dbox
+        moveq   #1,%d0
+        movel   %d0,SCRDIRTY
+dexit:  movem.l %sp@,%d2-%d7/%a2-%a6
+        lea     %sp@(84),%sp
+        rts
+
+| icon: a0 at x d0, header line + d1 (clobbers d0/d1/a0/a1)
+icon:   addl    %d7,%d1
+        movel   %d1,%sp@-
+        movel   %d0,%sp@-
+        movel   %a5,%sp@-
+        movel   %a0,%sp@-
+        jsr     ICON
+        lea     %sp@(16),%sp
+        rts
+
+| rtext: a6@ (the buffer) right-aligned at d0, row d1 (clobbers d0/d1/a0/a1)
+rtext:  movel   %d0,%a6@(32)
+        movel   %d1,%a6@(36)
+        pea     %a6@
+        pea     -1
+        pea     FONT
+        jsr     TWIDTH
+        lea     %sp@(12),%sp
+        movel   %a6@(32),%d1
+        subl    %d0,%d1
+        movel   %d1,%d0
+        movel   %a6@(36),%d1
+        lea     %a6@,%a0
+        bra.w   text
+
+| ---- dbox: d0 = box; a5 = surface, a6 = locals. d7 = the box's x.
+dbox:   movel   %d7,%sp@-
+        movel   %d0,%a6@(28)
+        moveq   #57,%d7
+        mulu.l  %d0,%d7
+        addql   #4,%d7                 | d7 = box x
+        clrl    %sp@-                  | the title plain: the row bar marks focus
+        clrl    %sp@-
+        lea     TITLES,%a0
+        movel   %a0@(0,%d0:l:4),%sp@-
+        pea     BOXH
+        pea     BOXW
+        pea     4
+        movel   %d7,%sp@-
+        movel   %a5,%sp@-
+        jsr     BOX
+        lea     %sp@(32),%sp
+        movel   %a6@(28),%d0
+        jsr     engine
+        tstl    %d4
+        bmi.w   bxdone
+| the MODE formatter first: it renames the knobs around it (mode cave)
+        moveal  %a3@(FMTS+24),%a2
+        cmpal   #0,%a2
+        beq.s   1f
+        moveq   #6,%d6
+        jsr     getval
+        movel   %d2,%sp@-
+        pea     %a6@
+        jsr     %a2@
+        addql   #8,%sp
+| the rows: each named slot whose current name is not the mode's "---"
+1:      movel   %a6@(28),%d1
+        lea     NTABS,%a2
+        moveal  %a2@(0,%d1:l:4),%a2    | the box's names table
+        jsr     rows                   | d3 = rows
+| keep the selection inside the rows and the view around it
+        lea     SEL,%a0
+        moveq   #0,%d0
+        moveb   %a0@(0,%d1:l),%d0
+        cmpl    %d3,%d0
+        blt.s   2f
+        movel   %d3,%d0
+        subql   #1,%d0
+        bpl.s   2f
+        moveq   #0,%d0
+2:      moveb   %d0,%a0@(0,%d1:l)
+        movel   %d0,%a6@(24)           | the selected row
+        lea     SCR,%a1
+        moveq   #0,%d2
+        moveb   %a1@(0,%d1:l),%d2
+        movel   %d3,%d0
+        subql   #ROWS,%d0              | the last full view's first row
+        bpl.s   5f
+        moveq   #0,%d0
+5:      cmpl    %d0,%d2
+        ble.s   6f
+        movel   %d0,%d2                | a view past the list's end (a MODE
+6:      movel   %a6@(24),%d0           | turn on the host page) comes back
+        cmpl    %d2,%d0
+        bge.s   3f
+        movel   %d0,%d2                | cursor above the view
+3:      movel   %d2,%d3
+        addql   #ROWS-1,%d3
+        cmpl    %d3,%d0
+        ble.s   4f
+        movel   %d0,%d2
+        subql   #ROWS-1,%d2            | cursor below the view
+4:      moveb   %d2,%a1@(0,%d1:l)
+        movel   %d2,%d5                | d5 = the row being drawn
+        moveq   #BOXH-7,%d3            | d3 = its y
+| each row: name, value right-aligned, the bar on the focused selection
+rloop:  movel   %a6@(28),%d1
+        movel   %d5,%d0
+        bsr.w   slotof
+        tstl    %d6
+        bmi.w   bxdone
+        movel   %d6,%d0
+        mulu.w  #6,%d0
+        lea     NTABS,%a0              | d1 = the box
+        moveal  %a0@(0,%d1:l:4),%a0
+        addal   %d0,%a0
+        cmpil   #6,%d6                 | the MODE slot names itself after the
+        bne.s   8f                     | mode (mode cave); the list says MODE
+        lea     T_MODE,%a0
+8:
+        moveq   #4,%d0
+        addl    %d7,%d0
+        movel   %d3,%d1
+        addql   #1,%d1
+        bsr.w   text
+        jsr     getval
+        movel   %d6,%d0
+        lsll    #2,%d0
+        lea     %a3@(FMTS),%a0
+        movel   %a0@(0,%d0:l),%d0
+        beq.s   5f
+        movel   %d2,%sp@-
+        pea     %a6@
+        moveal  %d0,%a0
+        jsr     %a0@
+        addql   #8,%sp
+        bra.s   6f
+5:      movel   %d2,%sp@-
+        pea     DECFMT
+        pea     %a6@
+        jsr     SPRINTF
+        lea     %sp@(12),%sp
+6:      moveq   #BOXW-3,%d0
+        addl    %d7,%d0
+        movel   %d3,%d1
+        addql   #1,%d1
+        bsr.w   rtext
+        moveq   #0,%d0
+        moveb   FOCUS,%d0
+        cmpl    %a6@(28),%d0
+        bne.s   7f
+        cmpl    %a6@(24),%d5
+        bne.s   7f
+        pea     -1
+        movel   %d3,%d0
+        addql   #6,%d0
+        movel   %d0,%sp@-
+        moveq   #BOXW-3,%d0
+        addl    %d7,%d0
+        movel   %d0,%sp@-
+        movel   %d3,%sp@-
+        movel   %d7,%d0
+        addql   #3,%d0
+        movel   %d0,%sp@-
+        movel   %a5,%sp@-
+        jsr     INVERT
+        lea     %sp@(24),%sp
+7:      addql   #1,%d5
+        subql   #7,%d3
+        moveq   #BOXH-7-7*ROWS,%d0     | past the last row
+        cmpl    %d0,%d3
+        bgt.w   rloop
+bxdone: movel   %sp@+,%d7
+        rts
+
+| ---- data -------------------------------------------------------------
+HDRFMT: .asciz  "%s %d.%d"
+T_PROJ: .asciz  "TEMPO"
+T_PTN:  .asciz  "PTN"
+T_MODE: .asciz  "MODE"
+DECFMT: .asciz  "%d"
+T_DLY:  .asciz  "DELAY"
+T_VRB:  .asciz  "REVERB"
+| the key: the font's left and right triangles (0x13, 0x14) with room
+| between them for the up and down icons; A (the knob) turns the value
+T_KEY:  .asciz  "\x13     \x14 A \x02"
+        .even
+TITLES: .long   T_DLY, T_VRB
+FOCUS:  .byte   0
+SEL:    .byte   0, 0
+SCR:    .byte   0, 0
+        .include "remix.inc"           | ENGIDS, NAMED (rows reads NAMED)
+        NAMETAB_1                      | the reverb's: NAMES_<its id>
+| The screen's labels, per box: its own tables, never the shared
+| descriptor's (a host_slots remix leaves DEL and REV alone on the host page).
+        .even
+NTABS:  NTABS_LONGS
+        .even
+| An input layer as the stock ones: {0, keys, encoders, 0, 0, -1, -1}.
+TB_LAYER:
+        .long   0, TB_KEYS, TB_ENCS, 0, 0, -1, -1
+| Key records, 26 B: {code, 0, press, release, repeat, aux, 0, delay, rate}.
+TB_KEYS:
+        .byte   0x34, 0
+        .long   tb_lr, 0, 0, 0, 0
+        .word   0, 0
+        .byte   0x21, 0
+        .long   tb_lr, 0, 0, 0, 0
+        .word   0, 0
+        .byte   0x33, 0
+        .long   tb_ud, 0, tb_ud, 0, 0
+        .word   15, 5
+        .byte   0x20, 0
+        .long   tb_ud, 0, tb_ud, 0, 0
+        .word   15, 5
+        .byte   0xff, 0
+        .long   0, 0, 0, 0, 0
+        .word   0, 0
+| Encoder records, 22 B: {index, 0, handler, 16 B}.
+TB_ENCS:
+        .irp    k, 0, 1, 2, 3, 4, 5
+        .byte   \k, 0
+        .long   tb_enc, 0, 0, 0, 0
+        .endr
+        .byte   6, 0
+        .long   tb_lvl, 0, 0, 0, 0
+        .byte   0xff, 0
+        .long   0, 0, 0, 0, 0

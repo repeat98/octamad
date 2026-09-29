@@ -1,0 +1,381 @@
+# DSP56300 instruction set.  This file is a template for tools/gen_sinc.py:
+#   {bits}    24-character encoding from the Family Manual, bit 23 first
+#   kH_L/sH_L generated unsigned/signed fields over instruction bits H..L
+#   @regtable / @cctable / @alu   generated subtables (see gen_sinc.py)
+
+define token op(24)
+@@FIELDS@@
+  acc0  = (0,0)
+  acc1  = (1,1)
+  acc3  = (3,3)
+  acc4  = (4,4)
+  acc5  = (5,5)
+  acc7  = (7,7)
+  acc16 = (16,16)
+  acc16b = (16,16)
+  acc17 = (17,17)
+  acc19 = (19,19)
+  nacc0 = (0,0)
+  nacc1 = (1,1)
+  nacc3 = (3,3)
+  nacc4 = (4,4)
+  ea_r  = (8,10)
+  ea_n  = (8,10)
+  ea_m  = (8,10)
+  t_r0  = (0,2)
+  yrl   = (13,14)
+  yrh   = (13,14)
+  ynl   = (13,14)
+  ynh   = (13,14)
+  yml   = (13,14)
+  ymh   = (13,14)
+  jj4   = (4,5)
+  xy4   = (4,4)
+  lua_d = (0,3)
+  q4a   = (0,3)
+  q4b   = (0,3)
+  qq2   = (4,5)
+  jq4   = (4,5)
+;
+
+define token ext(24)
+  ext24  = (0,23)
+  k23_23e = (23,23)
+  sext24 = (0,23) signed
+;
+
+attach variables [ acc0 acc1 acc3 acc4 acc5 acc7 acc16 acc16b acc17 acc19 ] [ a b ];
+attach variables [ nacc0 nacc1 nacc3 nacc4 ] [ b a ];
+attach variables [ ea_r t_r0 ] [ r0 r1 r2 r3 r4 r5 r6 r7 ];
+attach variables [ ea_n ] [ n0 n1 n2 n3 n4 n5 n6 n7 ];
+attach variables [ ea_m ] [ m0 m1 m2 m3 m4 m5 m6 m7 ];
+attach variables [ yrl ] [ r4 r5 r6 r7 ];
+attach variables [ yrh ] [ r0 r1 r2 r3 ];
+attach variables [ ynl ] [ n4 n5 n6 n7 ];
+attach variables [ ynh ] [ n0 n1 n2 n3 ];
+attach variables [ yml ] [ m4 m5 m6 m7 ];
+attach variables [ ymh ] [ m0 m1 m2 m3 ];
+attach variables [ jj4 ] [ x0 y0 x1 y1 ];
+attach variables [ xy4 ] [ x y ];
+attach variables [ lua_d ] [ r0 r1 r2 r3 r4 r5 r6 r7 n0 n1 n2 n3 n4 n5 n6 n7 ];
+
+# ------------------------------------------------------------- AGU update
+macro agu_add(r, d, m) {
+@ifdef AGU_MODULO
+	local dd:3 = d;
+	r = agu_modulo(r, dd, m);
+@else
+	r = r + d;
+@endif
+}
+
+# Effective address, MMMRRR in bits 13..8 (no absolute / immediate)
+EAx: "("^ea_r^")-"^ea_n  is k13_11=0 & ea_r & ea_n & ea_m { local t:3 = ea_r; agu_add(ea_r, -ea_n, ea_m); export t; }
+EAx: "("^ea_r^")+"^ea_n  is k13_11=1 & ea_r & ea_n & ea_m { local t:3 = ea_r; agu_add(ea_r, ea_n, ea_m); export t; }
+EAx: "("^ea_r^")-"       is k13_11=2 & ea_r & ea_m { local t:3 = ea_r; agu_add(ea_r, -1, ea_m); export t; }
+EAx: "("^ea_r^")+"       is k13_11=3 & ea_r & ea_m { local t:3 = ea_r; agu_add(ea_r, 1, ea_m); export t; }
+EAx: "("^ea_r^")"        is k13_11=4 & ea_r { export ea_r; }
+EAx: "("^ea_r^"+"^ea_n^")" is k13_11=5 & ea_r & ea_n & ea_m { local t:3 = ea_r; agu_add(t, ea_n, ea_m); export t; }
+EAx: "-("^ea_r^")"       is k13_11=7 & ea_r & ea_m { agu_add(ea_r, -1, ea_m); export ea_r; }
+
+# ... plus absolute address (second word)
+EA: EAx      is EAx { export EAx; }
+EA: ">"^ext24 is k13_8=0x30 ; ext24 { export *[const]:3 ext24; }
+
+# Immediate long data (second word), only meaningful as a source
+IMM: "#>"^ext24 is k13_8=0x34 ; ext24 { export *[const]:3 ext24; }
+
+# Two-bit update-only modes (MM in bits 12..11): Move_ea, LUA
+EA4: "("^ea_r^")-"^ea_n is k12_11=0 & ea_r & ea_n & ea_m { local t:3 = ea_r; agu_add(t, -ea_n, ea_m); export t; }
+EA4: "("^ea_r^")+"^ea_n is k12_11=1 & ea_r & ea_n & ea_m { local t:3 = ea_r; agu_add(t, ea_n, ea_m); export t; }
+EA4: "("^ea_r^")-"      is k12_11=2 & ea_r & ea_m { local t:3 = ea_r; agu_add(t, -1, ea_m); export t; }
+EA4: "("^ea_r^")+"      is k12_11=3 & ea_r & ea_m { local t:3 = ea_r; agu_add(t, 1, ea_m); export t; }
+
+# X:Y parallel move addressing.  X side: MM 12..11 + RRR 10..8
+XEA: "("^ea_r^")"         is k12_11=0 & ea_r { export ea_r; }
+XEA: "("^ea_r^")+"^ea_n   is k12_11=1 & ea_r & ea_n & ea_m { local t:3 = ea_r; agu_add(ea_r, ea_n, ea_m); export t; }
+XEA: "("^ea_r^")-"        is k12_11=2 & ea_r & ea_m { local t:3 = ea_r; agu_add(ea_r, -1, ea_m); export t; }
+XEA: "("^ea_r^")+"        is k12_11=3 & ea_r & ea_m { local t:3 = ea_r; agu_add(ea_r, 1, ea_m); export t; }
+# Y side: mm 21..20 + rr 14..13, register bank opposite to the X side's
+YEA: "("^yrl^")"        is k21_20=0 & k10_10=0 & yrl { export yrl; }
+YEA: "("^yrl^")+"^ynl   is k21_20=1 & k10_10=0 & yrl & ynl & yml { local t:3 = yrl; agu_add(yrl, ynl, yml); export t; }
+YEA: "("^yrl^")-"       is k21_20=2 & k10_10=0 & yrl & yml { local t:3 = yrl; agu_add(yrl, -1, yml); export t; }
+YEA: "("^yrl^")+"       is k21_20=3 & k10_10=0 & yrl & yml { local t:3 = yrl; agu_add(yrl, 1, yml); export t; }
+YEA: "("^yrh^")"        is k21_20=0 & k10_10=1 & yrh { export yrh; }
+YEA: "("^yrh^")+"^ynh   is k21_20=1 & k10_10=1 & yrh & ynh & ymh { local t:3 = yrh; agu_add(yrh, ynh, ymh); export t; }
+YEA: "("^yrh^")-"       is k21_20=2 & k10_10=1 & yrh & ymh { local t:3 = yrh; agu_add(yrh, -1, ymh); export t; }
+YEA: "("^yrh^")+"       is k21_20=3 & k10_10=1 & yrh & ymh { local t:3 = yrh; agu_add(yrh, 1, ymh); export t; }
+
+# ------------------------------------------------ X/Y memory operand forms
+# memory space selected by bit 6
+MEA6:  "x:"^EA  is k6_6=0 ... & EA  { export *[X]:3 EA; }
+MEA6:  "y:"^EA  is k6_6=1 ... & EA  { export *[Y]:3 EA; }
+MEAx6: "x:"^EAx is k6_6=0 & EAx { export *[X]:3 EAx; }
+MEAx6: "y:"^EAx is k6_6=1 & EAx { export *[Y]:3 EAx; }
+Maa6:  "x:<"^k13_8 is k6_6=0 & k13_8 { export *[X]:3 k13_8; }
+Maa6:  "y:<"^k13_8 is k6_6=1 & k13_8 { export *[Y]:3 k13_8; }
+Mpp6:  "x:<<"^pa is k6_6=0 & k13_8 [ pa = 0xffffc0 + k13_8; ] { export *[X]:3 pa; }
+Mpp6:  "y:<<"^pa is k6_6=1 & k13_8 [ pa = 0xffffc0 + k13_8; ] { export *[Y]:3 pa; }
+Mqq6:  "x:<<"^pa is k6_6=0 & k13_8 [ pa = 0xffff80 + k13_8; ] { export *[X]:3 pa; }
+Mqq6:  "y:<<"^pa is k6_6=1 & k13_8 [ pa = 0xffff80 + k13_8; ] { export *[Y]:3 pa; }
+
+# ----------------------------------------------------- register code tables
+@regtable R5r13 r 17-13 r5
+@regtable R5w8  w 12-8  r5 mv1
+@regtable R5w16 w 20-16 r5 mv1
+@regtable R5rS  r 21-20,18-16 r5
+@regtable R5wS  w 21-20,18-16 r5 mv1
+@regtable R6r8  r 13-8 r6
+@regtable R6w8  w 13-8 r6 mv1
+@regtable R6r0  r 5-0  r6
+@regtable R6w0  w 5-0  r6 mv1
+@regtable R6nos r 13-8 r6nos
+@regtable C5r0  r 4-0  ctl5
+@regtable C5w0  w 4-0  ctl5 mv1
+@regtable D4r0  r 3-0  dalu4
+@regtable D4w0  w 3-0  dalu4 mv1
+@regtable R5w0  w 4-0  r5 mv1
+
+@cctable CC0  3-0
+@cctable CC8  11-8
+@cctable CC12 15-12
+
+# ------------------------------------------------------------ flow targets
+Rel24: dest is sext24 [ dest = inst_start + sext24; ] { export *[P]:3 dest; }
+Abs24: ext24 is ext24 { export *[P]:3 ext24; }
+Rel9:  dest is s9_6 & k4_0 [ dest = inst_start + ((s9_6 << 5) | k4_0); ] { export *[P]:3 dest; }
+Abs12: k11_0 is k11_0 { export *[P]:3 k11_0; }
+
+LoopTop: ltop is ltop { export *[P]:3 ltop; }
+
+# ================================================================== data ALU
+# Multiplier input pairs QQQ (bits 6..4); the product is fractional: (s1*s2)<<1
+MulQ: "x0,x0" is k6_4=0 { local p:7 = sext(x0) * sext(x0); p = p << 1; export p; }
+MulQ: "y0,y0" is k6_4=1 { local p:7 = sext(y0) * sext(y0); p = p << 1; export p; }
+MulQ: "x1,x0" is k6_4=2 { local p:7 = sext(x1) * sext(x0); p = p << 1; export p; }
+MulQ: "y1,y0" is k6_4=3 { local p:7 = sext(y1) * sext(y0); p = p << 1; export p; }
+MulQ: "x0,y1" is k6_4=4 { local p:7 = sext(x0) * sext(y1); p = p << 1; export p; }
+MulQ: "y0,x0" is k6_4=5 { local p:7 = sext(y0) * sext(x0); p = p << 1; export p; }
+MulQ: "x1,y0" is k6_4=6 { local p:7 = sext(x1) * sext(y0); p = p << 1; export p; }
+MulQ: "y1,x1" is k6_4=7 { local p:7 = sext(y1) * sext(x1); p = p << 1; export p; }
+
+# Source 24-bit operand aligned as a 56-bit accumulator value
+S56j: jj4 is jj4 { local t:7 = sext(jj4); t = t << 24; export t; }
+S48:  xy4 is xy4 { local t:7 = sext(xy4); export t; }
+
+macro add56(d, s) {
+	alu_r = d + s;
+	C = carry(d, s);
+	V = scarry(d, s);
+	L = L || V;
+	nzeu(alu_r);
+}
+
+macro sub56(d, s) {
+	alu_r = d - s;
+	C = d < s;
+	V = sborrow(d, s);
+	L = L || V;
+	nzeu(alu_r);
+}
+
+macro setd1(d, r) {
+	alu_r = (d & 0xff000000ffffff) | (zext(r) << 24);
+}
+
+#   pattern      mnemonic   operands            constraints           semantics
+@alu 00000000 @| move   @|                     @|                    @|
+@alu 0000d001 @| tfr    @| nacc3,acc3          @| nacc3 & acc3       @| alu_r = nacc3;
+@alu 0000d010 @| addr   @| nacc3,acc3          @| nacc3 & acc3       @| local h:7 = acc3 s>> 1; add56(h, nacc3);
+@alu 0000d011 @| tst    @| acc3                @| acc3               @| alu_r = acc3; nzeu(alu_r); V = 0;
+@alu 0000d101 @| cmp    @| nacc3,acc3          @| nacc3 & acc3       @| sub56(acc3, nacc3);
+@alu 0000d110 @| subr   @| nacc3,acc3          @| nacc3 & acc3       @| local h:7 = acc3 s>> 1; sub56(h, nacc3);
+@alu 0000d111 @| cmpm   @| nacc3,acc3          @| nacc3 & acc3       @| local d:7 = acc3; if (d s>= 0) goto <p1>; d = -d; <p1> local s:7 = nacc3; if (s s>= 0) goto <p2>; s = -s; <p2> sub56(d, s);
+@alu 0001d000 @| add    @| nacc3,acc3          @| nacc3 & acc3       @| add56(acc3, nacc3);
+@alu 0001d001 @| rnd    @| acc3                @| acc3               @| alu_r = rnd56(acc3); nzeu(alu_r);
+@alu 0001d010 @| addl   @| nacc3,acc3          @| nacc3 & acc3       @| local h:7 = acc3 << 1; add56(h, nacc3); V = V || ((acc3 s< 0) != (h s< 0));
+@alu 0001d011 @| clr    @| acc3                @| acc3               @| alu_r = 0; E = 0; U = 1; N = 0; Z = 1; V = 0;
+@alu 0001d100 @| sub    @| nacc3,acc3          @| nacc3 & acc3       @| sub56(acc3, nacc3);
+@alu 00010101 @| maxm   @| "a,b"                 @|                    @| local sa:7 = a; if (sa s>= 0) goto <p1>; sa = -sa; <p1> local sb:7 = b; if (sb s>= 0) goto <p2>; sb = -sb; <p2> alu_r = b; C = 1; if (sb - sa s> 0) goto <done>; alu_r = a; C = 0; <done>
+@alu 00011101 @| max    @| "a,b"                 @|                    @| alu_r = b; C = 1; if (b - a s> 0) goto <done>; alu_r = a; C = 0; <done>
+@alu 0001d110 @| subl   @| nacc3,acc3          @| nacc3 & acc3       @| local h:7 = acc3 << 1; sub56(h, nacc3); V = V || ((acc3 s< 0) != (h s< 0));
+@alu 0001d111 @| not    @| acc3                @| acc3               @| local r:3 = ~acc3[24,24]; setd1(acc3, r); nz24(r);
+@alu 001Jd000 @| add    @| S48,acc3            @| S48 & acc3         @| add56(acc3, S48);
+@alu 001Jd001 @| adc    @| S48,acc3            @| S48 & acc3         @| local s:7 = S48 + zext(C); add56(acc3, s);
+@alu 001Jd100 @| sub    @| S48,acc3            @| S48 & acc3         @| sub56(acc3, S48);
+@alu 001Jd101 @| sbc    @| S48,acc3            @| S48 & acc3         @| local s:7 = S48 + zext(C); sub56(acc3, s);
+@alu 0010d010 @| asr    @| acc3                @| acc3               @| C = (acc3 & 1) != 0; alu_r = acc3 s>> 1; V = 0; nzeu(alu_r);
+@alu 0010d011 @| lsr    @| acc3                @| acc3               @| local r:3 = acc3[24,24]; C = (r & 1) != 0; r = r >> 1; setd1(acc3, r); nz24(r);
+@alu 0010d110 @| abs    @| acc3                @| acc3               @| alu_r = acc3; if (alu_r s>= 0) goto <p>; alu_r = -alu_r; <p> V = alu_r s< 0; L = L || V; nzeu(alu_r);
+@alu 0010d111 @| ror    @| acc3                @| acc3               @| local r:3 = acc3[24,24]; local c:1 = (r & 1) != 0; r = (r >> 1) | (zext(C) << 23); C = c; setd1(acc3, r); nz24(r);
+@alu 0011d010 @| asl    @| acc3                @| acc3               @| C = acc3 s< 0; alu_r = acc3 << 1; V = (acc3 s< 0) != (alu_r s< 0); L = L || V; nzeu(alu_r);
+@alu 0011d011 @| lsl    @| acc3                @| acc3               @| local r:3 = acc3[24,24]; C = (r & 0x800000) != 0; r = r << 1; setd1(acc3, r); nz24(r);
+@alu 0011d110 @| neg    @| acc3                @| acc3               @| alu_r = -acc3; V = sborrow(0:7, acc3); L = L || V; nzeu(alu_r);
+@alu 0011d111 @| rol    @| acc3                @| acc3               @| local r:3 = acc3[24,24]; local c:1 = (r & 0x800000) != 0; r = (r << 1) | zext(C); C = c; setd1(acc3, r); nz24(r);
+@alu 01JJd000 @| add    @| S56j,acc3           @| S56j & acc3        @| add56(acc3, S56j);
+@alu 01JJd001 @| tfr    @| jj4,acc3            @| jj4 & S56j & acc3  @| alu_r = S56j;
+@alu 01JJd010 @| or     @| jj4,acc3            @| jj4 & acc3         @| local r:3 = acc3[24,24] | jj4; setd1(acc3, r); nz24(r);
+@alu 01JJd011 @| eor    @| jj4,acc3            @| jj4 & acc3         @| local r:3 = acc3[24,24] ^ jj4; setd1(acc3, r); nz24(r);
+@alu 01JJd100 @| sub    @| S56j,acc3           @| S56j & acc3        @| sub56(acc3, S56j);
+@alu 01JJd101 @| cmp    @| S56j,acc3           @| S56j & acc3        @| sub56(acc3, S56j);
+@alu 01JJd110 @| and    @| jj4,acc3            @| jj4 & acc3         @| local r:3 = acc3[24,24] & jj4; setd1(acc3, r); nz24(r);
+@alu 01JJd111 @| cmpm   @| S56j,acc3           @| S56j & acc3        @| local d:7 = acc3; if (d s>= 0) goto <p1>; d = -d; <p1> local s:7 = S56j; if (s s>= 0) goto <p2>; s = -s; <p2> sub56(d, s);
+@alu 1QQQd000 @| mpy    @| MulQ,acc3           @| MulQ & acc3        @| alu_r = MulQ; V = 0; nzeu(alu_r);
+@alu 1QQQd100 @| mpy    @| "-"^MulQ,acc3       @| MulQ & acc3        @| alu_r = -MulQ; V = 0; nzeu(alu_r);
+@alu 1QQQd001 @| mpyr   @| MulQ,acc3           @| MulQ & acc3        @| alu_r = rnd56(MulQ); V = 0; nzeu(alu_r);
+@alu 1QQQd101 @| mpyr   @| "-"^MulQ,acc3       @| MulQ & acc3        @| local p:7 = -MulQ; alu_r = rnd56(p); V = 0; nzeu(alu_r);
+@alu 1QQQd010 @| mac    @| MulQ,acc3           @| MulQ & acc3        @| add56(acc3, MulQ);
+@alu 1QQQd110 @| mac    @| "-"^MulQ,acc3       @| MulQ & acc3        @| sub56(acc3, MulQ);
+@alu 1QQQd011 @| macr   @| MulQ,acc3           @| MulQ & acc3        @| add56(acc3, MulQ); alu_r = rnd56(alu_r); nzeu(alu_r);
+@alu 1QQQd111 @| macr   @| "-"^MulQ,acc3       @| MulQ & acc3        @| sub56(acc3, MulQ); alu_r = rnd56(alu_r); nzeu(alu_r);
+
+# Write-back of the ALU result (after the parallel move has read its sources)
+ALUW: is acc3 { acc3 = alu_r; }
+ALUW: is {????????????????00000000} { }
+ALUW: is {????????????????0000?011} { }
+ALUW: is {????????????????0000?101} { }
+ALUW: is {????????????????0000?111} { }
+ALUW: is {????????????????01???101} { }
+ALUW: is {????????????????01???111} { }
+ALUW: is {????????????????0001?101} { b = alu_r; }
+
+# ============================================================ parallel moves
+# Each PM constructor performs all of its reads before any of its writes.
+PM: is {0010000000000000????????} { }
+
+# #xx,D : 8-bit immediate; left aligned for x0..y1/a/b, right aligned otherwise
+PM: "#<"^k15_8^","^R5w16 is {001?????????????????????} & k15_8 & R5w16 { mv1 = k15_8; build R5w16; }
+PM: "#<"^k15_8^","^R5w16 is {001001??????????????????} & k15_8 & R5w16 { mv1 = k15_8 << 16; build R5w16; }
+PM: "#<"^k15_8^","^R5w16 is {0010111?????????????????} & k15_8 & R5w16 { mv1 = k15_8 << 16; build R5w16; }
+
+# S,D register to register
+PM: R5r13^","^R5w8 is {001000??????????????????} & R5r13 & R5w8 { mv1 = R5r13; build R5w8; }
+
+# ea update only
+PM: EA4 is {00100000010?????????????} & EA4 & ea_r { ea_r = EA4; }
+
+# X or Y memory, ea / absolute / immediate
+PM: "x:"^EA^","^R5wS  is ({01??0???11??????????????} & R5wS) ... & EA  { mv1 = *[X]:3 EA; build R5wS; }
+PM: R5rS^",x:"^EA     is ({01??0???01??????????????} & R5rS) ... & EA  { mv1 = R5rS; *[X]:3 EA = mv1; }
+PM: "y:"^EA^","^R5wS  is ({01??1???11??????????????} & R5wS) ... & EA  { mv1 = *[Y]:3 EA; build R5wS; }
+PM: R5rS^",y:"^EA     is ({01??1???01??????????????} & R5rS) ... & EA  { mv1 = R5rS; *[Y]:3 EA = mv1; }
+PM: IMM^","^R5wS      is ({01??0???11??????????????} & R5wS) ... & IMM { mv1 = IMM; build R5wS; }
+PM: IMM^","^R5wS      is ({01??1???11??????????????} & R5wS) ... & IMM { mv1 = IMM; build R5wS; }
+# X or Y memory, short absolute
+PM: "x:<"^k13_8^","^R5wS is {01??0???10??????????????} & k13_8 & R5wS { mv1 = *[X]:3 k13_8:3; build R5wS; }
+PM: R5rS^",x:<"^k13_8    is {01??0???00??????????????} & k13_8 & R5rS { mv1 = R5rS; *[X]:3 k13_8:3 = mv1; }
+PM: "y:<"^k13_8^","^R5wS is {01??1???10??????????????} & k13_8 & R5wS { mv1 = *[Y]:3 k13_8:3; build R5wS; }
+PM: R5rS^",y:<"^k13_8    is {01??1???00??????????????} & k13_8 & R5rS { mv1 = R5rS; *[Y]:3 k13_8:3 = mv1; }
+
+# L: long (X:Y pair) moves.  LLL = bit 19, bits 17..16.  Bit 19 is spelled out
+# in each PM pattern so these outrank the X/Y forms (whose register code would
+# be invalid here); SLEIGH does not consult subtable patterns when choosing.
+LSr: "a10" is k19_19=0 & k17_16=0 { local v:6 = a10; export v; }
+LSr: "b10" is k19_19=0 & k17_16=1 { local v:6 = b10; export v; }
+LSr: "x"   is k19_19=0 & k17_16=2 { export x; }
+LSr: "y"   is k19_19=0 & k17_16=3 { export y; }
+LSr: "a"   is k19_19=1 & k17_16=0 { local v:6 = sat48(a); export v; }
+LSr: "b"   is k19_19=1 & k17_16=1 { local v:6 = sat48(b); export v; }
+LSr: "ab"  is k19_19=1 & k17_16=2 { local h:3 = sat24(a); local l:3 = sat24(b); local v:6 = (zext(h) << 24) | zext(l); export v; }
+LSr: "ba"  is k19_19=1 & k17_16=3 { local h:3 = sat24(b); local l:3 = sat24(a); local v:6 = (zext(h) << 24) | zext(l); export v; }
+LDw: "a10" is k19_19=0 & k17_16=0 { a10 = zext(mv1) << 24 | zext(mv2); }
+LDw: "b10" is k19_19=0 & k17_16=1 { b10 = zext(mv1) << 24 | zext(mv2); }
+LDw: "x"   is k19_19=0 & k17_16=2 { x1 = mv1; x0 = mv2; }
+LDw: "y"   is k19_19=0 & k17_16=3 { y1 = mv1; y0 = mv2; }
+LDw: "a"   is k19_19=1 & k17_16=0 { local v:7 = sext(mv1); a = (v << 24) | zext(mv2); }
+LDw: "b"   is k19_19=1 & k17_16=1 { local v:7 = sext(mv1); b = (v << 24) | zext(mv2); }
+LDw: "ab"  is k19_19=1 & k17_16=2 { fr56(a, mv1); fr56(b, mv2); }
+LDw: "ba"  is k19_19=1 & k17_16=3 { fr56(b, mv1); fr56(a, mv2); }
+
+PM: "l:"^EA^","^LDw      is ({01000 0??11??????????????} & LDw) ... & EA { mv1 = *[X]:3 EA; mv2 = *[Y]:3 EA; build LDw; }
+PM: "l:"^EA^","^LDw      is ({01001 0??11??????????????} & LDw) ... & EA { mv1 = *[X]:3 EA; mv2 = *[Y]:3 EA; build LDw; }
+PM: LSr^",l:"^EA         is ({01000 0??01??????????????} & LSr) ... & EA { local v:6 = LSr; *[X]:3 EA = v(3); *[Y]:3 EA = v:3; }
+PM: LSr^",l:"^EA         is ({01001 0??01??????????????} & LSr) ... & EA { local v:6 = LSr; *[X]:3 EA = v(3); *[Y]:3 EA = v:3; }
+PM: "l:<"^k13_8^","^LDw  is {01000 0??10??????????????} & k13_8 & LDw { mv1 = *[X]:3 k13_8:3; mv2 = *[Y]:3 k13_8:3; build LDw; }
+PM: "l:<"^k13_8^","^LDw  is {01001 0??10??????????????} & k13_8 & LDw { mv1 = *[X]:3 k13_8:3; mv2 = *[Y]:3 k13_8:3; build LDw; }
+PM: LSr^",l:<"^k13_8     is {01000 0??00??????????????} & k13_8 & LSr { local v:6 = LSr; *[X]:3 k13_8:3 = v(3); *[Y]:3 k13_8:3 = v:3; }
+PM: LSr^",l:<"^k13_8     is {01001 0??00??????????????} & k13_8 & LSr { local v:6 = LSr; *[X]:3 k13_8:3 = v(3); *[Y]:3 k13_8:3 = v:3; }
+
+# Single register views used by the X:R, R:Y and X:Y forms
+XR2r: "x0" is k19_18=0 { export x0; }
+XR2r: "x1" is k19_18=1 { export x1; }
+XR2r: "a"  is k19_18=2 { local v:3 = sat24(a); export v; }
+XR2r: "b"  is k19_18=3 { local v:3 = sat24(b); export v; }
+XR2w: "x0" is k19_18=0 { x0 = mv1; }
+XR2w: "x1" is k19_18=1 { x1 = mv1; }
+XR2w: "a"  is k19_18=2 { fr56(a, mv1); }
+XR2w: "b"  is k19_18=3 { fr56(b, mv1); }
+YR2r: "y0" is k17_16=0 { export y0; }
+YR2r: "y1" is k17_16=1 { export y1; }
+YR2r: "a"  is k17_16=2 { local v:3 = sat24(a); export v; }
+YR2r: "b"  is k17_16=3 { local v:3 = sat24(b); export v; }
+YR2w: "y0" is k17_16=0 { y0 = mv2; }
+YR2w: "y1" is k17_16=1 { y1 = mv2; }
+YR2w: "a"  is k17_16=2 { fr56(a, mv2); }
+YR2w: "b"  is k17_16=3 { fr56(b, mv2); }
+Y1w16: "y0" is k16_16=0 { y0 = mv2; }
+Y1w16: "y1" is k16_16=1 { y1 = mv2; }
+X1w18: "x0" is k18_18=0 { x0 = mv1; }
+X1w18: "x1" is k18_18=1 { x1 = mv1; }
+
+# X:R  -- X memory move plus accumulator (bit 17) to y0/y1 (bit 16)
+PM: "x:"^EA^","^XR2w^" "^acc17^","^Y1w16 is ({0001????10??????????????} & XR2w & acc17 & Y1w16) ... & EA
+	{ mv1 = *[X]:3 EA; mv2 = sat24(acc17); build XR2w; build Y1w16; }
+PM: XR2r^",x:"^EA^" "^acc17^","^Y1w16    is ({0001????00??????????????} & XR2r & acc17 & Y1w16) ... & EA
+	{ mv1 = XR2r; mv2 = sat24(acc17); *[X]:3 EA = mv1; build Y1w16; }
+PM: IMM^","^XR2w^" "^acc17^","^Y1w16     is ({0001????10??????????????} & XR2w & acc17 & Y1w16) ... & IMM
+	{ mv1 = IMM; mv2 = sat24(acc17); build XR2w; build Y1w16; }
+# R:Y  -- accumulator (bit 19) to x0/x1 (bit 18) plus Y memory move
+PM: acc19^","^X1w18^" y:"^EA^","^YR2w is ({0001????11??????????????} & acc19 & X1w18 & YR2w) ... & EA
+	{ mv1 = sat24(acc19); mv2 = *[Y]:3 EA; build X1w18; build YR2w; }
+PM: acc19^","^X1w18^" "^YR2r^",y:"^EA is ({0001????01??????????????} & acc19 & X1w18 & YR2r) ... & EA
+	{ mv1 = sat24(acc19); mv2 = YR2r; *[Y]:3 EA = mv2; build X1w18; }
+PM: acc19^","^X1w18^" "^IMM^","^YR2w  is ({0001????11??????????????} & acc19 & X1w18 & YR2w) ... & IMM
+	{ mv1 = sat24(acc19); mv2 = IMM; build X1w18; build YR2w; }
+
+# Class II:  A -> X:ea, X0 -> A   /   Y0 -> A, A -> Y:ea
+PM: acc16^",x:"^EA^" x0,"^acc16b is ({0000100?00??????????????} & acc16 & acc16b) ... & EA
+	{ mv1 = sat24(acc16); *[X]:3 EA = mv1; fr56(acc16, x0); }
+PM: "y0,"^acc16^" "^acc16b^",y:"^EA is ({0000100?10??????????????} & acc16 & acc16b) ... & EA
+	{ mv1 = sat24(acc16); *[Y]:3 EA = mv1; fr56(acc16, y0); }
+
+# X:Y dual moves.  W (bit 15) = X direction, w (bit 22) = Y direction
+PM: "x:"^XEA^","^XR2w^" y:"^YEA^","^YR2w is {11??????1???????????????} & XEA & XR2w & YEA & YR2w
+	{ mv1 = *[X]:3 XEA; mv2 = *[Y]:3 YEA; build XR2w; build YR2w; }
+PM: XR2r^",x:"^XEA^" y:"^YEA^","^YR2w    is {11??????0???????????????} & XEA & XR2r & YEA & YR2w
+	{ mv1 = XR2r; mv2 = *[Y]:3 YEA; *[X]:3 XEA = mv1; build YR2w; }
+PM: "x:"^XEA^","^XR2w^" "^YR2r^",y:"^YEA is {10??????1???????????????} & XEA & XR2w & YEA & YR2r
+	{ mv1 = *[X]:3 XEA; mv2 = YR2r; *[Y]:3 YEA = mv2; build XR2w; }
+PM: XR2r^",x:"^XEA^" "^YR2r^",y:"^YEA    is {10??????0???????????????} & XEA & XR2r & YEA & YR2r
+	{ mv1 = XR2r; mv2 = YR2r; *[X]:3 XEA = mv1; *[Y]:3 YEA = mv2; }
+
+# ======================================================= parallel instructions
+instr: ALUm ALU PM is (ALU & ALUm & ALUW) ... & PM {
+	build ALU;
+	build PM;
+	build ALUW;
+}
+
+instr: ALUm ALU "if"^CC8 is {001000000010????????????} & ALU & ALUm & ALUW & CC8 {
+	local cond:1 = CC8;
+	local fc = C; local fv = V; local fz = Z; local fn = N;
+	local fu = U; local fe = E; local fl = L;
+	build ALU;
+	C = fc; V = fv; Z = fz; N = fn; U = fu; E = fe; L = fl;
+	if (!cond) goto <skip>;
+	build ALUW;
+<skip>
+}
+
+instr: ALUm ALU "if"^CC8^".u" is {001000000011????????????} & ALU & ALUm & ALUW & CC8 {
+	local cond:1 = CC8;
+	local fc = C; local fv = V; local fz = Z; local fn = N;
+	local fu = U; local fe = E; local fl = L;
+	build ALU;
+	if (cond) goto <take>;
+	C = fc; V = fv; Z = fz; N = fn; U = fu; E = fe; L = fl;
+	goto <skip>;
+<take>
+	build ALUW;
+<skip>
+}

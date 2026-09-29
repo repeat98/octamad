@@ -1,0 +1,1424 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Virtual Panel</title>
+<style>
+  /* The unit is drawn on a fixed 1420x760 stage (centres below are stage
+     pixels, measured from a photo of a MKI, 11 Sep 2026) and the stage is
+     scaled uniformly to the window, so nothing can leave the base. */
+  :root { --red:#d02b26; --txt:#e8e6df; --dim:#8a877e; --lcd:#060607; }
+  html, body { height:100%; }
+  body { margin:0; background:#08080a; color:#d8d5cc; overflow:hidden;
+         font:12px/1.35 -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+         display:flex; flex-direction:column; }
+
+  /* ---- toolbar (outside the unit) ---- */
+  #top { flex:none; background:#121214; border-bottom:1px solid #232326; }
+  #bar { display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; padding:5px 56px 5px 10px; min-height:22px; font-size:11px; }   /* right: room for #topbtn */
+  #bar button.icon { padding:2px 5px; line-height:0; color:#8e8c86; background:transparent; border-color:transparent; }
+  #bar button.icon:hover { color:#d8d5cc; background:#2c2c2e; border-color:#47474a; }
+  #bar button.icon.on { color:#ffd23a; }
+  #bar .brand { color:#6f6d68; letter-spacing:.25em; font-size:10px; font-weight:600; }
+  #bar .img { color:#bdbab2; font-family:ui-monospace, Menlo, monospace; font-size:10px; }
+  #phase { padding:1px 8px; border-radius:9px; font-size:10px; background:#2a2a2c; color:#bdbab2; }
+  #phase.ready { background:#1d3a22; color:#8fe39a; }
+  #phase.busy { background:#3a3016; color:#f0c85a; }
+  #phase.failed { background:#3f1a18; color:#ff8a80; }
+  /* x real time (/status rt, the port paced to its wall clock): green at >= 0.97, yellow below, hidden when unknown */
+  #rt { font-family:ui-monospace, Menlo, monospace; font-size:10px; padding:1px 5px; border-radius:9px; background:#2a2a2c; color:#f0c85a; }
+  #rt.ok { background:#1d3a22; color:#8fe39a; }
+  #rt:empty { display:none; }
+  #fault { color:#ff8a80; font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:30vw; }
+  #bar button { background:#2c2c2e; color:#d8d5cc; border:1px solid #47474a; border-radius:4px;
+                padding:2px 9px; font-size:10px; cursor:pointer; letter-spacing:.04em; }
+  #bar button:hover { background:#38383a; }
+  #bar button.on { background:#7a5a18; border-color:#e8b23a; }
+  #hint { flex:1 1 260px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+          color:var(--dim); font-size:11px; line-height:22px; margin-left:4px; }   /* wraps to its own line when squeezed */
+  /* the bar's toggle (13 Sep 2026): a thin chevron tab at the top edge, there in both
+     states; body.nobar hides #top (bar + drawers) and #view takes the whole window */
+  #topbtn { position:absolute; top:0; right:14px; z-index:20; width:34px; height:11px; border-radius:0 0 6px 6px;
+            background:#2c2c2e; border:1px solid #47474a; border-top:0; color:#9a978e; font-size:7px; line-height:10px;
+            text-align:center; cursor:pointer; user-select:none; -webkit-user-select:none; }
+  #topbtn:hover { background:#38383a; color:#e8e6df; }
+  #topbtn::after { content:""; position:absolute; inset:-2px -8px -8px; }   /* an easier target than the 11 px tab itself */
+  body.nobar #top { display:none; }
+
+  /* ---- AUDIO POOL drawer: the card's AUDIO folder (GET /samples), opened by
+          clicking the COMPACT FLASH slot on the rear edge (or its toolbar button) ---- */
+  #pool { display:none; padding:6px 10px 8px; border-top:1px solid #232326; }
+  #pool.open { display:block; }
+  #pool.drop { background:rgba(98,224,106,.06); }
+  #pool .note { font-size:10px; color:var(--dim); margin-bottom:6px; max-width:1100px; }
+  #pool .note b { color:#bdbab2; }
+  #pool code { font-family:ui-monospace, Menlo, monospace; font-size:10px; color:#bdbab2; }
+  #poolrow { display:flex; gap:14px; align-items:flex-start; flex-wrap:wrap; }
+  #poollist { flex:1 1 520px; min-width:0; max-height:190px; overflow:auto; background:#0d0d0e;
+              border:1px solid #2a2a2d; border-radius:3px; }
+  .f { display:grid; grid-template-columns:minmax(120px,1fr) minmax(150px,auto) 60px minmax(110px,auto) 58px;
+       gap:0 12px; align-items:center; padding:2px 8px; border-bottom:1px solid #1a1a1c; font-size:10px; }
+  .f:last-child { border-bottom:0; }
+  .f.h { color:var(--dim); position:sticky; top:0; background:#131315; }
+  .f .n { font-family:ui-monospace, Menlo, monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:#d8d5cc; }
+  .f .b { text-align:right; color:#bdbab2; }
+  .f .fm, .f .st { color:#bdbab2; white-space:nowrap; }
+  .f.pending { background:#26210f; }
+  .f.pending .n, .f.pending .st { color:#f0c85a; }
+  .f button { background:#2c2c2e; color:#d8d5cc; border:1px solid #47474a; border-radius:3px; padding:0 6px; font-size:9px; cursor:pointer; }
+  .f button:hover { background:#3f2a28; border-color:#a03530; }
+  #poolside { flex:0 1 380px; min-width:260px; display:flex; flex-direction:column; gap:6px; font-size:10px; }
+  #poolside button { background:#2c2c2e; color:#d8d5cc; border:1px solid #47474a; border-radius:4px;
+                     padding:3px 10px; font-size:10px; cursor:pointer; letter-spacing:.04em; }
+  #poolside button:hover { background:#38383a; }
+  #poolside button:disabled { opacity:.45; cursor:default; }
+  #reinsert { background:#5a1512 !important; border-color:#d02b26 !important; color:#fff !important;
+              font-size:12px !important; padding:8px 16px !important; letter-spacing:.14em !important; font-weight:600; }
+  #reinsert:hover:not(:disabled) { background:#7a1f1a !important; }
+  #reinsert.armed { background:#b8261f !important; }
+  #poolstate { color:var(--dim); }
+  #poollog { font-family:ui-monospace, Menlo, monospace; font-size:9.5px; color:#bdbab2; max-height:70px; overflow:auto; white-space:pre-wrap; }
+  #poollog .bad { color:#ff8a80; }
+  #poollog .conv { color:#f0c85a; }
+  #howto { border-top:1px solid #232326; padding-top:5px; color:var(--dim); line-height:1.5; }
+  #howto b { color:#bdbab2; }
+  #howto kbd { font:9px ui-monospace, Menlo, monospace; color:#e8e6df; background:#2c2c2e; border:1px solid #47474a;
+               border-radius:3px; padding:0 4px; }
+
+  /* ---- stage ---- */
+  /* ---- the MKII skin: #face is the drawing (the SVG fills the stage); keys
+     and knobs are transparent hit areas over it (build, below) ---- */
+  #face { left:0; top:0; width:1250px; height:682px; pointer-events:none; }
+  #face svg { width:100%; height:100%; display:block; }
+  #strip, #bezel, #fhandle, #fbed .slit, #fbed .tick { display:none; }
+  .k.skin { background:transparent !important; box-shadow:none !important; border:0 !important;
+            border-radius:7px; cursor:pointer; color:transparent; }
+  .k.skin::before { content:none; }
+  .k.skin.down { transform:none; filter:none; background:rgba(255,255,255,.14) !important; }
+  .k.skin.held { transform:none; filter:none; }
+  .k.skin.unmapped { cursor:not-allowed; }
+  .k.skin:hover { background:rgba(255,255,255,.05) !important; }
+  .knob.skin { background:transparent; box-shadow:none; }
+  .knob.skin::before { content:none; }
+  .knob.skin .cap { display:none; }
+  .knob.skin.live:hover, .knob.skin.pot:hover { box-shadow:0 0 0 2px rgba(232,178,58,.35); }
+  #fbed.skin-bed { background:transparent; box-shadow:none; }
+  #view { flex:1; position:relative; overflow:hidden; }
+  #stage { position:absolute; left:50%; top:8px; width:1250px; height:682px; overflow:hidden; transform-origin:50% 0;
+           transform-origin:50% 50%; transform:translate(-50%,-50%) scale(1);
+           border-radius:18px; user-select:none; -webkit-user-select:none;
+           background:linear-gradient(#1c1c1e, #101011);
+           box-shadow:inset 0 1px 0 rgba(255,255,255,.09), inset 0 0 0 1px #000, 0 24px 70px rgba(0,0,0,.85); }
+  #stage > * { position:absolute; box-sizing:border-box; }
+  #strip { left:0; right:0; top:20px; height:50px; background:linear-gradient(#212124, #19191b);
+           border-top:1px solid #2d2d31; border-bottom:1px solid #0a0a0b; }
+  .jack { border-radius:50%; background:radial-gradient(circle at 50% 45%, #0c0c0d 40%, #3b3b3e 48%, #5a5a5d 60%, #2a2a2c 75%); }
+  .jack.rect { border-radius:2px; background:linear-gradient(#3a3a3d, #202022); border:1px solid #4a4a4d; }
+  .screw { width:14px; height:14px; border-radius:50%;
+           background:radial-gradient(circle at 38% 32%, #6b6b6e, #3a3a3d 55%, #1f1f21);
+           box-shadow:inset 0 0 0 1px #0a0a0b, 0 0 0 1px #2b2b2e; }
+  .screw::before, .screw::after { content:""; position:absolute; background:#141416; left:50%; top:50%; }
+  .screw::before { width:9px; height:1.5px; margin:-.75px 0 0 -4.5px; }
+  .screw::after  { width:1.5px; height:9px; margin:-4.5px 0 0 -.75px; }
+  /* COMPACT FLASH: the slot on the rear edge (the 46x7 jack of the first
+     version) with the card's edge seated in it; a transparent hit area over
+     slot and label -- click opens the AUDIO POOL drawer, files dropped on it
+     go to the pool. .ejected pulls the card out while the unit reboots. */
+  #card { cursor:pointer; border-radius:4px; }
+  #card.skin-card .slot, #card.skin-card .cf { display:none; }
+  #card.skin-card:hover, #card.skin-card.open { background:rgba(232,178,58,.12); }
+  #card .slot { position:absolute; left:27px; top:5px; width:46px; height:7px; border-radius:2px;
+                background:linear-gradient(#3a3a3d, #202022); border:1px solid #4a4a4d; box-sizing:border-box; }
+  #card .cf { position:absolute; left:31px; top:1px; width:38px; height:5px; border-radius:1px 1px 0 0;
+              background:linear-gradient(#2f6396, #1d4269); border:1px solid #0e2338; border-bottom:0;
+              box-sizing:border-box; transition:top .3s; }
+  #card.ejected .cf { top:-7px; }
+  #card:hover .slot, #card.open .slot { border-color:#e8b23a; box-shadow:0 0 6px rgba(232,178,58,.45); }
+  #card.drop { background:rgba(98,224,106,.1); }
+  #card.drop .slot { border-color:#8fe39a; box-shadow:0 0 8px rgba(98,224,106,.6); }
+  /* HEAD-PHONES: the MONITOR jack (JACKS x 120). #hp is a transparent hit
+     area over jack + label: a click plugs the headphones in (the page then
+     streams GET /audio/pcm into WebAudio) or pulls them out; .plugged draws
+     the plug seated in the jack, cable off the top of the stage. #vu is the
+     L/R level meter beside it (peak hold), lit only while monitoring.
+     VOLUME (.knob.pot) is the monitor's gain, a real pot here. */
+  #hp { cursor:pointer; border-radius:4px; }
+  #hp:hover { background:rgba(232,178,58,.08); }
+  #hp.plugged .plug { display:block; }
+  #hp .plug { display:none; position:absolute; left:26px; top:-14px; width:8px; height:24px; border-radius:2px 2px 3px 3px;
+              background:linear-gradient(90deg, #202022, #454548 45%, #1a1a1c); box-shadow:0 0 0 1px #0a0a0b; }
+  #hp .plug::before { content:""; position:absolute; left:3px; top:-60px; width:2px; height:60px; background:#151517; border-radius:1px; }
+  #hp .plug::after { content:""; position:absolute; left:1px; bottom:-6px; width:6px; height:8px; border-radius:0 0 3px 3px;
+                     background:linear-gradient(90deg, #8a7430, #d8b24a 45%, #7a6428); }
+  #hp:hover + #jack-hp, #hp.plugged + #jack-hp { box-shadow:0 0 6px rgba(232,178,58,.5); }
+  #jack-hp { pointer-events:none; }   /* the jack sits after #hp in the DOM (so the rule above can light it) and
+                                         paints over the hit area: clicks and hover fall through to #hp */
+  #vu { display:flex; gap:3px; align-items:flex-end; pointer-events:none; }
+  #vu .bar { position:relative; width:4px; height:22px; background:#0a0a0b; border:1px solid #2a2a2c; border-radius:1px; overflow:hidden; }
+  #vu .fill { position:absolute; left:0; right:0; bottom:0; height:0;
+              background:linear-gradient(to top, #62e06a 0 55%, #ffd23a 55% 82%, #ff4d3c 82%);
+              background-size:100% 20px; background-position:bottom; }
+  #vu .pk { position:absolute; left:0; right:0; height:1px; bottom:0; background:#e8e6df; opacity:0; }
+  #vu.lit .pk { opacity:.9; }
+  #vu.lit .bar { border-color:#3a3a3d; }
+  .knob.pot { cursor:ns-resize; }
+  .knob.pot:hover { box-shadow:0 0 0 1px #1a1a1b, 0 3px 6px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.12), 0 0 0 2px rgba(232,178,58,.35); }
+
+  /* ---- SOUND drawer: SOUND ON/OFF (GET /audio/enable) with its state line -- opened by
+          the toolbar button. The HEAD-PHONES jack, VOLUME and the meter beside the jack are
+          the listening controls (below); the takes are the server's, saved from the app's
+          Audio menu (13 Sep 2026: the drawer's plug button, readouts and takes list went). ---- */
+  #mon { display:none; padding:6px 10px 8px; border-top:1px solid #232326; }
+  #mon.open { display:block; }
+  #monrow { display:flex; gap:14px; align-items:flex-start; flex-wrap:wrap; font-size:10px; }
+  #monside { flex:0 1 440px; min-width:280px; display:flex; flex-direction:column; gap:6px; }
+  #monside button { background:#2c2c2e; color:#d8d5cc; border:1px solid #47474a; border-radius:4px;
+                    padding:3px 10px; font-size:10px; cursor:pointer; letter-spacing:.04em; }
+  #monside button:hover { background:#38383a; }
+  #monside button:disabled { opacity:.45; cursor:default; }
+  #soundbtn.armed { background:#b8261f !important; border-color:#d02b26 !important; color:#fff; }
+  #monstate { color:var(--dim); line-height:13px; min-height:26px; }   /* two lines reserved: the sound-off message
+                                                                          wraps, and the button below must not move */
+  #monstate.off { color:#f0c85a; }
+
+  /* labels: white 10px caps, function (shifted) labels red 9px */
+  .lb { color:var(--txt); font-size:10px; letter-spacing:.02em; white-space:nowrap; text-transform:uppercase;
+        transform:translate(-50%,-50%); line-height:1; }
+  .lb.r { color:var(--red); font-size:9px; }
+  .lb.s { font-size:8px; }
+  .lb.t { font-size:7px; color:#cfccc3; }
+  .lb.j { font-size:9px; color:#c9c7c0; letter-spacing:.04em; }
+  .lb.title { font-size:9px; color:#5c5c5e; letter-spacing:.32em; }
+  .lb.left { transform:translate(0,-50%); }
+  .lb.right { transform:translate(-100%,-50%); }
+  /* the FUNCTION legend: the red square (red labels are FUNC + key) and the word as ONE group,
+     centred under the key like every other label (13 Sep 2026; the square used to sit beside
+     a label centred 24 px right of the key) */
+  .lb.grp { display:flex; align-items:center; gap:4px; }
+  .rule { height:1px; background:var(--red); }
+  .sw { width:8px; height:8px; background:var(--red); border-radius:1px; flex:none; }
+  .pillb { height:13px; border:1px solid #c9c7c0; border-radius:7px; color:var(--txt); font-size:7.5px;
+           display:flex; align-items:center; justify-content:center; text-transform:uppercase;
+           letter-spacing:.03em; line-height:1; white-space:nowrap; }
+  .pillb b { font-weight:700; margin-right:3px; }
+
+  /* keys */
+  .k { cursor:pointer; display:flex; align-items:center; justify-content:center;
+       color:#2a2a28; font-size:9px; line-height:1;
+       border:1px solid #2a2a28;
+       box-shadow:0 1px 0 #050505, 0 1px 3px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.4); }
+  .k.round { border-radius:50%; }
+  .k.pill  { border-radius:12px; }
+  .k.gray  { background:radial-gradient(circle at 42% 34%, #b3b3af, #9d9d99 50%, #8c8c88 100%); }
+  .k.white { background:radial-gradient(circle at 42% 34%, #f6f5f0, #f0efe9 50%, #d9d8d1 100%); }
+  .k.cream { background:radial-gradient(circle at 42% 34%, #f3eee0, #e9e3d0 50%, #d3ccb4 100%); }
+  .k.red   { background:radial-gradient(circle at 42% 34%, #de4239, #c8231c 50%, #a51a14 100%); color:#fff; }
+  .k .g { font-size:10px; transform:translateY(-.5px); }
+  .k .g.big { font-size:12px; }
+  .k.down, .k.held { transform:translateY(1px); filter:brightness(.88);
+            box-shadow:0 0 0 #000, inset 0 1px 3px rgba(0,0,0,.45); }
+  /* Shift-held key (an emulator convenience, see the mousedown handler):
+     pressed look plus a faded green tint until Shift is released */
+  .k.held::after { content:""; position:absolute; inset:0; border-radius:inherit;
+                   background:rgba(98,224,106,.45); pointer-events:none; }
+
+  /* knobs: dark cap, lighter skirt ring, white indicator at 12 o'clock.
+     The cap is rotated in JS: a live encoder is ENDLESS like the unit's (15 deg per
+     detent, the indicator just goes round, see turn()); VOLUME is a pot and stays put. */
+  .knob { border-radius:50%; background:radial-gradient(circle at 50% 38%, #4e4e50, #3a3a3c 55%, #262628);
+          box-shadow:0 0 0 1px #1a1a1b, 0 3px 6px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.12); }
+  .knob::before { content:""; position:absolute; inset:-5px; border-radius:50%; border:3px solid #5c5c5e;
+                  box-shadow:inset 0 0 0 1px #151516, 0 0 0 1px #151516, 0 2px 3px rgba(0,0,0,.6); }
+  .knob .cap { position:absolute; inset:0; border-radius:50%; }
+  .knob .cap::after { content:""; position:absolute; left:50%; top:3px; width:2px; height:32%;
+                      margin-left:-1px; background:#f2f2ee; border-radius:1px; }
+  .knob.live { cursor:ns-resize; }
+  .knob.live:hover { box-shadow:0 0 0 1px #1a1a1b, 0 3px 6px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.12), 0 0 0 2px rgba(232,178,58,.35); }
+
+  /* LEDs */
+  .led { width:7px; height:7px; border-radius:50%; background:#2b2b2b;
+         box-shadow:inset 0 0 0 1px #3a3a3a, 0 0 0 1px #141415; }
+  .led.on.green  { background:#62e06a; box-shadow:0 0 6px 1px rgba(98,224,106,.65), inset 0 0 1px rgba(255,255,255,.7); }
+  .led.on.red    { background:#ff4d3c; box-shadow:0 0 6px 1px rgba(255,77,60,.65), inset 0 0 1px rgba(255,255,255,.7); }
+  .led.on.yellow { background:#ffd23a; box-shadow:0 0 6px 1px rgba(255,210,58,.65), inset 0 0 1px rgba(255,255,255,.7); }
+
+  /* screen */
+  #bezel { left:533px; top:175px; width:297px; height:157px; background:#050506; border-radius:6px;
+           box-shadow:inset 0 0 0 1px #1c1c1e, inset 0 2px 6px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.05); }
+  #screen { left:540px; top:182px; width:283px; height:144px; image-rendering:pixelated; image-rendering:crisp-edges;
+            background:var(--lcd); display:block; transition:opacity .3s; }
+  #screen.dim { opacity:.3; }
+  #note { left:540px; top:182px; width:283px; height:144px; display:none; align-items:center; justify-content:center;
+          color:#d8d5cc; font-size:11px; letter-spacing:.06em; text-transform:uppercase; text-align:center; pointer-events:none; }
+  #note.show { display:flex; }
+  #note span { background:rgba(0,0,0,.55); padding:4px 10px; border-radius:4px; }
+
+  /* crossfader: bed with tick marks, slit, handle. LIVE (13 Sep 2026): drag the
+     handle (or click in the bed), wheel over it, or arrow keys after a click;
+     left = scene A, right = scene B, the firmware owns the value (/xfader). */
+  #fbed { left:1032px; top:483px; width:208px; height:39px; background:#141415; border-radius:3px;
+          box-shadow:inset 0 1px 3px #000, 0 0 0 1px #2a2a2c; cursor:ew-resize; }
+  #fbed .tick { position:absolute; width:1px; height:4px; background:#d8d5cc; opacity:.8; }
+  #fbed .slit { position:absolute; left:8px; right:8px; top:16px; height:7px; background:#000; border-radius:2px;
+                box-shadow:inset 0 1px 2px #000, 0 0 0 1px #202022; }
+  #fhandle { left:1062px; top:478px; width:22px; height:48px; border-radius:3px; cursor:ew-resize;
+             background:linear-gradient(90deg, #6a6a68, #b9b9b5 30%, #cfcfcb 50%, #a8a8a4 75%, #5e5e5c);
+             border:1px solid #1a1a1a; box-shadow:0 2px 4px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.4); }
+  #fhandle::after { content:""; position:absolute; left:3px; right:3px; top:22px; height:3px; background:#3a3a38; border-radius:1px; }
+  #fhandle:hover, #fbed:hover ~ #fhandle, #fhandle.focus { box-shadow:0 2px 4px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.4), 0 0 0 2px rgba(232,178,58,.35); }
+</style>
+</head>
+<body>
+<div id="topbtn" onclick="toggleBar()">&#9650;</div>
+<div id="top">
+  <div id="bar">
+    <span class="brand">VIRTUAL PANEL</span>
+    <span class="img" id="imginfo"></span>
+    <span id="phase">…</span>
+    <span id="rt" title="x real time: emulated ms per wall s over the last second / 1000 (the unit's own clock = 1.00x)"></span>
+    <span id="fault"></span>
+    <button id="monbtn" class="icon" onclick="toggleMon()" title="sound on/off: reboot the unit with or without the DSP cores (listening: click the HEAD-PHONES jack, VOLUME is its gain)" aria-label="sound"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor" stroke="none"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg></button>
+    <span id="hint"></span>
+  </div>
+  <div id="pool">
+    <div class="note">
+      <b>COMPACT FLASH &middot; AUDIO POOL</b> &mdash; the card's <code id="pooldir">AUDIO</code> folder, what the
+      unit's file browser sees. Add WAV/AIFF (16/24-bit 44.1 kHz; anything else &mdash; mp3, aac, flac, 48 kHz &mdash;
+      is converted to 16-bit 44.1 kHz WAV), then <b>RE-INSERT CARD</b>: the card image is rebuilt from the pool and
+      the unit reboots (~40 s; the screen shows the phase). The same as copying files onto the card in USB disk
+      mode and putting it back &mdash; the unit only sees files that are on the card it booted with.
+    </div>
+    <div id="poolrow">
+      <div id="poollist"></div>
+      <div id="poolside">
+        <div>
+          <button id="addbtn" onclick="document.getElementById('addinput').click()">ADD FILES&hellip;</button>
+          <span style="color:var(--dim)">or drop files on the card slot</span>
+          <input id="addinput" type="file" multiple accept=".wav,.aif,.aiff,.mp3,.m4a,.flac,.ogg" hidden>
+        </div>
+        <div>
+          <button id="reinsert" onclick="reinsert()">RE-INSERT CARD</button>
+        </div>
+        <div id="poolstate"></div>
+        <div id="poollog"></div>
+        <div id="howto"></div>
+      </div>
+    </div>
+  </div>
+  <div id="mon">
+    <div id="monrow">
+      <div id="monside">
+        <div id="monstate">&hellip;</div>
+        <div><button id="soundbtn" onclick="soundToggle()">SOUND OFF</button> <span id="soundphase"></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="view"><div id="stage">
+  <div id="strip"></div>
+  <div id="bezel"></div>
+  <img id="screen" src="/screen.png" alt="LCD" draggable="false">
+  <div id="note"><span></span></div>
+  <div id="fbed"><div class="slit"></div></div>
+  <div id="fhandle"></div>
+</div></div>
+
+<script src="/skin.js"></script>
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const S = $("#stage");
+const STAGE_W = 1250, STAGE_H = 682;   // the skin's viewBox (tools/panel/skin/gen_svg.py)
+
+// ---------------- build: the MKII skin ----------------
+// The face is octemu's generated MKII panel (tools/panel/skin/gen_svg.py,
+// Mark Roberts, MIT) in octabam's dark palette, drawn as one inline SVG
+// (/skin.js). Every control the page drives is a transparent hit area laid
+// over its drawing (window.SKIN = the drawing's geometry), so the key, knob,
+// fader and LED code below works on data-ids exactly as before; the LEDs
+// light the drawing's own keys and LEDs through its `lit` classes.
+function el(cls, x, y, w, h) {
+  const d = document.createElement("div");
+  d.className = cls;
+  if (x !== undefined) { d.style.left = (x - w / 2) + "px"; d.style.top = (y - h / 2) + "px";
+                         d.style.width = w + "px"; d.style.height = h + "px"; }
+  S.append(d); return d;
+}
+// the page's key ids (key_map.json) -> the skin's element ids
+const SKIN_KEYS = {
+  t1: "btn-t1", t2: "btn-t2", t3: "btn-t3", t4: "btn-t4", t5: "btn-t5", t6: "btn-t6", t7: "btn-t7", t8: "btn-t8",
+  ...Object.fromEntries([...Array(16)].map((_, i) => ["trig" + (i + 1), "trig-" + (i + 1)])),
+  mixer: "btn-mix", midi: "btn-midi", func: "btn-func", cue: "btn-cue", yes: "btn-yes", no: "btn-no",
+  pattern: "btn-ptn", bank: "btn-bank", up: "btn-up", down: "btn-down", left: "btn-left", right: "btn-right",
+  pg_playback: "btn-src", pg_amp: "btn-amp", pg_lfo: "btn-lfo", pg_fx1: "btn-fx1", pg_fx2: "btn-fx2",
+  rec: "btn-rec", play: "btn-play", stop: "btn-stop", tempo: "btn-tempo", scene_a: "btn-a", scene_b: "btn-b",
+  recab: "btn-rec1", reccd: "btn-rec2", scale: "btn-page",
+  // MKII-only keys; on an MKI port (--mki) see CHORDS
+  proj: "btn-proj", part: "btn-part", aed: "btn-aed", arr: "btn-arr", rec3: "btn-rec3",
+};
+// An MKII key the MKI keymap lacks, sent as the MKI's FUNC chord for the same
+// function (the MKI print: FUNC+MIXER = PROJECT, FUNC+MIDI = PART, FUNC+PATTERN
+// = ARRANGER). Used only while key_map.json has no row/bit for the key (an MKI
+// port); AED and REC3 have no MKI equivalent.
+const CHORDS = { proj: ["func", "mixer"], part: ["func", "midi"], arr: ["func", "pattern"] };
+const SKIN_KNOBS = { volume: "knob-phones", level: "knob-level", a: "knob-a", b: "knob-b", c: "knob-c",
+                     d: "knob-d", e: "knob-e", f: "knob-f" };
+// LED ids (key_map.json, "led_" dropped) -> the skin element they light
+const SKIN_LEDS = {
+  ...Object.fromEntries([...Array(16)].map((_, i) => ["trig" + (i + 1), "trig-" + (i + 1)])),
+  ...Object.fromEntries([...Array(8)].map((_, i) => ["t" + (i + 1), "btn-t" + (i + 1)])),
+  play: "btn-play", rec: "btn-rec", stop: "btn-stop", scene_a: "btn-a", scene_b: "btn-b", tempo: "btn-tempo",
+  pg_playback: "btn-src", pg_amp: "btn-amp", pg_lfo: "btn-lfo", pg_fx1: "btn-fx1", pg_fx2: "btn-fx2",
+  midi: "btn-midi", mixer: "btn-mix", arranger: "btn-arr", project_menu: "btn-proj", part_menu: "btn-part",
+  func: "btn-func", card: "led-card-status",
+};
+{
+  const face = document.createElement("div"); face.id = "face";
+  face.innerHTML = window.SKIN_SVG || "";
+  S.prepend(face);
+}
+const B = (window.SKIN || {}).buttons || {}, KN = (window.SKIN || {}).knobs || {};
+for (const [id, sid] of Object.entries(SKIN_KEYS)) {
+  const b = B[sid]; if (!b) continue;
+  const k = el("k skin", b.x + b.w / 2, b.y + b.h / 2, b.w, b.h);
+  k.dataset.id = id;
+}
+for (const [id, sid] of Object.entries(SKIN_KNOBS)) {
+  const n = KN[sid]; if (!n) continue;
+  const k = el("knob skin" + (id === "volume" ? " pot" : " live"), n.cx, n.cy, 2 * n.r, 2 * n.r);
+  k.dataset.id = id; k.dataset.pos = 0;
+  const cap = document.createElement("div"); cap.className = "cap"; k.append(cap);
+}
+// the LED elements applyLeds() drives, kept (hidden) for their state; the skin mirrors them
+for (const id of Object.keys(SKIN_LEDS)) { const d = el("led", -20, -20, 7, 7); d.id = "led-" + id; }
+{ // the screen, the phase overlay, the crossfader bed, from the skin's geometry
+  const sc = (window.SKIN || {}).screen || {x: 473, y: 172, w: 240, h: 120};
+  for (const id of ["#screen", "#note"]) {
+    const e = $(id); e.style.left = sc.x + "px"; e.style.top = sc.y + "px"; e.style.width = sc.w + "px"; e.style.height = sc.h + "px";
+  }
+  const sl = ((window.SKIN || {}).fader || {}).slot || {x: 887, y: 430, w: 194, h: 15.5};
+  const fb = $("#fbed"); fb.classList.add("skin-bed");
+  fb.style.left = (sl.x - 6) + "px"; fb.style.top = (sl.y - 30) + "px";
+  fb.style.width = (sl.w + 12) + "px"; fb.style.height = (sl.h + 60) + "px";
+}
+{ // COMPACT FLASH: a hit area over the rear-edge label -- click opens the AUDIO POOL drawer
+  const c = el("skin-card", 729, 50, 110, 24); c.id = "card";
+  c.title = "COMPACT FLASH — click: the card's AUDIO pool (add samples; RE-INSERT CARD reboots the unit); drop audio files here to add them";
+  for (const cls of ["cf", "slot"]) { const d = document.createElement("div"); d.className = cls; c.append(d); }
+  c.addEventListener("click", () => togglePool());
+}
+{ // HEAD-PHONES: a hit area over the headphones print = the monitor's plug, and the L/R meter beside it
+  const j = el("jack", 95.5, 53, 1, 1); j.id = "jack-hp";
+  const h = el("", 95.5, 52, 30, 24); h.id = "hp";
+  const plug = document.createElement("div"); plug.className = "plug"; h.append(plug);
+  h.addEventListener("click", () => monToggle());
+  h.after(j);
+  const vu = el("", 124, 52, 15, 22); vu.id = "vu";
+  for (const ch of ["L", "R"]) {
+    const bar = document.createElement("div"); bar.className = "bar"; bar.title = ch;
+    for (const cls of ["fill", "pk"]) { const d = document.createElement("div"); d.className = cls; bar.append(d); }
+    vu.append(bar);
+  }
+}
+
+// ---------------- fit the stage to the window ----------------
+function fit() {
+  const v = $("#view");
+  const s = Math.min((v.clientWidth - 16) / STAGE_W, (v.clientHeight - 16) / STAGE_H);
+  S.style.transform = `translate(-50%,0) scale(${Math.max(0.1, s)})`;   // top-aligned (13 Sep 2026: no gap above the unit)
+}
+window.addEventListener("resize", fit);
+if (window.ResizeObserver) new ResizeObserver(fit).observe($("#view"));   // the toolbar re-wrapping changes the view too
+
+// ---------------- the top bar: collapsible (13 Sep 2026) ----------------
+// #topbtn is a thin chevron tab at the top edge, there in both states; hidden
+// = body.nobar (the bar and its drawers go, #view takes the window and fit()
+// rescales the stage). Remembered in localStorage ("otpanel.bar"), default
+// shown; a drawer opening while the bar is hidden shows it again.
+let barShown = true;
+try { barShown = localStorage.getItem("otpanel.bar") !== "hidden"; } catch (e) {}
+function drawBar() {
+  document.body.classList.toggle("nobar", !barShown);
+  const b = $("#topbtn");
+  b.textContent = barShown ? "\u25b2" : "\u25bc";
+  b.title = barShown ? "hide the top bar (the panel takes the whole window)" : "show the top bar (status, SOUND, the drawers)";
+  fit();
+}
+function toggleBar(show) {
+  barShown = show === undefined ? !barShown : !!show;
+  try { localStorage.setItem("otpanel.bar", barShown ? "shown" : "hidden"); } catch (e) {}
+  drawBar();
+}
+
+// ---------------- the map ----------------
+// data-driven key map: id -> [row, bit]; the first discovered entries ship
+// here and /map (tools/panel/key_map.json, the source of the whole map:
+// keys, knobs, LEDs) layers over them. The MAP KEYS drawer (click-to-bind
+// cells, localStorage overrides, EXPORT MAP) went 13 Sep 2026: edit
+// key_map.json instead.
+const BUILTIN = {
+  // Confirmed 10 Sep 2026 by driving the emulated firmware and reading the
+  // screen it drew. These are top-level screen keys; in-field editing uses
+  // held-modifier chords (e.g. a FUNC row held while a value key taps).
+  mixer:   [0x26, 0],   // opens MIXER
+  yes:     [0x26, 1],   // ENTER/YES: confirms SET DATE/TIME (writes the RTC)
+  right:   [0x24, 1],   // cursor right (moves the date field)
+  pattern: [0x25, 6],   // opens PATTERN SETTINGS
+  // trig keys: row 0x20 bits 0-7 = trigs 1-8, row 0x21 = trigs 9-16
+  ...Object.fromEntries([...Array(16)].map((_, i) => ["trig" + (i + 1), [0x20 + (i >> 3), i & 7]])),
+  // track keys: row 0x22 bits 0-7 = T1-T8 (each sets the current-track byte 0x80000000 to its index)
+  ...Object.fromEntries([...Array(8)].map((_, i) => ["t" + (i + 1), [0x22, i]])),
+};
+let mapKeys = {}, mapKnobs = {}, mapLeds = {};   // from /map
+
+const hint = m => { $("#hint").textContent = m; };
+const hex = n => "0x" + n.toString(16);
+function keyOf(el) { const id = el.dataset.id; return mapKeys[id] || BUILTIN[id] || null; }
+function rowOfKnob(el) { const id = el.dataset.id; const r = mapKnobs[id]; return r == null ? null : +r; }
+
+function refreshMapped() {
+  document.querySelectorAll(".k[data-id]").forEach(el => {
+    const k = keyOf(el);
+    el.classList.toggle("unmapped", !k && !CHORDS[el.dataset.id]);
+    el.title = k ? `${el.dataset.id}: row ${hex(k[0])} bit ${k[1]}` : `${el.dataset.id}: not in key_map.json`;
+  });
+  document.querySelectorAll(".knob").forEach(el => {
+    const r = rowOfKnob(el);
+    el.title = !el.classList.contains("live") ? potTitle()
+             : r != null ? `${el.dataset.id}: encoder row ${hex(r)} — endless: wheel/drag turns it (every detent goes to the firmware); double-click sets the parameter it controls on the current page back to its init value (through the firmware); with a TRIG key held (Shift-click latches it) a double-click is the encoder's PUSH (matrix 0x27.${r - 0x30}): it removes that step's lock on this parameter, as [TRIG] + knob press does on the unit (toggle: with no lock it sets one at the current value)`
+             : `${el.dataset.id}: not in key_map.json`;
+  });
+}
+
+async function sendKey(row, bit, down) {
+  const r = await fetch(`/key?row=${row}&bit=${bit}&down=${down ? 1 : 0}`).then(x => x.json());
+  hint(`row ${hex(row)} bit ${bit} ${down ? "dn" : "up"}: ${r.result}`);
+  return r;
+}
+async function sendKnob(row, delta, note = "") {
+  const r = await fetch(`/knob?row=${hex(row)}&delta=${delta}`).then(x => x.json());
+  hint(`encoder ${hex(row)} ${delta > 0 ? "+" : ""}${delta}: ${r.result}${note}`);
+  return r;
+}
+
+// keys: mousedown = held, mouseup anywhere = released (chords across keys work).
+// Shift-held chords (emulator-only, one mouse has no second finger): with the
+// Shift key down, EVERY click LATCHES its key -- down goes out, up does not,
+// and the key shows a green tint (.held, never .down, so the global mouseup
+// below leaves it alone) -- so FUNC, then BANK, then a trig can all be held
+// at once (13 Sep 2026: any number of latched keys, for the three-key
+// combinations). Clicks without Shift press other keys normally on top (down,
+// then up on mouseup); the server keeps per-row state so the firmware sees a
+// real chord. Clicking a latched key again releases just that key; Shift
+// keyup, window blur or Escape release everything.
+// Modifiers (23 Sep 2026, per the owner): SHIFT HOLDS FUNCTION -- the moment
+// Shift goes down the FUNCTION key is held at the firmware (green), every
+// click meanwhile is a plain press on top of it (FUNC + PLAY = clear pattern,
+// FUNC + track = mute ...), and releasing Shift lets everything go. To HOLD
+// any other key (a trig for parameter locks, SCENE A for scene locks),
+// OPTION-click it (or hold A and click): it latches, green, until it is
+// clicked again, Escape, Shift up or the window loses focus. Hold Z and
+// click: the key stays down only while Z is down (23 Sep 2026).
+let shiftHeld = false, aHeld = false, zHeld = false;   // Z: hold clicked keys until Z is released
+const FUNC_KEY = [0x25, 5];
+function funcEl() {
+  return [...document.querySelectorAll(".k[data-id]")].find(el => { const k = keyOf(el); return k && k[0] === FUNC_KEY[0] && k[1] === FUNC_KEY[1]; });
+}
+function holdFunc() {
+  const el = funcEl();
+  if (!el || el.classList.contains("held") || el.classList.contains("down")) return;
+  el.classList.add("held"); sendKey(FUNC_KEY[0], FUNC_KEY[1], true);
+}
+document.addEventListener("mousedown", e => {
+  const el = e.target.closest(".k[data-id]");
+  if (!el) return;
+  e.preventDefault();
+  const k = keyOf(el);
+  const ch = !k && CHORDS[el.dataset.id] && CHORDS[el.dataset.id].map(id => mapKeys[id] || BUILTIN[id]);
+  if (ch && ch.every(Boolean)) {                 // an MKII key on an MKI port: its FUNC chord
+    el.classList.add("down"); el.dataset.chord = "1";
+    (async () => { await sendKey(ch[0][0], ch[0][1], true); await sendKey(ch[1][0], ch[1][1], true); })();
+    return;
+  }
+  if (!k) {
+    // transport has a proven fallback: the firmware's own key handlers
+    const t = {play: "play", rec: "rec", stop: "stop"}[el.dataset.id];
+    if (t) {
+      el.classList.add("down");
+      fetch(`/transport?k=${t}`).then(x => x.json()).then(r => hint(`${t.toUpperCase()} via key handler: ${r.result}`));
+      return;
+    }
+    hint(`"${el.dataset.id}" is not in key_map.json`); return;
+  }
+  if (el.classList.contains("held")) {         // already down at the firmware: this click lets go
+    el.classList.remove("held"); sendKey(k[0], k[1], false); return;
+  }
+  if (shiftHeld || e.shiftKey) holdFunc();     // e.shiftKey: Shift went down before the page had focus
+  if (zHeld) {                                 // Z held: this key stays down until Z is released
+    el.classList.add("held"); el.dataset.z = "1"; sendKey(k[0], k[1], true); return;
+  }
+  if (e.altKey || aHeld) {                     // Option-click (or A + click): latch this key
+    el.classList.add("held"); sendKey(k[0], k[1], true); return;
+  }
+  el.classList.add("down");
+  sendKey(k[0], k[1], true);
+});
+document.addEventListener("mouseup", () => {
+  document.querySelectorAll(".k.down").forEach(el => {
+    el.classList.remove("down");
+    if (el.dataset.chord) {                      // release the chord, key before FUNC
+      delete el.dataset.chord;
+      const ch = CHORDS[el.dataset.id].map(id => mapKeys[id] || BUILTIN[id]);
+      (async () => { await sendKey(ch[1][0], ch[1][1], false); await sendKey(ch[0][0], ch[0][1], false); })();
+      return;
+    }
+    const k = keyOf(el);
+    if (k) sendKey(k[0], k[1], false);
+  });
+});
+function releaseHeld(sel = ".k.held") {
+  document.querySelectorAll(sel).forEach(el => {
+    el.classList.remove("held"); delete el.dataset.z;
+    const k = keyOf(el);
+    if (k) sendKey(k[0], k[1], false);
+  });
+}
+// "keydown"/"keyup" with e.key (WKWebView and Chrome agree on "Shift");
+// a held Shift may auto-repeat keydown on some systems, hence e.repeat.
+document.addEventListener("keydown", e => {
+  if (e.key === "Shift") { if (!e.repeat) { shiftHeld = true; holdFunc(); } return; }
+  // preventDefault: an unhandled keydown falls through WKWebView to the
+  // window's responder chain and macOS beeps on every auto-repeat.
+  if (e.key === "a" || e.key === "A") { e.preventDefault(); aHeld = true; return; }
+  if (e.key === "z" || e.key === "Z") { e.preventDefault(); zHeld = true; return; }
+  if (e.key === "Escape") { e.preventDefault(); if (!e.repeat) releaseHeld(); return; }
+});
+document.addEventListener("keyup", e => {
+  if (e.key === "Shift") { shiftHeld = false; releaseHeld(); }
+  if (e.key === "a" || e.key === "A") aHeld = false;
+  if (e.key === "z" || e.key === "Z") { zHeld = false; releaseHeld(".k.held[data-z]"); }   // let go of what Z held
+});
+window.addEventListener("blur", () => { shiftHeld = false; aHeld = false; zHeld = false; releaseHeld(); });   // the keyup would never reach us
+
+// encoders: wheel or vertical drag over a knob = detents on its matrix row.
+// Turns are coalesced (80 ms) since every /knob costs a 30 ms emulator run.
+//
+// The unit's encoders are ENDLESS and so are these (13 Sep 2026; until then
+// each knob was bounded to -64..+63 as an emulator convenience): no end
+// stops, every detent goes out, the indicator just keeps going round (15
+// deg per detent, 24 per turn, drawn from the net detents sent since the
+// page loaded -- an angle, not a value; the firmware clamps each PARAMETER
+// at its own range, as the unit does). The firmware honours the full
+// +/-127 per report (STRT 0..127: +25 -> 25, -25 -> 0, +127 -> 127, -127
+// -> 0, 11 Sep 2026); a burst of wheel is capped at +-64 per report here.
+// DOUBLE-CLICK = the parameter this encoder controls on the CURRENT page
+// back to its init value, done by the firmware itself (/knob/reset sends
+// the detents that reach the page descriptor's default: KEYMAP.md, the
+// "Encoders" section of 13 Sep 2026, tools/panel/param_map.json); on a
+// SETUP page, a menu or the MIXER the server answers ok:false and sends
+// nothing. The indicator returns to 12 o'clock as the cue.
+// DOUBLE-CLICK WITH A TRIG KEY HELD (Shift-click latches it, or the key is
+// down) = the encoder's PUSH SWITCH instead: /knob/press sends the panel's
+// own report for it -- key-matrix row 0x27, bit = the encoder (A-F = 0-5,
+// LEVEL = 6; found 13 Sep 2026, KEYMAP.md "The encoder push") -- and the
+// firmware toggles that step's lock on the parameter: [TRIG] + knob press
+// on the unit (manual 12.5, "remove a single parameter lock"). Measured:
+// the lock byte 0x45 -> 0xff, the inverted box back to normal, the trig
+// kept; a push with no lock there sets one at the current value.
+const DEG_PER_DETENT = 15, REPORT_MAX = 64;
+const signed = n => (n > 0 ? "+" : "") + n;
+function drawKnob(el) {
+  el.querySelector(".cap").style.transform = `rotate(${+el.dataset.pos * DEG_PER_DETENT}deg)`;
+}
+document.querySelectorAll(".knob.live").forEach(drawKnob);   // all start at 12 o'clock
+const pending = new Map();
+function turn(el, detents) {
+  if (!detents) return;
+  const row = rowOfKnob(el);
+  if (row == null) { hint(`"${el.dataset.id}" knob is not in key_map.json`); return; }
+  el.dataset.pos = +el.dataset.pos + detents;
+  drawKnob(el);
+  const p = pending.get(el) || {n: 0, timer: 0};
+  p.n = Math.max(-REPORT_MAX, Math.min(REPORT_MAX, p.n + detents));
+  if (!p.timer) p.timer = setTimeout(() => {
+    pending.delete(el);
+    sendKnob(row, p.n, ` (${signed(+el.dataset.pos)} detents since load)`);
+  }, 80);
+  pending.set(el, p);
+}
+async function flushTurn(el, row) {                        // what the wheel left in the 80 ms coalescer goes out first
+  const p = pending.get(el);
+  if (p) { clearTimeout(p.timer); pending.delete(el); if (p.n) await sendKnob(row, p.n); }
+}
+async function resetKnob(el) {
+  const row = rowOfKnob(el);
+  if (row == null) { hint(`"${el.dataset.id}" knob is not in key_map.json`); return; }
+  await flushTurn(el, row);
+  hint(`${el.dataset.id}: back to init…`);
+  const r = await fetch(`/knob/reset?row=${hex(row)}`).then(x => x.json());
+  if (r.ok) {
+    el.dataset.pos = 0; drawKnob(el);
+    hint(`${el.dataset.id}: ${r.name} on ${r.page} (T${r.track}) ${r.before === r.after ? "already at init" : `${r.before} → ${r.after}`} (init ${r.init}, ${r.sent.length} report${r.sent.length === 1 ? "" : "s"} sent)`);
+  } else hint(`${el.dataset.id}: not reset — ${r.note}`);
+}
+// a TRIG key (rows 0x20/0x21) latched with Shift-click (.held) or down right now
+function trigHeld() {
+  return [...document.querySelectorAll(".k.held, .k.down")].some(el => { const k = keyOf(el); return !!k && (k[0] === 0x20 || k[0] === 0x21); });
+}
+async function pressKnob(el) {
+  const row = rowOfKnob(el);
+  if (row == null) { hint(`"${el.dataset.id}" knob is not in key_map.json`); return; }
+  await flushTurn(el, row);
+  const r = await fetch(`/knob/press?row=${hex(row)}`).then(x => x.json());
+  if (r.ok) hint(`${el.dataset.id} pressed (matrix ${r.cell}, ${r.hold_ms} ms${r.held && r.held.length ? "; held: " + r.held.join(" ") : ""}) — ${r.note}`);
+  else hint(`${el.dataset.id}: push not sent — ${r.note}`);
+}
+// Track keys: a quick double tap (two clicks) opens the track's sample slot
+// list, as on the unit. The two clicks are two ordinary presses; the server
+// slows its idle pump for a moment after a track key is released so the
+// second press lands inside the firmware's double-tap window (a third
+// double tap would close the list again, so nothing extra is sent here).
+document.addEventListener("dblclick", e => {
+  const el = e.target.closest(".knob.live");
+  if (!el) return;
+  e.preventDefault();
+  if (trigHeld()) pressKnob(el); else resetKnob(el);      // TRIG held: the push (the lock goes); alone: back to init
+});
+const wheelAcc = new Map();
+document.addEventListener("wheel", e => {
+  const el = e.target.closest(".knob.live");
+  if (!el) return;
+  e.preventDefault();
+  // with Shift down (a latched chord: FUNC + encoder) browsers report the
+  // vertical wheel as deltaX (Chrome, WebKit); take it when deltaY is 0
+  const raw = e.deltaY || (e.shiftKey ? e.deltaX : 0);
+  const dy = e.deltaMode === 1 ? raw * 20 : raw;
+  let acc = (wheelAcc.get(el) || 0) + dy;
+  const d = Math.trunc(acc / 40);              // one detent per 40 px (a mouse notch is 100 in Chrome)
+  acc -= d * 40; wheelAcc.set(el, acc);
+  turn(el, -d);                                // wheel up = clockwise = +
+}, {passive: false});
+let drag = null;
+document.addEventListener("mousedown", e => {
+  const el = e.target.closest(".knob.live");
+  if (!el) return;
+  e.preventDefault();
+  drag = {el, y: e.clientY};
+});
+document.addEventListener("mousemove", e => {
+  if (!drag) return;
+  const d = Math.trunc((drag.y - e.clientY) / 6);   // one detent per 6 px of drag, up = +
+  if (d) { drag.y -= d * 6; turn(drag.el, d); }
+});
+document.addEventListener("mouseup", () => { drag = null; });
+
+// ---------------- the crossfader ----------------
+// The pot the panel board reads and reports as `0x40 <adc>` on the panel
+// UART (PANEL_LINK.md, 13 Sep 2026); /xfader?pos=0..127 sends exactly that
+// (0 = leftmost = scene A, 127 = rightmost = scene B, the CC 48 scale) and
+// the firmware keeps the value (0x460d16c8), morphs the scene locks and
+// redraws its fader icon. Nothing is remembered here across reloads: the
+// page asks the firmware where the fader is (on load and every few seconds
+// while idle). Drag the handle or click in the bed, wheel over either
+// (Shift = 8 steps), or Left/Right arrows after a click on it. The value
+// and the two scenes are in the fader's tooltip (the text readout under the
+// bed went 13 Sep 2026).
+const FADER = {pos: null, want: null, timer: 0, drag: false, focus: false, scenes: ""};
+const FBED = $("#fbed"), FHANDLE = $("#fhandle");
+function drawFader() {
+  if (FADER.pos == null) { FHANDLE.title = FBED.title = "CROSSFADER"; return; }
+  const travel = (((window.SKIN || {}).fader || {}).travel || {}).max || 166;
+  const hd = document.getElementById("fader-handle");   // the skin's handle: translate in x, 0 = far left
+  if (hd) hd.setAttribute("transform", `translate(${FADER.pos / 127 * travel} 0)`);
+  FHANDLE.title = FBED.title = `CROSSFADER at ${FADER.pos} (0 = scene A, 127 = scene B; = MIDI CC 48)${FADER.scenes} — drag, wheel (Shift ×8) or ←/→ after a click; the firmware morphs the scene locks`;
+}
+async function faderRefresh() {
+  if (FADER.drag || FADER.timer) return;
+  try {
+    const r = await fetch("/xfader").then(x => x.json());
+    if (r.ok && typeof r.pos === "number") {
+      FADER.pos = r.pos;
+      FADER.scenes = r.scene_a ? ` · scenes ${r.scene_a} / ${r.scene_b}` : "";
+      drawFader();
+    }
+  } catch (e) {}
+}
+async function sendFader(pos) {
+  const r = await fetch(`/xfader?pos=${pos}`).then(x => x.json());
+  if (r.ok) {
+    FADER.pos = r.pos; FADER.scenes = r.scene_a ? ` · scenes ${r.scene_a} / ${r.scene_b}` : ""; drawFader();
+    hint(`crossfader ${r.pos} (firmware ${r.xf}, CC 48 = ${r.cc48}; 0x40 ${r.byte} on the panel link)${FADER.scenes}`);
+  } else hint(`crossfader: ${r.note || "not sent"}`);
+}
+function setFader(pos) {
+  pos = Math.max(0, Math.min(127, Math.round(pos)));
+  if (pos === FADER.pos) return;
+  FADER.pos = pos; drawFader();
+  FADER.want = pos;                              // coalesced: the last position wins, one /xfader per 60 ms
+  if (!FADER.timer) FADER.timer = setTimeout(() => { FADER.timer = 0; sendFader(FADER.want); }, 60);
+}
+function faderPosFromX(clientX) {
+  // the bed spans the skin's slot plus 6 px each side; the cap's centre runs
+  // slot.x + 15 .. slot.x + 15 + travel (the stage is scaled to fit)
+  const rect = FBED.getBoundingClientRect(), s = rect.width / (FBED.offsetWidth || 206);
+  const travel = (((window.SKIN || {}).fader || {}).travel || {}).max || 166;
+  return (clientX - rect.left - (6 + 15) * s) / (travel * s) * 127;
+}
+for (const el of [FBED, FHANDLE]) el.addEventListener("mousedown", e => {
+  e.preventDefault();
+  FADER.drag = true; FADER.focus = true; FHANDLE.classList.add("focus");
+  if (el === FBED) setFader(faderPosFromX(e.clientX));
+});
+document.addEventListener("mousemove", e => { if (FADER.drag) setFader(faderPosFromX(e.clientX)); });
+document.addEventListener("mouseup", () => { FADER.drag = false; });
+document.addEventListener("mousedown", e => {
+  if (!e.target.closest("#fbed, #fhandle")) { FADER.focus = false; FHANDLE.classList.remove("focus"); }
+}, true);
+for (const el of [FBED, FHANDLE]) el.addEventListener("wheel", e => {
+  e.preventDefault();
+  if (FADER.pos == null) return;
+  const raw = e.deltaY || e.deltaX;
+  if (!raw) return;
+  setFader(FADER.pos + (raw < 0 ? 1 : -1) * (e.shiftKey ? 8 : 1));   // wheel up = towards B (right)
+}, {passive: false});
+document.addEventListener("keydown", e => {
+  if (!FADER.focus || FADER.pos == null) return;
+  if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+    e.preventDefault();
+    setFader(FADER.pos + (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 8 : 1));
+  }
+});
+
+// The computer's arrow keys press the panel's arrows, held while held (the
+// unit does its own auto-repeat). The crossfader keeps LEFT/RIGHT while it
+// has focus (the handler above).
+const ARROWS = {ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right"};
+const arrowKey = e => {
+  const id = ARROWS[e.key];
+  if (!id || (FADER.focus && (id === "left" || id === "right"))) return null;
+  if (e.target.closest && e.target.closest("input, textarea, select")) return null;
+  return id;
+};
+document.addEventListener("keydown", e => {
+  const id = arrowKey(e);
+  if (!id) return;
+  e.preventDefault();
+  if (e.repeat) return;
+  const k = mapKeys[id] || BUILTIN[id];
+  if (!k) return;
+  const el = document.querySelector(`.k[data-id="${id}"]`);
+  if (el) el.classList.add("down");
+  sendKey(k[0], k[1], true);
+});
+document.addEventListener("keyup", e => {
+  const id = arrowKey(e);
+  if (!id) return;
+  e.preventDefault();
+  const k = mapKeys[id] || BUILTIN[id];
+  if (!k) return;
+  const el = document.querySelector(`.k[data-id="${id}"]`);
+  if (el) el.classList.remove("down");
+  sendKey(k[0], k[1], false);
+});
+
+// ---------------- AUDIO POOL drawer (the card) ----------------
+// The unit's samples live in the set's AUDIO folder on the card; here the
+// card is a FAT image built at boot from a staged tree, and the pool is that
+// tree's AUDIO folder (GET /samples: name, bytes, format, plus "pending" =
+// added since the card was built). ADD FILES / a drop on the slot POSTs each
+// file's bytes to /samples/upload?name= (the server converts what the unit
+// would not read); REMOVE takes a pending file back out; RE-INSERT CARD
+// (GET /samples/commit) rebuilds the image and reboots the unit -- the
+// server respawns the child as the watchdog does, ~40 s, and the phase
+// overlay on the screen covers the wait. Nothing reaches the firmware
+// until then, exactly as on the hardware (no hot-plug).
+let poolOpen = false, poolDirty = false, poolBusy = false, poolData = null, armTimer = 0;
+// the key sequence on the unit, from tools/panel/README.md "Loading samples"
+const HOWTO = `<b>To put a pool file in a slot on the unit</b> (after RE-INSERT CARD, as on the hardware):
+  <b>double-click a track key</b> T1–T8 → its slot list (<kbd>MACHINE:FLEX</kbd> or <kbd>STATIC</kbd>) ·
+  <kbd>▲</kbd>/<kbd>▼</kbd> pick a slot · <kbd>▶</kbd> (or <kbd>YES</kbd>) opens the file browser on it ·
+  <kbd>▲</kbd>/<kbd>▼</kbd> find the file in AUDIO · <kbd>YES</kbd> loads it · <kbd>NO</kbd> leaves.
+  Details: <code>tools/panel/README.md</code>, "Loading samples".`;
+const fmtBytes = n => n >= 1e6 ? (n / 1e6).toFixed(1) + " MB" : n >= 1e3 ? Math.round(n / 1e3) + " kB" : n + " B";
+function togglePool(open) {
+  poolOpen = open === undefined ? !poolOpen : !!open;
+  $("#pool").classList.toggle("open", poolOpen);
+  $("#card").classList.toggle("open", poolOpen);
+  if (poolOpen) { loadPool(); if (!barShown) toggleBar(true); }   // the drawer lives in the bar
+  fit();
+}
+function poolLog(msg, cls = "") {
+  const d = document.createElement("div"); d.className = cls; d.textContent = msg;
+  const log = $("#poollog"); log.append(d); log.scrollTop = log.scrollHeight;
+}
+async function loadPool() {
+  try {
+    const r = await fetch("/samples");
+    if (!r.ok) throw new Error(`HTTP ${r.status} (this panel_server.py has no /samples)`);
+    poolData = await r.json();
+  } catch (e) {
+    poolData = null;
+    $("#poollist").innerHTML = "";
+    $("#poolstate").textContent = `pool unavailable: ${e.message}`;
+    return;
+  }
+  renderPool();
+}
+function renderPool() {
+  const d = poolData || {files: [], pending: []};
+  const pending = new Set(d.pending || []);
+  const files = [...(d.files || [])];
+  for (const n of pending) if (!files.some(f => f.name === n)) files.push({name: n, bytes: 0, format: "?"});
+  files.sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric: true}));
+  $("#pooldir").textContent = d.pool || "AUDIO";
+  const list = $("#poollist"); list.innerHTML = "";
+  const row = (cls, cells) => {
+    const r = document.createElement("div"); r.className = "f " + cls;
+    for (const [c, v] of cells) { const s = document.createElement("span"); s.className = c; if (v instanceof Node) s.append(v); else s.textContent = v; r.append(s); }
+    list.append(r); return r;
+  };
+  row("h", [["n", "file"], ["fm", "format"], ["b", "size"], ["st", "status"], ["", ""]]);
+  for (const f of files) {
+    const p = pending.has(f.name);
+    let rm = "";
+    if (p) { rm = document.createElement("button"); rm.textContent = "REMOVE"; rm.onclick = () => removeFile(f.name); }
+    row(p ? "pending" : "", [["n", f.name], ["fm", f.format || ""], ["b", f.bytes ? fmtBytes(f.bytes) : ""],
+                             ["st", p ? "not on the card yet" : "on the card"], ["", rm]]);
+  }
+  if (!files.length) row("", [["n", "(the AUDIO folder is empty)"], ["fm", ""], ["b", ""], ["st", ""], ["", ""]]);
+  // "removed": card files no longer in the pool (the server's diff against
+  // the card it built); an older server without it falls back to poolDirty
+  const removed = (d.removed || []).length;
+  const n = files.length - pending.size;
+  const waiting = [pending.size ? `${pending.size} to add` : "", removed ? `${removed} to remove` : ""].filter(Boolean).join(", ");
+  $("#poolstate").textContent =
+    `${n} file${n === 1 ? "" : "s"} on the card` +
+    (waiting ? ` — ${waiting} at the next RE-INSERT CARD` : poolDirty && !d.removed ? " — changes waiting for RE-INSERT CARD" : "") +
+    (poolBusy || d.busy ? " — the unit is busy (see the phase); RE-INSERT waits" : "");
+  if (cardEjected) {
+    // O19: the ejected state -- where the card is, and the way back in
+    const st = $("#poolstate"); st.textContent = "";
+    const t = document.createElement("span");
+    t.textContent = `THE CARD IS EJECTED — mounted on the Mac at ${cardMount || "?"} (open in Finder: copy samples into <SET>/AUDIO, projects into <SET>/, or whole sets). Then `;
+    const ib = document.createElement("button"); ib.id = "insertbtn"; ib.textContent = "INSERT CARD"; ib.onclick = insertCard;
+    st.append(t, ib);
+  }
+  $("#reinsert").disabled = poolBusy || !!d.busy || !poolData || cardEjected;
+  $("#addbtn").disabled = !poolData || !!d.busy;
+}
+async function uploadFiles(files) {
+  files = [...files].filter(f => f && f.name);
+  if (!files.length) return;
+  if (!poolOpen) togglePool(true);
+  for (const f of files) {
+    hint(`uploading ${f.name} (${fmtBytes(f.size)})…`);
+    let r;
+    try {
+      const resp = await fetch(`/samples/upload?name=${encodeURIComponent(f.name)}`, {method: "POST", body: f});
+      r = await resp.json();
+    } catch (e) { r = {ok: false, error: `upload failed: ${e.message}`}; }
+    if (r.ok) { poolDirty = true; poolLog(`${f.name} → ${r.name}${r.converted ? " (converted)" : ""}${r.note ? ": " + r.note : ""}`, r.converted ? "conv" : ""); }
+    else poolLog(`${f.name}: ${r.error || "refused"}`, "bad");
+  }
+  hint(`${files.length} file${files.length === 1 ? "" : "s"} sent to the pool — RE-INSERT CARD to let the unit see them`);
+  await loadPool();
+}
+async function removeFile(name) {
+  const wasPending = !!poolData && (poolData.pending || []).includes(name);   // never on the card: nothing changes there
+  let r;
+  try { r = await fetch(`/samples/remove?name=${encodeURIComponent(name)}`).then(x => x.json()); }
+  catch (e) { r = {ok: false, error: e.message}; }
+  if (r.ok) { if (!wasPending) poolDirty = true; poolLog(`${name}: removed from the pool`); }
+  else poolLog(`${name}: remove failed: ${r.error || "?"}`, "bad");
+  await loadPool();
+}
+// Two clicks (no confirm(): WKWebView answers false to it without a UI
+// delegate): the first arms the button for 5 s, the second commits.
+async function reinsert() {
+  const b = $("#reinsert");
+  if (!b.classList.contains("armed")) {
+    b.classList.add("armed"); b.textContent = "REBOOT THE UNIT? CLICK AGAIN";
+    clearTimeout(armTimer);
+    armTimer = setTimeout(() => { b.classList.remove("armed"); b.textContent = "RE-INSERT CARD"; }, 5000);
+    return;
+  }
+  clearTimeout(armTimer);
+  b.classList.remove("armed"); b.textContent = "RE-INSERT CARD"; b.disabled = true;
+  let r;
+  try { r = await fetch("/samples/commit").then(x => x.json()); }
+  catch (e) { r = {ok: false, error: e.message}; }
+  if (r.ok) { poolDirty = false; poolLog(`card re-inserted: ${r.phase || "the unit reboots"}`); hint(r.phase || "re-inserting the card"); }
+  else { poolLog(`re-insert failed: ${r.error || "?"}`, "bad"); b.disabled = false; }
+  await loadPool();
+}
+// the phase poll feeds this: the card is out while the unit reboots, and
+// the list refreshes when the unit comes back (pending files become "on the card")
+let cardEjected = false, cardMount = null;
+function poolPhase(phase, s) {
+  const busy = phase !== "ready";
+  // O19: /status card_ejected = the card is out and mounted on the Mac (File >
+  // Eject Card in the app, or GET /card/eject): the slot shows it empty and
+  // the drawer says where it is and how to put it back
+  const ejected = !!(s && s.card_ejected);
+  $("#card").classList.toggle("ejected", ejected || /re-insert|restart|eject|insert/.test(phase));
+  if (ejected !== cardEjected || (s && s.card_mount) !== cardMount) {
+    cardEjected = ejected; cardMount = s ? s.card_mount || null : null;
+    $("#card").title = ejected
+      ? `COMPACT FLASH — the card is EJECTED and mounted on the Mac at ${cardMount || "?"}: copy samples, projects or sets in Finder, then INSERT CARD`
+      : "COMPACT FLASH — click: the card's AUDIO pool (add samples; RE-INSERT CARD reboots the unit); drop audio files here to add them";
+    if (ejected && !poolOpen) togglePool(true);
+    if (poolData) renderPool();
+  }
+  if (busy === poolBusy) return;
+  poolBusy = busy;
+  if (poolOpen) loadPool(); else if (poolData) renderPool();
+}
+async function insertCard() {
+  const b = $("#insertbtn"); if (b) b.disabled = true;
+  let r;
+  try { r = await fetch("/card/insert").then(x => x.json()); } catch (e) { r = {ok: false, error: e.message}; }
+  if (r.ok) { poolLog(`card inserted: ${r.phase || "the unit boots"}`); hint(r.phase || "inserting the card"); }
+  else { poolLog(`insert failed: ${r.error || "?"}`, "bad"); if (b) b.disabled = false; }
+}
+$("#addinput").addEventListener("change", e => { uploadFiles(e.target.files); e.target.value = ""; });
+// drops: on the card slot or the open drawer; anywhere else the browser
+// would navigate to the file, so the window swallows those
+const hasFiles = e => !!e.dataTransfer && Array.from(e.dataTransfer.types || []).indexOf("Files") >= 0;   // types is a DOMStringList in WebKit
+for (const t of [$("#card"), $("#pool")]) {
+  t.addEventListener("dragover", e => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; t.classList.add("drop"); });
+  t.addEventListener("dragleave", e => { if (!t.contains(e.relatedTarget)) t.classList.remove("drop"); });
+  t.addEventListener("drop", e => { e.preventDefault(); t.classList.remove("drop"); uploadFiles(e.dataTransfer.files); });
+}
+window.addEventListener("dragover", e => e.preventDefault());
+window.addEventListener("drop", e => e.preventDefault());
+// how to get a pool file into a slot on the unit (tools/panel/README.md, "Loading samples")
+$("#howto").innerHTML = HOWTO;
+
+// ---------------- MONITOR: the HEAD-PHONES jack, VOLUME, the takes ----------------
+// The server drains the emulator's DSP main output (core 0 L/R, 16-bit
+// 44.1 kHz) into a ring of ABSOLUTE frame numbers (GET /audio/status: end,
+// first; GET /audio/pcm?from=&max= the frames themselves, 204 = nothing new
+// yet). Plugging the headphones in (a click on the jack) creates/resumes
+// the AudioContext -- WKWebView and Chrome both want a gesture -- and streams
+// from=end onwards: every ~150 ms the next frames are fetched, turned into an
+// AudioBuffer and scheduled at a schedule cursor, back to back, never
+// overlapping. The emulator renders ~9x slower than real time while the
+// sequencer plays, so the cursor runs dry all the time; the policy is to
+// wait until >= 300 ms of audio is queued, then let it play out: bursts of
+// continuous sound, honest to the speed of the unit ("behind 3.2 s" =
+// emulated audio available minus played). More than 20 s behind (a
+// backgrounded tab throttles the timers, the unit does not wait) skips
+// ahead to end - 20 s and says so. VOLUME is the GainNode (0..100 %,
+// remembered in localStorage); nothing of it reaches the firmware -- the
+// unit's pot is analogue, after the DAC. The meter beside the jack reads two
+// AnalyserNodes after the gain. Takes (PLAY to STOP, the server's
+// out/_panel_takes_<port>/take-NNN.wav) are recorded server-side and saved
+// from the app's Audio menu; the drawer's takes list (REPLAY / SAVE), plug
+// button and readouts went 13 Sep 2026 -- the drawer is SOUND ON/OFF only,
+// and the jack's tooltip carries the readout.
+const MON_RATE = 44100, MON_POLL_MS = 150, MON_MAX = 88200, MON_STARVE = Math.round(0.3 * MON_RATE),
+      MON_SKIP = 20 * MON_RATE, MON_LEAD = 0.05, VOL_DEFAULT = 75;
+const SOUND_OFF_MSG = "sound is off (DSP cores not running): turn it on in the drawer";
+const MON = {
+  ctx: null, gain: null, anL: null, anR: null,
+  on: false, gen: 0, from: -1, end: 0, cursor: 0, pend: [], pendFrames: 0, live: new Set(),
+  scheduled: 0, bursts: 0, dropped: 0, skipped: 0, skippedAt: 0, err: null,
+  sound: null, soundNote: null, phase: "", status: null, statusErr: null, statusTimer: 0, statusBusy: false,
+  replay: null, open: false, armTimer: 0,
+};
+
+// -- VOLUME: a real pot, 0..100 %, the monitor's gain --
+let vol = VOL_DEFAULT;
+try { const v = parseFloat(localStorage.getItem("otpanel.volume")); if (v >= 0 && v <= 100) vol = Math.round(v); } catch (e) {}
+const POT = document.querySelector(".knob.pot");
+function potTitle() {
+  return `VOLUME ${vol} % — the monitor's gain (the headphones): wheel or drag turns it 0..100 %, double-click returns to ${VOL_DEFAULT} %; nothing reaches the firmware (the unit's pot is analogue, after the DAC)`;
+}
+function drawPot() {
+  const SWEEP = 300;   // the pot's travel: 7 o'clock (0 %) to 5 o'clock (100 %), as before the encoders went endless
+  POT.querySelector(".cap").style.transform = `rotate(${-SWEEP / 2 + vol * SWEEP / 100}deg)`;
+  POT.title = potTitle();
+  if (MON.gain) MON.gain.gain.value = vol / 100;
+}
+function setVol(v, note = "") {
+  const nv = Math.max(0, Math.min(100, Math.round(v)));
+  if (nv === vol) { if (vol === 100 || vol === 0) hint(`VOLUME at its ${vol ? "end (100 %)" : "start (0 %)"}`); return; }
+  vol = nv; drawPot();
+  try { localStorage.setItem("otpanel.volume", String(vol)); } catch (e) {}
+  hint(`VOLUME ${vol} %${note} — the monitor's gain; nothing sent to the firmware`);
+}
+drawPot();
+let potDrag = null;
+document.addEventListener("mousedown", e => {
+  const el = e.target.closest(".knob.pot");
+  if (!el) return;
+  e.preventDefault();
+  potDrag = {y: e.clientY};
+});
+document.addEventListener("mousemove", e => {
+  if (!potDrag) return;
+  const d = Math.trunc((potDrag.y - e.clientY) / 3);   // 1 % per 3 px of drag, up = louder
+  if (d) { potDrag.y -= d * 3; setVol(vol + d); }
+});
+document.addEventListener("mouseup", () => { potDrag = null; });
+let potAcc = 0;
+document.addEventListener("wheel", e => {
+  const el = e.target.closest(".knob.pot");
+  if (!el) return;
+  e.preventDefault();
+  const raw = e.deltaY || (e.shiftKey ? e.deltaX : 0);
+  potAcc += e.deltaMode === 1 ? raw * 20 : raw;
+  const d = Math.trunc(potAcc / 20);                    // 1 % per 20 px (a mouse notch = 5 %)
+  potAcc -= d * 20;
+  if (d) setVol(vol - d);                                // wheel up = louder
+}, {passive: false});
+document.addEventListener("dblclick", e => {
+  const el = e.target.closest(".knob.pot");
+  if (!el) return;
+  e.preventDefault();
+  if (vol === VOL_DEFAULT) hint(`VOLUME already at ${VOL_DEFAULT} %`); else setVol(VOL_DEFAULT, " (back to the default)");
+});
+
+// -- WebAudio --
+function monCtx() {
+  if (!MON.ctx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) throw new Error("no WebAudio in this browser");
+    let ctx;
+    try { ctx = new AC({sampleRate: MON_RATE}); } catch (e) { ctx = new AC(); }
+    const gain = ctx.createGain(); gain.gain.value = vol / 100;
+    const split = ctx.createChannelSplitter(2);
+    const anL = ctx.createAnalyser(), anR = ctx.createAnalyser();
+    anL.fftSize = anR.fftSize = 1024;
+    gain.connect(ctx.destination); gain.connect(split); split.connect(anL, 0); split.connect(anR, 1);
+    Object.assign(MON, {ctx, gain, anL, anR});
+  }
+  if (MON.ctx.state !== "running") MON.ctx.resume();     // inside the gesture that got us here
+  return MON.ctx;
+}
+function queuedFrames() {                                  // fetched, not yet played
+  const rem = MON.ctx ? Math.max(0, MON.cursor - MON.ctx.currentTime) * MON_RATE : 0;
+  return MON.pendFrames + Math.round(rem);
+}
+const playedAbs = () => MON.from - queuedFrames();         // the absolute frame at the headphones now
+const behindFrames = () => MON.end - playedAbs();          // available minus played
+function monPush(i16) {
+  const n = i16.length >> 1, ab = MON.ctx.createBuffer(2, n, MON_RATE);
+  const L = ab.getChannelData(0), R = ab.getChannelData(1);
+  for (let i = 0, j = 0; i < n; i++, j += 2) { L[i] = i16[j] / 32768; R[i] = i16[j + 1] / 32768; }
+  MON.pend.push(ab); MON.pendFrames += n;
+  monFlush();
+}
+function monFlush() {
+  const ctx = MON.ctx, now = ctx.currentTime;
+  const dry = MON.cursor <= now;                           // the scheduled audio has run out
+  if (dry && MON.pendFrames < MON_STARVE) return;          // starved: wait for 300 ms of audio
+  if (dry) { MON.cursor = now + MON_LEAD; MON.bursts++; }
+  for (const ab of MON.pend) {
+    const src = ctx.createBufferSource(); src.buffer = ab; src.connect(MON.gain);
+    src.start(MON.cursor); MON.cursor += ab.length / MON_RATE;   // gapless: the next starts where this ends
+    MON.live.add(src); src.onended = () => MON.live.delete(src);
+    MON.scheduled += ab.length;
+  }
+  MON.pend = []; MON.pendFrames = 0;
+}
+function monDrop() {                                       // stop and forget everything queued
+  for (const src of MON.live) { try { src.stop(); } catch (e) {} }
+  MON.live.clear(); MON.pend = []; MON.pendFrames = 0; MON.cursor = 0;
+}
+function monSkip() {
+  const target = MON.end - MON_SKIP;
+  MON.skipped = (target - playedAbs()) / MON_RATE; MON.skippedAt = Date.now();
+  monDrop(); MON.from = target;
+}
+async function audioStatus() {
+  const r = await fetch("/audio/status");
+  if (!r.ok) throw new Error(`HTTP ${r.status} (this panel_server.py has no /audio endpoints)`);
+  const st = await r.json();
+  MON.status = st;
+  if (!MON.on && typeof st.end === "number") MON.end = st.end;
+  return st;
+}
+async function monLoop(gen) {
+  while (MON.on && MON.gen === gen) {
+    try {
+      if (MON.from < 0) {                                  // first poll: start live, at the end of what exists
+        let st;
+        try { st = await audioStatus(); } catch (e) { monStop("monitor: " + e.message); return; }
+        if (MON.gen !== gen) return;
+        MON.from = MON.end = st.end || 0;
+        if (st.sound === false) { monStop(SOUND_OFF_MSG); return; }
+      } else if (behindFrames() > MON_SKIP + 2 * MON_RATE) monSkip();   // > 22 s behind: skip ahead to 20 s behind
+      // (checked BEFORE the fetch, with 2 s of hysteresis: a check after the fetch
+      // re-skipped on every poll when the source outran real time, 12 Sep 2026)
+      const r = await fetch(`/audio/pcm?from=${MON.from}&max=${MON_MAX}`);
+      if (MON.gen !== gen) return;
+      const end = parseInt(r.headers.get("X-Audio-End") || "", 10);
+      if (r.status === 204) {
+        if (!Number.isNaN(end)) { MON.end = end; if (end < MON.from) { monDrop(); MON.from = end; } }   // the child restarted
+      } else if (r.ok) {
+        const buf = await r.arrayBuffer();
+        if (MON.gen !== gen) return;
+        const at = parseInt(r.headers.get("X-Audio-From") || "", 10), n = Math.floor(buf.byteLength / 4);
+        if (!Number.isNaN(at)) { if (at > MON.from) MON.dropped += at - MON.from; MON.from = at + n; }   // the ring had moved past us
+        else MON.from += n;
+        if (!Number.isNaN(end)) MON.end = end;
+        if (n) monPush(new Int16Array(buf, 0, n * 2));
+      } else throw new Error(`HTTP ${r.status}`);
+      MON.err = null;
+    } catch (e) { MON.err = e.message; }
+    monRender();
+    await new Promise(res => setTimeout(res, MON_POLL_MS));
+  }
+}
+function monReadout() {
+  if (!MON.on) return "unplugged";
+  if (MON.err) return `monitor: ${MON.err}`;
+  if (MON.from < 0) return "connecting…";
+  const behind = (behindFrames() / MON_RATE).toFixed(1);
+  let s = MON.cursor > MON.ctx.currentTime ? `behind ${behind} s`
+        : `waiting for sound (${(MON.pendFrames / MON_RATE).toFixed(2)} of 0.30 s queued, behind ${behind} s)`;
+  if (Date.now() - MON.skippedAt < 6000) s += ` — skipped ahead ${MON.skipped.toFixed(1)} s`;
+  return s;
+}
+const monBusy = () => !!MON.phase && MON.phase !== "ready";   // booting, a re-insert, a sound reboot
+function monToggle() {
+  if (MON.on) { monStop("headphones unplugged"); return; }
+  if (monBusy()) { toggleMon(true); hint(`the unit is busy — ${MON.phase}`); return; }
+  if (MON.sound === false) { toggleMon(true); hint(SOUND_OFF_MSG); return; }
+  try { monCtx(); } catch (e) { hint("monitor: " + e.message); return; }
+  MON.on = true; MON.gen++; MON.from = -1; MON.err = null; MON.skippedAt = 0;
+  monDrop();
+  monLoop(MON.gen); meterLoop(); refreshAudioStatus();
+  hint("headphones plugged in — the unit's main out, behind and in bursts when the emulator is slower than real time (the jack's tooltip says how far)");
+  monRender();
+}
+function monStop(why) {
+  MON.on = false; MON.gen++;
+  monDrop();
+  if (why) hint(why);
+  monRender();
+}
+
+// -- the level meter: peak of the last 1024 samples per channel, in dB over 60 dB, with a decaying peak hold --
+const VU = {raf: 0, pk: [0, 0], buf: null};
+function meterDraw(l, r, dark) {
+  const vu = $("#vu"); vu.classList.toggle("lit", !dark);
+  [l, r].forEach((v, i) => {
+    const db = v > 0 ? Math.max(0, 20 * Math.log10(v) + 60) / 60 : 0;
+    VU.pk[i] = dark ? 0 : Math.max(db, VU.pk[i] * 0.985);
+    const bar = vu.children[i];
+    bar.firstChild.style.height = (dark ? 0 : db * 100).toFixed(1) + "%";
+    bar.lastChild.style.bottom = (VU.pk[i] * 100).toFixed(1) + "%";
+  });
+}
+function meterLoop() {
+  if (VU.raf) return;
+  const tick = () => {
+    VU.raf = 0;
+    if (!MON.anL || !(MON.on || MON.replay)) { meterDraw(0, 0, true); return; }
+    if (!VU.buf) VU.buf = new Float32Array(MON.anL.fftSize);
+    const pk = an => { an.getFloatTimeDomainData(VU.buf); let m = 0; for (let i = 0; i < VU.buf.length; i++) { const a = Math.abs(VU.buf[i]); if (a > m) m = a; } return m; };
+    meterDraw(pk(MON.anL), pk(MON.anR), false);
+    VU.raf = requestAnimationFrame(tick);
+  };
+  VU.raf = requestAnimationFrame(tick);
+}
+
+// -- the SOUND drawer --
+function toggleMon(open) {
+  MON.open = open === undefined ? !MON.open : !!open;
+  $("#mon").classList.toggle("open", MON.open);
+  $("#monbtn").classList.toggle("on", MON.open);
+  if (MON.open) { refreshAudioStatus(); if (!barShown) toggleBar(true); }   // the drawer lives in the bar
+  monRender(); fit();
+}
+async function refreshAudioStatus() {                      // every second while the drawer is open or the headphones are in
+  if (MON.statusBusy) return;
+  MON.statusBusy = true; clearTimeout(MON.statusTimer);
+  try { await audioStatus(); MON.statusErr = null; } catch (e) { MON.statusErr = e.message; }
+  MON.statusBusy = false;
+  monRender();
+  if (MON.open || MON.on) MON.statusTimer = setTimeout(refreshAudioStatus, 1000);
+}
+// SOUND ON/OFF: two clicks like RE-INSERT CARD (the first arms for 5 s); the
+// server reboots the port child with/without --dsp (~1 min / ~40 s), /status
+// phase shows it and the controls stay disabled meanwhile
+function soundLabel() {
+  const b = $("#soundbtn");
+  if (!b.classList.contains("armed")) b.textContent = MON.sound === false ? "SOUND ON" : "SOUND OFF";
+  b.title = MON.sound === false ? "reboot the unit with the DSP cores (~1 min): sound, and a sequencer ~9x slower than real time while it plays (~3x slower than without the cores)"
+                                : "reboot the unit without the DSP cores (~40 s): no sound, a faster sequencer";
+}
+async function soundToggle() {
+  const b = $("#soundbtn"), on = MON.sound === false;      // the action: turn it on when it is off
+  if (!b.classList.contains("armed")) {
+    b.classList.add("armed"); b.textContent = `REBOOT THE UNIT (${on ? "~1 MIN" : "~40 S"})? CLICK AGAIN`;
+    clearTimeout(MON.armTimer);
+    MON.armTimer = setTimeout(() => { b.classList.remove("armed"); soundLabel(); }, 5000);
+    return;
+  }
+  clearTimeout(MON.armTimer); b.classList.remove("armed"); b.disabled = true; soundLabel();
+  let r;
+  try { r = await fetch(`/audio/enable?on=${on ? 1 : 0}`).then(x => x.json()); }
+  catch (e) { r = {ok: false, note: e.message}; }
+  if (r.ok) { MON.phase = r.phase || "rebooting"; hint(`sound ${on ? "on" : "off"}: ${MON.phase}`); }
+  else { hint(`sound ${on ? "on" : "off"} refused: ${r.note || r.error || "?"}`); b.disabled = false; }
+  monRender();
+}
+// the status poll feeds this: "sound" (and "sound_note") from /status, the phase while a reboot runs
+function monPhase(s, phase) {
+  const sound = "sound" in s ? !!s.sound : null;
+  const changed = sound !== MON.sound || phase !== MON.phase || (s.sound_note || null) !== MON.soundNote;
+  MON.sound = sound; MON.soundNote = s.sound_note || null; MON.phase = phase;
+  // the server says sound:false while a child boots (a re-insert, a sound reboot): only a
+  // ready unit without sound pulls the plug, a rebooting one keeps it (the stream resumes)
+  if (sound === false && MON.on && !monBusy()) monStop(SOUND_OFF_MSG);
+  if (changed) monRender();
+}
+function monRender() {
+  const busy = monBusy();
+  const hp = $("#hp");
+  hp.classList.toggle("plugged", MON.on);
+  hp.title = "HEAD-PHONES — click: " + (MON.on ? `unplug (${monReadout()})` : "plug in and listen to the unit's main out (VOLUME is the gain; takes are recorded by the server, PLAY to STOP, and saved from the app's Audio menu)");
+  const st = $("#monstate");
+  st.classList.toggle("off", !busy && MON.sound === false);
+  st.textContent = busy ? `the unit is busy — ${MON.phase}`
+                 : MON.sound === false ? SOUND_OFF_MSG + (MON.soundNote ? ` — ${MON.soundNote}` : "")
+                 : MON.sound === null ? "sound: unknown (this panel_server.py reports no sound flag)"
+                 : "sound on — the DSP cores run; click the HEAD-PHONES jack to listen (VOLUME is the gain)";
+  soundLabel();
+  $("#soundbtn").disabled = busy || MON.sound === null;
+  $("#soundphase").textContent = busy ? MON.phase : MON.statusErr ? `(${MON.statusErr})` : "";
+}
+// verification hook, not used by the page itself: window.__monitor.state()
+// (the agents' scripts read it; keep the field names)
+window.__monitor = {
+  get ctx() { return MON.ctx; },
+  get gain() { return MON.gain; },
+  state() {
+    return {on: MON.on, behind: MON.on && MON.from >= 0 ? behindFrames() / MON_RATE : null,
+            queued: queuedFrames() / MON_RATE, played: MON.on && MON.from >= 0 ? playedAbs() : null,
+            end: MON.end, from: MON.from, take: MON.status ? MON.status.take : null,
+            playing: !!(MON.ctx && MON.cursor > MON.ctx.currentTime), bursts: MON.bursts, scheduled: MON.scheduled,
+            dropped: MON.dropped, skipped: MON.skipped, ctxState: MON.ctx ? MON.ctx.state : null,
+            gain: MON.gain ? MON.gain.gain.value : vol / 100, volume: vol, sound: MON.sound, phase: MON.phase,
+            replay: MON.replay ? MON.replay.n : null, err: MON.err, readout: monReadout()};
+  },
+};
+
+// ---------------- LEDs (only when the map names them) ----------------
+// a map entry is [byte, bit] into the 0x10 bitmap blocks (bits: hex string)
+// or an LED id ("0x21" or 33), lit when its last value is > 0x20
+function ledOn(spec, bits, ids) {
+  if (Array.isArray(spec)) {
+    const byte = parseInt(bits.substr(spec[0] * 2, 2) || "0", 16);
+    return !!((byte >> spec[1]) & 1);
+  }
+  const key = typeof spec === "number" ? "0x" + spec.toString(16).padStart(2, "0") : String(spec).toLowerCase();
+  return (ids[key] || 0) > 0x20;
+}
+// The trig and track LEDs are BI-COLOUR: two bitmap bits each (measured 13
+// Sep 2026 on the emulated firmware, KEYMAP.md) -- the map's bit is the RED
+// bit, the next bit up is GREEN, both lit is YELLOW -- and the level nibble
+// of the lit bit's id (row*8 + bit) is the brightness: 15 full, 5 half. So a
+// sample trig is red, a trigless lock half-bright green, a trigless trig
+// full green, a one-shot yellow; a muted active track is yellow, a muted
+// unselected track unlit (manual 11.5 and 12.4).
+const BI_LED = /^led_(trig\d+|t\d)$/;
+function ledState(id, spec, bits, ids) {
+  if (!Array.isArray(spec) || !BI_LED.test(id)) return { on: ledOn(spec, bits, ids), colour: null, level: 15 };
+  const byte = parseInt(bits.substr(spec[0] * 2, 2) || "0", 16);
+  const red = !!((byte >> spec[1]) & 1), green = !!((byte >> (spec[1] + 1)) & 1);
+  const lvl = b => ids["0x" + (spec[0] * 8 + b).toString(16).padStart(2, "0")];
+  let level = 15;
+  const lv = [red ? lvl(spec[1]) : null, green ? lvl(spec[1] + 1) : null].filter(v => v != null);
+  if (lv.length) level = Math.max(...lv);
+  return { on: red || green, colour: red && green ? "yellow" : red ? "red" : green ? "green" : null, level };
+}
+function applyLeds(l) {
+  for (const [id, spec] of Object.entries(mapLeds)) {
+    // key_map.json names LEDs "led_trig1"; the elements are "led-trig1"
+    // (the first version looked up "led-led_trig1" and lit nothing, 12 Sep 2026)
+    const el = document.getElementById("led-" + id.replace(/^led_/, ""));
+    if (!el) continue;
+    const st = ledState(id, spec, l.bits || "", l.ids || {});
+    el.classList.toggle("on", st.on);
+    if (st.colour) {
+      el.classList.remove("red", "green", "yellow");
+      el.classList.add(st.colour);
+      el.style.opacity = st.on ? String(0.45 + 0.55 * Math.max(0, Math.min(1, st.level / 15))) : "";   // half-bright (5) reads ~0.63
+    }
+    // the skin: the key or LED this lights (its `lit` class, lit-red/-green/-yellow)
+    const sk = document.getElementById(SKIN_LEDS[id.replace(/^led_/, "")] || "");
+    if (sk) {
+      sk.classList.toggle("lit", st.on);
+      sk.classList.remove("lit-red", "lit-green", "lit-yellow");
+      if (st.on && st.colour) sk.classList.add("lit-" + st.colour);
+      sk.style.opacity = st.on ? String(0.55 + 0.45 * Math.max(0, Math.min(1, st.level / 15))) : "";
+    }
+  }
+}
+
+// ---------------- LED push stream ----------------
+// Every LED change arrives as a server-sent event (/leds/stream, checked
+// 20 ms apart in the server); the 350 ms status poll only carries the LEDs
+// while the stream is down (it used to be the only source and skipped two
+// of every three steps of the running light at 120 BPM, 13 Sep 2026).
+let ledStreamOn = false, ledStream = null;
+function startLedStream() {
+  if (!window.EventSource) return;
+  try { ledStream = new EventSource("/leds/stream"); } catch (e) { return; }
+  ledStream.onopen = () => { ledStreamOn = true; };
+  ledStream.onmessage = ev => { try { if (Object.keys(mapLeds).length) applyLeds(JSON.parse(ev.data)); } catch (e) {} };
+  ledStream.onerror = () => {                      // the server rebooted / went away: poll until it is back
+    ledStreamOn = false;
+    try { ledStream.close(); } catch (e) {}
+    setTimeout(startLedStream, 2000);
+  };
+}
+startLedStream();
+
+// ---------------- status poll ----------------
+let lastSeq = -1, lastFault = null;
+async function poll() {
+  try {
+    const s = await fetch("/status").then(x => x.json());
+    $("#imginfo").textContent = (s.image || "").split("/").pop();
+    const phase = s.phase || (s.booted ? "ready" : "booting");
+    const ph = $("#phase");
+    ph.textContent = phase;
+    ph.className = phase === "ready" ? "ready" : phase === "failed" ? "failed" : "busy";
+    // x real time, live (null while booting: the badge hides)
+    const rt = $("#rt");
+    rt.textContent = typeof s.rt === "number" && phase === "ready" ? s.rt.toFixed(2) + "x" : "";
+    rt.classList.toggle("ok", typeof s.rt === "number" && s.rt >= 0.97);
+    if (s.fault !== lastFault) { lastFault = s.fault; $("#fault").textContent = s.fault ? "⚠ " + s.fault : ""; $("#fault").title = s.fault || ""; }
+    const busy = phase !== "ready";
+    $("#screen").classList.toggle("dim", busy);
+    $("#note").classList.toggle("show", busy);
+    $("#note span").textContent = busy ? `loading — ${phase}` : "";
+    poolPhase(phase, s);
+    monPhase(s, phase);
+    if (s.seq !== lastSeq) { lastSeq = s.seq; $("#screen").src = "/screen.png?" + s.seq; }
+    if (Object.keys(mapLeds).length && !ledStreamOn) applyLeds(await fetch("/leds").then(x => x.json()));
+    // the crossfader: the firmware's value, on the first ready poll and every ~3.5 s after
+    if (!busy && (FADER.pos == null || ++pollN % 10 === 0)) faderRefresh();
+  } catch (e) {}
+  setTimeout(poll, 350);
+}
+let pollN = 0;
+
+async function loadMap() {
+  try {
+    const m = await fetch("/map").then(x => x.json());
+    mapKeys = m.keys || {}; mapKnobs = m.knobs || {}; mapLeds = m.leds || {};
+  } catch (e) {}
+  refreshMapped();
+}
+
+drawBar(); loadMap(); poll();
+</script>
+</body>
+</html>

@@ -55,7 +55,7 @@ has no panel, so rel_after running after her reload is inferred from the
 stack shape, not seen.
 """
 
-from remix.schema import Detour, Kind, Linked, Module, Override
+from remix.schema import Category, Proof, Detour, Kind, Linked, Module, Override
 
 H = bytes.fromhex
 
@@ -63,6 +63,8 @@ MODULE = Module(
     name="kits-reload",
     key="KITS RELOAD",
     kind=Kind.CF_PATCH,
+    category=Category.PARTS, author="sambanks", author_url="https://github.com/sambanks",
+    proof=Proof.HARDWARE, proof_note="`ok-ms`, 14 Sep 2026",
     doc="The bridge that lets MIDI SCENES' Part Reload run beside Octakit's "
         "kit reload (her caller check, his post-reload restore).",
     linked=(Linked("reload", "modules/kits-reload/reload.s", dram=True),),

@@ -17,6 +17,8 @@ Part and shadow stores and before the live-lane store:
 (`+0x8ed88 + track` / `+0x8ed80 + track`), and walks the table: an entry
 whose id and MODE slot match, and a view whose mode equals the value, has
 its pairs written -- page-1 slots through `0x40054cd8(track, flat, value)`
+(with Octakit's token `0x54500000` pushed above the arguments, which her
+rewrite of the writer's dirty store requires; `modules/octakit/README.md`)
 (flat `0x12 + k` FX1, `0x18 + k` FX2: Part, shadow, live byte, the
 descriptor's clamp), page-2 slots with the editor's own stores (Part
 `+0x8f084`/`+0x8f07e`, shadow `0x100a51d2`/`0x100a51cc`, lane `+0x38`/
@@ -26,14 +28,14 @@ preserved as the displaced callee preserves them.
 
 ## Over MIDI
 
-CC PAGE 2's cave calls `CC_MODEDEF2` / `CC_MODEDEF1` after its page-2
+CC MAP's cave calls `CC_MODEDEF2` / `CC_MODEDEF1` after its page-2
 write (a2 = slot2, d2 = the clamped value, d4 = track, d5 = part); the
 build resolves the two symbols to this unit's entries when it is in the
 image (ROM units are linked before the caves since 15 Sep 2026; the cave's
 ratified-bytes oracle is set aside for it, as for a bridged CC_NEXT) and
 to a stock `rts` (0x40027e1a) otherwise. Measured under the port: CC 62 =
 1 on T1's channel lands GRAIN's view in the lane, and a CC 63 in the same
-frame then sets SCAT over it.
+frame then sets SCTR over it.
 
 ## The table
 
@@ -58,5 +60,5 @@ the knobs, on FX1 and FX2.
 
 ## Open
 
-- The Part bytes are written by the same formulas `modules/ccpage2` proves
+- The Part bytes are written by the same formulas `modules/cc-map` proves
   against the editor; the verifier reads the live lane only.

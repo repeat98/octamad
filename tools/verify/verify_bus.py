@@ -78,6 +78,8 @@ CASES = [
      dict(layout="SSSR")),
     ("SSS.SSSSR  seven senders -- the top of the reciprocal table (position 3 skipped)",
      dict(layout="SSS.SSSSR")),
+    ("RSSS.SSSS  the same seven senders with the reverb at position 0 (23 Sep 2026: a ninth instance sits at X:0x7a00, a block no unit has)",
+     dict(layout="RSSS.SSSS")),
     ("SSD     two senders into the delay bus",
      dict(layout="SSD", pick="D")),
     ("SSS.SSSSD  seven senders into the delay bus (position 3 skipped)",
@@ -109,7 +111,7 @@ CASES = [
 
     # --- the hosts' own sends: paths every DEFAULT render leaves at zero ----
     # ⚠️ Added after the delay's IN decode was silently DELETED by
-    # a splice (6d2690b) and 17/17 still passed -- every case had IN at 0, so
+    # a splice (6d2690b) and every case still passed -- every case had IN at 0, so
     # "IN multiplies garbage" rendered identically to "IN works". A knob whose
     # default is 0 is INVISIBLE to this gate unless a case drives it.
     ("DS AUX  the delay host's own send, nonzero (inall)",
@@ -120,6 +122,58 @@ CASES = [
      dict(layout="RS", mix=64)),
     ("DS MIX  the delay's stage crossfade half way",
      dict(layout="DS", pick="D", dmix=64)),
+
+    # --- the engines' other arms (23 Sep 2026) -----------------------------
+    # Every case above runs the delay in CLEAN and the reverb in its default
+    # mode with SHMR and GATE at 0, so the GRAIN and REVERSE arms, PLATE, BIG,
+    # the shimmer and the gate had no bit-identity gate; a pointer rewrite of
+    # those arms needs one. Knobs held off their defaults so each arm's own
+    # decode carries signal (SCTR/DENS/SIZE/PTCH for GRAIN, SIZE for
+    # REVERSE, TONE/PING for the loop filters).
+    ("DS GRAIN  the delay's GRAIN arm, scatter and wow driven",
+     dict(layout="DS", pick="D", dmode=1, dspray=127, drate=100, dptch=1,
+          dpitch=80, dtone=64, dping=64, dur=0.3)),
+    ("DS GRAIN2 GRAIN at the smallest SIZE, pitch down, no scatter",
+     dict(layout="DS", pick="D", dmode=1, dspray=0, drate=64, dptch=2,
+          dpitch=40, dur=0.3)),
+    ("DS REV   the delay's REVERSE arm",
+     dict(layout="DS", pick="D", dmode=2, dptch=0, dtone=64,
+          dur=0.3)),
+    ("DS PING  CLEAN with PING and TONE driven",
+     dict(layout="DS", pick="D", dping=100, dtone=40)),
+    ("RS PLATE the reverb's PLATE mode with the shimmer",
+     dict(layout="RS", rmode=1, shmr=64, rtone=40, dur=0.3)),
+    ("RS BIG   the reverb's BIG mode with the gate and the width",
+     dict(layout="RS", rmode=2, gate=64, width=100, rtone=90, dur=0.3)),
+    ("RS GATE  ROOM with the gate closing on the tail",
+     dict(layout="RS", gate=100, dur=0.3, tail=0.5)),
+
+    # --- the chain hop under the reverb's hash, hot (23 Sep 2026) ---------
+    # RDS s5 hashes the DELAY's print; nothing above hashed the REVERB's
+    # print of a chain written across a split call, and every case ran at
+    # amp 0.5. Image 58 clicked on the unit with a sample on the delay host
+    # and its send up, heard in the reverb's wet; images 59/60 put it in
+    # the delay rewrite. Full-scale tone, the host's own send at 127, FDBK
+    # high, the reverb picked.
+    ("RDS HOT  reverb picked, delay host send hot, full scale, split 5",
+     dict(layout="RDS", pick="R", din=127, level=127, amp=1.0, split=5,
+          dfdbk=100, dur=0.3)),
+    ("RDS HOT2 the same with no split and the delay's WET at 0",
+     dict(layout="RDS", pick="R", din=127, level=127, amp=1.0, dfdbk=100,
+          dmix=0, rdly=0, dur=0.3)),     # rdly 0: the chain without the
+                                         # repeats, which WET 0 gave until
+                                         # DLY (25 Sep 2026)
+    ("RDS HOT3 split 11, PING and TONE driven, both hosts sending",
+     dict(layout="RDS", pick="R", din=127, raux=127, level=127, amp=1.0,
+          split=11, dping=100, dtone=40, dur=0.3)),
+
+    # --- the hosts' cross-sends (26 Sep 2026): T1's REV into the reverb,
+    # T5's DEL into the delay. Both default to 0, so no case above drives
+    # them; these two do, each hashed on the engine it feeds.
+    ("RDS DREV the delay host's REV send, reverb picked, split 5",
+     dict(layout="RDS", pick="R", drev=100, split=5, dur=0.3)),
+    ("RDS RDEL the reverb host's DEL send, delay picked, split 5",
+     dict(layout="RDS", pick="D", rdel=100, split=5, inall=True, dur=0.3)),
 ]
 
 # Knobs held away from their defaults so the paths under test are actually
@@ -147,10 +201,15 @@ def render(mem, case, bump_level=0, extra_send=""):
     rev[rk["raux"]] = kw["raux"]                 # 0 unless a case drives it:
                                                  # a phantom host client must
                                                  # NOT leak into every case
+    for key in ("rmode", "shmr", "gate", "width", "rtone", "rdly", "rdel"):
+        if key in kw:
+            rev[rk[key]] = kw[key]
     snd = list(send_probe.SEND_PARAMS)
-    snd[0] = kw["level"]             # AUX, the one send (dlevel is its alias)
+    snd[0] = kw["level"]             # DEL (dlevel is its alias)
+    snd[1] = kw["level"]             # REV: the same level, both buses exercised
     dpar = list(send_probe.DELAY_PARAMS)
-    for key in ("dtime", "dfdbk", "din", "dmix"):
+    for key in ("dtime", "dfdbk", "din", "dmix", "dtone", "dping", "dmode",
+                "dspray", "drate", "dptch", "dpitch", "drev"):
         if key in kw:
             dpar[dk[key]] = kw[key]
 
@@ -168,7 +227,7 @@ def render(mem, case, bump_level=0, extra_send=""):
     # is the failure mode a bus change produces most often. Carry the peak so a
     # dead render is a loud error rather than a green tick.
     peak = max((abs(v) for v in L + R), default=0)
-    # Samples are kept only when a lag search may need them -- 17 cases of raw
+    # Samples are kept only when a lag search may need them -- 28 cases of raw
     # audio is a lot to hold for a run that is going to compare hashes.
     return h.hexdigest(), peak, len(L), (L, R)
 

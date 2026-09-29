@@ -1,0 +1,4 @@
+# DSP56300 with address register updates routed through agu_modulo(Rn, delta, Mn),
+# for code that uses modulo or reverse-carry addressing (Mn != $FFFFFF).
+@define AGU_MODULO ""
+@include "dsp56300.slaspec"

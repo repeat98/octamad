@@ -13,7 +13,7 @@ continuation with result 1 whenever the verdict holds and the stock
 stock. On hardware as OCTABAM81/82/83 (docs/firmware/RECORDER_CLICK.md).
 """
 
-from remix.schema import CavePatch, Kind, Module
+from remix.schema import Category, Proof, CavePatch, Kind, Module
 
 HOOK = 0x4000f8cc
 HOOK_STOCK = bytes.fromhex("4a2f0037" "6718")       # tstb (55,sp) / beqs 0x4000f8ea
@@ -22,6 +22,8 @@ MODULE = Module(
     name="flex-seekbind",
     key="FLEX SEEK BIND",
     kind=Kind.CF_PATCH,
+    category=Category.FIXES, author="sambanks", author_url="https://github.com/sambanks",
+    proof=Proof.HARDWARE, proof_note="OCTABAM83, 12 Sep 2026",
     doc="ColdFire cave: a same-slot/type/generation FLEX re-bind takes the bind's "
         "same-sample path (DSP seek) instead of becoming a new note.",
     cf_patches=(

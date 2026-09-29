@@ -301,7 +301,7 @@ def knob_labels(mod, name: str):
 
 def knob_max(mod, name: str) -> int:
     """Highest legal value: count-1 where the manifest states a count,
-    else the stock 0..127 dial. Accepts a MODE-view alias (SCAT for MDEP)
+    else the stock 0..127 dial. Accepts a MODE-view alias (SCTR for MDEP)
     as well as the Param's own name."""
     slot = mod.knob_map_all()[name]
     count = mod.params[slot].count
@@ -538,8 +538,7 @@ def pinned_slots(mod) -> int:
     owns_fx2_buffers is the two CORE-PRIVATE slots (0x4000/0x8000); a
     substituted ybase is the two SHARED-WINDOW ones (0x30000/0x34000 on core
     0, 0x38000/0x3c000 on core 1 -- measured, X:0x255 in both payloads).
-    BusVerb has both and so holds all four; Nimbus the first pair;
-    BusDelay the second.
+    BusVerb has both and so holds all four; BusDelay the second pair.
     """
     from remix.schema import YBase
     c = getattr(mod, "claims", None)

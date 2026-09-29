@@ -1,0 +1,26 @@
+# ================================================================ root table
+:^instr is lbot=1 & lfor=0 & rpt=0 & LoopTop & instr {
+	build instr;
+	if (lc == 1) goto <done>;
+	lc = lc - 1;
+	goto LoopTop;
+<done>
+	lc = *[SS]:3 (ssp - 6);
+	la = *[SS]:3 (ssp - 3);
+	ssp = ssp - 12;
+}
+
+:^instr is lbot=1 & lfor=1 & rpt=0 & LoopTop & instr {
+	build instr;
+	goto LoopTop;
+}
+
+:^instr is rpt=1 & lbot=0 & instr {
+	build instr;
+	lc = lc - 1;
+	if (lc != 0) goto inst_start;
+	lc = rep_lc;
+}
+
+:^instr is instr { build instr; }
+

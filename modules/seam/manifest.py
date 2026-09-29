@@ -15,12 +15,16 @@ The two replaced words are pinned by hash, read from the user's own image at
 build time; the manifest holds no Elektron byte.
 """
 
-from remix.schema import DspSite, Kind, Module
+from remix.schema import Category, DspSite, Gate, Kind, Module, Proof
 
 MODULE = Module(
     name="seam",
     key="MIXER SEAM",
     kind=Kind.DSP_SITE,
+    category=Category.REFERENCE,
+    author="repeat98", author_url="https://github.com/repeat98",
+    proof=Proof.PORT,
+    proof_note="`verify_dspsite`: byte-identical to the image without the jump under the port (29 Sep 2026); not flashed",
     doc="An empty hook on the seam after the stock mixdown (payload A, P:0x2d5): "
         "where a master strip goes.",
     dsp_sites=(
@@ -35,4 +39,5 @@ MODULE = Module(
             identity=True,
         ),
     ),
+    gates=(Gate("tools/verify/verify_dspsite.py"),),
 )

@@ -16,12 +16,16 @@ two words at the site are pinned by hash, so nothing of Elektron's is stored
 here (the hashes were taken from OS 1.40C's payload A).
 """
 
-from remix.schema import DspSite, Kind, Module, SiteFix
+from remix.schema import Category, DspSite, Gate, Kind, Module, Proof, SiteFix
 
 MODULE = Module(
     name="mixdown",
     key="MIXDOWN COPY",
     kind=Kind.DSP_SITE,
+    category=Category.REFERENCE,
+    author="repeat98", author_url="https://github.com/repeat98",
+    proof=Proof.PORT,
+    proof_note="`verify_dspsite`: byte-identical to the image without the jump under the port (29 Sep 2026); not flashed",
     doc="The stock mixdown (payload A, P:0x238..0x2d4) run from a placed copy: "
         "the identity a new mixer is measured against.",
     dsp_sites=(
@@ -41,4 +45,5 @@ MODULE = Module(
             ),
         ),
     ),
+    gates=(Gate("tools/verify/verify_dspsite.py"),),
 )

@@ -21,7 +21,7 @@ real defect, and no local test could show one before.
 
     make verify-twocore          # ~1 min; part of `make check`
 
-Both builds are of the `bus` remix: SPEC (the shipping shape) and DEV (the
+Both builds are of the plain two-server remix `bus` (`remixes/test/bus`, `registry.fixture`): SPEC (the shipping shape) and DEV (the
 hatch). The shipping artifact is snapshotted and restored, the way
 verify_busscreen does, so `make check`'s remix is what is left on disk.
 """
@@ -45,6 +45,7 @@ BLOCKS = 700
 SKEWS = (1, 37, 333, -250)
 
 from remix import registry  # noqa: E402
+PLAIN = registry.fixture("REVERB SERVER", "DELAY SERVER", "SEND")     # the plain two-server image
 
 
 def knobs(key, **kw):
@@ -60,7 +61,7 @@ def knobs(key, **kw):
 
 R = knobs("REVERB SERVER")
 D = knobs("DELAY SERVER", TIME=20)    # 5,184 samples: the echo lands inside BLOCKS (TIME is 64 + knob*256 since the 32K lines)
-S_DEL = knobs("SEND", SEND=127)          # one aux (7 Sep 2026): the one send
+S_DEL = knobs("SEND", DEL=127, REV=127)  # both sends (25 Sep 2026): the delay and the reverb
 S_VRB = S_DEL
 
 # layout: list of (letter, core, params); instance order is dispatch order
@@ -80,7 +81,7 @@ PICK = {"RS": 0, "DS": 1, "RDS": 0, "SSR": 0}
 
 def build(env, log):
     r = subprocess.run([sys.executable, "tools/build/build_bus.py"], cwd=ROOT,
-                       env={**os.environ, "REMIX": "bus", **env}, capture_output=True, text=True)
+                       env={**os.environ, "REMIX": PLAIN, **env}, capture_output=True, text=True)
     log.write_text(r.stdout + r.stderr)
     if r.returncode != 0:
         sys.exit(f"build failed ({env}): see {log}")

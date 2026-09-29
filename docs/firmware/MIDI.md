@@ -24,7 +24,7 @@ level, 47 cue, 8 AMP BAL, 48 crossfader, 49-51 mute/solo/cue, 52-54 arm,
 `0x8000000c`. Unused: 0-6, 9-15, 62-111.
 
 Page 2 is unreachable from stock CC: `cc−16 < 30` and the writer derives
-`slot = flat % 6`. `modules/ccpage2` adds CC 62-67 (FX2 page 2) and
+`slot = flat % 6`. `modules/cc-map` adds CC 62-67 (FX2 page 2) and
 68-73 (FX1 page 2).
 
 **The generic writer `FUN_40054cd8(track, flat, value)`** ✅ resolves the
@@ -44,7 +44,7 @@ writes Part `+0x8f07e + track·30 + slot`, shadow `0x100a51cc`, lane
 ## Scenes / crossfader ✅
 
 `FUN_4003f1b4` handles only STRT/LEN/RATE. The general morph runs every
-DSP frame inside the frame builder `FUN_4000c8a4` (`0x4000cc6c..0x4000cf3e`)
+DSP frame inside the frame builder (`0x4000cc6c..0x4000cf3e`, inside the frame ISR `0x4000aad0..0x4000d9b0`)
 on the ping-pong frame copy; live param words are never touched. Scene
 block = 8 tracks × 0x20; byte *k* ↔ frame halfword *k*; bytes 24-29 = FX2
 page 1 (`r6+0..5`); the loop stops at halfword 17 of the page block; `0xFF`
@@ -367,7 +367,7 @@ writes the lane byte, sets the redraw flag `0x46c7d244[slot2*20+4] = 0x14`
 and tail-jumps to the page redraw. The FX2 dial reads the displayed value
 from the Part via the page cache.
 
-`modules/ccpage2` (CC 62-67 → FX2 page 2, CC 68-73 → FX1 page 2) makes the
+`modules/cc-map` (CC 62-67 → FX2 page 2, CC 68-73 → FX1 page 2) makes the
 FX2 editor's stores for 62-67 and the FX1 editor's for 68-73. Its first
 versions used the PLAYBACK editor's stores (reading `0x4003a474` as "the
 page-2 editor"), so CCs corrupted the track's PLAYBACK page-2 byte and never
@@ -379,7 +379,7 @@ page-2 edit at the panel reaches the DSP on a THRU track
 Tooling: `tools/hw/hw_bus_test.py` (synchronous paired A/B over MIDI with
 capture, a page-1 control proving the harness each run), an emulator
 write-diff of the editor against the cave (every store, same inputs),
-`tools/verify/verify_ccpage2.py` (the cave's writes for all eight tracks
+`tools/verify/verify_ccmap.py` (the cave's writes for all eight tracks
 against the FX2 editor under the emulator).
 
 
@@ -523,7 +523,13 @@ nothing per channel needs decoding.
 The 0x40-byte per-track record (`0x80000110 + ping*0x200 + t*0x40`) is
 **fully written every frame** by the frame builder's copy loop at
 `0x4000cb2a..0x4000cb98` (same function as the writer call; no `rts`
-between `0x4000c8a4` and the `jsr 0x40004bd4` at `0x4000d0e4`, M):
+between `0x4000c8a2` and the `jsr 0x40004bd4` at `0x4000d0e4`, M). ❌ The
+`FUN_4000c8a4` this document named until 23 Sep 2026 is not a function:
+`0x4000c8a4` is inside the operand of `lea 0x46c7e9fa,%a2` at `0x4000c8a2`
+(objdump, the stream converging from `0x4000c864`), and the builder is
+part of the frame ISR `0x4000aad0` (`lea -252(%sp)`) `..0x4000d9b0` (`rte`
+at `0x4000d9ae`). Jannik Aßfalg's profiler refused the label; re-checked
+here ✅:
 
 ```
 4000cb4e  moveml d0-d5,(a0)      ; +0x00..+0x17  <- 0x80000a50+64t [24..47]
@@ -576,7 +582,7 @@ ColdFire `mvs/mvz/byterev/mac`, which is most of this code). Markers as in
 * `FUN_4003f1b4` is **not** the general morph. It is a special path for the
   three playback-position parameters (STRT/LEN/RATE) that must reach the voice
   task as a message. **The general morph runs every DSP frame inside the frame
-  builder `FUN_4000c8a4` (`0x4000cc6c..0x4000cf3e`)**, on the DSP-bound copy of
+  builder (`0x4000cc6c..0x4000cf3e`, inside the frame ISR `0x4000aad0..0x4000d9b0`)**, on the DSP-bound copy of
   the parameter halfwords, never on the live parameter words.
 * A scene block covers **page 1 of five pages only — 30 knobs per track**.
   Page 2 (slots 6..11) and the companion fields are unreachable, and the
@@ -705,6 +711,13 @@ Two spare bytes per track could host **one** extra halfword, not three, and
 the DSP-side companion packing would still be lost at every intermediate
 position. Not worth it.
 
+**Done another way (26 Sep 2026, `modules/scenes-p2`):** the page-2 locks
+live in a 144-byte pool inside the Part window (`+0x90522`, 3 bytes a lock),
+and one detour at the frame builder's join after the morph (`0x4000cf40`)
+lerps them byte-wise into the voice record's page-2 halfwords with the same
+weight table, a select snapping at the midpoint. None of the five stock
+extents above changes.
+
 The tempo cave (`modules/tempo-sync/tempo_cave.s`, hooked at `0x40004d40`,
 `a2` = this track's record) publishes `0x460d16c8` + 1 at `+0x28` → `r6+$8`
 every frame for the two servers; both the hardware fader and CC 48 feed
@@ -715,3 +728,44 @@ Falsifiers: a hardware flash where the fader at the A end changes a page-1
 lock the wrong way (would invert §2's endpoint claim); a `TPROBE`-style capture
 showing `r6+$8` not tracking the fader (would mean the cave hook is not
 per-frame for that track).
+
+## Appendix D: CC out — the emitter (record)
+
+`0x40033e3c(track, cc, value)`, stack arguments, disassembled 28 Sep 2026
+(`modules/cc-feedback`). Gated on `0x8000004a` (AUDIO CC OUT) **bit 1**;
+bit 0 is what the panel crossfader path tests before applying its move
+(§4 above), so bit 0 = INT, bit 1 = EXT ✅. `track` 8 = the current track
+(resolved to the first audio-track channel no MIDI track uses); a track
+0..7 uses `0x8000003f + track` (−1 = off → return) and returns if a MIDI
+track's channel byte (`0x46c76de0 + 68·i`, ch+1) equals it. It does not
+transmit; it queues:
+
+| write | address |
+|---|---|
+| the value byte | `0x46c7bf2c + channel·128 + cc` — the last value queued per (channel, CC) |
+| bit `cc` | `0x46c7d7d8 + channel·16`, four longs per channel |
+| bit `channel` | `0x46c7e0de` |
+| bit 2 | INTFRCH `0xfc048010` when `0x46c7ca34` is 0: forces interrupt source 34, the soft-timer dispatcher `0x400409f4`, which drains the bitmap to UART0 |
+
+A CC queued twice before the drain is sent once. The drainer (DTIM2's
+handler, `0x400409f4`) walks the channel mask and each channel's bitmap,
+builds `Bn cc value` from the cache for every set bit and hands the bytes
+to the UART ring (`0x400b9670`, 4096 B; the UART0 ISR `0x400106ec` feeds
+the transmitter from it). If it sent anything it sets `0x46c7ca34` = 1 and
+re-arms DTIM2 for the batch's wire time (`DTRR = bytes × 0x400a763e[rate]`,
+`0x40040ac6..0x40040aee`); otherwise clears the flag and re-arms the
+one-second tick. The emitter forces the timer only while the flag is 0, so
+the wire is paced to MIDI bandwidth and a burst of changes drains in
+batches. 28 `jsr` sites in the image; the page-1 knob path (`0x400552f0`: current track, CC `10 + 6·page
++ slot`, the clamped value) and the crossfader (CC 48) are the two
+traced. Nothing calls it on a pattern, part or project change.
+
+Measured under the port (`verify_set`, bottleservice, 28 Sep 2026): 277
+CCs queued by CC FEEDBACK's sweep left UART0 as 573 bytes with running
+status; UART0's transmit interrupt (vector 0x5a) was acknowledged once per
+message, the dispatcher (0x62) 35 times over the load. On the acceptance
+stress fixture 469 CCs, and at the end of the 900-frame run channel 7's
+bitmap still held 15 CCs with the busy flag set: a part change late in
+the run, queued (cache = lane) and waiting for the batch timer. `ot_emu
+--midi-out FILE` writes the bytes.
+

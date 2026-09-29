@@ -11,7 +11,7 @@ states its renderer. TIME's formatter is the tempo-sync cave, registered
 over slot 0 by that module.
 """
 
-from remix.schema import (ModeView, BusRole, Claims, YBase, DspSection, Formatter, Harness, Kind,
+from remix.schema import (Gate, Category, Proof, ModeView, BusRole, Claims, YBase, DspSection, Formatter, Harness, Kind,
                           MenuEntry, Module, Param)
 
 _PLAIN = Formatter.PLAIN
@@ -55,6 +55,8 @@ MODULE = Module(
     name="busdelay",
     key="DELAY SERVER",
     kind=Kind.DSP_EFFECT,
+    category=Category.BUS, author="sambanks", author_url="https://github.com/sambanks",
+    proof=Proof.HARDWARE, proof_note="Sam's MKII",
     doc="Multi-mode delay: CLEAN / pitched GRAIN cloud / REVERSE, tape wow.",
     menu=MenuEntry(
         fx2_id=0x06,
@@ -65,13 +67,17 @@ MODULE = Module(
     ),
     params=(
         # ---- page 1 -------------------------------------------------------
-        # SEND at slot 0 on every track, hosts included: this host's own dry
-        # send into the aux (headroomed, summed, counted only while nonzero).
-        Param(b"SEND", 0, active=True, formatter=_PLAIN,
-              doc="this track's send into the one aux bus (delay, then reverb; the wet on each host)"),
-        Param(b"TIME", 20, active=True, formatter=_PLAIN,
-              doc="delay time, 1.5 .. 739 ms -- a free dial that sticky-snaps to tempo divisions"),
-        Param(b"FDBK", 60, active=True, formatter=_PLAIN, link=True,
+        # DEL / REV on slots 0 / 1, SEND's layout (26 Sep 2026, Sam: "want
+        # all the tracks to look the same"): the host page draws these two
+        # and nothing else; the rest is the TEMPO window's. DEL is this
+        # host's own dry send into the aux, the delay's input; REV its dry
+        # send into the reverb's REV accumulator. Both count as clients only
+        # while nonzero, so both default to 0.
+        Param(b"DEL", 0, active=True, formatter=_PLAIN,
+              doc="this host's own send into the delay"),
+        Param(b"REV", 0, active=True, formatter=_PLAIN,
+              doc="this host's own send into the reverb"),
+        Param(b"FDBK", 60, active=True, formatter=_PLAIN,
               doc="feedback -- how much each repeat regenerates"),
         Param(b"TONE", 100, active=True, formatter=_PLAIN,
               doc="tone of the repeats -- lower = darker every pass"),
@@ -81,12 +87,11 @@ MODULE = Module(
         # 5: L/R = 1/feedback).
         Param(b"PING", 0, active=True, formatter=_PLAIN,
               doc="stereo ping-pong spread; 0 = centred, the alternation is in the top quarter"),
-        # WET: the repeats' level. out = in + wet*WET goes on to the reverb
-        # (the send passes through the pedal at unity, WET adds the repeats;
-        # a crossfade until 15 Sep 2026); the host prints wet*WET under its
-        # dry. The chain itself is hardwired.
+        # WET: the repeats' level on this host, wet*WET under its dry. The
+        # chain to the reverb carries wet*DLY, DLY being BusVerb's page-2
+        # knob (a crossfade until 15 Sep 2026).
         Param(b"WET", 127, active=True, formatter=_PLAIN,
-              doc="the repeats' level, on this host and into the reverb"),
+              doc="the repeats' level on this host (the reverb's DLY sets what goes into the reverb)"),
         # ---- page 2 -------------------------------------------------------
         # MODE on slot 6: an even slot is the one the panel's page-2 knob
         # editor writes (docs/firmware/MAINMENU.md 9c-ii). The DSP reads $c's
@@ -97,9 +102,9 @@ MODULE = Module(
         # MDEP on slot 7: delivered in $c's companion field (bits 8-15), as
         # stock FILTER's DIST knob is on slot 11. Default 0: an aux delay
         # sits still.
-        # SCAT / DENS are GRAIN's (inert in CLEAN and REVERSE); the tape wow
+        # SCTR / DENS are GRAIN's (inert in CLEAN and REVERSE); the tape wow
         # that used these slots went 15 Sep 2026.
-        Param(b"SCAT", 40, 128, active=True, formatter=_PLAIN,
+        Param(b"SCTR", 40, 128, active=True, formatter=_PLAIN,
               doc="GRAIN: scatter, how far apart the grains read; inert in CLEAN and REVERSE"),
         Param(b"DENS", 127, 128, active=True, formatter=_PLAIN, link=True,
               doc="GRAIN: density, full dial, level-flat (R61); inert in CLEAN and REVERSE"),
@@ -112,31 +117,33 @@ MODULE = Module(
         # pitch; idle in other modes.
         Param(b"PTCH", 64, 128, active=True, formatter=_PLAIN, link=True,
               doc="GRAIN pitch, +-2 oct, 64 = unison (a held MIDI note overrides); idle in other modes"),
-        # WOW in freeze's slot (20 Sep 2026, Sam: "wow back freeze gone").
-        Param(b"WOW", 0, active=True, formatter=_PLAIN,
-              doc="tape wobble on the loop tap, every mode; 127 = +-254 samples, 0.8 Hz + flutter"),
+        # TIME on page-2 slot 11, $e's companion field (page-1 slot 1 until
+        # 26 Sep 2026, when WOW left to make room for REV). Tempo-sync's
+        # division formatter follows it here.
+        Param(b"TIME", 20, 128, active=True, formatter=_PLAIN,
+              doc="delay time, 1.5 .. 739 ms -- a free dial that sticky-snaps to tempo divisions"),
     ),
     # ---- what each MODE re-defaults, and which knobs it names `---` ------
     # A knob a mode never reads is named `---` there, the unused-knob
-    # convention (Sam, 20 Sep 2026: every effect, every mode). SCAT, DENS and
+    # convention (Sam, 20 Sep 2026: every effect, every mode). SCTR, DENS and
     # PTCH are GRAIN's; SIZE is GRAIN's and REVERSE's; REVERSE pins PING to 0.
     mode_slot=6,
     mode_views=(
-        # slots: 1 TIME, 2 FDBK, 3 TONE, 4 PING, 5 MIX, 10 PTCH; SEND at 0 is
-        # never re-defaulted by a mode. TIME is 64 + knob*256 samples since
+        # slots: 11 TIME, 2 FDBK, 3 TONE, 4 PING, 5 MIX, 10 PTCH; DEL and REV
+        # at 0 / 1 are never re-defaulted by a mode. TIME is 64 + knob*256 samples since
         # the 32K lines (15 Sep 2026): 20 = 5,184 samples, 18 = 4,672 -- the
         # same times the views held at 40 / 36 under the old *128 law.
         ModeView(mode=0,                        # CLEAN: centred
-                 names={7: b"---", 8: b"---", 9: b"---", 10: b"---"},   # SCAT DENS SIZE PTCH: not read
-                 defaults={1: 20, 2: 60, 3: 100, 4: 0, 5: 127, 10: 64}),
+                 names={7: b"---", 8: b"---", 9: b"---", 10: b"---"},   # SCTR DENS SIZE PTCH: not read
+                 defaults={11: 20, 2: 60, 3: 100, 4: 0, 5: 127, 10: 64}),
         ModeView(mode=1,                        # GRAIN: Sam's recipe on the unit
                  # (15 Sep 2026): octave up, ping-pong
                  names={9: b"GLEN"},            # the grain length (Sam, 20 Sep 2026: "size is confusing")
-                 defaults={1: 18, 2: 40, 3: 100, 4: 127, 5: 127,
+                 defaults={11: 18, 2: 40, 3: 100, 4: 127, 5: 127,
                            7: 40, 8: 127, 9: 1, 10: 96}),
         ModeView(mode=2,                        # REVERSE: centred, 371 ms
-                 names={4: b"---", 7: b"---", 8: b"---", 9: b"SLEN", 10: b"---"},   # PING pinned 0; the segment length; SCAT DENS PTCH: not read
-                 defaults={1: 20, 2: 60, 3: 100, 4: 0, 5: 127,   # segments (SIZE 3 = XTRM)
+                 names={4: b"---", 7: b"---", 8: b"---", 9: b"SLEN", 10: b"---"},   # PING pinned 0; the segment length; SCTR DENS PTCH: not read
+                 defaults={11: 20, 2: 60, 3: 100, 4: 0, 5: 127,   # segments (SIZE 3 = XTRM)
                            9: 3, 10: 64}),
     ),
     dsp=DspSection(
@@ -163,4 +170,10 @@ MODULE = Module(
     # second owner on the same payload (BusVerb's tank is payload A's).
     claims=Claims(reserved_private_y=(0x0903,), owns_fx2_buffers=True),
     harness=Harness(layout_char="D", is_server=True),
+    # the GRAIN lever, the tempo feed, and the bus's two-core and one-aux gates
+    gates=(Gate('tools/verify/verify_grains.py'),
+           Gate('tools/verify/verify_tempo.py'),
+           Gate('tools/verify/verify_twocore.py', remix_arg=False),
+           Gate('tools/verify/verify_onebus.py', remix_arg=False)),
+    dear={'DEL': 100, 'FDBK': 100, 'MODE': 1, 'SCTR': 127, 'DENS': 127, 'WET': 127},
 )

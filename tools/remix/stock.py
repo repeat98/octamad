@@ -34,7 +34,7 @@ on the ColdFire (DMA over SDRAM rings, docs/firmware/COLDFIRE_DELAY.md).
   SPATIALIZER, FLANGER, CHORUS, COMB allocate an FX2 instance buffer through
                  the host's bump allocator (X:0x213 at init;
                  docs/firmware/DSP.md section 10) at per-track bases that
-                 are the addresses BusVerb, Nimbus and BusDelay hardcode.
+                 are the addresses BusVerb and BusDelay hardcode.
                  The ledger refuses them beside any module with fixed Y
                  buffers (Claims.stock_instance_buffer).
 
@@ -47,7 +47,7 @@ from __future__ import annotations
 
 import pathlib
 
-from remix.schema import Claims, Harness, Kind, MenuEntry, Module, Param
+from remix.schema import Category, Claims, Harness, Kind, MenuEntry, Module, Param
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 STOCK_IMAGE = ROOT / "out/raw/section_3_MAIN_OS.bin"
@@ -89,7 +89,7 @@ def _image():
 #
 # Read from the pristine image rather than written down, so it cannot drift.
 # (Both stock lists open with a NONE row, id 0x00 -- which our rebuilt FX2
-# list drops. Noted from an outside report; see PLAN.)
+# list drops. Noted from an outside report.)
 FX1_CHOOSER, FX2_CHOOSER = 0x400d6060, 0x400d6090
 _fx1_ids: frozenset[int] | None = None
 
@@ -202,7 +202,7 @@ def _stock(key, name, fx2_id, desc, abbr, fullname, words, doc, char,
            buffer=False):
     WORDS[key] = words
     return Module(
-        name=name, key=key, kind=Kind.STOCK, doc=doc,
+        name=name, key=key, kind=Kind.STOCK, doc=doc, category=Category.STOCK,
         menu=MenuEntry(fx2_id=fx2_id, donor_desc=desc, abbr=abbr,
                        fullname=fullname),
         params=_params(desc, fullname.decode("latin1"), key),
@@ -422,7 +422,7 @@ BY_KEY = {m.key: m for m in MODULES}
 # ---- the stock curve bank at X:0x4840, and who reads it --------------------
 # A 4,096-word data record (32 curves x 128, docs/firmware/TABLES.md) at the
 # SAME X address in BOTH payloads -- the exception to the per-payload table
-# shift CLAUDE.md warns about (measured, dsp_modmap: A at image
+# shift AGENTS.md warns about (measured, dsp_modmap: A at image
 # 0x400e7181, B at 0x400fa786, word for word identical) -- and immediately
 # above the core's boot clear (P:0x300a6, `do #$7c0` from X:0x4080 ends at
 # 0x4840 exactly), so nothing zeroes it and its image bytes are what the DSP

@@ -3,6 +3,86 @@
 Symptom → cause (measured, inferred or open) → fix. Add an entry the moment
 a mode is seen on hardware.
 
+## Every FX1/FX2 page-2 knob turn halts under Octakit with SCENES P2 (rig-kits, bottleservice) ✅ measured under the port (28 Sep 2026), fixed the same day; the twelve-byte build was carried by image 88 and the halt not reported from the unit
+
+**Symptom.** With SCENES P2 and Octakit in the image (SCENES P2 KITS
+bridging the editor entries), any turn of knobs A-F on an EFFECT SETUP
+page stops the unit: `illegal` at `gk_track_setup_byte_fatal`
+(`0x45d28e98` in bottleservice's runtime). kits (Octakit alone) takes
+the same turn.
+
+**Cause.** SCENES P2's entry detours at `0x4003a9dc` / `0x4003abe4`
+displaced twelve bytes, so the build nopped the third stock instruction
+(`moveal %sp@(32),%a2`, the slot argument). Octakit's own entry write is
+eight bytes and her trampoline replays eight, continuing at entry+8: with
+the bridge her wrapper ran the body through those nops, a2 held a stale
+code address, the body took its slot>5 exit before the store, her marker
+count read 0 and `validate_result` reported corrupt. Traced under the
+port with `--watch-pc` on the wrapper's branch sites and on the editor's
+entry, marker and exit.
+
+**Fix.** The detours displace eight bytes (`pad_to=8`) and the stubs
+continue at entry+8 (`modules/scenes-p2`). Measured: knob B moves slot 7,
+a four-tick MODE turn lands MODE 1 with MODE DEFAULTS' view in the lane,
+no halt; `verify_modedefaults` and `verify_scenesp2` run their editor
+calls under bottleservice again (their Octakit SKIPs removed).
+
+## Junk on main R for one frame, from T1 with BusDelay, about twice a minute ✅ measured on the unit (images 32-38, 25 Sep 2026), fix built (image 39)
+
+**Symptom.** With BusDelay hosted on T1 (STATIC, panned hard left), main R
+carries 16-24 samples of random full-scale words about 0.5/min, always at
+one phase of the 4-second pattern cycle; main L is off by about its own rms
+in the same block. `tools/harness/burst_census.py` on a `tools/rec` take is
+the instrument; at 0.5/min a 90 s take has a 47 % chance of showing
+nothing, so only 10-minute takes count.
+
+**Measured.** Four in-frame detectors in the delay (page words changed, R
+input nonzero at entry, R output above -6 dBFS at exit, the previous
+frame's read-back R words at X:$2602 at the next entry) never fired while
+the junk ran: the DSP writes a clean read-back block and it is still clean
+at the next call. A NOP burn placed after the loop, before the dispatcher's
+copy, set from the WOW knob (image 36): +0 cycles 1266 junk runs/min, +256
+16/min, +512 0/min over 60 s and 1.4/min over 10 min, +2048 0/60 s. The
+junk's phase inside the 4-second cycle moves with the burn. Every detector
+image made the rate worse as its cycles moved the copy later.
+
+**Cause.** Core 1's frame start reads core 0's bank word (`P:0x57-0x7a`,
+payload B) and both picks the read-back buffer (`X:$2600` or `X:$4600`,
+`X:$206`) and patches the host handlers' address masks (`P:$371`/`P:$380`)
+so the ColdFire's constant command lands in the SAME buffer: the read-back
+is one buffer per frame, and the ColdFire's pull (DMA channel 1, armed at
+`P:0x37c`) must finish before the first FX2 copy overwrites it. The ISR
+pulls core 0 first, then the ESAI, then core 1; on the unit core 1's pull
+reaches T1's 64 words about 4.5 samples after T1's proc entry (the port
+models +0.26), and jitters by half a sample or more with the pattern
+position. Stock effects copy by +2 samples and never meet it; BusVerb on
+core 0 copies late too, but core 0's pull is the ISR's first step; BusDelay
+on core 1 copied inside the pull and the pull read the block mid-rewrite.
+The 4-second grid is the pattern cycle: the pull's position drifts with it.
+
+**Not a fix.** Polling the pull's DMA registers at exit (DSR1 in image 37,
+DCR1.DE in image 38): neither showed the pull in progress at our exit, and
+both images ran worse. A fixed pad past the pull (image 36 at +512..+2048)
+lowers the rate to the jitter's tail, 1.4/min.
+
+**Not a fix either: a frame-end detour (images 39-42, branch `frameend`,
+PR #405).** The delay's compute moved to a cave reached from the
+dispatcher's idle (a planted `jsr`, first at `P:0x340` after the last copy,
+then at the wait `P:0x57`), the proc reduced to a 32-word swap. Green under
+the port and the harness; on the unit every one of them killed core 1 at
+project load (sequencer stuck on step 1, AED preview silent), while the
+same call with an empty cave (image 41) played. Measured under the port:
+the wait at `P:0x57` is the last instruction of `do #16` at `P:0x51`, the
+body runs 16 times a frame and the bank-word read once, so core 1's "idle"
+is a word-by-word handshake with core 0 through the inter-core port
+(`P:0x80-0x8d` likewise, 64 words). A long compute there stalls core 0,
+and a `jsr` at a DO loop's last address is illegal besides.
+
+**Fix (image 43, branch `padfix`).** The copy waits: 8,192 NOPs (two
+samples, 11 % of the frame) after the loop, before the rts, so the
+dispatcher's copy lands past the pull. ✅ 10-minute take on the unit: 0
+junk (baseline 5). Costs two samples of core 1's budget on every frame.
+
 ## A white-noise wash from a sample host with trigs on it ✅ measured on the unit, fixed (image 43)
 
 **Symptom.** BusDelay on a track with its own trigs: T3 STATIC with a trig
@@ -193,7 +273,7 @@ TIME inert" was reading the material's own eighth and quarter at 121 BPM
 (248 / 496 ms) and is retracted; measure a delay time from the spacing of
 the decaying repeats after the source stops.
 
-## CC PAGE 2 did not write on hardware ✅ fixed (image 96)
+## CC MAP (named CC PAGE 2 until 25 Sep 2026) did not write on hardware ✅ fixed (image 96)
 
 **Symptom.** CC 62-67 changed nothing on the panel, transport stopped or
 running, on an image whose dispatch vector held the cave's address.
@@ -203,7 +283,7 @@ running, on an image whose dispatch vector held the cave's address.
 never touched FX2's. The FX2 editor's stores are Part `+0x8f084`, shadow
 `0x100a51d2`, lane +0x38.
 
-**Fix.** The cave uses those; `verify_ccpage2` proves the write against the
+**Fix.** The cave uses those; `verify_ccmap` proves the write against the
 FX2 editor; CC 63 on channel 5 moved SHMR on the panel and raised the
 tail's 2-8 kHz bands 5-8 dB (image 96). Every page-2 sweep taken over the
 old cave is void.
@@ -552,7 +632,7 @@ wet bus's path to the outputs, not a source); the stored project (a
 reload measured −104.6 dBFS with zero ticks against −73.9 and 23 before:
 the tick needs a live edit the card does not hold); the input path;
 BusVerb page 1 (every knob to extremes over verified CCs: zero ticks).
-Page 2 was untested (the CC PAGE 2 fault) and is not cleared.
+Page 2 was untested (the CC MAP fault) and is not cleared.
 
 **Candidates for 2048.** BusVerb's diffusers, allpasses, shimmer and
 pre-delay are 2048-word modulo buffers (`m5 = $7ff`); Modulation's
@@ -588,9 +668,14 @@ with every stored page byte zero.** Under the port (`--dsp-pcwatch` on the
 burn's `do`, core 0) the word the burn read at `x:(r6+$1)` was `0x378f00`
 with every byte 0 and `0x69f400` with one track's byte at 100 — the same
 word on every SEND track, and the same with SEND cloned from DARK REV
-instead of FILTER: the firmware computes page-1 slot 1's word for this
-effect from one place, not from the track's byte. 7,111 loop iterations at
-"0" and the frame never finished. What computes it is not located. The
+instead of FILTER. ❌ "the firmware computes page-1 slot 1's word for this
+effect" (16 Sep 2026): a port page dump on 22 Sep 2026 (`--dsp-peek
+core:X:0x2c0,384` with every page-1 byte of Spectrum, Character and
+Modulation stamped distinct) shows every slot raw, knob << 16 with the
+companion in bits 8–15; a PC watch on a displaced load samples `a` before
+the load lands, so `0x378f00` was the previous instruction's `a`, not the
+word. 7,111 loop iterations at "0" and the frame never finished; the
+loop count's cause is open. The
 burn now reads page-2 slot 6 (`$c`'s knob field, CC 62), the delivery
 `verify_set` proves raw for every track on a real project; unflashed. The
 stamper writes SEND's defaults into every id-0 slot (both FX1 and FX2)
@@ -616,7 +701,7 @@ delay). Not present after a reboot.
 **Cause (inferred).** An OS upgrade rewrites program memory but does not
 clear DSP state RAM; an engine skips warm-up when its tagged counter holds
 a valid tag at full count (BusVerb `$2c0000` at `r7+$82`, BusDelay
-`$2e0000`, Nimbus `$2d0000`).
+`$2e0000`).
 
 **Fix.** Power-cycle after every upgrade before judging anything.
 
@@ -746,7 +831,10 @@ images froze on a second instance's TIME change and on loading three.
 **What the counts say.** Per eight-track 16-sample frame under the port's
 instruction meter: stock DELAY 7,628; eight tape instances settled ~23,000;
 all controls moving up to 32,355. Per instance that is ~1,900 settled and
-~3,100 moving. The frame period is 363 µs, ~95,800 CPU cycles at 264 MHz,
+~3,100 moving. (Those are the PR's images. After the 23 Sep 2026 EMAC
+rewrite: 15,283 settled at WOW=44, 16,459 at the MIX=90 default with TIME
+moving, up to 21,547 with every control reversing in BEAT, about 30% less
+throughout; `modules/tapeecho/VOICING.md`. Not yet flashed.) The frame period is 363 µs, ~95,800 CPU cycles at 264 MHz,
 shared with everything else the ColdFire runs. The meter prices an
 uncached SDRAM ring access at one cycle.
 
@@ -762,3 +850,185 @@ per-frame work halved, or a freeze with settled controls.
 measured; his freezes bracket it. Any reverb or granular on the ColdFire
 prices above the seven-instance point (BusVerb ~18,000 DSP cycles per
 frame, four-grain GRAIN ~28,400, each in the cheaper unit).
+
+## Bursts of garbage on the reverb host's frame while the delay runs on core 1 🔴 cause open
+
+**Symptom (Sam, 23 Sep 2026, image 58 onward; heard as "intermittent
+clicks" since image 26).** With the rig hosted (BusDelay on T1, BusVerb on
+T5), a sample playing on T1 and nothing sent, T5's print carries 24-40
+samples of near-full-scale garbage, 4-16 times in two minutes, on an
+otherwise digitally silent frame. `tools/rec` on the MicroBook with T1 BAL
+hard left and T5 hard right, and a second-difference census of the capture
+(`tools/harness/burst_census.py`, events absent one pattern period either
+side; it reads input 3 as R and input 4 as L), is the instrument; the ear correlated them with knob moves, which
+was wrong.
+
+**Measured, one image per row, same setup, two minutes each:**
+
+| image | what | bursts on T5 |
+|---|---|---|
+| stock 1.40C | | 0 |
+| 69 | SEND + the stations, no engines, no caves | 0 |
+| 78 | + BusVerb present, unhosted | 0 |
+| 84 | the rig, the delay returning at its first instruction | 0 |
+| 86 (WOW 20) | the rig, the delay in full but never reading the aux or writing the chain | 0 |
+| 89 | only the chain write removed / only the aux read removed | 4 / 1 |
+| 85 | both delay lines in core 1's private memory | 8 |
+| 87 | the chain moved from Y:$9d8 to $a58 | 6 |
+| 90 | the aux read and the chain write as two 16-word bursts per block through stock's X scratch | 3 |
+| 58-83 | the rig; the reverb stubbed, on id 0x1e, cloned from SPRING REV, its private Y words in r7, its m0..m6 preserved, the live stamp a counter, the rotation read twice, the levels ramped | 4-16 |
+
+**What those rows said (retracted by image 91 below).** The delay's accesses from core 1 into core 0's half of
+the shared RAM (the aux read at 0x36901.., the chain write at 0x360d8..)
+put the garbage into T5's frame; nothing the reverb does, and nothing on
+the ColdFire side, changes it. The SEND clients make the same per-sample
+read and write into the same aux buffers and are clean (69, 78). Position
+within the block (per sample or one burst), the address, and the delay's
+own line traffic in its own half (85, 86) do not matter. The port never
+reproduces any of it: it runs the cores in lock step over one shared array.
+
+**Every zero in that table is a two-minute take.** At the rate image 91
+measured (about one burst per two minutes), a two-minute take reads 0 by
+chance about 37% of the time, stock 1.40C included. None of the zeros
+above separates a cause.
+
+**Image 91 (23 Sep 2026, branch `diag91`, a new project, 120 BPM, 16
+steps, T1 trigs on 1/5/9/13, six minutes each).** WOW/16 selected a
+variant of the delay's two per-sample shared accesses:
+
+| take | the delay's aux read / chain write | bursts on T5 |
+|---|---|---|
+| 1 | as shipped | 3 |
+| 2 | read from the write buffer / written where the reverb never reads | 0 |
+| 2b | the same as take 2 | 2 |
+| 5 | both to core-private Y:$a60.., bus gain 0: no per-sample shared access | 4 |
+| 7 | as shipped, T1's trigs on 2/6/10/14 | 3 |
+
+Take 5 retracts the location above: with no per-sample shared access from
+the delay, the bursts continue at the same rate. 9 of 12 bursts start 14-18 ms
+after the loud transient in T1's sample (repeating every 500 ms), 2 at
+-0.8 ms, 1 at +186 ms; with T1's trigs moved 125 ms against the
+beat (take 7) they stayed at that phase against T1's audio, so they follow
+T1's trigs or T1's audio, not the beat. Where that transient sits against
+the trig is not known (it depends on the sample). Bursts are 23-53 samples.
+
+**24 Sep 2026: bisected on the unit** (a new project per image, the same
+setup; T1 on input 3 and T5 on input 4 this time; 6-minute takes unless
+marked, 12-minute takes marked 12). Sam: stock 1.40C does not burst.
+
+| image / take | what | bursts on T5 |
+|---|---|---|
+| 91 take 8 | T1 AMP VOL 0, trigs running | 0 |
+| 69 | SEND + stations, no engines (FX1 NONE, T1-7 SEND, T8 DELAY) | 0 |
+| 91 take 10 | T5 = SEND: the delay on T1, no reverb | 3 |
+| 91 take 11 | T1 = SEND: the reverb on T5, no delay | 0 |
+| 91 take 14 | no delay; SEND on T2-4 burning ~300 cycles/sample each | 0 |
+| 92 | the delay's write-back of T1's frame moved to X:$20.. | 4 |
+| 93 (WOW cut 3) | the delay stops after its warm-up and live stamp | 1 |
+| 93 (WOW cut 1) | the delay stops after its preamble and role lock | 5 |
+| 94 | no role lock, the delay in full | 7 (12) |
+| 95 | the delay's DSP proc returns at its first instruction; ColdFire side of id 6 unchanged | 0 (12) |
+| 96 (WOW stop 3) | the delay stops after its preamble (host check, frame offset, rotation tracker); no shared write | 0 (12) |
+| 97 | 94 with no absolute-address store from core 1 into the shared window | 4 (12) |
+| 98 | 97 with no live stamp and no warm-up `y:$981` store: no word written by both cores | 2 (8.4, capture dropped) |
+| 99 | every bus word in core 1's half (`XBUS_BASE` 3c000), both delay lines private 16K: core 1 never writes core 0's half | 1 (12) |
+
+At the bursting rate (about 3.5 per six minutes) a six-minute 0 occurs by
+chance 5-9% of the time and a twelve-minute 0 about 0.1%. Take 8 is read
+as one of the chance zeros: nothing the delay runs before its sample loop
+touches T1's audio, and 93/94 burst without it.
+
+**What that leaves.** The bursts need the delay's DSP code running on T1
+past its preamble (95 and 96 against every other delay image). Ruled out
+on the unit: the ColdFire side of id 6 (descriptor, page-2 delivery, CC
+PAGE 2, MODE DEFAULTS, RIG HOSTS; TEMPO SYNC by image 70's two-minute
+capture, 10 bursts), CPU load on core 1, the reverb, the frame write-back,
+the role lock alone, absolute-address stores, a word written by both
+cores, and which half of the shared window the bus scratch sits in.
+
+**Burst content.** 38 bursts from ten takes: two waveforms repeat with
+|corr| > 0.97 across images 91-94 and both days (7 and 6 copies), plus
+pairs, so the garbage comes from a fixed source. They do not match T1's
+recorded audio, T1's sample file (`Acdrum.wav`, both channels,
+interleaved, every second sample) or any window of the DSP payloads' P/X/Y
+data (best |corr| 0.70 each, not a match). The codec's filtering smears a
+broadband burst, so a raw-data search is weak evidence either way.
+
+**Open.** Which part of the delay's per-block decodes or sample loop
+(the aux read, the chain write, the per-block bus reads, the line work)
+the bursts need. Branches: `diag91`..`diag98`, `core1scratch99`,
+`nolock94`, `fix97`; captures in `out/hw/v9*.wav` (machine-local). The
+record's "dead words at 0x360d3-5" (send_client.asm) are unexplained.
+
+**24 Sep 2026, the takes re-read and three zero-flash takes (image 99 on
+the card, census with the aligned-copy check, `tools/harness/burst_census.py`).**
+The event detector had only looked at the channel that crossed 0.35 FS.
+Aligning the OTHER channel against its own copy one or two trigs earlier
+(the audio repeats every trig; corr 0.99-1.00) shows T1's print deviating
+in the SAME 16-sample block in 29 of 32 bursts across images 91-99, by
+0.03-0.35 FS, below the threshold. The burst on the other side is one
+block of broadband words that clip (-1.00 twice in one burst), near full
+scale, while that channel is otherwise at -64 dBFS rms. The same T1 audio
+instant gives the same burst waveform every time (12 copies of one
+cluster across 91, 92, 93, 94, 99), so the content is a function of T1's
+audio. Two earlier readings did not survive: "the T1 block is
+sign-flipped" (the swap take put deviations of the same sign as T1's
+audio) and "T1's gain/pan are torn in the 64-word block core 0 hands core 1
+at X:0x30004" (under the port that block is input audio A-D x 16 samples
+for THRU machines; a STATIC T1 does not pass through it). The AMP VOL 0
+zero of take 8 was a true zero, not a chance one.
+
+| take (12 min each) | change | bursts | T1's side deviates |
+|---|---|---|---|
+| v99_23_swap | T1 BAL hard right, T5 hard left | 4, on the side opposite T1 | 3 of 4 (one alignment poor) |
+| v99_24_t5lvl0 | + T5 LEVEL 0 | 6, same side | 5 of 6 |
+| v99_25_cue | CUE L/R recorded instead of MAIN, T1 cued | 5, same side | 4 of 5 |
+
+So: the junk is in T1's stereo block, on both channels of it, full scale
+on the side T1 is panned away from; it is there before the main mix (the
+CUE mix shows it) and it is not T5's block (LEVEL 0 changes nothing).
+With the 23 Sep bisect (the lock-only delay that writes no audio bursts,
+the preamble-only delay does not) it is not the delay's audio output
+either. The dispatcher re-sets r0, r1, n1, r3, x1 and y1 before the
+read-back packer (`P:0x303-0x35e` on B), so a data-register left by proc
+is not a path; m0-m6 were saved on image 83 and it still burst. Where
+between T1's audio block after proc and the read-back words at
+`X:0x2600` the junk appears is the open question. The pan swap does NOT
+discriminate T1's block from T5's (both put the burst opposite T1); T5
+LEVEL 0 does. The CUE outs carry nothing until the track is cued.
+`tools/rec` needs the device name as its third argument (without it it
+looks for EVO4 and exits at once).
+
+## USB audio: a burst of reordered samples in the first 1.5 s of every host stream, clean after (image 64, 25 Sep 2026)
+
+**Symptom.** Recording the sixteen USB channels on macOS, four of five
+takes have one cluster of sample-step events between 0.75 and 1.5 s after
+the host opened the stream, on several channels at once, and none
+afterwards: 60 s, 60 s, 300 s and a 120 s take under a 7,170-message/s
+USB-MIDI flood with menu, sample-manager and project-save work on the panel
+all read zero events past 2 s; a 180 s take on a locks-every-step project
+at 200 BPM under a 7,950-message/s flood had no start burst and no events
+except on the track whose FX knobs were being turned. The device's counters (vendor request 0xc0/0x55) show 0
+underruns, 0 overruns and no bank-duplicate movement across all four.
+**What it is.** Short runs of samples out of order: after an event the
+next samples sit −11.6, +10.3 or −41 frames off the tone's phase, and the
+long-window phase before and after agrees to 0.1 frame, so nothing is lost
+and nothing is repeated for long; one or two packets swapped. Not the
+producer (bankdup still), not the ring (no under/overrun).
+**Cause.** Open. Candidates: the device's two-slot packet queue on the
+first primes after alt 1 (packet order under the controller's add-dTD
+tripwire, which the port's bench does not model: it serves queue heads in
+list order and streams cleanly from the first packet), or the host's
+stream start. A stream held open across two recordings, or a sequence
+counter in the packets, decides it. Likely what octemu's "some crackles"
+was, since sox opens a fresh stream per run.
+**Fix.** None yet. Workaround for recording: discard the first two seconds
+of every take, or hold the stream open in a DAW.
+**Since.** The 24-bit stream (image 69, 25 Sep 2026: four packets queued
+at a 250 µs poll where image 64 queued two at 500 µs) still has it, in
+both takes, 0.51–0.76 s after the recording opened, and ONLY on the right
+channel of each pair (channels 2, 4 … 16); every left channel is clean.
+The right channels hold the tone in runs 124–380 frames off phase. Each
+USB frame carries a track's L and R in adjacent subslots of one packet, so
+a device-side packet swap would move both; a right-only reorder points at
+the host's assembly of the stream (inferred, not measured).

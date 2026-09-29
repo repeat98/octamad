@@ -9,7 +9,7 @@ The length converter returns one constant length for a whole loop (82,687 at
 exact fractional period, so consecutive arms are alternately 82,687 and
 82,688 samples apart. Where they disagree the buffer's wrap splices two input
 moments two samples apart: a −26 dB, ~1 ms scuff on alternate bars (measured
-on hardware as OCTABAM82; `docs/history/RTOS_FORK.md` §10.53, §10.56).
+on hardware as OCTABAM82; `git show 3ceba41:docs/history/RTOS_FORK.md` §10.53, §10.56).
 
     q, r = divmod(RLEN × 15,876,000, tempo24)
     k    = arm / q                                 arm = 0x46c7fa84[track]

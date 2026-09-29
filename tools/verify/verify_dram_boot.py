@@ -27,7 +27,7 @@ from remix import platform_build, registry  # noqa: E402
 
 EMU = ROOT / "out/emu/ot_emu"
 IMAGE = ROOT / "out/mainos_bus.bin"
-remix = registry.remix(os.environ.get("REMIX") or registry.DEFAULT_REMIX)
+remix = registry.remix(os.environ.get("REMIX"))
 mods = [registry.modules()[k] for k in remix.modules]
 dram = any(u.dram for m in mods for u in getattr(m, "linked", ()))
 octakit = "OCTAKIT" in remix.modules

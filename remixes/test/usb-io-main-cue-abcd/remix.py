@@ -1,0 +1,23 @@
+"""usb-io-main-cue-abcd -- the Octatrack as a USB interface: MAIN L/R and CUE L/R (four channels) out, four channels into inputs A-D.
+
+USB AUDIO OUT MAIN CUE (to the host), USB AUDIO IN ABCD (from the host; the jacks while its stream is
+closed) and USB CROSSBAR (the controller served first on the crossbar,
+without which IN loses packet tails under load), with USB MIDI, on the stock
+effects minus SPATIALIZER, whose words on payload A hold the IN module's RX
+inject: listed on neither chooser, so neither menu offers it.
+"""
+
+from remix.schema import Proof, Remix
+
+REMIX = Remix(
+    name="usb-io-main-cue-abcd",
+    family="mods", proof=Proof.PORT, proof_note="`make check` (verify_usb, verify_usb_in) under the port, 28 Sep 2026; not on hardware in this form",
+    doc="stock - SPATIALIZER + USB MIDI + USB AUDIO OUT MAIN CUE + USB CROSSBAR + USB AUDIO IN ABCD.",
+    modules=("USB MIDI", "USB AUDIO OUT MAIN CUE", "USB CROSSBAR", "USB AUDIO IN ABCD",
+             "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
+             "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
+             "PLATE REV", "SPRING REV", "DARK REV"),
+    fx1=("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
+         "COMB FILTER", "COMPRESSOR", "LO-FI"),
+    fallback="NONE",
+)

@@ -13,7 +13,7 @@ import send_probe, verify_onebus as vo  # noqa
 from remix import registry  # noqa
 A, B = vo.SCRATCH / "spec_A.mem", vo.SCRATCH / "spec_B.mem"; mems = {0: A, 1: B}
 kw = dict(MODE=int(sys.argv[1]) if len(sys.argv) > 1 else 0, TIME=20, FDBK=60, TONE=100, PING=0, WET=127)
-D = vo.Inst("DELAY SERVER", 1, 0, **kw); S2 = vo.Inst("SEND", 1, 1, fed=True, SEND=100); S6 = vo.Inst("SEND", 0, 1, SEND=0)
+D = vo.Inst("DELAY SERVER", 1, 0, **kw); S2 = vo.Inst("SEND", 1, 1, fed=True, DEL=100); S6 = vo.Inst("SEND", 0, 1, DEL=0)
 km = registry.by_key("DELAY SERVER").knob_map_all()
 vo.BLOCKS = 8000; vo.tone_file(vo.SCRATCH / "tone.raw", 8000, amp=0.3)
 _orig = subprocess.run

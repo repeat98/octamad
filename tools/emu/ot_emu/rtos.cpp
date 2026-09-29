@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 
 namespace ot
@@ -49,6 +50,8 @@ namespace ot
 		, m_intc0("INTC0", 64)
 		, m_intc1("INTC1", 128)
 	{
+		if(const char* const e = std::getenv("OT_FENCE_TRACE"); e && std::atoi(e) != 0)
+			m_fenceTrace = true;
 		// INTC1 source 43 = PIT0 (vector 171, the scheduler); 44 = PIT1 (the
 		// storage layer's delay timer). INTC0 source 1 is the DSP frame clock
 		// and 27/28 the serial blocks -- both are later milestones, and their
@@ -68,6 +71,12 @@ namespace ot
 			if(m_uart60.irq()) a |= 1ull << 26;
 			if(m_uart64.irq()) a |= 1ull << 27;
 			if(m_uart68.irq()) a |= 1ull << 28;
+			// INTC0 sources 32..35 = DTIM0..3. Source 32 is also the forced
+			// sequencer tick (INTFRC); DTIM0 never asserts it -- the firmware
+			// runs DTIM0 without ORRI (DTMR 7). DTIM1 is the UI tick and the
+			// LED countdown's clock, DTIM2 the soft-timer dispatcher's (periph.h).
+			for(uint32_t n = 0; n < 4; ++n)
+				if(m_dtim[n].irq()) a |= 1ull << (32 + n);
 			return a;
 		});
 		m_intc1.setWires([this]
@@ -75,8 +84,68 @@ namespace ot
 			uint64_t a = 0;
 			if(m_pit0.irq()) a |= 1ull << 43;
 			if(m_pit1.irq()) a |= 1ull << 44;
+			if(m_usb && m_usb->irq()) a |= 1ull << 47;	// the USB device controller (vector 0xaf, the firmware installs it at level 4)
 			return a;
 		});
+	}
+
+	// O15a: the burst knobs, read once. Diagnosis only -- the shipped default
+	// is bursts of 4096 through stepFast; OT_BURST=0 is the pre-O15a loop.
+	int Rtos::burstQuantum()
+	{
+		static const int q = []
+		{
+			const char* const e = std::getenv("OT_BURST");
+			return e ? std::atoi(e) : 4096;
+		}();
+		return q;
+	}
+
+	bool Rtos::burstStepFast()
+	{
+		static const bool f = []
+		{
+			const char* const e = std::getenv("OT_STEPFAST");
+			return !e || std::atoi(e) != 0;
+		}();
+		return f;
+	}
+
+	// O16c: OT_DSP_SYNC=0 drops the run loop's sync of a lazy pair at burst
+	// ends and exact steps, leaving only the host-port touch points and the
+	// `--dsp-lazy N` backlog cap -- the frame edge is then seen up to N DSP
+	// instructions late instead of one burst. A measurement knob (how much
+	// the per-burst sync costs), not a mode: nothing prints, nothing else moves.
+	bool Rtos::dspSyncAtTick()
+	{
+		static const bool s = []
+		{
+			const char* const e = std::getenv("OT_DSP_SYNC");
+			return !e || std::atoi(e) != 0;
+		}();
+		return s;
+	}
+
+	Rtos::~Rtos()
+	{
+		// stderr only, opt-in: stdout is diffed byte for byte by the oracles.
+		if(memStatOn())
+			std::fprintf(stderr, "memstat %.0f ms (end): %s\n", ms(), memStat().c_str());
+		if(const char* const e = std::getenv("OT_BURST_STATS"); e && std::atoi(e) != 0)
+		{
+			const auto& s = m_burstStats;
+			std::fprintf(stderr, "burst stats: bursts=%llu burstInstr=%llu exactInstr=%llu "
+				"endPeriph=%llu endWake=%llu endHorizon=%llu endSpin=%llu endGate=%llu endPc=%llu idleSkips=%llu instructions=%llu quantum=%d stepfast=%d"
+				" exactWake=%llu exactHorizon frame=%llu ata=%llu pit=%llu dtim=%llu edma=%llu\n",
+				static_cast<unsigned long long>(s.bursts), static_cast<unsigned long long>(s.burstInstr),
+				static_cast<unsigned long long>(s.exactInstr), static_cast<unsigned long long>(s.endPeriph),
+				static_cast<unsigned long long>(s.endWake), static_cast<unsigned long long>(s.endHorizon),
+				static_cast<unsigned long long>(s.endSpin), static_cast<unsigned long long>(s.endGate),
+				static_cast<unsigned long long>(s.endPc), static_cast<unsigned long long>(m_idleSkips),
+				static_cast<unsigned long long>(m_machine.instructions()), burstQuantum(), burstStepFast() ? 1 : 0,
+				static_cast<unsigned long long>(s.exactWake), static_cast<unsigned long long>(s.exactBySrc[0]), static_cast<unsigned long long>(s.exactBySrc[1]),
+				static_cast<unsigned long long>(s.exactBySrc[2]), static_cast<unsigned long long>(s.exactBySrc[3]), static_cast<unsigned long long>(s.exactBySrc[4]));
+		}
 	}
 
 	uint32_t Rtos::curTcb()
@@ -90,8 +159,27 @@ namespace ot
 		if(_addr >= g_intc1 && _addr < g_intc1 + 0x100) { _out = m_intc1.read(_addr - g_intc1, _size); return true; }
 		if(_addr >= g_pit0 && _addr < g_pit0 + 0x10)    { _out = m_pit0.read(_addr - g_pit0, _size, m_sample); return true; }
 		if(_addr >= g_pit1 && _addr < g_pit1 + 0x10)    { _out = m_pit1.read(_addr - g_pit1, _size, m_sample); return true; }
+		if(_addr >= g_dtim && _addr < g_dtim + 4 * 0x4000 && ((_addr - g_dtim) & 0x3fff) < 0x10)
+		{
+			_out = m_dtim[(_addr - g_dtim) >> 14].read((_addr - g_dtim) & 0xf, _size, m_sample);
+			return true;
+		}
 		if(_addr >= g_dspi && _addr < g_dspi + 0x100)   { _out = m_dspi.read(_addr - g_dspi, _size); return true; }
-		if(_addr >= Edma::g_base && _addr < Edma::g_tcd + 16 * 32) { _out = m_edma.read(_addr, _size); return true; }
+		if(_addr >= Edma::g_base && _addr < Edma::g_tcd + 16 * 32)
+		{
+			// O15a: inside a burst tickTimers() has not run since the burst
+			// began, so the eDMA's `now` and boundary are refreshed HERE, on
+			// every access, read or write. The value is the one the exact path
+			// had: tickTimers() set them from m_sample after the previous
+			// instruction, and m_sample has not moved since (the increment
+			// follows the instruction). A read needs neither; it is done on
+			// both so the rule has no exception to forget.
+			m_edma.setBoundary(m_nextFrame);
+			m_edma.setNow(m_sample);
+			_out = m_edma.read(_addr, _size);
+			return true;
+		}
+		if(m_usb && _addr >= UsbDevice::g_base && _addr < UsbDevice::g_base + UsbDevice::g_size) { _out = m_usb->read(_addr - UsbDevice::g_base, _size); return true; }
 		if(m_card && _addr >= AtaCard::g_base && _addr < AtaCard::g_base + AtaCard::g_window)
 		{
 			const auto off = _addr - AtaCard::g_base;
@@ -123,12 +211,48 @@ namespace ot
 
 	void Rtos::peripheralWrite(const uint32_t _addr, const uint8_t _size, const uint32_t _val, const bool _replay)
 	{
-		if(_addr >= g_intc0 && _addr < g_intc0 + 0x100) m_intc0.write(_addr - g_intc0, _size, _val);
+		if(_addr >= g_intc0 && _addr < g_intc0 + 0x100)
+		{
+			// O17b: the frame handler masks its own source (INTC0 source 1)
+			// for the whole host-port exchange and unmasks it at the end --
+			// that unmask is "frame handled", the protocol's own end-of-frame
+			// mark, and the real-time DSP mode's fence opens on it.
+			const bool was = m_intc0.masked(1);
+			m_intc0.write(_addr - g_intc0, _size, _val);
+			const bool now = m_intc0.masked(1);
+			if(was != now)
+			{
+				if(m_fenceTrace)
+					std::fprintf(stderr, "ftrace %.3f cf src1 %s pc=%08x\n", m_sample, now ? "MASK" : "UNMASK", m_machine.pc());
+				if(auto* co = m_machine.coprocessor())
+				{
+					if(now)
+						co->frameHandling();
+					else
+						co->frameHandled();
+				}
+			}
+		}
 		else if(_addr >= g_intc1 && _addr < g_intc1 + 0x100) m_intc1.write(_addr - g_intc1, _size, _val);
 		else if(_addr >= g_pit0 && _addr < g_pit0 + 0x10) m_pit0.write(_addr - g_pit0, _size, _val, m_sample);
 		else if(_addr >= g_pit1 && _addr < g_pit1 + 0x10) m_pit1.write(_addr - g_pit1, _size, _val, m_sample);
+		else if(_addr >= g_dtim && _addr < g_dtim + 4 * 0x4000 && ((_addr - g_dtim) & 0x3fff) < 0x10)
+			m_dtim[(_addr - g_dtim) >> 14].write((_addr - g_dtim) & 0xf, _size, _val, m_sample);
 		else if(_addr >= g_dspi && _addr < g_dspi + 0x100) m_dspi.write(_addr - g_dspi, _size, _val, _replay);
-		else if(_addr >= Edma::g_base && _addr < Edma::g_tcd + 16 * 32) m_edma.write(_addr, _size, _val, _replay);
+		else if(_addr >= Edma::g_base && _addr < Edma::g_tcd + 16 * 32)
+		{
+			// ⚠️ THE WRITE SIDE IS THE ONE THAT MATTERS, and the prototype
+			// refreshed only the read side (12 Sep 2026, the architect's
+			// bisect): a CSR.START kick books a bus-paced completion from
+			// `m_now` (Edma::start), and with `m_now` stale by up to a burst the
+			// completion came early, the DSP took its block early, and the
+			// `--dsp` pipe PCM drifted by +-1 LSB in 280 samples. Same rule as
+			// the read above; see there for why the value is the exact one.
+			m_edma.setBoundary(m_nextFrame);
+			m_edma.setNow(m_sample);
+			m_edma.write(_addr, _size, _val, _replay);
+		}
+		else if(m_usb && _addr >= UsbDevice::g_base && _addr < UsbDevice::g_base + UsbDevice::g_size) m_usb->write(_addr - UsbDevice::g_base, _size, _val, _replay);
 		else if(m_card && _addr >= AtaCard::g_base && _addr < AtaCard::g_base + AtaCard::g_window)
 		{
 			const auto off = _addr - AtaCard::g_base;
@@ -215,9 +339,11 @@ namespace ot
 			peripheralWrite(w.addr, w.size, val, true);
 		}
 		m_seeded = m_machine.peripheralWrites().size();
+		m_machine.endPeripheralWriteLog();		// O18: the record has no reader past this line
 		if(m_quirks.clearTransmitInterrupt)
 			for(auto* u : {&m_uart60, &m_uart64, &m_uart68})
 				u->clearTransmitInterrupt();
+		m_dtim[3].setBias(m_quirks.skipBootLogo ? g_bootLogoCounts : 0);
 
 		installHostPortMover();
 
@@ -233,10 +359,18 @@ namespace ot
 		// base 64 + source 1), which is where route A clears it.
 		m_machine.setAckHook([this](const uint8_t _vec, const uint8_t _level)
 		{
+			m_wake = true;		// O15a: the core consumed the injected vector; deliver() must re-offer or withdraw
 			if(_vec == m_intc0.vectorBase() + 1)
 			{
 				m_framePending = false;
 				++m_frameCount;
+			}
+			if(_vec >= m_intc0.vectorBase() && _vec < m_intc0.vectorBase() + 64)
+			{
+				if(m_fenceTrace)
+					std::fprintf(stderr, "ftrace %.3f cf ack vec=%02x src=%u\n", m_sample, _vec, _vec - m_intc0.vectorBase());
+				if(auto* co = m_machine.coprocessor(); co && (_vec == m_intc0.vectorBase() + 1 || (_vec >= m_intc0.vectorBase() + 8 && _vec < m_intc0.vectorBase() + 24)))
+					co->cpuNote('a', _vec);		// the frame and the eDMA channels only (the timers would flood the record)
 			}
 			if(m_card && _vec == m_intc1.vectorBase() + g_ataSource)
 				++m_ataInterrupts;
@@ -248,6 +382,11 @@ namespace ot
 		m_intc0.setForceHook([this](uint64_t) { ++m_forces; });
 		m_intc1.setForceHook([this](uint64_t) { ++m_forces; });
 		m_installed = true;
+		if(m_machine.read16(g_mainSpin - 6) == 0x4ef9)		// jmp abs.l: the park is detoured
+		{
+			m_spinLo = m_machine.peek32(g_mainSpin - 4);
+			m_spinHi = m_spinLo + 0x80;
+		}
 	}
 
 	// O8 step 4 -- THE DATA. Decoded from route A's tape (8 Sep 2026): every
@@ -259,6 +398,78 @@ namespace ot
 	// what the DspPair's lane model does with a halfword at +0x1c. The RAM
 	// side is contiguous (SOFF/DOFF equal the burst size), the port side is a
 	// fixed address, and a block is NBYTES x the minor-loop count.
+	uint32_t Rtos::tcdWords(const uint32_t _ch) const
+	{
+		return static_cast<uint32_t>(m_edma.tcdField(_ch, 8, 4) * m_edma.minorLoops(_ch) / 4);	// bytes -> DSP words (one per 16-bit cycle pair... a 32-bit write is two halfwords on TXM:TXL = one word)
+	}
+
+	void Rtos::copyMemToMem(const uint32_t _ch, const uint32_t _saddr, const uint32_t _daddr)
+	{
+		// The MCF5445x eDMA TCD (RM ch. 18): ATTR = SMOD[15:11] SSIZE[10:8]
+		// DMOD[7:3] DSIZE[2:0], sizes 0..5 = 1/2/4/8/16/32 bytes; NBYTES per
+		// minor loop; CITER minor loops (bit 15 = a link, count in bits 8-0);
+		// SOFF/DOFF signed 16-bit strides per transfer. SLAST/DLAST_SGA (the
+		// pointer adjustments after the major loop) and the TCD's running
+		// SADDR/DADDR are not written back: the firmware reprograms both
+		// addresses before every kick and never reads them.
+		// ⚠️ O21 (13 Sep 2026): THE WORD AT +4 IS ATTR AND THE WORD AT +6 IS
+		// SOFF (MCF5445x RM ch. 18, the TCD memory map: TCDn_ATTR 0x04,
+		// TCDn_SOFF 0x06 -- the big-endian halves of the 32-bit word at +4),
+		// and the firmware's own values say so: the delay routine writes
+		// 0x0402 / 0x0404 there (SSIZE 4 = 16-byte bursts with a 32-bit or
+		// 16-byte destination -- attribute words) and 0x0010 at +6 (the
+		// 16-byte stride). O20 read them the other way round, so every
+		// delay copy ran with SSIZE = DSIZE = 1 byte, DMOD = 2 (a 4-byte
+		// destination window) and a source stride of 1026/1028: the taps
+		// were 144 single bytes from every 1026th address folded into the
+		// staging block's first longword, and the ring received four bytes
+		// per frame -- measured 13 Sep 2026 on a track that sounds (T7): the
+		// ring all zero at the write pointer, no repeat at 367 ms, while
+		// the mix loop's ring-input stores were non-zero. The label swap
+		// hid in plain sight because nothing else reads +4/+6 (the
+		// host-port mover uses NBYTES/CITER/SADDR/DADDR only).
+		const auto attr = m_edma.tcdField(_ch, 4, 2);
+		const auto nbytes = m_edma.tcdField(_ch, 8, 4);
+		const auto loops = m_edma.minorLoops(_ch);
+		const auto soff = static_cast<int32_t>(static_cast<int16_t>(m_edma.tcdField(_ch, 6, 2)));
+		const auto doff = static_cast<int32_t>(static_cast<int16_t>(m_edma.tcdField(_ch, 0x16, 2)));
+		const uint32_t ssize = 1u << ((attr >> 8) & 7), dsize = 1u << (attr & 7);
+		const uint32_t smod = (attr >> 11) & 0x1f, dmod = (attr >> 3) & 0x1f;
+		if(!nbytes || !loops || nbytes > 0x100000)
+			return;
+		auto step = [](uint32_t& _a, const int32_t _off, const uint32_t _mod)
+		{
+			if(_mod)
+			{
+				const uint32_t mask = (1u << _mod) - 1;
+				_a = (_a & ~mask) | ((_a + static_cast<uint32_t>(_off)) & mask);
+			}
+			else
+				_a += static_cast<uint32_t>(_off);
+		};
+		std::vector<uint8_t> buf(nbytes);
+		uint32_t s = _saddr, d = _daddr;
+		for(uint32_t loop = 0; loop < loops; ++loop)
+		{
+			for(uint32_t i = 0; i < nbytes; i += ssize)
+			{
+				const auto n = std::min(ssize, nbytes - i);
+				for(uint32_t k = 0; k < n; ++k)
+					buf[i + k] = m_machine.read8(s + k);
+				step(s, soff, smod);
+			}
+			for(uint32_t i = 0; i < nbytes; i += dsize)
+			{
+				const auto n = std::min(dsize, nbytes - i);
+				for(uint32_t k = 0; k < n; ++k)
+					m_machine.write8(d + k, buf[i + k]);
+				step(d, doff, dmod);
+			}
+			m_m2mBytes += nbytes;
+		}
+		++m_m2mBlocks;
+	}
+
 	void Rtos::installHostPortMover()
 	{
 		auto* co = m_machine.coprocessor();
@@ -267,11 +478,39 @@ namespace ot
 		m_edma.setDataHooks(
 			[this, co](const uint32_t _ch)
 			{
+				co->cpuNote('k', _ch);		// O17b: the kick, in the protocol record
 				const auto daddr = m_edma.tcdField(_ch, 0x10, 4);
 				const auto saddr = m_edma.tcdField(_ch, 0, 4);
 				m_kickSel[_ch & 15] = co->selected();
 				if(daddr < Edma::g_hostPortLo || daddr >= Edma::g_hostPortHi)
+				{
+					// O20 (13 Sep 2026): A MEMORY-TO-MEMORY CHANNEL MOVES ITS BYTES.
+					// Route A's model moved no data on any channel, and the host-port
+					// mover only ever carried the DSP blocks -- so the ECHO FREEZE
+					// DELAY, which is not on the DSP at all (EXTERNAL.md §1: the
+					// ColdFire's frame routine at 0x400031a0 points the eDMA at its
+					// per-track rings in SDRAM at 0x4f502c10), never got its taps:
+					// channels 2/3 fetch this frame's and last frame's delay positions
+					// from the ring into the staging buffers 0x800039a0/0x80003a40
+					// (TCD: ATTR 0x0402 = 16-byte source bursts, 32-bit destination,
+					// SOFF 16, DOFF 4, NBYTES 144, CITER 1, no modulo), channels 4/5
+					// write the frame's block from 0x800000e8 into the ring (ATTR
+					// 0x0404, NBYTES 128) with a mirror at ring + 1,411,200 when the
+					// write lands at the base. The routine busy-waits DONE at
+					// 0x400035a8 / 0x40003780 and then mixes the staging buffers: with
+					// nothing moved the repeats were silence on every card (measured
+					// 13 Sep 2026: SEND 100 / FB 70 / TIME 47, no energy between the
+					// hits, lockstep and rt alike). The copy is the TCD's: every minor
+					// loop moves NBYTES as SSIZE reads at SOFF and DSIZE writes at
+					// DOFF (SMOD/DMOD honoured if ever set), CITER minor loops; the
+					// TCD's own words are left as the firmware wrote them (it
+					// reprograms the addresses every frame). The host-port lanes are
+					// untouched: a channel with either end in the window keeps the
+					// mover's rules below.
+					if(saddr < Edma::g_hostPortLo || saddr >= Edma::g_hostPortHi)
+						copyMemToMem(_ch, saddr, daddr);
 					return;
+				}
 				const auto bytes = m_edma.tcdField(_ch, 8, 4) * m_edma.minorLoops(_ch);
 				std::vector<uint16_t> hw;
 				hw.reserve(bytes / 2);
@@ -289,6 +528,7 @@ namespace ot
 			},
 			[this, co](const uint32_t _ch)
 			{
+				co->cpuNote('d', _ch);		// O17b: the completion, in the protocol record
 				const auto saddr = m_edma.tcdField(_ch, 0, 4);
 				const auto daddr = m_edma.tcdField(_ch, 0x10, 4);
 				// ⚠️ An OUTBOUND block's DSP-side state is only meaningful HERE,
@@ -302,25 +542,38 @@ namespace ot
 					if(!p.hw.empty())
 					{
 						const int core = m_kickSel[_ch & 15];
-						// Where DMA0 has just left off, and the tail of what
-						// landed there: the direct test of whether the words
-						// the port sent reached DSP memory.
-						const auto ddr = co->peekWord(core, 'R', 0);	// 'R' = DMA0's DDR, see DspPair
-						char t[160];
 						std::string tail;
-						// The burst's own timeline in SAMPLES: kicked, and the
-						// completion the drain gate released -- the frame
-						// period is read off consecutive frames' stamps.
-						std::snprintf(t, sizeof t, " kicked@%.1f done@%.1f landed@", p.kicked, m_sample);
-						tail += t;
-						std::snprintf(t, sizeof t, "%04x:", ddr >= 8 ? ddr - 8 : 0);
-						tail += t;
-						for(uint32_t k = 0; k < 8 && ddr >= 8; ++k)
+						// The note is the block log's / the block dump's; its
+						// reads of DMA0's pointer and the landed words are the
+						// DSP's own registers and memory, which under --dsp-rt
+						// belong to the core's thread (TSan, 13 Sep 2026: seven
+						// reports, all this read against the DMA's write), so
+						// they are made only when a log wants them.
+						if((m_blockLogOn || m_blockDump.is_open()) && !co->realtime())
 						{
-							std::snprintf(t, sizeof t, " %06x", co->peekWord(core, 'X', ddr - 8 + k));
+							// (O17c: not under --dsp-rt -- the peeks below stalled the
+							// frame protocol, measured 13 Sep 2026: the dump's words are
+							// the ColdFire's own RAM and need none of them)
+							// Where DMA0 has just left off, and the tail of what
+							// landed there: the direct test of whether the words
+							// the port sent reached DSP memory.
+							const auto ddr = co->peekWord(core, 'R', 0);	// 'R' = DMA0's DDR, see DspPair
+							char t[160];
+							// The burst's own timeline in SAMPLES: kicked, and the
+							// completion the drain gate released -- the frame
+							// period is read off consecutive frames' stamps.
+							std::snprintf(t, sizeof t, " kicked@%.1f done@%.1f landed@", p.kicked, m_sample);
 							tail += t;
+							std::snprintf(t, sizeof t, "%04x:", ddr >= 8 ? ddr - 8 : 0);
+							tail += t;
+							for(uint32_t k = 0; k < 8 && ddr >= 8; ++k)
+							{
+								std::snprintf(t, sizeof t, " %06x", co->peekWord(core, 'X', ddr - 8 + k));
+								tail += t;
+							}
+							tail = co->blockNote(core) + tail;
 						}
-						noteBlock('>', _ch, p.saddr, p.hw, p.nonZero, co->blockNote(core) + tail);
+						noteBlock('>', _ch, p.saddr, p.hw, p.nonZero, tail);
 						m_pendingOut[_ch & 15] = {};
 					}
 				}
@@ -328,6 +581,7 @@ namespace ot
 					return;
 				const auto bytes = m_edma.tcdField(_ch, 8, 4) * m_edma.minorLoops(_ch);
 				std::vector<uint16_t> hw;
+				hw.reserve(bytes / 2);
 				m_hostWordsShort += co->pullHalfwords(saddr, m_kickSel[_ch & 15], hw, bytes / 2);
 				for(size_t i = 0; i < hw.size(); ++i)
 					m_machine.write16(daddr + 2 * static_cast<uint32_t>(i), hw[i]);
@@ -338,12 +592,45 @@ namespace ot
 				++m_hostBlocksIn;
 				m_hostWordsIn += hw.size();
 				m_hostNonZeroIn += nz;
-				char at[48];
-				std::snprintf(at, sizeof at, " at@%.1f", m_sample);
-				noteBlock('<', _ch, daddr, hw, nz, co->blockNote(m_kickSel[_ch & 15]) + at);
+				std::string at;
+				if((m_blockLogOn || m_blockDump.is_open()) && !co->realtime())
+				{
+					char t[48];
+					std::snprintf(t, sizeof t, " at@%.1f", m_sample);
+					at = co->blockNote(m_kickSel[_ch & 15]) + t;
+				}
+				noteBlock('<', _ch, daddr, hw, nz, at);
 			});
 		// With the cores attached the bus's own time paces a burst (periph.h).
 		m_edma.setBusPaced(true);
+		if(co->realtime() && !(std::getenv("OT_RT_DRAINPACE") && *std::getenv("OT_RT_DRAINPACE") == '0'))
+		{
+			// O17c: THE DRAIN TIMES. Under the lockstep interpreter a pushed block
+			// is drained by the DSP's DMA0 one word per service, and the firmware
+			// handler's six block shapes each take a fixed time to drain (the
+			// DSP's code path at that point of the frame is the same every frame):
+			// measured 13 Sep 2026 over 12,360 frames of the OTLIVE fixture
+			// (`pushlat.py` on the OT_FENCE_TRACE of a --dsp run, ack 0x48 minus
+			// the push, at most 10 distinct values per shape within 0.005 sample).
+			// The JIT workers drain a block in one service, so without this the
+			// ISR chain ran ~0.5 samples shorter and its length followed the wall;
+			// the sequencer's bookkeeping inside that chain (a voice's 8-sample
+			// position bucket) then differed from the reference run to run. Words
+			// = DSP words (halfword pairs); a shape not in the table gets the
+			// interpreter's base rate, two instructions a word.
+			m_edma.setHostDrainTime([this, co](const uint32_t _ch) -> double
+			{
+				const auto words = tcdWords(_ch);
+				const int core = co->selected();
+				struct Shape { int core; uint32_t words; double samples; };
+				static constexpr Shape g_shapes[] = {
+					{0, 336, 0.3400}, {1, 336, 0.1650}, {0, 256, 0.1260}, {0, 64, 0.0320}, {1, 64, 0.0320}, {0, 32, 0.0170}};
+				for(const auto& sh : g_shapes)
+					if(sh.core == core && sh.words == words)
+						return sh.samples;
+				return (2.04 * static_cast<double>(words) + 2.0) / 4160.0;	// DSP instructions per sample (dsp.h g_dspIps)
+			});
+		}
 		m_edma.setCompletionGate([this, co](const uint32_t _ch)
 		{
 			const auto daddr = m_edma.tcdField(_ch, 0x10, 4);
@@ -392,6 +679,8 @@ namespace ot
 	{
 		m_pit0.advance(m_sample);
 		m_pit1.advance(m_sample);
+		for(auto& t : m_dtim)
+			t.advance(m_sample);
 		if(m_frame && !m_frameFromDsp)
 			while(m_sample >= m_nextFrame)
 			{
@@ -424,6 +713,109 @@ namespace ot
 			m_ataIrqDue = 0.0;
 			m_ataIrq = true;
 		}
+		// The host's start-of-frame, once per audio block (octemu raises it
+		// from the DSP block close as well; the payload's packet builder is
+		// paced by the host's IN polls, not by this edge).
+		if(m_usb)
+		{
+			while(m_sample >= m_usbNextSof)
+			{
+				m_usb->sof();
+				m_usbNextSof += g_framePeriod;
+			}
+			// The host's isochronous poll, on the schedule the audio
+			// endpoint is described with: every 250 us of device time at
+			// high speed (11.025 samples), every 1 ms at full speed.
+			while(m_sample >= m_usbNextIso)
+			{
+				// A run of polls the bench host did not answer is device
+				// time with nothing drained: logged, so a ring overrun it
+				// causes is told apart from the guest's own.
+				if(m_usb->isoPoll())
+					++m_usbMissRun;
+				else
+				{
+					if(m_usbMissRun >= 16)
+						std::printf("usb        : %u isochronous poll(s) in a row with no IN from the bench host, ending at %.4f s\n",
+							m_usbMissRun, m_sample / 44100.0);
+					m_usbMissRun = 0;
+				}
+				m_usbNextIso += 44100.0 / m_usb->isoPollHz();
+			}
+		}
+	}
+
+	// O15a: THE HORIZON. The earliest sample at which tickTimers()/deliver()
+	// could do anything that a peripheral access (m_periphTouched), an
+	// acknowledgement or the DSP's host-word hook (m_wake) would not already
+	// have ended the burst for. Everything that can change deliverable state
+	// -- the list beside Intc::addLine in the constructor, plus the
+	// registers the firmware reads back -- is one of:
+	//   * a peripheral WRITE (INTC masks/forces/ICRs, PIT/DTIM control and
+	//     acks, eDMA kicks/CINT/CDNE, UART masks, the card's command and data
+	//     registers, the DSPI, the host port): m_periphTouched;
+	//   * a peripheral READ with a side effect (UART +0x0c pops the receive
+	//     queue and its line, the card's STATUS clears INTRQ and a DATA read
+	//     re-arms it, DSPI POPR, the host port): m_periphTouched;
+	//   * the CPU acknowledging a vector (the injected interrupt is consumed;
+	//     the ack hook counts frames/ATA and deliver() must re-offer or
+	//     withdraw): m_wake;
+	//   * the DSP raising its bank word (setFrameFromDsp's hook: the frame
+	//     edge and m_nextFrame): m_wake;
+	//   * the outside world between runs (rxPush from the panel, pokes,
+	//     setFrame, setNames): m_wake at runLoop entry;
+	//   * TIME: an armed PIT expiring (PIF; PIE or not -- PCSR reads back),
+	//     an armed DTIM reaching its reference (DTER.REF; ORRI or not), the
+	//     frame timer's edge and the latched DSP edge (both at m_nextFrame,
+	//     only while a frame source is on -- otherwise tickTimers() never
+	//     touches it and the boundary it publishes is a constant), the ATA
+	//     INTRQ latency, a booked eDMA completion (a gated one answers a
+	//     sample already past: exact stepping until it clears, because the
+	//     gate is the DSP's ring, re-asked after every instruction): HERE.
+	// Nothing else writes the models. The DSP cores' own state reaches the
+	// ColdFire only through the host port (a read: touched), the eDMA gate
+	// (a due entry: here) and the host-word hook (wake); the co-processor's
+	// per-instruction tick is unchanged inside a burst, so its interleave
+	// with the ColdFire -- the O12 contract -- does not move.
+	double Rtos::nextEvent() const
+	{
+		double best = (m_frame || m_frameFromDsp) ? m_nextFrame : 1e300;
+		m_horizonSrc = 0;
+		if(m_ataIrqDue != 0.0 && m_ataIrqDue < best)
+		{
+			best = m_ataIrqDue;
+			m_horizonSrc = 1;
+		}
+		double e;
+		for(const auto* p : {&m_pit0, &m_pit1})
+			if(p->nextExpiry(e) && e < best)
+			{
+				best = e;
+				m_horizonSrc = 2;
+			}
+		for(const auto& t : m_dtim)
+			if(t.nextMatch(e) && e < best)
+			{
+				best = e;
+				m_horizonSrc = 3;
+			}
+		if(m_edma.nextDue(e) && e < best)
+		{
+			best = e;
+			m_horizonSrc = 4;
+		}
+		// The USB host's start-of-frame and isochronous polls (tickTimers):
+		// each can raise the device controller's line.
+		if(m_usb)
+		{
+			const double u = std::min(m_usbNextSof, m_usbNextIso);
+			if(u < best)
+			{
+				best = u;
+				m_horizonSrc = 5;
+			}
+		}
+		return best;
 	}
 
 	bool Rtos::anyPending() const
@@ -450,6 +842,15 @@ namespace ot
 		{
 			double e;
 			if(p->nextExpiry(e) && (!any || e < best))
+			{
+				best = e;
+				any = true;
+			}
+		}
+		for(const auto& t : m_dtim)
+		{
+			double e;
+			if(t.nextExpiry(e) && (!any || e < best))
 			{
 				best = e;
 				any = true;
@@ -526,24 +927,109 @@ namespace ot
 
 	Rtos::Stop Rtos::run(const double _ms, const bool _untilGate)
 	{
-		return runInternal(_ms, _untilGate, nullptr);
+		RunSpec s;
+		s.ms = _ms;
+		s.untilGate = _untilGate;
+		s.whyGate = "the M6a gate passed";
+		s.whyTime = "time";
+		const auto r = runLoop(s);
+		if(memStatOn())
+			std::fprintf(stderr, "memstat %.0f ms: %s\n", ms(), memStat().c_str());
+		return r;
 	}
 
-	Rtos::Stop Rtos::runUntil(const double _ms, const std::function<bool()>& _stop)
+	bool Rtos::memStatOn()
 	{
-		return runInternal(_ms, false, &_stop);
+		static const bool s_on = [] { const char* const e = std::getenv("OT_MEMSTAT"); return e && std::atoi(e) != 0; }();
+		return s_on;
 	}
 
-	Rtos::Stop Rtos::runInternal(const double _ms, const bool _untilGate, const std::function<bool()>* _stop)
+	std::string Rtos::memStat() const
 	{
-		if(!m_installed)
+		char b[640];
+		std::snprintf(b, sizeof b, "dispatches=%zu(kept %zu) created=%zu acks=%zu pcRing=%zu blockLog=%zu ataTrace=%zu memWrites=%zu"
+			" liveNibble=%zu trigWords=%zu uartA.tx=%zu uartA.rx=%zu uartB.tx=%zu cardLog=%zu(dropped %llu) edmaDue=%zu | ",
+			m_dispatches.size(), m_dispatches.kept(), m_created.size(), m_acks.size(), m_pcRing.size(), m_blockLog.size(),
+			m_ataTrace.size(), m_memWrites.size(), m_liveNibble.size(), m_trigWords.size(), m_uart64.tx().size(),
+			m_uart64.rxPending(), m_uart68.tx().size(), m_card ? m_card->log().size() : 0,
+			static_cast<unsigned long long>(m_card ? m_card->logDropped() : 0), m_edma.outstanding());
+		std::string out = b;
+		out += m_machine.memStat();
+		if(const auto* co = m_machine.coprocessor())
+		{
+			out += " | ";
+			out += co->memStat();
+		}
+		return out;
+	}
+
+	Rtos::Stop Rtos::runUntil(const double _ms, const std::function<bool()>& _stop, const Changes _changes)
+	{
+		RunSpec s;
+		s.ms = _ms;
+		s.stop = &_stop;
+		s.stopOnEvent = _changes == Changes::OnEvent;
+		s.whyGate = "the caller's condition came true";
+		s.whyTime = "time";
+		return runLoop(s);
+	}
+
+	Rtos::Stop Rtos::runToPc(const uint32_t _pc, const double _ms)
+	{
+		// O15e: a PC condition is compared inside the burst, before each
+		// instruction, where the old predicate was asked -- same instruction,
+		// same sample, and the pair has run for the instruction before it.
+		RunSpec s;
+		s.ms = _ms;
+		s.pc = _pc;
+		s.pcArmed = true;
+		s.whyGate = "the caller's condition came true";
+		s.whyTime = "time";
+		return runLoop(s);
+	}
+
+	void Rtos::wakeOnWrite(const uint32_t _addr, const uint32_t _len, bool& _armed)
+	{
+		if(_armed)
+			return;
+		_armed = true;
+		m_machine.addWriteWatch(_addr, _addr + _len - 1,
+			[this](uint32_t, uint8_t, uint32_t, uint32_t) { m_wake = true; });
+	}
+
+	Rtos::Stop Rtos::runLoop(const RunSpec& _s)
+	{
+		if(_s.needInstall && !m_installed)
 		{
 			if(m_why.empty())
 				m_why = "install() was not called";
 			return Stop::Fault;
 		}
-		const double end = m_sample + _ms * g_sampleHz / 1000.0;
-		uint64_t idleRuns = 0;
+		const double end = _s.hasEnd ? m_sample + _s.ms * g_sampleHz / 1000.0 : 1e300;
+		uint64_t idleRuns = 0, executed = 0;
+		// O15a: bursts on the plain run. O15e: on the gated run too (a burst
+		// ends the instruction the gate goes dirty), on a PC condition (the
+		// compare is inside the burst) and on a condition that changes only
+		// on an event; a condition on anything else keeps the pre-O15a loop.
+		// The pre-O15a loop for all of them is OT_BURST=0.
+		const int quantum = burstQuantum();
+		const bool bursts = quantum > 0 && (!_s.stop || _s.stopOnEvent);
+		const bool fast = burstStepFast();
+		// The three per-instruction compares the spec adds to the burst loop,
+		// hoisted: a PC that never matches (odd) when none is armed; the gate
+		// only under the gated run; the spin only while the idle skip wants
+		// its look (without the skip, main's park is stepped through like
+		// the old stepOnce loops stepped it, and breaking on it would make a
+		// burst of one instruction).
+		const uint32_t pcStop = _s.pcArmed ? _s.pc : 1u;
+		const uint32_t pcLo = _s.pcArmed ? _s.pcLo : 0u, pcHi = _s.pcArmed ? _s.pcHi : 0u;
+		const uint32_t spinLo = m_spinLo, spinHi = m_spinHi;
+		const bool gateEnds = _s.untilGate;
+		const bool spinEnds = _s.idleSkip;
+		Coprocessor* const co = m_machine.coprocessor();
+		const bool coRt = co && co->realtime();		// O17: its bank-word edge (an atomic count) ends a burst; sync() applies it
+		const bool syncCo = dspSyncAtTick() || coRt;	// the rt mode needs the sync (its edges and its posts live there)
+		m_wake = true;
 
 		while(m_sample < end)
 		{
@@ -552,37 +1038,71 @@ namespace ot
 			// instruction costs more than the emulator itself -- the first
 			// version of this loop did exactly that and looked like a hang.
 			// A create or a dispatch is the only thing that can move it.
-			if(_untilGate && m_gateDirty)
+			if(_s.untilGate && m_gateDirty)
 			{
 				m_gateDirty = false;
 				if(gate())
 				{
-					m_why = "the M6a gate passed";
+					if(_s.whyGate)
+						m_why = _s.whyGate;
 					return Stop::Gate;
 				}
 			}
-			const bool tick = m_fastEvery == 1 || ++m_fastCount >= m_fastEvery;
-			if(tick)
-				m_fastCount = 0;
-			if(tick && _stop && (*_stop)())
+			// callAsMain's budget: the old loop checked it before the PC, so
+			// a call that returns on its very last permitted instruction is
+			// still "did not return" -- kept, for the stamps' sake.
+			if(_s.budget && executed >= _s.budget)
+				return Stop::Time;
+			if(_s.pcArmed && (m_machine.pcFast() == _s.pc || (m_machine.pcFast() >= pcLo && m_machine.pcFast() < pcHi)))
 			{
-				m_why = "the caller's condition came true";
+				if(_s.whyGate)
+					m_why = _s.whyGate;
 				return Stop::Gate;
 			}
-			if(m_poll && ++m_pollCount >= m_pollEvery)
+			if(_s.stop && (*_s.stop)())
 			{
-				m_pollCount = 0;
+				if(_s.whyGate)
+					m_why = _s.whyGate;
+				return Stop::Gate;
+			}
+			// The outside world's inputs (setPoll: the --live FIFO, --midi)
+			// and the USB host's I/O, on an instruction schedule: the burst
+			// below stops at the next one, and whatever they change is
+			// delivered through an exact step (m_wake).
+			if(m_poll && m_machine.instructions() >= m_nextPoll)
+			{
+				m_nextPoll = m_machine.instructions() + m_pollEvery;
 				m_poll();
+				m_wake = true;
+			}
+			if(m_usb && m_machine.instructions() >= m_nextUsbPoll)
+			{
+				m_nextUsbPoll = m_machine.instructions() + 256;
+				m_usb->pollIo();
+				m_wake = true;
+				if(!m_usbNotify.empty())
+				{
+					const bool active = m_machine.peek32(0x460e76a0) != 0;
+					if(active != m_usbActive)
+					{
+						m_usbActive = active;
+						std::ofstream f(m_usbNotify, std::ios::app);
+						f << (active ? "attach" : "detach") << " " << m_sample << "\n";
+					}
+				}
 			}
 
-			const auto pc = m_machine.pc();
+			const auto pc = m_machine.pcFast();
 
 			// IDLE. Main parks in `bras .` and never blocks, so level 0 is
 			// never empty and there is no idle path in the kernel to model:
 			// a PC sitting there with nothing deliverable means the machine
 			// is waiting for a timer, and the clock can simply be advanced to
-			// it (route A's "idle skips").
-			if(pc == g_mainSpin && !anyPending())
+			// it (route A's "idle skips"). ⚠️ Not in the borrowed-call and
+			// wait loops (`idleSkip` false): they never skipped, and a skip
+			// lands the clock ON the expiry where stepping lands it a
+			// fraction of a sample past -- every later stamp would move.
+			if(_s.idleSkip && atSpin(pc) && !anyPending())
 			{
 				double ex;
 				if(!nextExpiry(ex))
@@ -607,18 +1127,144 @@ namespace ot
 			}
 			idleRuns = 0;
 
-			if(!stepOnce(tick))
+			if(bursts)
+			{
+				// EVENT-HORIZON BURSTS (O15a, 12 Sep 2026). tickTimers() and
+				// deliver() are pure functions of the models' state and the
+				// sample clock, so between two instructions that change
+				// neither they are no-ops -- and every way the state CAN change
+				// is either flagged (m_periphTouched, m_wake) or timed
+				// (nextEvent). So run up to `quantum` instructions with only
+				// the per-instruction port work, stopping two instructions
+				// short of the earliest timed event (and of the run's end), and
+				// call the pair once. The exact tail then steps instruction by
+				// instruction across the event, so every timer fires on the
+				// same instruction as before and every stamp -- the same
+				// `m_sample += 1/ips` in the same order -- stays bit-identical.
+				// A burst that ends early is always exact (it only calls the
+				// pair where the old loop called it too); one that ran too
+				// long would not be, which is what the horizon prevents.
+				const double lim = std::min(nextEvent(), end);
+				double nd = (lim - m_sample) * m_ips - 2.0;
+				// O17: behind the eDMA's drain gate (a completion due in the past,
+				// granted when the DSP has taken the block) the exact loop steps
+				// one instruction at a time until the gate clears, ~100 ns each --
+				// bit-exact completion timing for the lockstep modes, 18 M steps
+				// in 4 s of play. The rt mode's contract is functional: it steps
+				// the gate in bursts of 32 (the completion then lands at most 32
+				// instructions late, and any peripheral access still ends the
+				// burst), except within 32 instructions of the run's end.
+				// O17c: only for a completion HELD by the gate (its due time behind
+				// the clock); one due at the horizon lands on its instruction, as
+				// under lockstep (the drain-booked pushes, periph.h setHostDrainTime)
+				if(coRt && nd < -4.0 && m_horizonSrc == 4 && !m_wake && (end - m_sample) * m_ips > 34.0)
+					nd = 32.0;
+				if(nd > static_cast<double>(quantum))
+					nd = static_cast<double>(quantum);
+				if(_s.budget && nd > static_cast<double>(_s.budget - executed))
+					nd = static_cast<double>(_s.budget - executed);
+				if(m_poll && nd > static_cast<double>(m_nextPoll - m_machine.instructions()))
+					nd = static_cast<double>(m_nextPoll - m_machine.instructions());
+				if(m_usb && nd > static_cast<double>(m_nextUsbPoll - m_machine.instructions()))
+					nd = static_cast<double>(m_nextUsbPoll - m_machine.instructions());
+				if(m_wake || nd < 2.0)
+				{
+					// The exact step: the run's first instruction (whatever
+					// changed between runs is delivered after it, as before),
+					// and the tail across an event. m_wake is cleared BEFORE
+					// the step so a wake raised inside it is never lost.
+					++m_burstStats.exactInstr;
+					if(m_wake) ++m_burstStats.exactWake; else ++m_burstStats.exactBySrc[m_horizonSrc & 7];	// O17 diagnostic: what forced it
+					m_wake = false;
+					if(!stepOnce())
+						return Stop::Illegal;
+					++executed;
+					m_machine.takePeriphTouched();		// stepOnce handled that instruction in full
+					continue;
+				}
+				const int n = static_cast<int>(nd);
+				++m_burstStats.bursts;
+				// The ring's state can only change through the card's command
+				// register (a peripheral write: the burst ends there) or between
+				// runs, so it is asked once per burst.
+				const bool ring = m_pcRingArmed && !m_pcRing.empty();
+				int i = 0;
+				for(;;)
+				{
+					// stepOnce's per-instruction work, verbatim, minus the pair.
+					const uint32_t ipc = m_machine.pcFast();
+					// O15e: the caller's address, BEFORE the instruction -- the
+					// old loop asked its predicate at the top, after the
+					// previous instruction's pair; the pair runs at the break.
+					if(ipc == pcStop || (ipc >= pcLo && ipc < pcHi)) { ++m_burstStats.endPc; break; }
+					// Main's park: the idle skip must get its look at it before
+					// the spin is executed (the old loop checked before every
+					// instruction) -- after at least one instruction, so a park
+					// with something pending but masked still makes progress.
+					if(spinEnds && i > 0 && (ipc == g_mainSpin || (ipc >= spinLo && ipc < spinHi))) { ++m_burstStats.endSpin; break; }
+					if(ring)
+					{
+						m_pcRing[m_pcRingPos % m_pcRing.size()] = ipc;
+						++m_pcRingPos;
+					}
+					if(ipc == g_create)
+						recordCreate();
+					const bool atSchedRte = ipc == g_schedRte;
+					if(!(fast ? m_machine.stepFast() : m_machine.step()))
+					{
+						m_why = m_machine.why();
+						return Stop::Illegal;
+					}
+					m_sample += 1.0 / m_ips;
+					if(atSchedRte)
+					{
+						const auto cur = curTcb();
+						m_dispatches.push(Dispatch{m_sample, cur, m_machine.pc()});
+						m_gateDirty = true;
+						if(m_firstSwitch.first && !m_firstSwitch.second)
+							m_firstSwitch.second = cur;
+					}
+					if(!m_firstSwitch.first && ipc == g_handoff)
+						m_firstSwitch.first = curTcb();
+					++i;		// once per instruction (the prototype counted twice)
+					if(m_machine.takePeriphTouched()) { ++m_burstStats.endPeriph; break; }
+					if(m_wake) { ++m_burstStats.endWake; break; }
+					if(coRt && (i & 63) == 0 && co->edgePending()) { ++m_burstStats.endWake; break; }	// O17: the DSP's edge, applied by sync() below (asked every 64 instructions: an atomic load in the hot loop, and the lateness is the lag's)
+					// O15e: the gate went dirty on this instruction (a create
+					// or a dispatch): the pair, then the loop's top asks it.
+					if(gateEnds && m_gateDirty) { ++m_burstStats.endGate; break; }
+					if(i >= n) { ++m_burstStats.endHorizon; break; }
+				}
+				m_burstStats.burstInstr += static_cast<uint64_t>(i);
+				executed += static_cast<uint64_t>(i);
+				// O16c: a lazy pair runs its backlog HERE, where the old loop
+				// had already run it (inside each instruction's tick): before
+				// the timers and the delivery, so an edge or a drained ring
+				// due inside the burst is seen at the burst's end -- and
+				// before the clear below, as a wake the pair raised inside the
+				// burst was cleared here too (deliver() reads the latch itself).
+				if(co && syncCo)
+					co->sync();
+				m_wake = false;		// before the timers: a wake raised inside them forces an exact step next
+				tickTimers();
+				deliver();
+				continue;
+			}
+
+			if(!stepOnce())
 				return Stop::Illegal;
+			++executed;
 		}
-		m_why = "time";
+		if(_s.whyTime)
+			m_why = _s.whyTime;
 		return Stop::Time;
 	}
 
-	// One instruction and everything the loop does around it. Factored out so
-	// `callAsMain` runs against the SAME live machine -- the whole point of
-	// borrowing main rather than detouring is that interrupts and the other
-	// tasks keep running underneath the call.
-	bool Rtos::stepOnce(const bool _tick)
+	// One instruction and everything the loop does around it: the exact step
+	// (a run's first instruction, the tail across an event, OT_BURST=0). Until
+	// O15e it was also the whole of the borrowed-call and wait loops; those
+	// now go through runLoop, whose burst body is this work minus the pair.
+	bool Rtos::stepOnce()
 	{
 		const auto pc = m_machine.pc();
 		// A TRUE RING: it keeps the LAST N instructions, not the first N.
@@ -650,7 +1296,7 @@ namespace ot
 		if(atSchedRte)
 		{
 			const auto cur = curTcb();
-			m_dispatches.push_back({m_sample, cur, m_machine.pc()});
+			m_dispatches.push(Dispatch{m_sample, cur, m_machine.pc()});
 			m_gateDirty = true;
 			if(m_firstSwitch.first && !m_firstSwitch.second)
 				m_firstSwitch.second = cur;
@@ -660,30 +1306,32 @@ namespace ot
 		if(!m_firstSwitch.first && pc == g_handoff)
 			m_firstSwitch.first = curTcb();
 
-		if(_tick)
-		{
-			tickTimers();
-			deliver();
-		}
+		// O16c: the exact step syncs a lazy pair after every instruction --
+		// the pre-O16c schedule, instruction for instruction.
+		if(auto* co = m_machine.coprocessor(); co && dspSyncAtTick())
+			co->sync();
+		tickTimers();
+		deliver();
 		return true;
 	}
 
 	Rtos::Stop Rtos::runToMainSpin(const double _ms)
 	{
-		const double end = m_sample + _ms * g_sampleHz / 1000.0;
-		while(m_sample < end)
-		{
-			// ⚠️ THE PC ALONE, as route A's `until=lambda r: r.pc == MAIN_SPIN`.
-			// Requiring nothing to be pending as well never comes true once
-			// the card is live: the ATA and serial lines assert constantly,
-			// so the park never returned and the load never started.
-			if(m_machine.pc() == g_mainSpin)
-				return Stop::Gate;
-			if(!stepOnce())
-				return Stop::Illegal;
-		}
-		m_why = "never reached main's spin";
-		return Stop::Time;
+		// ⚠️ THE PC ALONE, as route A's `until=lambda r: r.pc == MAIN_SPIN`.
+		// Requiring nothing to be pending as well never comes true once
+		// the card is live: the ATA and serial lines assert constantly,
+		// so the park never returned and the load never started.
+		// O15e: the same loop, in bursts, no idle skip (it never had one:
+		// the PC at the park IS the condition), no install check (as before).
+		RunSpec s;
+		s.ms = _ms;
+		s.pc = g_mainSpin;
+		s.pcArmed = true;
+		s.pcLo = m_spinLo; s.pcHi = m_spinHi;
+		s.idleSkip = false;
+		s.needInstall = false;
+		s.whyTime = "never reached main's spin";
+		return runLoop(s);
 	}
 
 	void Rtos::mapCardMemory()
@@ -731,7 +1379,7 @@ namespace ot
 	bool Rtos::callAsMain(const uint32_t _addr, const std::vector<uint32_t>& _args, uint32_t& _d0,
 		const uint64_t _budget)
 	{
-		if(m_machine.pc() != g_mainSpin)
+		if(!atSpin(m_machine.pc()))
 		{
 			char msg[160];
 			std::snprintf(msg, sizeof msg, "callAsMain(%#x): pc is %#x, not main's spin %#x",
@@ -748,16 +1396,26 @@ namespace ot
 		m_machine.setA7(sp);
 		m_machine.setPC(_addr);
 
-		for(uint64_t n = 0; n < _budget; ++n)
+		// O15e: the return is the PC condition (the return address IS the
+		// park), the budget counts instructions as the old loop's `n` did,
+		// no idle skip, no sample end. With the card live the call is
+		// preempted constantly and the bursts run the other tasks' code
+		// underneath it exactly as the plain run would.
+		RunSpec s;
+		s.hasEnd = false;
+		s.budget = _budget;
+		s.pc = g_mainSpin;
+		s.pcArmed = true;
+		s.idleSkip = false;
+		s.needInstall = false;
+		const auto st = runLoop(s);
+		if(st == Stop::Gate)
 		{
-			if(m_machine.pc() == g_mainSpin)
-			{
-				_d0 = m_machine.getD0();
-				return true;
-			}
-			if(!stepOnce())
-				return false;
+			_d0 = m_machine.getD0();
+			return true;
 		}
+		if(st != Stop::Time)
+			return false;		// Illegal: m_why is the machine's, as stepOnce left it
 		char msg[160];
 		std::snprintf(msg, sizeof msg, "callAsMain(%#x) did not return in %llu steps",
 			_addr, static_cast<unsigned long long>(_budget));
@@ -782,11 +1440,6 @@ namespace ot
 		write(g_projectName, _project);
 	}
 
-	Rtos::Stop Rtos::runToPc(const uint32_t _pc, const double _ms)
-	{
-		return runUntil(_ms, [this, _pc] { return m_machine.pc() == _pc; });
-	}
-
 	Rtos::LoadResult Rtos::loadProjectLive(const std::string& _set, const std::string& _project,
 		const double _runMs, const double _mountMs, const bool _namesEarly)
 	{
@@ -803,10 +1456,23 @@ namespace ot
 		// Wait for the card to come READY rather than for a fixed time: the
 		// mount runs in the SYS task against real ATA commands completed
 		// through vector 0xb6.
-		const double mountEnd = m_sample + _mountMs * g_sampleHz / 1000.0;
-		while(m_sample < mountEnd && m_machine.peek32(g_cardReady) == 0)
-			if(!stepOnce())
+		// O15e: a memory condition, so the word is watched -- the store that
+		// sets it wakes the burst loop on that instruction, and the condition
+		// is asked there, as it was before every instruction. No idle skip
+		// (the old loop had none: main parks between the ATA interrupts and
+		// was stepped through), no sample stamp moves.
+		{
+			wakeOnWrite(g_cardReady, 4, m_cardReadyWatched);
+			const std::function<bool()> ready = [this] { return m_machine.peek32(g_cardReady) != 0; };
+			RunSpec s;
+			s.ms = _mountMs;
+			s.stop = &ready;
+			s.stopOnEvent = true;
+			s.idleSkip = false;
+			s.needInstall = false;
+			if(runLoop(s) == Stop::Illegal)
 				return out;
+		}
 		out.ready = m_machine.peek32(g_cardReady);
 
 		// ⚠️ WAIT FOR `sys`'S MEDIA CASE TO PASS BEFORE NAMING THE PROJECT,
@@ -820,12 +1486,29 @@ namespace ot
 		// into a measurement. Waiting for the join point makes the order a
 		// choice; `_namesEarly` takes the other one deliberately.
 		if(!_namesEarly)
+		{
 			out.mediaCaseSeen = runToPc(g_mediaCaseJoin, 2000.0) == Stop::Gate;
+			// ⚠️ 12 Sep 2026, with the DMA timers modelled: the names go in AT
+			// the join, not after main's next spin. The sys tick (DTIM1's
+			// handler posts sys command 5 at 60 Hz) is already queued behind
+			// the media case, and its startup step (0x40052200 .. `jmp
+			// 0x400256b8` at 0x4007ec5a) is the firmware's own "mount the
+			// last set": it reads g_setName ~7,500 instructions after the
+			// case ends. Empty, it opens "NO SET IS MOUNTED! PLEASE MOUNT
+			// ONE." and the CHOOSE A SET browser (measured: 0x400256ce, then
+			// 0x400116aa with a 75x41 box); named, it mounts the set
+			// (0x400255ec) and nothing pops. The media case's own reload
+			// check has passed by then, so the load is still the one posted
+			// below (1 pass of 0x400907da); the set mount itself now reads the
+			// card as the firmware does: 10285 ATA commands / 42926 sectors per
+			// boot where the old order read 5395 / 22714, ~16 s more wall.
+			// Before the timers that tick never came and the order did not
+			// matter; `setNames` is plain memory writes and needs no spin.
+			setNames(_set, _project);
+		}
 
 		if(runToMainSpin() != Stop::Gate)
 			return out;
-		if(!_namesEarly)
-			setNames(_set, _project);
 		// Route A's own watch: the engine's BANK= parse is the write to
 		// PART_PTR made at 0x40087d44, and it is the ONLY thing that tells
 		// the saved bank apart from every other writer of that word (`sys`'s
@@ -859,11 +1542,54 @@ namespace ot
 		// A generous budget: with the card live the borrowed call is preempted
 		// constantly, so the step count is dominated by the OTHER tasks
 		// running underneath it, not by the call itself.
+		m_machine.countPc(g_loadHandler);
 		out.posted = callAsMain(g_postLoad, {g_projectName}, d0, 200000000);
 		if(!out.posted)
 			out.postWhy = m_why;
-		out.stop = run(_runMs, false);
-		if(out.stop != Stop::Time)
+		// Run until the engine has taken LOAD PROJECT and is next at its
+		// queue receive with nothing queued (g_engineQueue), within the
+		// budget. The handler
+		// is usually entered while the borrowed post call is still stepping
+		// (the scheduler runs every task underneath it), so its entry is
+		// counted from before the post rather than waited for.
+		const double postSample = m_sample;
+		double left = _runMs;
+		for(;;)
+		{
+			out.stop = runToPc(g_engineReceive, left);
+			if(out.stop != Stop::Gate)
+				break;
+			if(m_machine.pcCount() > 0 && m_machine.peek32(g_engineQueue + 4) == 0)
+			{
+				out.handledMs = (m_sample - postSample) / g_sampleHz * 1000.0;
+				out.handledInstr = m_machine.instructions();
+				break;
+			}
+			// Another command is queued (or this pass was not the load's): step
+			// off the receive and wait for the next pass.
+			if(!stepOnce())
+			{
+				out.stop = Stop::Illegal;
+				break;
+			}
+			left = _runMs - (m_sample - postSample) / g_sampleHz * 1000.0;
+			if(left <= 0.0)
+			{
+				out.stop = Stop::Time;
+				break;
+			}
+		}
+		out.handlerEntered = m_machine.pcCount() > 0;
+		m_machine.countPc(1);
+		// Park where the fixed-budget run used to leave the machine: the
+		// engine blocked in its receive and main at its spin, which the
+		// borrowed calls that follow (--call, the sequencer branch) require.
+		if(out.stop == Stop::Gate && runToMainSpin() != Stop::Gate)
+		{
+			out.stop = Stop::Fault;
+			out.stopWhy = m_why;
+		}
+		if(out.stop != Stop::Time && out.stop != Stop::Gate)
 			out.stopWhy = m_why;
 		out.partPtr = m_machine.peek32(g_partPtr);
 		out.savedBank = m_savedBank;
@@ -876,6 +1602,8 @@ namespace ot
 	void Rtos::setFrame(const bool _on)
 	{
 		m_frame = _on;
+		if(auto* co = m_machine.coprocessor())
+			co->setFrameClock(_on);		// O17b: the rt mode's fence applies only while frames are taken
 		// Route A's `rt.next_frame = rt.sample + FRAME_PERIOD`: the first
 		// boundary is one period from HERE, not from a clock that has been
 		// running since the boot. Route A also switches to its exact
@@ -893,6 +1621,7 @@ namespace ot
 			return;
 		co->setHostWordHook(_on ? std::function<bool(int)>([this](int)
 		{
+			m_wake = true;		// O15a: a frame edge the horizon could not see
 			if(!m_frame)
 			{
 				m_dspEdgeLatched = true;		// delivered the moment the frame clock comes on
@@ -914,10 +1643,16 @@ namespace ot
 		uint32_t d0 = 0;
 		if(!postMessage(g_sysQueue, g_sysMsgScratch, d0))
 			return m_machine.read8(g_curBank);
-		const double end = m_sample + _ms * g_sampleHz / 1000.0;
-		while(m_sample < end && m_machine.read8(g_curBank) != (_bank & 0xff))
-			if(!stepOnce())
-				break;
+		// O15e: watched, in bursts, no idle skip -- see loadProjectLive's wait.
+		wakeOnWrite(g_curBank, 1, m_curBankWatched);
+		const std::function<bool()> switched = [this, _bank] { return m_machine.read8(g_curBank) == (_bank & 0xff); };
+		RunSpec s;
+		s.ms = _ms;
+		s.stop = &switched;
+		s.stopOnEvent = true;
+		s.idleSkip = false;
+		s.needInstall = false;
+		runLoop(s);
 		return m_machine.read8(g_curBank);
 	}
 
@@ -1019,10 +1754,16 @@ namespace ot
 		uint32_t d0 = 0;
 		if(!postMessage(g_sysQueue, g_sysMsgScratch, d0))
 			return m_machine.peek32(g_mainGainTable);
-		const double end = m_sample + _ms * g_sampleHz / 1000.0;
-		while(m_sample < end && m_machine.peek32(g_mainGainTable) == 0)
-			if(!stepOnce())
-				break;
+		// O15e: watched, in bursts, no idle skip -- see loadProjectLive's wait.
+		wakeOnWrite(g_mainGainTable, 4, m_gainTableWatched);
+		const std::function<bool()> filled = [this] { return m_machine.peek32(g_mainGainTable) != 0; };
+		RunSpec s;
+		s.ms = _ms;
+		s.stop = &filled;
+		s.stopOnEvent = true;
+		s.idleSkip = false;
+		s.needInstall = false;
+		runLoop(s);
 		runToMainSpin();
 		return m_machine.peek32(g_mainGainTable);
 	}
@@ -1037,10 +1778,7 @@ namespace ot
 
 	std::unordered_set<uint32_t> Rtos::ran() const
 	{
-		std::unordered_set<uint32_t> out;
-		for(const auto& d : m_dispatches)
-			out.insert(d.tcb);
-		return out;
+		return m_dispatches.ran();
 	}
 
 	bool Rtos::gate(std::vector<std::string>* _problems) const
@@ -1182,6 +1920,7 @@ namespace ot
 
 		f << " \"gate_ms\": " << ms() << ",\n";
 		f << " \"pit0_fired\": " << pit0Fired() << ",\n";
+		f << " \"dtim1_fired\": " << dtimFired(1) << ", \"dtim2_fired\": " << dtimFired(2) << ",\n";
 		// THE SERIAL STREAM, not its length -- see route A's golden writer and
 		// the O5 section of COLDFIRE_PORT.md. ⚠️ The COUNT tracks the `ips`
 		// knob (5731 at 3900/3990, 4831 at 4100/4200/4300) because the

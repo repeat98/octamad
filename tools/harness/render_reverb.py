@@ -83,9 +83,9 @@ SR = 44100
 FRAMES = 16              # the firmware's frame (the harness's own cap is 15: the & 0xf
 WARMUP_BLOCKS = 260      # the engine stays dry for 256 CALLS; pad past it and trim
 
-PARAMS = [("SEND", 64), ("TIME", 64), ("SIZE", 127), ("SHMR", 0), ("SHFT", 0),
+PARAMS = [("DEL", 0), ("REV", 64), ("SIZE", 127), ("SHMR", 0), ("SHFT", 3),
           ("WET", 127), ("_C", 0), ("TONE", 64), ("DIFF", 64), ("_9", 0),
-          ("GATE", 0), ("_11", 0)]   # the 16 Sep 2026 layout: TIME-SIZE, SHMR-SHFT linked; TONE on page 2
+          ("GATE", 0), ("TIME", 64)]   # 26 Sep 2026: DEL / REV on slots 0 / 1 (REV was SEND on 0), TIME on slot 11
 NAMES = {n: i for i, (n, _) in enumerate(PARAMS)}
 # _C (index 6) is MODE's slot; --mode owns it, so no knob.
 KNOBS = ", ".join(n for n, _ in PARAMS if n != "_C")
@@ -300,7 +300,7 @@ def _guarded(mem):
     try:
         sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
         from remix import registry
-        r = registry.remix(os.environ.get("REMIX") or registry.DEFAULT_REMIX)
+        r = registry.remix(os.environ.get("REMIX"))
         return "REVERB SERVER" in r.hidden
     except Exception:
         return False
@@ -332,7 +332,7 @@ def entry_points(mem_path):
     init, proc = found.get(INIT_TAB + REVERB_ID), found.get(PROC_TAB + REVERB_ID)
     if init is None or proc is None:
         die(f"no dispatch table in {mem_path.name} -- cannot locate the engine")
-    if not 0 < init < 0x20000 or proc != init + 1:
+    if not (0 < init < 0x20000 and 0 < proc < 0x20000):
         die(f"implausible reverb entry points in {mem_path.name}: "
             f"init 0x{init:05x} proc 0x{proc:05x}")
     return init, proc

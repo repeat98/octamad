@@ -1,0 +1,125 @@
+# Motorola/Freescale DSP56300 family (DSP56301/303/311/321/362/367/371/372/374/721 ...)
+#
+# 24-bit word machine with three memory spaces:
+#   P  program memory       (instructions, 1 or 2 words each)
+#   X  data memory
+#   Y  data memory
+# All three are word addressed (one address = one 24-bit word).  Words are
+# stored little-endian, three bytes per word, in the loaded image.
+#
+# The hardware system stack (SSH:SSL pairs) is modelled as its own space, SS,
+# addressed in bytes by the internal register 'ssp' (= 6 * SP).  JSR/RTS and
+# DO/ENDDO push and pop through it, which lets the decompiler treat loop
+# save/restore and return addresses as ordinary stack traffic.
+#
+# Arithmetic is modelled with scaling mode "no scaling" and the data limiter
+# expressed as the user-ops sat24/sat48.  Address register updates are
+# linear (Mn = $FFFFFF); see the AGU_MODULO define for modulo/bit-reverse.
+
+define endian=little;
+define alignment=3;
+
+define space P        type=ram_space      size=3 wordsize=3 default;
+define space X        type=ram_space      size=3 wordsize=3;
+define space Y        type=ram_space      size=3 wordsize=3;
+define space SS       type=ram_space      size=2;
+define space register type=register_space size=4;
+
+# ---------------------------------------------------------------- registers
+# Data ALU input registers: x = x1:x0, y = y1:y0 (little-endian register file)
+define register offset=0x00 size=3 [ x0 x1 y0 y1 ];
+define register offset=0x00 size=6 [ x _ y ];
+
+# Accumulators a = a2:a1:a0 (8:24:24 = 56 bits), a10 = a1:a0
+define register offset=0x10 size=3 [ a0 a1 ];
+define register offset=0x16 size=1 [ a2 ];
+define register offset=0x10 size=7 [ a ];
+define register offset=0x10 size=6 [ a10 ];
+define register offset=0x18 size=3 [ b0 b1 ];
+define register offset=0x1e size=1 [ b2 ];
+define register offset=0x18 size=7 [ b ];
+define register offset=0x18 size=6 [ b10 ];
+
+# AGU
+define register offset=0x20 size=3 [ r0 r1 r2 r3 r4 r5 r6 r7 ];
+define register offset=0x38 size=3 [ n0 n1 n2 n3 n4 n5 n6 n7 ];
+define register offset=0x50 size=3 [ m0 m1 m2 m3 m4 m5 m6 m7 ];
+
+# Program control unit
+define register offset=0x68 size=3 [ pc sr omr la lc vba sc sz ep ];
+define register offset=0x88 size=2 [ ssp ];
+
+# Condition code register bits, kept apart from sr so that the decompiler can
+# follow them individually.  sr holds the MR/EMR bits.
+define register offset=0x90 size=1 [ C V Z N U E L S ];
+
+# Internal temporaries used to sequence parallel instructions
+define register offset=0xa0 size=3 [ mv1 mv2 rep_lc ];
+define register offset=0xb0 size=7 [ alu_r ];
+define register offset=0xb8 size=1 [ alu_c alu_v ];
+
+define register offset=0x100 size=4 contextreg;
+define context contextreg
+  lbot  = (0,0) noflow     # this address is the last word of a DO loop
+  lfor  = (1,1) noflow     #   ... of a DO FOREVER loop
+  rpt   = (2,2) noflow     # this instruction is repeated by a preceding REP
+  lbot2 = (3,3) noflow     # LA-1: the loop may end with a two-word instruction here
+  lfor2 = (4,4) noflow
+  ltop  = (8,31) noflow    # loop start address for lbot/lbot2
+;
+
+define pcodeop sat24;      # data limiter: 56-bit accumulator -> 24-bit word
+define pcodeop sat48;      # data limiter: 56-bit accumulator -> 48-bit long word
+define pcodeop rnd56;      # convergent/two's complement rounding per SR.RM
+define pcodeop div_step;   # one iteration of DIV
+define pcodeop norm_step;  # NORM Rn,D
+define pcodeop normf;      # NORMF S,D
+define pcodeop clb;        # count leading bits
+define pcodeop agu_modulo; # modulo / reverse-carry address update
+define pcodeop halt_stop;
+define pcodeop halt_wait;
+define pcodeop reset_peripherals;
+define pcodeop software_interrupt;
+define pcodeop debug_request;
+define pcodeop cache_control;
+define pcodeop illegal_instruction;
+
+# ------------------------------------------------------------------ helpers
+macro packSR(v) {
+	v = (sr & 0xffff00) | zext(C) | (zext(V) << 1) | (zext(Z) << 2) | (zext(N) << 3)
+	    | (zext(U) << 4) | (zext(E) << 5) | (zext(L) << 6) | (zext(S) << 7);
+}
+
+macro unpackCCR(v) {
+	C = (v & 1) != 0;  V = (v & 2) != 0;  Z = (v & 4) != 0;  N = (v & 8) != 0;
+	U = (v & 0x10) != 0; E = (v & 0x20) != 0; L = (v & 0x40) != 0; S = (v & 0x80) != 0;
+}
+
+macro unpackSR(v) {
+	unpackCCR(v);
+	sr = v & 0xffff00;
+}
+
+# N, Z, E, U from a 56-bit result (no scaling)
+macro nzeu(r) {
+	N = r s< 0;
+	Z = r == 0;
+	local ext:7 = r s>> 47;
+	E = (ext != 0) && (ext != 0xffffffffffffff);
+	U = ((r >> 47) & 1) == ((r >> 46) & 1);
+}
+
+# N, Z from bits 47..24 (logical operations on a1/b1)
+macro nz24(r) {
+	N = r s< 0;
+	Z = r == 0;
+	V = 0;
+}
+
+# 24-bit fraction aligned into the 56-bit accumulator format
+macro fr56(dst, s) {
+	local t:7 = sext(s);
+	dst = t << 24;
+}
+
+@include "dsp56300.sinc"

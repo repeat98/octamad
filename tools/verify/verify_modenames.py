@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """The MODE formatter really does rename its neighbours -- CALLED, not read.
 
-    python3 tools/verify/verify_modenames.py [remix]      (default: bamsep26)
+    python3 tools/verify/verify_modenames.py [remix]      
 
-verify_labels' method (PLAN §6), one step further. That file calls each
+verify_labels' method, one step further. That file calls each
 select's formatter on the emulated ColdFire and compares what it PRINTED with
 the manifest, because the words are printed rather than stored. A MODE view
 also REWRITES the descriptor, so this calls the formatter with each mode value
@@ -13,7 +13,7 @@ What it proves, without a flash:
   * every mode's names land in the right slots of the right descriptor;
   * a mode that does NOT rename a slot RESTORES the Param's own name -- the
     trap a sparse table would leave (land on GRAIN, go back to CLEAN, and the
-    knob still reads SCAT);
+    knob still reads SCTR);
   * an out-of-range mode value (a part stores a raw byte) clamps to mode 0
     rather than indexing off the end of the table.
 
@@ -38,7 +38,7 @@ NAME_LEN = 6
 def main():
     from remix import registry
     import mode_names
-    name = sys.argv[1] if len(sys.argv) > 1 else "bamsep26"
+    name = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("REMIX")
     env = {**os.environ, "REMIX": name, "XBUS": "1", "SPEC": "1"}
     r = subprocess.run([sys.executable, "tools/build/build_bus.py"],
                        capture_output=True, text=True, env=env)
@@ -46,11 +46,15 @@ def main():
         tail = (r.stdout + r.stderr).strip().splitlines()
         sys.exit(f"{name}: build failed: {tail[-1] if tail else '?'}")
     # the clone addresses, from the build's own report
-    clones = {}
+    clones, targets = {}, {}
     for line in r.stdout.splitlines():
         m = re.match(r"\s+(.+?)\s+id 0x[0-9a-f]+\s+clone P=0x([0-9a-f]+)", line)
         if m:
             clones[m.group(1).strip()] = int(m.group(2), 16)
+        # a host_slots module's MODE cave renames the screen's own table
+        m = re.match(r"\s+(.+?) MODE renames -> \w+ 0x([0-9a-f]+)", line)
+        if m:
+            targets[m.group(1).strip()] = int(m.group(2), 16)
     img = IMAGE.read_bytes()
 
     def rd32(a):
@@ -99,11 +103,23 @@ def main():
             continue
         fmt = rd32(desc + 0x0ca + slot * 4)
         labels = mod.params[slot].labels
+        nhost = dict(remix.host_slots).get(key)
+        knob = ([(p.name or b"") if i < nhost else b"" for i, p in enumerate(mod.params)]
+                if nhost is not None else None)
+        if knob is not None and key not in targets:
+            print(f"  [FAIL] {key}: host_slots, but the build reported no rename target")
+            fails += 1
+            continue
+        table = targets[key] if knob is not None else desc + NAMES_AT
+
+        def page_names():
+            return [bytes(uc.mem_read(desc + NAMES_AT + s * NAME_LEN, NAME_LEN)).split(b"\0")[0]
+                    for s in range(12)]
 
         def names_now():
             out = {}
             for slot in range(12):
-                a = desc + NAMES_AT + slot * NAME_LEN
+                a = table + slot * NAME_LEN
                 raw = bytes(uc.mem_read(a, NAME_LEN))
                 out[slot] = raw.split(b"\0")[0].decode("latin1")
             return out
@@ -137,6 +153,16 @@ def main():
                 shown = " ".join(f"{sl}:{got[sl]}" for sl in sorted(want[value]))
                 print(f"  [PASS] {key} slot {slot} value {value} ({labels[value]:<5}) "
                       f"names {shown}")
+        if knob is not None:
+            got = page_names()
+            checked += 1
+            if got != knob:
+                fails += 1
+                print(f"  [FAIL] {key}: after every MODE value the host page's names are "
+                      + " ".join(n.decode('latin1') or '-' for n in got))
+            else:
+                print(f"  [PASS] {key}: the host page still reads {' '.join(n.decode('latin1') for n in knob if n)} alone "
+                      f"(the renames went to 0x{table:08x})")
         # a part stores a RAW byte, so a value past the count must clamp
         emu._call(uc, fmt, (BUF, 200))
         got = names_now()

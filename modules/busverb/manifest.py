@@ -4,7 +4,7 @@ Clones DARK REV's descriptor. Every slot states its name, including the ones
 the donor already carries, because the harness reads these names.
 """
 
-from remix.schema import (BusRole, Claims, YBase, DspSection, Formatter,
+from remix.schema import (Gate, Category, Proof, BusRole, Claims, YBase, DspSection, Formatter,
                           Harness, Kind, MenuEntry, Module, Param)
 
 _PLAIN = Formatter.PLAIN
@@ -30,14 +30,14 @@ RECIP_WORDS = len(_RECIP)             # 8 -- `move #8,n5` in the engine
 _MODE_SLOTS = (
     0x1e,   # k_mode: the TIME law's mode constant
     0x20,   # wet gain/2 (BIG carries its own -3 dB trim)
-    0x74, 0x75, 0x76, 0x77,   # lines 0-3 taps as fractions of the 4096-word line
+    0x00, 0x01, 0x02, 0x03,   # lines 0-3 taps as fractions of the 4096-word line
     0x6f,   # tap scale: SIZE moves within a character rather than replacing it
     0x3f,   # diffusion offset, added to DIFF's span
     0x72,   # damping scale: multiplies the TONE-derived coefficient; smaller = darker
     0x73,   # mod depth scale: only ever scales down, BIG sits at unity
-    0x7a,   # wet high-cut coefficient
+    0x04,   # wet high-cut coefficient
     0x6c,   # lines 4-7 tap scale, the interleave (not $0c: that is the bus gain)
-    0x7e, 0x7f, 0x80, 0x81,   # input diffuser taps 641/1051/1511/1949 as 2048-tap
+    0x05, 0x06, 0x07, 0x3e,   # input diffuser taps 641/1051/1511/1949 as 2048-tap
     0x2f,   # MODE's LFO RATE scale (1.0 for all three)
 )
 _MODE_ROWS = {
@@ -79,6 +79,8 @@ MODULE = Module(
     name="busverb",
     key="REVERB SERVER",
     kind=Kind.DSP_EFFECT,
+    category=Category.BUS, author="sambanks", author_url="https://github.com/sambanks",
+    proof=Proof.HARDWARE, proof_note="Sam's MKII",
     doc="Eight-line FDN reverb: ROOM/PLATE/BIG, shimmer, gate, mid/side width.",
     menu=MenuEntry(
         fx2_id=0x07,
@@ -89,37 +91,38 @@ MODULE = Module(
     ),
     params=(
         # ---- page 1 -------------------------------------------------------
-        # SEND at slot 0 on every track, hosts included: the host's own dry
-        # send into the aux. Default 0 is load-bearing: a non-zero default
-        # registers every idle host as a client and dilutes the real senders
-        # (-6.02 dB with one sender).
-        Param(b"SEND", 0, active=True, formatter=_PLAIN,
-              doc="this track's send into the one aux bus (delay, then reverb; the wet on each host)"),
-        # ---- page 1 (16 Sep 2026): TIME-SIZE and SHMR-SHFT are drawn as
-        # linked pairs; TONE moved to page 2.
-        Param(b"TIME", 64, active=True, formatter=_PLAIN,
-              doc="decay time -- how long the tail rings"),
-        Param(b"SIZE", 100, active=True, formatter=_PLAIN, link=True,
+        # DEL / REV on slots 0 / 1, SEND's layout (26 Sep 2026): the host
+        # page draws these two and nothing else; the rest is the TEMPO
+        # window's. DEL is this host's own dry send into the delay's aux; REV
+        # its dry send into the REV accumulator (slot 0 until 26 Sep 2026).
+        # Default 0 is load-bearing: a non-zero default registers every idle
+        # host as a client and dilutes the real senders (-3.0 dB with one
+        # sender under the 1/sqrt(N) law, XBUS.md).
+        Param(b"DEL", 0, active=True, formatter=_PLAIN,
+              doc="this host's own send into the delay"),
+        Param(b"REV", 0, active=True, formatter=_PLAIN,
+              doc="this host's own send into the reverb (the REV bus)"),
+        # SHMR-SHFT are drawn as a linked pair; TIME moved to page-2 slot 11.
+        Param(b"SIZE", 100, active=True, formatter=_PLAIN,
               doc="room size -- scales the eight tank lines (taps up to ~89 ms)"),
         # SHMR 0 is bit-identical to the engine without shimmer (the tank
         # modulation is pinned at MOD 30 / RATE 1x inside the engine).
         Param(b"SHMR", 0, active=True, formatter=_PLAIN,
               doc="shimmer -- pitch-shifted regeneration in the tail; 0 = off"),
         # SHFT selects the shimmer interval; width is pinned wide.
-        Param(b"SHFT", 0, 4, active=True, formatter=_STEP, link=True,
-              labels=("+12", "+19", "+7", "-12"),
-              doc="shimmer interval in semitones -- heard once SHMR is up"),
-        # WET: the reverb's level. The tank hears the chain input (the
-        # delay's output while the delay is live, else the aux); the host
-        # prints wet*WET under its own dry.
+        Param(b"SHFT", 3, 6, active=True, formatter=_STEP, link=True,
+              labels=("-12", "+5", "+7", "+12", "+19", "+24"),
+              doc="shimmer interval, -12 +5 +7 +12 +19 +24; heard once SHMR is up"),
+        # WET: the reverb's level. The tank hears the REV sends plus the
+        # delay's repeats x DLY; the host prints wet*WET under its own dry.
         Param(b"WET", 127, active=True, formatter=_PLAIN,
               doc="the reverb's level on this host (127 = the wet at +6 dB)"),
         # ---- page 2 ---------------------------------------------------------
         # MODE on slot 6: an even slot is the one the panel's page-2 knob
         # editor writes (docs/firmware/MAINMENU.md 9c-ii); the DSP reads $c's
         # KNOB field (bits 16-23). PLATE by default; the three wet levels sit
-        # within 2 dB (ROOM -16.9, PLATE -19.1, BIG -19.0 dBFS at defaults,
-        # SEND 100).
+        # within 2 dB (ROOM -10.9, PLATE -13.1, BIG -13.0 dBFS at defaults,
+        # SEND 100, README.md).
         Param(b"MODE", 1, 3, active=True, formatter=_STEP,
               labels=("ROOM", "PLATE", "BIG"),
               doc="voicing: ROOM / PLATE / BIG; BIG clips first"),
@@ -134,7 +137,14 @@ MODULE = Module(
         # GATE on slot 9 ($d's companion field): page 2 fills from the top left
         Param(b"GATE", 0, 128, active=True, formatter=_PLAIN,
               doc="gated-reverb hold -- higher holds longer; the useful range is low (8-20)"),
-        _BLANK, _BLANK,
+        # DLY on slot 10 ($e's KNOB field): published to y:$982, read by the
+        # delay, which writes wet*DLY into the chain.
+        Param(b"DLY", 127, 128, active=True, formatter=_PLAIN,
+              doc="how much of the delay's repeats go into the reverb; 0 = the two in parallel"),
+        # TIME on slot 11, $e's companion field (page-1 slot 1 until 26 Sep
+        # 2026).
+        Param(b"TIME", 64, 128, active=True, formatter=_PLAIN,
+              doc="decay time -- how long the tail rings"),
     ),
     mode_slot=6,                      # MODE names itself (ROOM / PLATE / BIG)
     dsp=DspSection(
@@ -156,4 +166,8 @@ MODULE = Module(
     # memory there on the same core.
     claims=Claims(owns_fx2_buffers=True),
     harness=Harness(layout_char="R", is_server=True),
+    # the bus's two-core and one-aux gates (shared with BusDelay; run once)
+    gates=(Gate('tools/verify/verify_twocore.py', remix_arg=False),
+           Gate('tools/verify/verify_onebus.py', remix_arg=False)),
+    dear={'REV': 100, 'MODE': 2, 'SHMR': 127, 'DIFF': 127, 'GATE': 0, 'WET': 127},
 )

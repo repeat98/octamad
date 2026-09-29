@@ -72,7 +72,7 @@ by 127, by ear).
 - **DRV / SAT** — DRV 0 is bit-exact, no saturation stage at all. SAT picks
   TAPE (JClones TapeHead), TUBE (DaTube) or INFL (OInflator). ✅ TAPE's
   drive law voiced live: unity plus a gentle lift ("drv sounds great").
-- **FOLD** — WarpFold's wavefolder, 1× to 48× into the fold at a held level.
+- **FOLD** — a wrap-and-reflect wavefolder, 1× to 48× into the fold at a held level.
 - **TONE** — a tilt after the saturator in every mode, drawn −64..+63: 0
   flat and bit-exact, + bright, − dark: +3.5 dB above / −6 dB below the
   1.2 kHz pivot at 127, the mirror at 0 (the tilt's own law).

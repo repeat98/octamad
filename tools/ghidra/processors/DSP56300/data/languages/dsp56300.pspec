@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- DSP56300 core.  Only the core's own I/O (interrupt priority, PLL, bus
+     control, DMA) is named here; on-chip peripherals (HI08, ESAI, SHI, timers)
+     differ between family members and belong to the program being analysed. -->
+<processor_spec>
+  <programcounter register="pc"/>
+  <data_space space="X"/>
+  <volatile outputop="write_volatile" inputop="read_volatile">
+    <range space="X" first="0xffff80" last="0xffffff"/>
+    <range space="Y" first="0xffff80" last="0xffffff"/>
+  </volatile>
+  <default_symbols>
+    <symbol name="VEC_RESET"          address="P:000000" entry="true"/>
+    <symbol name="VEC_STACK_ERROR"    address="P:000002"/>
+    <symbol name="VEC_ILLEGAL"        address="P:000004"/>
+    <symbol name="VEC_DEBUG"          address="P:000006"/>
+    <symbol name="VEC_TRAP"           address="P:000008"/>
+    <symbol name="VEC_NMI"            address="P:00000a"/>
+
+    <symbol name="M_IPRC" address="X:ffffff"/>
+    <symbol name="M_IPRP" address="X:fffffe"/>
+    <symbol name="M_PCTL" address="X:fffffd"/>
+    <symbol name="M_OGDB" address="X:fffffc"/>
+    <symbol name="M_BCR"  address="X:fffffb"/>
+    <symbol name="M_DCR"  address="X:fffffa"/>
+    <symbol name="M_AAR0" address="X:fffff9"/>
+    <symbol name="M_AAR1" address="X:fffff8"/>
+    <symbol name="M_AAR2" address="X:fffff7"/>
+    <symbol name="M_AAR3" address="X:fffff6"/>
+    <symbol name="M_IDR"  address="X:fffff5"/>
+    <symbol name="M_DSTR" address="X:fffff4"/>
+    <symbol name="M_DOR0" address="X:fffff3"/>
+    <symbol name="M_DOR1" address="X:fffff2"/>
+    <symbol name="M_DOR2" address="X:fffff1"/>
+    <symbol name="M_DOR3" address="X:fffff0"/>
+    <symbol name="M_DSR0" address="X:ffffef"/>
+    <symbol name="M_DDR0" address="X:ffffee"/>
+    <symbol name="M_DCO0" address="X:ffffed"/>
+    <symbol name="M_DCR0" address="X:ffffec"/>
+    <symbol name="M_DSR1" address="X:ffffeb"/>
+    <symbol name="M_DDR1" address="X:ffffea"/>
+    <symbol name="M_DCO1" address="X:ffffe9"/>
+    <symbol name="M_DCR1" address="X:ffffe8"/>
+    <symbol name="M_DSR2" address="X:ffffe7"/>
+    <symbol name="M_DDR2" address="X:ffffe6"/>
+    <symbol name="M_DCO2" address="X:ffffe5"/>
+    <symbol name="M_DCR2" address="X:ffffe4"/>
+    <symbol name="M_DSR3" address="X:ffffe3"/>
+    <symbol name="M_DDR3" address="X:ffffe2"/>
+    <symbol name="M_DCO3" address="X:ffffe1"/>
+    <symbol name="M_DCR3" address="X:ffffe0"/>
+    <symbol name="M_DSR4" address="X:ffffdf"/>
+    <symbol name="M_DDR4" address="X:ffffde"/>
+    <symbol name="M_DCO4" address="X:ffffdd"/>
+    <symbol name="M_DCR4" address="X:ffffdc"/>
+    <symbol name="M_DSR5" address="X:ffffdb"/>
+    <symbol name="M_DDR5" address="X:ffffda"/>
+    <symbol name="M_DCO5" address="X:ffffd9"/>
+    <symbol name="M_DCR5" address="X:ffffd8"/>
+  </default_symbols>
+</processor_spec>

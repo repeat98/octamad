@@ -122,7 +122,7 @@ def sweep(a):
         tracks = f"T1={a.station}+SEND"
     else:
         tracks = f"{ttrack}={a.station},{stem_track}=SEND"
-    sets = [] if tgt == "T1:FX1" or a.tracks else ["--set", f"{stem_track}:SEND=100"]
+    sets = [] if tgt == "T1:FX1" or a.tracks else ["--set", f"{stem_track}:DEL=100", "--set", f"{stem_track}:REV=100"]
     for fx in a.fixed:
         sets += ["--set", f"{ttrack}:{tfx}:{fx}"]
     rendered = []
@@ -199,7 +199,7 @@ def main():
     s.add_argument("--target", default="T1:FX1", help="which track/slot carries the module (T5:FX2 for an engine)")
     s.add_argument("--stem-track", help="which track the stem feeds (default: the target; for an engine a SEND at AUX 100)")
     s.add_argument("--image", default="out/mainos_bus.bin")
-    s.add_argument("--remix", default=os.environ.get("REMIX", "bamsep26"))
+    s.add_argument("--remix", default=os.environ.get("REMIX"))
     s.add_argument("--seconds", type=float)
     s.add_argument("--tail", type=float, default=1.0)
     s.add_argument("--no-match", action="store_true")

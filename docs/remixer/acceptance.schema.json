@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OctaBAM local acceptance report v2",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "remix",
+    "status",
+    "started_at",
+    "validation_level",
+    "hardware_validated",
+    "limitations",
+    "gates",
+    "provenance",
+    "modules",
+    "fixtures",
+    "measurements"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "remix": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "running",
+        "passed",
+        "blocked",
+        "failed"
+      ]
+    },
+    "started_at": {
+      "type": "string"
+    },
+    "finished_at": {
+      "type": "string"
+    },
+    "validation_level": {
+      "const": "local-emulator"
+    },
+    "hardware_validated": {
+      "const": false
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "gates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/gate"
+      }
+    },
+    "provenance": {
+      "type": "object"
+    },
+    "modules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "kind"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "manifest_sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "fixtures": {
+      "type": "object"
+    },
+    "parameters": {
+      "type": "object"
+    },
+    "measurements": {
+      "type": "object"
+    }
+  },
+  "$defs": {
+    "gate": {
+      "type": "object",
+      "required": [
+        "name",
+        "status"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "blocked",
+            "not_applicable",
+            "not_run"
+          ]
+        },
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exit_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "duration_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "log": {
+          "type": "string"
+        },
+        "stdout": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "skips": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "not_applicable": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "passed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "gates": {
+            "items": {
+              "properties": {
+                "status": {
+                  "enum": [
+                    "passed",
+                    "not_applicable"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "finished_at"
+        ]
+      }
+    }
+  ]
+}

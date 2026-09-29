@@ -24,6 +24,9 @@ __pycache__/
 *.pyc
 tools/hw/rec
 tools/hw/tone
+# the same two binaries at their pre-10-Sep path, still on some checkouts
+tools/rec
+tools/tone
 
 # the stock OS download (a symlink to it in a worktree was once committed)
 downloads

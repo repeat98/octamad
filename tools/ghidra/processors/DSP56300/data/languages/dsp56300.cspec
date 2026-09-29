@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- DSP56300 code is mostly hand-written assembly: arguments and results live
+     in whatever registers the author chose.  The default prototype therefore
+     lists the data ALU and AGU registers as possible inputs, the accumulators
+     as outputs, and treats everything except the hardware stack pointer as
+     clobbered by a call.  The hardware system stack (SSH:SSL pairs) is the
+     SS space; JSR pushes one 6-byte entry (return address, SR). -->
+<compiler_spec>
+  <data_organization>
+    <absolute_max_alignment value="0" />
+    <machine_alignment value="1" />
+    <default_alignment value="1" />
+    <default_pointer_alignment value="1" />
+    <pointer_size value="3" />
+    <char_size value="1" />
+    <short_size value="3" />
+    <integer_size value="3" />
+    <long_size value="6" />
+    <long_long_size value="6" />
+    <float_size value="6" />
+    <double_size value="6" />
+    <long_double_size value="6" />
+    <!-- Every object is a whole number of 3-byte words; without this map a
+         3-byte type is padded to 4 bytes and pointer arithmetic over word
+         addresses never converges. -->
+    <size_alignment_map>
+      <entry size="1" alignment="1" />
+      <entry size="2" alignment="1" />
+      <entry size="3" alignment="1" />
+      <entry size="4" alignment="1" />
+      <entry size="6" alignment="1" />
+      <entry size="8" alignment="1" />
+    </size_alignment_map>
+  </data_organization>
+  <global>
+    <range space="P"/>
+    <range space="X"/>
+    <range space="Y"/>
+  </global>
+  <stackpointer register="ssp" space="SS" growth="positive"/>
+  <returnaddress>
+    <varnode space="SS" offset="3" size="3"/>
+  </returnaddress>
+  <default_proto>
+    <prototype name="__asmcall" extrapop="-6" stackshift="-6" strategy="register">
+      <input>
+        <pentry minsize="1" maxsize="7"><register name="a"/></pentry>
+        <pentry minsize="1" maxsize="7"><register name="b"/></pentry>
+        <pentry minsize="1" maxsize="3"><register name="x0"/></pentry>
+        <pentry minsize="1" maxsize="3"><register name="x1"/></pentry>
+        <pentry minsize="1" maxsize="3"><register name="y0"/></pentry>
+        <pentry minsize="1" maxsize="3"><register name="y1"/></pentry>
+        <pentry minsize="1" maxsize="3"><register name="r0"/></pentry>
+        <pentry minsize="1" maxsize="3"><register name="r1"/></pentry>
+        <pentry minsize="1" maxsize="3"><register name="r2"/></pentry>
+        <pentry minsize="1" maxsize="3"><register name="r3"/></pentry>
+        <pentry minsize="1" maxsize="3"><register name="r4"/></pentry>
+        <pentry minsize="1" maxsize="3"><register name="r5"/></pentry>
+        <pentry minsize="1" maxsize="3"><register name="r6"/></pentry>
+        <pentry minsize="1" maxsize="3"><register name="r7"/></pentry>
+        <pentry minsize="1" maxsize="3"><register name="n0"/></pentry>
+        <pentry minsize="1" maxsize="3"><register name="n1"/></pentry>
+        <pentry minsize="1" maxsize="3"><register name="n2"/></pentry>
+        <pentry minsize="1" maxsize="3"><register name="n3"/></pentry>
+        <pentry minsize="1" maxsize="3"><register name="n4"/></pentry>
+        <pentry minsize="1" maxsize="3"><register name="n5"/></pentry>
+        <pentry minsize="1" maxsize="3"><register name="n6"/></pentry>
+        <pentry minsize="1" maxsize="3"><register name="n7"/></pentry>
+      </input>
+      <output>
+        <pentry minsize="1" maxsize="7"><register name="a"/></pentry>
+        <pentry minsize="1" maxsize="7"><register name="b"/></pentry>
+      </output>
+      <unaffected>
+        <register name="ssp"/>
+      </unaffected>
+      <killedbycall>
+        <register name="a"/>
+        <register name="b"/>
+        <register name="x0"/>
+        <register name="x1"/>
+        <register name="y0"/>
+        <register name="y1"/>
+        <register name="la"/>
+        <register name="lc"/>
+      </killedbycall>
+      <likelytrash>
+        <register name="r0"/> <register name="r1"/> <register name="r2"/> <register name="r3"/>
+        <register name="r4"/> <register name="r5"/> <register name="r6"/> <register name="r7"/>
+        <register name="n0"/> <register name="n1"/> <register name="n2"/> <register name="n3"/>
+        <register name="n4"/> <register name="n5"/> <register name="n6"/> <register name="n7"/>
+        <register name="C"/> <register name="V"/> <register name="Z"/> <register name="N"/>
+        <register name="U"/> <register name="E"/> <register name="L"/>
+        <register name="mv1"/> <register name="mv2"/> <register name="alu_r"/>
+      </likelytrash>
+    </prototype>
+  </default_proto>
+</compiler_spec>

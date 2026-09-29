@@ -6,7 +6,11 @@ leaves that mode's view in the track's live lane.
 
 Stages the project (T1's FX2 and T2's FX1 rewritten into every part of every
 bank: the emulated load applies bank A part 1), boots the remix's image in
-`ot_emu`, LOAD PROJECTs, and calls the editor as the panel would:
+`ot_emu` ONCE, LOAD PROJECTs, and calls the editor as the panel would
+(`--step`: the current-track pokes, the call and the lane dump for each
+case in turn, after the load and before the transport; then, with CC MAP in
+the remix, the transport starts, which re-applies the part's bytes over the
+live lane, and the CC arrives over MIDI IN):
 
   FX2: `0x4003a9dc(0, 2 ticks)` on T1 (BusDelay: slot 6 = MODE, CLEAN -> GRAIN)
   FX1: `0x4003abe4(1, 2 ticks)` on T2 (Modulation: slot 6 = MODE, JUNO -> DIM)
@@ -51,21 +55,28 @@ def expect_view(mod, mode):
     return None
 
 
-def run_port(image, card, set_name, name, track, call, dump, log):
+def run_port(image, card, set_name, name, steps, midi, dump, log):
+    """One boot: the post-load steps in order, then (with `midi`) the
+    transport and the MIDI file, then the end dump."""
     cmd = [str(EMU), "--image", str(image), "--card", str(card), "--set", set_name, "--project", name,
-           "--mount", "--load-ms", "20000", "--poke-early", f"0x80000000={track}", "--call", call,
-           "--mem-dump", f"{LANES:#x},576={dump}"]
+           "--mount", "--load-ms", "90000"]
+    for s in steps:
+        cmd += ["--step", s]
+    if midi:
+        cmd += ["--sequencer", "--internal-clock", "--frames", "120", "--midi", str(midi),
+                "--mem-dump", f"{LANES:#x},576={dump}"]
     with open(log, "w") as f:
         f.write(" ".join(cmd) + "\n"); f.flush()
         r = subprocess.run(cmd, cwd=ROOT, stdout=f, stderr=subprocess.STDOUT)
     text = log.read_text()
-    if r.returncode or "returned, d0" not in text:
-        sys.exit(f"verify_modedefaults: ot_emu did not complete the call -- {log}")
+    calls = sum(1 for s in steps if ":call:" in s)
+    if r.returncode or text.count("returned, d0") < calls:
+        sys.exit(f"verify_modedefaults: ot_emu did not complete the {calls} call(s) -- {log}")
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("remix", nargs="?", default=registry.DEFAULT_REMIX)
+    ap.add_argument("remix", nargs="?", default=os.environ.get("REMIX"))
     ap.add_argument("--project", default=os.environ.get("OT_PROJECT", ""))
     ap.add_argument("--set-name", default="OCTABAM")
     ap.add_argument("--name", default="MODEDEF")
@@ -128,17 +139,40 @@ def main():
         sys.exit(f"verify_modedefaults: stage_card failed:\n{r.stdout[-1000:]}{r.stderr[-1000:]}")
 
     fails = 0
+    # One boot for everything: each case's current-track pokes (both bytes,
+    # as a track key moves them: Octakit's editor wrapper halts when the
+    # engine's 0x80000000 and the UI's 0x100b14cc differ), its editor call
+    # and its lane dump, after the load; then the MIDI path below on the
+    # same boot. The editor takes ENCODER ticks: 256 units a tick against
+    # the slot's step (0x46c7dede + slot2*20 + 8: 0x10e for a 3-way select,
+    # 0x100 for a knob under the port), so two ticks move a select by one
+    # and a knob-stepped select by two. The landed MODE is read back.
+    steps, dumps = [], {}
+    for kind, k, m in cases:
+        t = tracks[kind]
+        editor = FX2_EDITOR if kind == "fx2" else FX1_EDITOR
+        dumps[kind] = OUT / f"{kind}_lanes.bin"
+        steps += [f"-:poke:0x80000000={t};0x100b14cc={t}",
+                  f"-:call:{editor:#x},{m.mode_slot - 6},2",
+                  f"-:dump:{LANES:#x},576={dumps[kind]}"]
+    midi = cc_dump = None
+    cc_case = None
+    if "CC MAP" in remix.modules and cases:
+        kind0, k0, m0 = cases[0]
+        slot2 = m0.mode_slot - 6
+        want_mode = 1 if expect_view(m0, 1) else (2 if expect_view(m0, 2) else None)
+        if want_mode is not None:
+            cc = (62 if kind0 == "fx2" else 68) + slot2
+            midi = OUT / "cc.midi"
+            midi.write_text(f"40 B0 {cc:02X} {want_mode:02X}\n")   # T1: MIDI_TRIG_CH1 = 0 in the fixture
+            cc_dump = OUT / f"cc_{kind0}_lanes.bin"
+            cc_case = (kind0, k0, m0, slot2, cc, want_mode)
+    log = OUT / "port.txt"
+    run_port(image, card, a.set_name, a.name, steps, midi, cc_dump, log)
     for kind, k, m in cases:
         t = tracks[kind]
         slot2 = m.mode_slot - 6
-        editor = FX2_EDITOR if kind == "fx2" else FX1_EDITOR
-        # The editor takes ENCODER ticks: 256 units a tick against the slot's
-        # step (0x46c7dede + slot2*20 + 8: 0x10e for a 3-way select, 0x100 for
-        # a knob under the port), so two ticks move a select by one and a
-        # knob-stepped select by two. The landed MODE is read back, not assumed.
-        dump, log = OUT / f"{kind}_lanes.bin", OUT / f"{kind}_port.txt"
-        run_port(image, card, a.set_name, a.name, t, f"{editor:#x},{slot2},2", dump, log)
-        lane = lane_bytes(dump, t)
+        lane = lane_bytes(dumps[kind], t)
         got_mode = lane[PAGE2[kind] + slot2]
         view = expect_view(m, got_mode) if got_mode else None
         ok = view is not None
@@ -162,39 +196,25 @@ def main():
             ok = got == want
             print(f"  [{'ok' if ok else 'FAIL'}]   slot {slot:2d} {m.params[slot].name.decode():4s} untouched = {got} (default {want})")
             fails += not ok
-    # ---- the MIDI path: CC PAGE 2's cave calls the unit after its write --------
-    if "CC PAGE 2" in remix.modules and cases:
-        kind, k, m = cases[0]
+    # ---- the MIDI path: CC MAP's cave calls the unit after its write --------
+    # The transport start re-applied the part's bytes over the live lane,
+    # so the CC lands on MODE 0, as the two-boot form of this gate had it.
+    if cc_case:
+        kind, k, m, slot2, cc, want_mode = cc_case
         t = tracks[kind]
-        slot2 = m.mode_slot - 6
-        cc = (62 if kind == "fx2" else 68) + slot2
-        want_mode = 1 if expect_view(m, 1) else (2 if expect_view(m, 2) else None)
-        if want_mode is not None:
-            chan = 0                                    # T1: MIDI_TRIG_CH1 = 0 in the fixture
-            midi = OUT / "cc.midi"
-            midi.write_text(f"40 B{chan:X} {cc:02X} {want_mode:02X}\n")
-            dump, log = OUT / f"cc_{kind}_lanes.bin", OUT / f"cc_{kind}_port.txt"
-            cmd = [str(EMU), "--image", str(image), "--card", str(card), "--set", a.set_name, "--project", a.name,
-                   "--mount", "--load-ms", "20000", "--sequencer", "--internal-clock", "--frames", "120",
-                   "--midi", str(midi), "--mem-dump", f"{LANES:#x},576={dump}"]
-            with open(log, "w") as f:
-                f.write(" ".join(cmd) + "\n"); f.flush()
-                r = subprocess.run(cmd, cwd=ROOT, stdout=f, stderr=subprocess.STDOUT)
-            if r.returncode:
-                sys.exit(f"verify_modedefaults: ot_emu exit {r.returncode} -- {log}")
-            lane = lane_bytes(dump, t)
-            got_mode = lane[PAGE2[kind] + slot2]
-            view = expect_view(m, got_mode) if got_mode == want_mode else None
-            ok = view is not None
-            print(f"  [{'ok' if ok else 'FAIL'}] {k} T{t + 1}: CC {cc} = {want_mode} over MIDI IN -> MODE {got_mode} (CC PAGE 2's cave calls the unit)")
-            fails += not ok
-            if ok:
-                for slot, val in sorted(view.defaults.items()):
-                    off = PAGE1[kind] + slot if slot < 6 else PAGE2[kind] + slot - 6
-                    got = lane[off]
-                    okv = got == val
-                    print(f"  [{'ok' if okv else 'FAIL'}]   slot {slot:2d} {m.params[slot].name.decode():4s} lane +{off:#04x} = {got:3d}  (view {val})")
-                    fails += not okv
+        lane = lane_bytes(cc_dump, t)
+        got_mode = lane[PAGE2[kind] + slot2]
+        view = expect_view(m, got_mode) if got_mode == want_mode else None
+        ok = view is not None
+        print(f"  [{'ok' if ok else 'FAIL'}] {k} T{t + 1}: CC {cc} = {want_mode} over MIDI IN -> MODE {got_mode} (CC MAP's cave calls the unit)")
+        fails += not ok
+        if ok:
+            for slot, val in sorted(view.defaults.items()):
+                off = PAGE1[kind] + slot if slot < 6 else PAGE2[kind] + slot - 6
+                got = lane[off]
+                okv = got == val
+                print(f"  [{'ok' if okv else 'FAIL'}]   slot {slot:2d} {m.params[slot].name.decode():4s} lane +{off:#04x} = {got:3d}  (view {val})")
+                fails += not okv
     print(f"verify_modedefaults: {'FAIL' if fails else 'ok'} ({fails} failure(s))")
     return 1 if fails else 0
 

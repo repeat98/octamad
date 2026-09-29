@@ -36,7 +36,9 @@
 #pragma once
 
 #include <array>
+#include <cassert>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <string>
 #include <unordered_map>
@@ -78,6 +80,9 @@ namespace ot
 	class Coprocessor
 	{
 	public:
+		// O18: the sizes of the records the co-processor keeps, one line, for
+		// the memory instrument (OT_MEMSTAT=1). Default: nothing to report.
+		virtual std::string memStat() const { return {}; }
 		virtual ~Coprocessor() = default;
 		virtual bool read(uint32_t _addr, uint8_t _size, uint32_t& _out) = 0;
 		virtual bool write(uint32_t _addr, uint8_t _size, uint32_t _val) = 0;
@@ -85,6 +90,31 @@ namespace ot
 		// Returns the samples actually advanced: fewer than `_n` when the
 		// co-processor raised a host word the machine should take NOW (O9b).
 		virtual double tickSamples(double _n) = 0;
+		// O16c: bring the co-processor up to everything booked so far. A
+		// co-processor that runs on every tick has nothing to do here; a
+		// LAZY one (DspPair::setLazy) runs its backlog. The run loop calls it
+		// before tickTimers()/deliver() -- the point where the co-processor's
+		// state becomes observable to the CPU -- at every burst end and exact
+		// step; the co-processor calls it itself before any host-port access.
+		virtual void sync() {}
+		// O17: a co-processor running on its own threads (DspPair --dsp-rt).
+		// `edgePending` is its bank-word edge, raised from a DSP thread as an
+		// atomic count; the burst loop ends on it and sync() applies it (the
+		// host-word hook) on the CPU's thread. Both false for every other mode.
+		virtual bool realtime() const { return false; }
+		virtual bool edgePending() const { return false; }
+		// O17b: the CPU has finished handling a frame -- the frame handler
+		// re-enabled its own interrupt source (INTC0 source 1 unmasked after
+		// the whole host-port exchange). The fence in the real-time mode opens
+		// on it (dsp.cpp, THE FENCE); every other mode ignores it.
+		virtual void frameHandled() {}
+		virtual void frameHandling() {}		// ... and the mark of its start (the source masked by the handler)
+		// O17b: the CPU's frame clock switched on or off (Rtos::setFrame). The
+		// fence only means something while the CPU takes frames.
+		virtual void setFrameClock(bool) {}
+		// O17b: a mark from the CPU's side for the co-processor's protocol
+		// record (an interrupt acknowledged: kind 'a', the vector). Diagnostic.
+		virtual void cpuNote(char, uint32_t) {}
 		// O9b: called when core `_core` puts a word in its host port OUTSIDE a
 		// read-back pull -- the DSP's bank id, which on hardware is what the
 		// frame interrupt announces (the frame handler reads it with no ready
@@ -118,12 +148,48 @@ namespace ot
 		explicit Machine(const std::vector<uint8_t>& _image);
 
 		// -- the memory interface Musashi calls through ----------------------
-		uint8_t  read8 (uint32_t _addr) override;
-		uint16_t read16(uint32_t _addr) override;
-		void     write8 (uint32_t _addr, uint8_t  _val) override;
-		void     write16(uint32_t _addr, uint16_t _val) override;
-		uint16_t readImm16(uint32_t _addr) override;
-
+		// O15c (12 Sep 2026, plan step 3): THE PAGE-TABLE FAST PATH. Before
+		// it every access walked the region list (`find`: a peripheral test
+		// over three windows, the alias fold, then up to twelve `contains`
+		// checks) -- measured at 2.6 ns per opcode fetch and 15-31 ns per
+		// data access, 28 % of the burst loop (speed-mem). Now `m_pages` holds
+		// one host pointer per 4 KB page of the 4 GB address space (1 << 20
+		// entries, rebuilt by the constructor and by `mapRegion`), and an
+		// access whose page has one goes straight to the bytes. A page has
+		// an entry ONLY when the first Region in list order that touches it
+		// covers ALL of it -- so within the page `find` could answer nothing
+		// else -- and NEVER when it is a peripheral window (asserted), a page
+		// this machine grew on its own (every access to one is counted by
+		// `noteUnmapped`, and that count is in the boot log), or unmapped. The
+		// alias window 0x48000000-0x4fffffff carries its target's entries,
+		// folded exactly as `alias()` folds the address, so the two regions
+		// mapped inside it stay as unreachable as they were. Everything the
+		// table does not hold -- and an access that straddles a page, and a
+		// write while a write watch is armed -- takes the ORIGINAL body,
+		// renamed `*Slow`: the peripheral dispatch, the counters, the logs
+		// and the auto-map are byte for byte what they were, and a page that
+		// IS in the table answers the same bytes `find` would have. Measured
+		// on the bursts+LTO binary, see COLDFIRE_PORT.md O15c.
+		static constexpr uint32_t g_pageBits = 12;
+		static constexpr uint32_t g_pageMask = (1u << g_pageBits) - 1;
+		uint8_t read8(const uint32_t _a) override
+		{
+			if(const uint8_t* const p = m_pages[_a >> g_pageBits]; p != nullptr && !m_readSlow)
+				return p[_a & g_pageMask];
+			return read8Slow(_a);
+		}
+		uint16_t read16(const uint32_t _a) override
+		{
+			const uint8_t* const p = m_pages[_a >> g_pageBits];
+			if(__builtin_expect(p != nullptr && !m_readSlow && (_a & g_pageMask) <= g_pageMask - 1, 1))
+			{
+				uint16_t v;
+				std::memcpy(&v, p + (_a & g_pageMask), 2);
+				return __builtin_bswap16(v);
+			}
+			return read16Slow(_a);
+		}
+		uint16_t readImm16(const uint32_t _a) override { return read16(_a); }
 		// ⚠️ 32-BIT ACCESSES MUST ARRIVE WHOLE. Musashi's memoryOps compose a
 		// longword from two 16-bit halves unless the machine provides these,
 		// and a peripheral register is not two halves: the DSPI's status word
@@ -132,8 +198,62 @@ namespace ot
 		// match and main parked there forever -- no task was ever created
 		// (measured 7 Sep 2026, the second run of the O4 loop). The same class
 		// as the PLL truncation that stalled the boot in O1.
-		uint32_t read32(uint32_t _addr);
-		void     write32(uint32_t _addr, uint32_t _val);
+		uint32_t read32(const uint32_t _a)
+		{
+			const uint8_t* const p = m_pages[_a >> g_pageBits];
+			if(__builtin_expect(p != nullptr && !m_readSlow && (_a & g_pageMask) <= g_pageMask - 3, 1))
+			{
+				uint32_t v;
+				std::memcpy(&v, p + (_a & g_pageMask), 4);
+				return __builtin_bswap32(v);
+			}
+			return read32Slow(_a);
+		}
+		void write8(const uint32_t _a, const uint8_t _v) override
+		{
+			++m_writes;
+			if(uint8_t* const p = m_pages[_a >> g_pageBits]; p != nullptr && !m_writeSlow)
+			{
+				p[_a & g_pageMask] = _v;
+				return;
+			}
+			write8Slow(_a, _v);
+		}
+		void write16(const uint32_t _a, const uint16_t _v) override
+		{
+			++m_writes;
+			uint8_t* const p = m_pages[_a >> g_pageBits];
+			if(__builtin_expect(p != nullptr && !m_writeSlow && (_a & g_pageMask) <= g_pageMask - 1, 1))
+			{
+				const uint16_t s = __builtin_bswap16(_v);
+				std::memcpy(p + (_a & g_pageMask), &s, 2);
+				return;
+			}
+			write16Slow(_a, _v);
+		}
+		void write32(const uint32_t _a, const uint32_t _v)
+		{
+			++m_writes;
+			uint8_t* const p = m_pages[_a >> g_pageBits];
+			if(__builtin_expect(p != nullptr && !m_writeSlow && (_a & g_pageMask) <= g_pageMask - 3, 1))
+			{
+				const uint32_t s = __builtin_bswap32(_v);
+				std::memcpy(p + (_a & g_pageMask), &s, 4);
+				return;
+			}
+			write32Slow(_a, _v);
+		}
+		// The pre-O15c bodies, unchanged except that `++m_writes` moved into
+		// the inline wrappers above (their only callers).
+		uint8_t  read8Slow (uint32_t _addr);
+		uint16_t read16Slow(uint32_t _addr);
+		uint32_t read32Slow(uint32_t _addr);
+		void     write8Slow (uint32_t _addr, uint8_t  _val);
+		void     write16Slow(uint32_t _addr, uint16_t _val);
+		void     write32Slow(uint32_t _addr, uint32_t _val);
+		// How many 4 KB pages the fast path covers (the alias window's copies
+		// included). Diagnostics only: no log or reply prints it.
+		uint32_t fastPages() const { return m_fastPages; }
 
 		uint32_t getResetPC() override { return g_imageBase; }
 		uint32_t getResetSP() override { return g_resetSp; }
@@ -164,6 +284,36 @@ namespace ot
 		// `Rtos` drives once the boot has handed over; it returns false if an
 		// opcode was genuinely unknown (`why()` says which).
 		bool step();
+		// O15a (12 Sep 2026): `step()` for the burst loop. The same work in the
+		// same order -- the instruction count, the PC watch, the profile, the
+		// A-line pre-decode into the V4e layer, the co-processor's one tick --
+		// minus three things that cost more than the instruction: the PC read
+		// through `m68k_get_reg` (it is a field of the CPU state), the opcode
+		// fetch through the region walk (O15a read the SDRAM region's bytes
+		// directly while the PC was inside it; since O15c the inline `read16`
+		// is that direct read for every page in the table, and the slow body
+		// for the rest, so a PC in a grown page or a peripheral behaves as
+		// `step()` has it), and
+		// `Mc68k::exec()`'s legacy on-chip peripheral pass (`execInstruction`
+		// runs the core alone). ⚠️ THAT LAST ONE IS EXACT ONLY BECAUSE THE
+		// LEGACY MODELS ARE UNREACHABLE HERE: the vendored GPT/SIM/QSM are
+		// addressed through `Mc68k::read*/write*`, which this class overrides
+		// wholesale and never forwards to, so their registers hold their reset
+		// values for the life of the machine (TMSK1 = 0, PITR never written,
+		// no SCI/QSPI traffic) and none of them can ever inject an interrupt.
+		// `step()` is kept for the exact path, so a run mixes the two freely.
+		bool stepFast();
+		// REG_PC itself, through a pointer taken once at construction (the
+		// CPU state lives in a fixed buffer inside Mc68k). `pc()` goes through
+		// two out-of-line calls; measured 12 Sep 2026 at ~12 % of the burst
+		// loop's samples when called three times per instruction.
+		uint32_t pcFast() const { return *m_pcField; }
+		// Did any instruction since the last call touch a peripheral window
+		// (a model, the boot's override table, the card, the co-processor)?
+		// Set inside `peripheralRead`/`peripheralWrite`, i.e. by EVERY access
+		// that can change a model's state or an interrupt line; the burst
+		// loop ends its burst on it (Rtos::runInternal).
+		bool takePeriphTouched() { const bool t = m_periphTouched; m_periphTouched = false; return t; }
 
 		// The vector base register. The firmware sets it itself with a
 		// `movec %a0,%vbr` at 0x40000db6, so after a boot this reads
@@ -202,6 +352,14 @@ namespace ot
 		// stock image).
 		struct PeriphWriteRec { uint32_t addr; uint8_t size; uint32_t val; };
 		const std::vector<PeriphWriteRec>& peripheralWrites() const { return m_periphWrites; }
+		// O18: the record has ONE reader, `Rtos::install`'s seed replay, and
+		// nothing after it -- yet it kept growing at every peripheral write
+		// the models took (~1 M/s of play, 12 bytes each: THE memory leak of
+		// the panel's child, 8-13 MB per emulated second). The Rtos ends it
+		// once the seed is taken; the count it reports is captured before.
+		void endPeripheralWriteLog();
+		// O18: the sizes of every record this object keeps (OT_MEMSTAT=1).
+		std::string memStat() const;
 
 		// A stateful peripheral reply, for the handful the boot needs that are
 		// not constants (the DSP host port's ping index toggles 0/1).
@@ -237,6 +395,12 @@ namespace ot
 		// beside it for hits it saw.
 		struct PcHit { uint64_t instruction; uint32_t pc, d0, d1, a0, a1, sp, stack[5]; uint32_t d[8], a[7]; };	// d/a: every register (O9b: a watch that showed four of them could not say which record a routine read)
 		void watchPc(std::vector<uint32_t> _addrs) { m_watchPc = std::move(_addrs); }
+		// One counted address, compared before every instruction on every step
+		// path (an odd address never matches): the Rtos counts the engine's
+		// LOAD PROJECT entry across a load it did not watch instruction by
+		// instruction. Separate from watchPc so --watch-pc's hit list is untouched.
+		void countPc(const uint32_t _addr) { m_pcCountAddr = _addr; m_pcCount = 0; }
+		uint64_t pcCount() const { return m_pcCount; }
 
 		// ✅ THE DSP HOST PORT, RECORDED. The firmware programs the DSPs
 		// ITSELF -- `0x40001e50` (called once, from the boot at `0x4000050c`)
@@ -269,6 +433,12 @@ namespace ot
 
 		uint32_t peek32(uint32_t _addr);
 		void     poke32(uint32_t _addr, uint32_t _val);
+		// Is every byte of [_addr, _addr + _len) backed by something -- a
+		// region, a page this machine grew, or a peripheral window? A peek
+		// through the interactive protocol asks BEFORE reading, because a
+		// read8 of unmapped memory grows a zero page as a side effect and the
+		// answer would be indistinguishable from a real zero (11 Sep 2026).
+		bool mapped(uint32_t _addr, uint32_t _len);
 
 		// Route A's `watch_mem`: every write into a small range, with the PC
 		// of the instruction making it. Used by the M6c trig log (the
@@ -396,11 +566,19 @@ namespace ot
 
 		std::vector<Region> m_regions;
 		// Region index by the top address byte, -1 = not one region alone
-		// (scan). A last-hit cache lost on the play phase, whose accesses
-		// alternate between code, data and the fast RAM every few
-		// instructions (17 Sep 2026); a table has no state to miss.
+		// (scan): `find`, i.e. the slow bodies. A last-hit cache lost on the
+		// play phase, whose accesses alternate between code, data and the
+		// fast RAM every few instructions (17 Sep 2026); a table has no state
+		// to miss.
 		std::array<int16_t, 256> m_regionByTop;
 		void rebuildRegionIndex();
+		// O15c: one host pointer per 4 KB page, or null for "take the slow
+		// body" (see the memory interface above). 1 << 20 entries, 8 MB.
+		std::vector<uint8_t*> m_pages;
+		uint32_t m_fastPages = 0;
+		bool m_writeSlow = false;				// a write watch is armed: every write takes the slow body
+		bool m_readSlow = false;				// a read watch is armed: every data read takes the slow body
+		void rebuildPageTable();
 		// BYTE-addressable, not word: Musashi composes a 32-bit peripheral read
 		// from two 16-bit reads, so a value stored whole and returned per
 		// access is truncated to the access width. That cost the first boot --
@@ -413,6 +591,7 @@ namespace ot
 		PeriphRead m_periphReadFn;
 		PeriphWrite m_periphWriteFn;
 		std::vector<PeriphWriteRec> m_periphWrites;
+		bool m_periphWriteLogOn = true;		// O18: until the Rtos has seeded its models from the record
 		std::vector<Access> m_periphLog;
 		std::vector<Access> m_periphTrace;
 		bool m_periphTraceOn = false;
@@ -438,12 +617,16 @@ namespace ot
 		uint64_t m_autoMapLimit = 65536;		// 4 KB pages: 256 MB
 		std::vector<uint8_t> m_autoScrap;		// where a write goes once the limit is hit
 		std::function<void(Machine&, uint32_t)> m_step;
+		bool m_periphTouched = false;
+		const uint32_t* m_pcField = nullptr;
 		AckHook m_ack;
 		uint64_t m_instructions = 0;
 		uint64_t m_v4e = 0;			// instructions the V4e layer supplied
 		bool m_hostPortLogOn = false;
 		std::vector<HostPortWrite> m_hostPortLog;
 		std::vector<uint32_t> m_watchPc;
+		uint32_t m_pcCountAddr = 1;
+		uint64_t m_pcCount = 0;
 		std::vector<PcHit> m_pcHits;
 		uint32_t m_profileEvery = 0;
 		std::unordered_map<uint32_t, uint64_t> m_profile;

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A HIDDEN engine is placed, dispatched, off the chooser and draws nothing.
 
-    python3 tools/verify/verify_hidden.py [remix]      (default: bamsep26)
+    python3 tools/verify/verify_hidden.py [remix]      
 
 `Remix.hidden` takes an effect off the panel without taking it out of the
 image: the project's stored id still reaches it, and a main-menu screen edits
@@ -48,7 +48,7 @@ WRITER = 0x40054cd8
 
 def main():
     from remix import registry
-    name = sys.argv[1] if len(sys.argv) > 1 else "bamsep26"
+    name = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("REMIX")
     remix = registry.remix(name)
     mods = registry.modules()
     hidden = [k for k in remix.modules
@@ -93,7 +93,13 @@ def main():
         # descriptor serves both menus, so blanking it would empty its FX1
         # page too -- the stations are hidden from the FX2 chooser and still
         # have to draw when they are selected on FX1.
-        if key not in remix.blanked:
+        nhost = dict(remix.host_slots).get(key)
+        if nhost is not None:
+            want = [(p.name or b"") if i < nhost else b"" for i, p in enumerate(mods[key].params)]
+            check(f"{key}: host_slots, so slots 0-{nhost - 1} keep their names and the rest are blank",
+                  names == want,
+                  " ".join(n.decode("latin1") or "-" for n in names))
+        elif key not in remix.blanked:
             want = [(p.name or b"") for p in mods[key].params]
             why = "on FX1" if key in remix.fx1 else "NAMED"
             check(f"{key}: {why}, so its names are KEPT, not blanked",
@@ -183,6 +189,14 @@ def main():
         got = drawn_names(key)
         check(f"{key}'s page draws none of its knob names",
               not got, " ".join(sorted(got)) or "none drawn")
+    for key, nhost in remix.host_slots:
+        drew = set(texts(emu.render_fx2(boot, track=4,
+                                        effect_id=mods[key].menu.fx2_id)))
+        shown = {p.name.decode("latin1") for p in mods[key].params[:nhost] if p.name}
+        others = {p.name.decode("latin1") for p in mods[key].params[nhost:] if p.name} - base_texts - shown
+        check(f"{key}: host_slots, so its page draws {' '.join(sorted(shown))} and none of its other names",
+              shown <= drew and not (others & drew),
+              f"drew {' '.join(sorted(drew - base_texts)) or 'nothing'}")
     for key in [k for k in hidden if k in remix.named]:
         got = drawn_names(key)
         # a name the PLAYBACK page also draws (PTCH, RATE ...) is in the
@@ -209,7 +223,9 @@ def main():
     lo_a, hi_a = part + 0x8e000, part + 0x92000
     before = bytes(uc.mem_read(lo_a, hi_a - lo_a))
     try:
-        emu._call(uc, WRITER, (4, 0, 99))
+        # the call our modules make: Octakit's token above the arguments
+        # (modules/octakit/manifest.py P1TOKEN), ignored by stock
+        emu._call(uc, WRITER, (4, 0, 99, 0x54500000))
     except UcError:
         pass
     after = bytes(uc.mem_read(lo_a, hi_a - lo_a))
@@ -264,7 +280,7 @@ def main():
             # needs a rotation, i.e. a housekeeper. A lone delay under the
             # DEV hatch is never the housekeeper (it behaves as payload B),
             # so the engine renders with a SEND at the other slot, fed the
-            # tone at AUX 127: SEND's self-healing election keeps the bus
+            # tone at DEL 127 and REV 127: SEND's self-healing election keeps the bus
             # turning whichever slot the engine is on, and "runs" means the
             # sent tone comes out of the engine as wet.
             sinit, sproc = send_probe.entry_points(mem, send_probe.SERVER_ID["S"])
@@ -286,7 +302,7 @@ def main():
                                          # guard's dry pass is INPUT == OUTPUT
                  "-frames", str(FRAMES), "-blocks", str(N // FRAMES),
                  "-in", str(src), "-out", str(out), "-params", params,
-                 "-params", "127,0,0,0,0,0,0,0,0,0,0,0"],
+                 "-params", "127,127,0,0,0,0,0,0,0,0,0,0"],   # SEND: DEL and REV
                 capture_output=True, text=True)
             if r.returncode != 0:
                 return None

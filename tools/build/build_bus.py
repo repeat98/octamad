@@ -43,6 +43,7 @@ from remix import ledger  # noqa: E402
 
 OUT = pathlib.Path("out/mainos_bus.bin")
 DIS = pathlib.Path("vendor/dsp56300/build/source/dsp_host/dsp_asm")
+DISASM = pathlib.Path("vendor/dsp56300/build/source/disassemble/dsp56kDisassemble")
 
 # ---- ColdFire menu tables (task 11, tools/build/build_menu.py, reproduced here) --
 FX2_IDS = 0x400d5fdc
@@ -120,10 +121,9 @@ NONE_ID = 0x00                  # a fresh part's FX2 id -- aliased to SEND below
 
 # WHICH MODULES THIS IMAGE CARRIES. REMIX=<name> selects remixes/<name>.py;
 # bus is the plain two-server selection and the one every refactor proves
-# itself against (scripts/refhash.sh); bamsep26, the rig, is make's default. A module with no menu entry (a ColdFire patch) takes no chooser row,
+# itself against (scripts/refhash.sh); there is no default. A module with no menu entry (a ColdFire patch) takes no chooser row,
 # so ORDER is the menu modules alone, in the remix's declared order.
-REMIX = remix_registry.remix(os.environ.get("REMIX")
-                             or remix_registry.DEFAULT_REMIX)
+REMIX = remix_registry.remix(os.environ.get("REMIX"))
 ORDER = [k for k in REMIX.modules
          if remix_modules()[k].menu is not None]
 # A HIDDEN module (schema.Remix.hidden) is placed, dispatched and cloned but
@@ -185,7 +185,15 @@ FULLNAME = {m.key: m.menu.fullname + (BUILD_TAG if m.menu.build_tag else b"")
 # FX1 page too. A hidden module on FX1 loses its FX2 row and keeps its names;
 # only a hidden module that is nowhere on FX1 is drawn empty.
 BLANKED = [k for k in HIDDEN if k in REMIX.blanked]   # schema.Remix.blanked
+# A host_slots module's page draws its first n slots, under their names.
+HOST_SLOTS = {k: n for k, n in REMIX.host_slots if k in HIDDEN}
+# a stock `rts` (the tail of the TEMPO window's FUNC-release handler,
+# 0x400568e4): a widget that draws nothing
+NO_WIDGET = 0x4005692e
 RENAMES = {m.key: ([(i, b"") for i in range(12)] if m.key in BLANKED else
+                   [(i, m.params[i].name if i < HOST_SLOTS[m.key] else b"")
+                    for i in range(12)]
+                   if m.key in HOST_SLOTS else
                    [(i, p.name) for i, p in enumerate(m.params)
                     if p.name is not None]) for m in _CLONED}
 # Explicit per-knob defaults -- NOT the donor's, which are sized for a
@@ -200,6 +208,10 @@ DEFAULTS = {m.key: [(i, p.default) for i, p in enumerate(m.params)
 # have shipped.
 ACTIVE_PARAMS = {m.key: m.active_params for m in _CLONED}
 LINKED_PARAMS = {m.key: m.linked_params for m in _CLONED}
+# a host page draws its first n slots only, so a link element on a later slot
+# would be drawn alone between two blank spots
+for _k, _n in HOST_SLOTS.items():
+    LINKED_PARAMS[_k] = tuple(i for i in LINKED_PARAMS[_k] if i < _n)
 # Value counts. Page 2 pairs a knob field and a companion field per word (any
 # count on either -- stock puts selects on even slots and knobs on odd; see
 # docs/firmware/MAINMENU.md 9e). Historically "three knobs and three selects": the knob fields take
@@ -214,6 +226,13 @@ PAGE2_COUNTS = {m.key: {i: p.count for i, p in enumerate(m.params)
 STEPPED_SLOTS = {m.key: m.stepped_slots for m in _CLONED if m.stepped_slots}
 BIPOLAR_SLOTS = {m.key: m.bipolar_slots for m in _CLONED if m.bipolar_slots}
 _DEF_ASM = {m.key: m.dsp.asm for m in _CLONED}
+# DSP code reached from STOCK code rather than a chooser row
+# (schema.DspSection.hooks with no MenuEntry): placed like an effect, on
+# the payloads it names, with no dispatch entry. USB AUDIO IN's RX inject.
+HOOKED = [k for k in REMIX.modules
+          if _MODS[k].dsp is not None and _MODS[k].menu is None]
+for _k in HOOKED:
+    _DEF_ASM[_k] = _MODS[_k].dsp.asm
 
 
 # ---- P-relative field offsets (PARAM_PAGES.md section 5b) ------------------
@@ -423,7 +442,7 @@ ASM_SRC = {k: v for k, v in {**_DEF_ASM,
                              else "dsp/page2_probe.asm" if os.environ.get("PROBE") == "1"
                              else "dsp/tempoprobe.asm" if os.environ.get("TPROBE") == "1"
                              else os.environ.get("RVSRC") or _DEF_ASM.get("REVERB SERVER")),
-           "SEND": _DEF_ASM.get("SEND")}.items() if k in CARRIED}
+           "SEND": _DEF_ASM.get("SEND")}.items() if k in CARRIED or k in HOOKED}
 
 # per payload: donor P addresses for CODE space, the proven null stub, the
 # X:0x215/X:0x235 module address, and DELAY SERVER's payload-specific Y base
@@ -460,71 +479,109 @@ STOCK_DELAY_ID = 0x08
 STOCK_DELAY_P = 0x400d4ace          # DELAY's E (0x400d4a96) + 0x38
 
 
-# ---- DEV repro hooks for outsider modules ----------------------------------
-# The three core sources have their override arms written out at the top of
-# main() (MODE, DMODE, DNOTE and the rest). A module that arrives later needs
-# the same kind of lever without another special case in the placement loop,
-# so it declares a marker in its source and a rule here.
-#
-# ⚠️ EVERY HOOK HERE IS DEV-ONLY: the counter word
-# lives at Y:0x37FFE in payload A's owned half of the shared window (init-
-# zeroed, above the bus scratch at 0x360d2), which is free ground in a DEV
-# layout and is NOT a promise about any shipping one.
-def _dev_hooks(key, src):
-    if key != "NIMBUS":
-        return src
-    at = os.environ.get("NFRZAT")
-    if at is None:
-        return src
-    if os.environ.get("DEV") is None:
-        sys.exit("NFRZAT=n is a DEV-only repro hook (its counter word lives "
-                 "in payload A's shared-window half) -- set DEV=1")
-    if src.count("; NFRZ_OVERRIDE") != 1:
-        sys.exit("NFRZAT=n set but the NIMBUS source has no single "
-                 "; NFRZ_OVERRIDE marker")
-    # Branchless, and the same shared-flag idiom as everywhere else: `sub`
-    # sets N once, the two Tcc read it, and the interleaved immediate moves
-    # do not disturb the condition codes.
-    src = src.replace(
-        "; NFRZ_OVERRIDE",
-        "        move    y:>$37ffe,a\n"
-        "        add     #>1,a\n"
-        "        move    a,y:>$37ffe\n"
-        "        move    #>%d,x0\n"
-        "        sub     x0,a\n"
-        "        move    #>0,x0\n"
-        "        tmi     x0,a\n"
-        "        move    #>1,x0\n"
-        "        tpl     x0,a" % int(at))
-    print(f"  *** NFRZAT OVERRIDE: Nimbus freezes after {int(at)} "
-          f"post-warm blocks ***")
-    return src
-
-
 _SCRATCH = None
 
+# Disassemble what you assemble (AGENTS.md): dsp_asm's own listing (-list)
+# against dsp56kDisassemble's decode of the same bytes, mnemonic by mnemonic.
+# Only mnemonics are compared: a branch displacement or a `do` immediate
+# renders differently in a listing and a decoder without any bug. What this
+# cannot see is a resolver choosing the wrong ADDRESS for a symbolic operand
+# (the label-prefix trap): both tools decode the bytes dsp_asm wrote.
+# Jannik Aßfalg, PR #380, 22 Sep 2026.
+_LISTLINE = re.compile(r"^([0-9a-f]{6}): (\S+)(?:\s+(.*?))?\s*; "
+                       r"[0-9a-f]{6}(?: [0-9a-f]{6})?$")
 
-def assemble_syms(src_text, org):
-    """Assemble at `org`: (words, every label -> address)."""
+# `mpy` that dsp_asm encodes as `mpysu` is the one mismatch the shipping
+# code carries on purpose: the second operand is non-negative at every site
+# (AGENTS.md). Sites per assemble() call, by module label and operands. A
+# build whose count differs from this table stops with the site list: a new
+# site needs its operand audited and this table updated; a vanished site
+# needs the table updated so the count stays exact.
+MPYSU_AUDITED = {
+    "REVERB SERVER": {"x0,y0,a": 12, "x0,x1,a": 9, "x1,y1,a": 4},
+    "CHARACTER":     {"x1,y1,b": 1},
+    "SPECTRUM":      {"x1,y1,b": 1},
+}
+# These flags substitute or excise module source (probes, the shimmer
+# excision, the marker splice, a candidate engine), so the shipping counts
+# do not apply: a variant build prints what it found instead.
+_VARIANT_FLAGS = ("NOSHIM", "MARKER", "PROBE", "XPROBE", "TPROBE", "DELAYPROBE",
+                  "RVSRC", "DLSRC")
+
+
+def _listing(text):
+    out = {}
+    for line in text.splitlines():
+        m = _LISTLINE.match(line)
+        if m:
+            out[int(m.group(1), 16)] = (m.group(2), (m.group(3) or "").strip())
+    return out
+
+
+def _roundtrip(list_out, blob, org, label):
+    src = _listing(list_out)
+    if not src:
+        return
+    tmp = _SCRATCH / "roundtrip.bin"
+    tmp.write_bytes(blob)
+    r = subprocess.run([str(DISASM), "-in", str(tmp), "-pc", f"{org:x}", "-le"],
+                       capture_output=True, text=True)
+    dec = _listing(r.stdout)
+    bad, mpysu = [], {}
+    for a, (sm, sop) in src.items():
+        if a not in dec or dec[a][0] == sm:
+            continue
+        dm, dop = dec[a]
+        if (sm, dm) == ("mpy", "mpysu"):
+            mpysu.setdefault(sop, []).append(a)
+        else:
+            bad.append((a, sm, sop, dm, dop))
+    who = f" in {label}" if label else ""
+    if bad:
+        detail = "\n".join(f"    P:0x{a:05x}  wrote '{sm} {sop}'  chip runs "
+                           f"'{dm} {dop}'" for a, sm, sop, dm, dop in bad)
+        sys.exit(f"disassemble-what-you-assemble: dsp_asm wrote bytes{who} that "
+                 f"do not decode to the mnemonic typed:\n{detail}")
+    found = {k: len(v) for k, v in mpysu.items()}
+    audited = MPYSU_AUDITED.get(label, {})
+    if any(os.environ.get(k) for k in _VARIANT_FLAGS):
+        if found:
+            print(f"  mpysu{who} (variant build, table not enforced): {found}")
+        return
+    if found != audited:
+        sites = "\n".join(f"    mpy {k}: {len(v)} site(s) at "
+                          + ", ".join(f"P:0x{a:05x}" for a in v)
+                          for k, v in sorted(mpysu.items()))
+        sys.exit(f"mpysu audit{who}: found {found or 'none'}, MPYSU_AUDITED says "
+                 f"{audited or 'none'}. Every mpy encoded as mpysu needs its "
+                 f"second operand shown non-negative (AGENTS.md), then the table "
+                 f"in tools/build/build_bus.py updated:\n{sites or '    (no sites)'}")
+
+
+def assemble_syms(src_text, org, label=""):
     global _SCRATCH
     if _SCRATCH is None:
         import tempfile
         _SCRATCH = pathlib.Path(tempfile.mkdtemp(prefix="build_bus."))
     tmp, binf, symf = (_SCRATCH / n for n in ("src.asm", "out.bin", "out.sym"))
     tmp.write_text(src_text)
-    subprocess.run([str(DIS), "-in", str(tmp), "-org", f"{org:x}",
-                    "-out", str(binf), "-sym", str(symf)],
-                   check=True, capture_output=True)
+    r = subprocess.run([str(DIS), "-in", str(tmp), "-org", f"{org:x}",
+                        "-out", str(binf), "-sym", str(symf), "-list"],
+                       check=True, capture_output=True, text=True)
     blob = binf.read_bytes()
     words = [blob[i] | (blob[i + 1] << 8) | (blob[i + 2] << 16)
              for i in range(0, len(blob), 3)]
     syms = dict((k, int(v, 16)) for k, v in
                 (l.split() for l in symf.read_text().split("\n") if l))
+    if DISASM.exists() and os.environ.get("NOROUNDTRIP") != "1":
+        _roundtrip(r.stdout, blob, org, label)
     return words, syms
 
 
-def assemble(src_text, org):
-    words, syms = assemble_syms(src_text, org)
+def assemble(src_text, org, label=""):
+    """(words, init address, proc address) of an effect; a section with no
+    dispatch entry (DspSection.hooks only) goes through assemble_syms."""
+    words, syms = assemble_syms(src_text, org, label)
     return words, syms["init"], syms["proc"]
 
 
@@ -964,7 +1021,7 @@ def main():
     _cave_top = cave_end            # caves start past the descriptor clones
     _ovf_top = OVERFLOW_RUN
     # ROM-placed linked units go FIRST, so a cave may name a unit's global
-    # (ccpage2's CC_MODEDEF*, resolved to mode-defaults' cc_fx2 / cc_fx1 when
+    # (cc-map's CC_MODEDEF*, resolved to mode-defaults' cc_fx2 / cc_fx1 when
     # the module is in the image, its stub `rts` otherwise). Floating caves
     # take the run after them. 15 Sep 2026; until then units floated after
     # the caves, which is why no cave could reach one.
@@ -1014,6 +1071,7 @@ def main():
         elif OVERFLOW_RUN <= _at < OVERFLOW_RUN_END:
             _ovf_top = max(_ovf_top, (_at + len(_b) + 3) & ~3)
 
+    _pool_caves = []          # (label, addr, length, declared base literals)
     for _c, _b in _plan:
         _floating = _c.cave_addr is None
         if _floating:
@@ -1119,6 +1177,8 @@ def main():
             sys.exit(f"{_c.label}: its source is the only truth and there is no "
                      f"m68k-elf toolchain -- run `make setup`")
         img[_c.cave_addr - BASE:_c.cave_addr - BASE + len(_b)] = _b
+        if _c.pool_base_literals:
+            _pool_caves.append((_c.label, _c.cave_addr, len(_b), _c.pool_base_literals))
         for _pa, _expect, _write in _pokes:
             _got = bytes(img[_pa - BASE:_pa - BASE + len(_expect)])
             if _got != _expect:
@@ -1245,14 +1305,45 @@ def main():
         print(f"  arena: base 0x{_abase:08x}, {_acount:,} pages "
               f"({_acount * arena.PAGE // 1048576} MB) left for samples and recorders "
               f"(stock {arena.PAGES:,}); {len(arena.pokes(_reservations))} words rewritten")
+    # A cave that compares against the arena base (RECORDER HOLD: the fetch
+    # returns the base for an unmapped page) carries the stock literal; it
+    # follows the base like the firmware's own sites. The declared count is
+    # checked in every build, moved or not.
+    _pbase = _abase if _reservations else arena.BASE
+    for _lbl, _ca, _cl, _want in _pool_caves:
+        _stock = arena.BASE.to_bytes(4, "big")
+        _hits = [_o for _o in range(0, _cl - 3, 2)
+                 if bytes(img[_ca - BASE + _o:_ca - BASE + _o + 4]) == _stock]
+        if len(_hits) != _want:
+            sys.exit(f"{_lbl}: {len(_hits)} arena-base literal(s) in the cave, "
+                     f"the manifest declares {_want}; refusing")
+        if _pbase != arena.BASE:
+            for _o in _hits:
+                img[_ca - BASE + _o:_ca - BASE + _o + 4] = _pbase.to_bytes(4, "big")
+            print(f"  arena: {_lbl}: {_want} arena-base literal(s) -> 0x{_pbase:08x}")
 
     if _dram or _payloads:
         from remix import platform_build
         _pappend, _psyms, _boot, _pnames = platform_build.build(
             [(_m.key, _u) for _m, _u in _dram], _payloads, pathlib.Path("out/platform"),
-            reserve=_reserve, defsyms=_defsym_ovr)
+            reserve=_reserve, defsyms=_defsym_ovr,
+            includes={_u.label: _u.include({_k: remix_modules()[_k] for _k in REMIX.modules})
+                      for _m, _u in _dram if _u.include is not None})
         for _m, _u in _dram:
             _sym[_u.label] = _psyms          # detours name units; one table serves all
+            if _u.reference is not None:
+                # The author's oracle for a DRAM unit: linked alone at the
+                # author's own address, for the chip (the platform's ISA).
+                _ra, _rsha = _u.reference
+                _rw = pathlib.Path("out/platform/ref") / _u.label
+                _rw.mkdir(parents=True, exist_ok=True)
+                _rb, _, _ = _link(pathlib.Path(_u.source), _ra, "54455", _rw)
+                _got = hashlib.sha256(_rb).hexdigest()
+                if _got != _rsha:
+                    sys.exit(f"{_m.key} {_u.label}: linked at the author's address "
+                             f"0x{_ra:08x} it is {len(_rb)} B sha256 {_got}, not the "
+                             f"author's {_rsha} -- source or toolchain drift; refusing")
+                print(f"  {_m.key} {_u.label}: matches the author's build at 0x{_ra:08x} ({len(_rb):,} B)")
         _exports.update(_psyms)
         for _p in _payloads:
             _exports.update({k: v for k, v in _p.get("symbols", {}).items() if k.startswith("gk_")})
@@ -1335,8 +1426,8 @@ def main():
         img[_p.addr - BASE:_p.addr - BASE + len(_p.write)] = _p.write
         print(f"    poke 0x{_p.addr:08x}: {_p.expect.hex()} -> {_p.write.hex()}  {_p.note}")
 
-    # ---- PLAN §6: the mode selects print their WORDS ---------------------
-    # Every stepped select drew as a bare number -- WarpFold's MODE as `1 2 3`
+    # ---- the mode selects print their WORDS ------------------------------
+    # Every stepped select drew as a bare number -- a MODE select as `1 2 3`
     # where the manifest has said FOLD RING BOTH all along -- because
     # Param.labels was authored, schema-checked against count, and then never
     # read. This is the pass that makes it load-bearing.
@@ -1375,6 +1466,15 @@ def main():
                 _ren = mode_names.with_selfname(_ren, _i, _p.labels)
             if _ren:
                 _desc = clone_addr[name] + mode_names.NAMES_AT
+                if name in HOST_SLOTS:
+                    # the renames go to the screen's own table: the shared
+                    # descriptor keeps the host page's one name
+                    _nsym = f"NAMES_{NEW_IDS[name]:02x}"
+                    if _nsym not in _exports:
+                        sys.exit(f"{name} is a host_slots module, but no linked "
+                                 f"unit exports {_nsym} for its MODE renames")
+                    _desc = _exports[_nsym]
+                    print(f"  {name} MODE renames -> {_nsym} 0x{_desc:08x}")
                 _bytes = mode_names.emit(_p.labels, _desc, _ren)
                 mode_names.verify(_p.labels, _desc, _ren)
             else:
@@ -1415,6 +1515,16 @@ def main():
               + (f"; {sum(1 for x in _lbl if x[3] >= OVERFLOW_RUN and x[3] < OVERFLOW_RUN_END)} "
                  f"overflowed into 0x{OVERFLOW_RUN:08x}.. (next free 0x{_ovf_top:08x})"
                   if _ovf_top > OVERFLOW_RUN else ""))
+    # A host_slots module's page draws its first n slots only: every later
+    # slot's widget (B, P+0x0fa) is a bare `rts`, so the page draws no dial
+    # there, and 0x12a is 0. A (P+0x0ca), the value text the TEMPO window
+    # prints, stays. The slots stay enabled, so they still reach the DSP.
+    for name, _n in HOST_SLOTS.items():
+        for _i in range(_n, 12):
+            wr32(clone_addr[name] + 0x0fa + _i * 4, NO_WIDGET)
+            wr32(clone_addr[name] + 0x12a + _i * 4, 0)
+        print(f"  {name}: page draws slots 0-{_n - 1}; slots {_n}-11 widget -> "
+              f"0x{NO_WIDGET:08x} (rts)")
     # A labelled select wider than CHORUS.TAPS' five-position widget falls
     # back to the plain dial, whose raw 0..127 indexing otherwise uses only
     # part of the arc. Install ONE schema-driven hook for every such slot in
@@ -2011,6 +2121,20 @@ mkgo:""",
         pp = PP[tag]
         mods, _ = modules(bytes(img), va, ln)
 
+        def _p_off(addr):
+            """Image address of P word `addr`, through the record holding it."""
+            for sp, a, cnt, off in mods:
+                if sp == 0 and a <= addr < a + cnt:
+                    return va + off + (addr - a) * 3
+            sys.exit(f"payload {tag}: no P record holds P:0x{addr:05x}")
+
+        def rdw_p_at(addr):
+            i = _p_off(addr) - BASE
+            return img[i] | (img[i + 1] << 8) | (img[i + 2] << 16)
+
+        def wrw_p_at(addr, v):
+            wrw_p(_p_off(addr), v)
+
         def record(addr):
             rec = [m for m in mods if m[0] == 0 and m[1] == addr]
             if len(rec) != 1:
@@ -2054,7 +2178,7 @@ mkgo:""",
             # Nothing harvested is the honest default for a stock chooser --
             # every word belongs to a stock effect that is using it -- but a
             # module of ours has to go somewhere.
-            _need = [m for m in _SEL if m.dsp is not None] + \
+            _need = [m for m in _SEL if m.dsp is not None] + [_MODS[k] for k in HOOKED] + \
                 [m for m in _SITE_MODS if m.dsp is None]
             if _need:
                 sys.exit(f"payload {tag}: nothing is harvested, so there is "
@@ -2338,9 +2462,9 @@ mkgo:""",
         # ROTINIT / ROTLATCH markers are substituted by _prep like SEND's.
         # It MAY also declare its own DEV repro hooks below -- the generic version of the arms the three
         # core sources have at the top of main().
-        for _k in CARRIED:
+        for _k in CARRIED + [k for k in HOOKED if tag in _MODS[k].dsp.payloads]:
             if _k not in _texts and _k in ASM_SRC:
-                _src_k = _dev_hooks(_k, pathlib.Path(ASM_SRC[_k]).read_text())
+                _src_k = pathlib.Path(ASM_SRC[_k]).read_text()
                 _mk = remix_modules().get(_k)
                 if (_x and _mk is not None and _mk.harness is not None
                         and _mk.harness.bus_client):
@@ -2420,7 +2544,7 @@ hostquit:
 
         plan = tuple(
             (m.key, _prep(_ybase(m, _texts[m.key]), m.key, m.dsp.r7_latch_slot))
-            for m in sorted((remix_modules()[k] for k in CARRIED
+            for m in sorted((remix_modules()[k] for k in CARRIED + HOOKED
                              if k in _texts), key=lambda m: m.dsp.priority))
         if _x:
             _g = [n for n, t in plan if "never housekeeps" in t]
@@ -2459,14 +2583,14 @@ hostquit:
         # them out. Their records come FIRST so one r5 walks straight from
         # record 1 into record 2 and the two loops share their whole setup.
         # [rate const, phase slot, AP int, AP frac, MOD int, MOD frac]
-        LFO01 = [0x7f0000, 0x3e, 0x52, 0x53, 0x21, 0x22,   # line 0  1.000x
-                 0x6cc000, 0x4f, 0x54, 0x55, 0x23, 0x24]   # line 1  1.168x
+        LFO01 = [0x7f0000, 0x81, 0x31, 0x33, 0x21, 0x22,   # line 0  1.000x
+                 0x6cc000, 0x4f, 0x34, 0x35, 0x23, 0x24]   # line 1  1.168x
         LFOTAB = [0x5b0000, 0x50, 0x56, 0x57,   # line 2  0.711x
                   0x4a0000, 0x51, 0x58, 0x59,   # line 3  0.578x
-                  0x760000, 0x47, 0x00, 0x01,   # line 4  0.922x
-                  0x610000, 0x48, 0x02, 0x03,   # line 5  0.758x
-                  0x4d0000, 0x49, 0x04, 0x05,   # line 6  0.602x
-                  0x370000, 0x4a, 0x06, 0x07]   # line 7  0.430x
+                  0x760000, 0x47, 0x74, 0x75,   # line 4  0.922x
+                  0x610000, 0x48, 0x76, 0x77,   # line 5  0.758x
+                  0x4d0000, 0x49, 0x7a, 0x7e,   # line 6  0.602x
+                  0x370000, 0x4a, 0x7f, 0x80]   # line 7  0.430x
         # ⚠️ THE TABLE MUST FOLLOW THE SOURCE. An engine that has not been
         # through the 17 Aug 0-1 roll reads record 2 FIRST, so prefixing the
         # 0/1 records unconditionally would feed line 0's data to line 2 --
@@ -2596,7 +2720,7 @@ hostquit:
                     print(f"  {'PTABLE':13} P:0x{DEV_DELAY_P:05x}..0x{_at:05x} "
                           f"({len(_ptab):4d} words)  {name}'s table  (DEV: leads "
                           f"the out-of-region record)")
-                words, init_a, proc_a = assemble(src, _at)
+                words, init_a, proc_a = assemble(src, _at, label=name)
                 if _at + len(words) >= 0x20000:
                     sys.exit(f"payload {tag}: DEV delay overruns the "
                              f"entry-point plausibility bound "
@@ -2643,10 +2767,10 @@ hostquit:
                         _s2, _xt_sites[name] = _p2x(_s2, name)
                     else:
                         _c += len(_tab)
-                _w, _ia, _pa = assemble(_s2, _c)
+                _w, _syms = assemble_syms(_s2, _c, label=name)
                 _last = (_c, len(_w))
                 if _c + len(_w) <= _end:
-                    _fit = (_r, _tab, _s2, _c, _w, _ia, _pa)
+                    _fit = (_r, _tab, _s2, _c, _w, _syms)
                     break
             if _fit is None:
                 if len(runs) < 2 and _last is not None:
@@ -2663,7 +2787,15 @@ hostquit:
                          f"separate runs but the largest single opening has "
                          f"only {_big}; harvest an effect BETWEEN two runs to "
                          f"join them into one")
-            _r, tab, src, cursor, words, init_a, proc_a = _fit
+            _r, tab, src, cursor, words, _syms = _fit
+            _hooks = remix_modules()[name].dsp.hooks if name in remix_modules() else ()
+            init_a, proc_a = _syms.get("init"), _syms.get("proc")
+            if name not in HOOKED and (init_a is None or proc_a is None):
+                sys.exit(f"payload {tag}: {name} has no init/proc labels")
+            for _h in _hooks:
+                if _h.label not in _syms:
+                    sys.exit(f"payload {tag}: {name}'s hook at P:0x{_h.site:05x} names "
+                             f"label {_h.label!r}, which the source does not define")
             if tab is not None and _xa is not None:
                 if len(tab) != _xa[1]:
                     sys.exit(f"payload {tag}: {name}'s table is {len(tab)} "
@@ -2695,6 +2827,23 @@ hostquit:
                           f"({len(tab):4d} words)  {name}'s table")
             place(words, cursor)
             _r["cursor"] = cursor + len(words)
+            for _h in _hooks:
+                # the two stock words become `jsr >label`; the section
+                # replays the displaced instruction (schema.DspHook)
+                _got = (rdw_p_at(_h.site), rdw_p_at(_h.site + 1))
+                if _got != tuple(_h.stock):
+                    sys.exit(f"payload {tag}: {name}'s hook site P:0x{_h.site:05x} holds "
+                             f"{_got[0]:06x} {_got[1]:06x}, not stock "
+                             f"{_h.stock[0]:06x} {_h.stock[1]:06x}; refusing")
+                wrw_p_at(_h.site, 0x0BF080)
+                wrw_p_at(_h.site + 1, _syms[_h.label])
+                print(f"  {'HOOK':13} P:0x{_h.site:05x} -> {name} {_h.label} "
+                      f"P:0x{_syms[_h.label]:05x}  {_h.note}")
+            if name in HOOKED:
+                print(f"  {name:13} P:0x{cursor:05x}..0x{cursor + len(words):05x} "
+                      f"({len(words):4} words)  no dispatch entry: reached by its hook(s)")
+                cursor += len(words)
+                continue
             wrw_p(pp["xtab"] + NEW_IDS[name] * 3, init_a)
             wrw_p(pp["xtab"] + (32 + NEW_IDS[name]) * 3, proc_a)
             if name == REMIX.fallback:
@@ -2729,7 +2878,8 @@ hostquit:
 
         if probe == "silence":
             words, init_a, proc_a = assemble(
-                pathlib.Path("dsp/silence_stub.asm").read_text(), cursor)
+                pathlib.Path("dsp/silence_stub.asm").read_text(), cursor,
+                label="SILENCE STUB")
             if cursor + len(words) > _end_of_run(cursor):
                 sys.exit("silence stub does not fit the region's free tail")
             place(words, cursor)

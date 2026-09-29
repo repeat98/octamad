@@ -53,7 +53,6 @@ that 16K Y ring and X:(r7+$20..$3f). The current layout occupies 13,750 ring
 positions, including interpolation slack. No global writable scratch. Four
 instances per DSP core, eight total, include all four shared-window buffers.
 The ledger refuses combinations with modules that hardcode those buffers.
-Mini Verb and the repo's Vintage Verb occupy the same FX2 id.
 
 Init clears every persistent scalar unconditionally, then clears 128 delay
 words per process call. Audio passes dry until the whole 16K ring is clean

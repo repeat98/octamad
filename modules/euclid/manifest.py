@@ -1,7 +1,7 @@
 """EUCLID -- a swung, track-clocked filter/amp sequencer."""
 import math
 
-from remix.schema import (BusRole, Detour, DspSection, Formatter, Harness,
+from remix.schema import (Gate, Category, Proof, BusRole, Detour, DspSection, Formatter, Harness,
                           Kind, Linked, MenuEntry, ModeView, Module, NameSelect,
                           Param, YBase)
 
@@ -12,7 +12,9 @@ G2 = tuple(round(math.tan(math.pi * 30 * 500 ** (i / 32) / 44100) * (1 << 22))
            for i in range(33))
 MODULE = Module(
     name="euclid", key="EUCLID", kind=Kind.HYBRID,
-    doc="Euclidean LP/BP/HP/amp sequencer: swing, envelope, gate, random and loop.",
+    category=Category.TRACK, author="repeat98", author_url="https://github.com/repeat98",
+    proof=Proof.RENDER, proof_note="its own render gates; not on hardware",
+    doc="Euclidean LP/BP/HP/notch/amp sequencer: swing, envelope, gate, random and loop.",
     menu=MenuEntry(fx2_id=0x1d, donor_desc=0x400d58b8,
                    abbr=b"EUCL", fullname=b"Euclid"),
     params=(
@@ -63,4 +65,5 @@ MODULE = Module(
                "Reset Euclidean phase on the second PLAY path"),
     ),
     harness=Harness(layout_char="Q", is_server=False),
+    gates=(Gate('tools/verify/verify_euclid.py', venv=True, stage='image'),),
 )

@@ -52,13 +52,18 @@ ID2POS = 0x400d6150
 LIST_REFS = [0x400375f4, 0x40052496, 0x40059a42]
 FX1_ID_LOOKUP = 0x400d5f58
 FX1_CHOOSER = 0x400d6060
+# 11 entries + the NUL terminator = 12 words; 0x400d6090 is FX2_LIST (the
+# stock table build_bus mirrors the live chooser into when Octakit is
+# present), so a wider window reads that table as FX1 damage.
+FX1_CHOOSER_LEN = 0x30
 FX1_ID2POS = 0x400d60d0                 # FX1's own cursor-row table
 FX1_LIST_REFS = [0x40037990, 0x40052706, 0x40059bd2]
 FX1_NONE = 0x400d4618
 FX1_ROWCOUNT_AT = 0x40059be6            # FX1's viewport literal
 
-REMIX = _reg.remix(os.environ.get("REMIX") or _reg.DEFAULT_REMIX)
+REMIX = _reg.remix(os.environ.get("REMIX"))
 _MODS = _reg.modules()
+NO_WIDGET = 0x4005692e          # build_bus.NO_WIDGET: a stock rts, past a host page's slots
 # A HIDDEN module (schema.Remix.hidden) is carried but takes no chooser row,
 # so it is not in the order the list, the positions or the row count are
 # checked against. Its own gate is tools/verify/verify_hidden.py, which checks the
@@ -90,6 +95,10 @@ ACTIVE_PARAMS = {k: _MODS[k].active_params for k in _ORDER
                  if k not in STOCK_KEYS}
 LINKED_PARAMS = {k: _MODS[k].linked_params for k in _ORDER
                  if k not in STOCK_KEYS}
+# a host page's link elements stop at its last drawn slot (build_bus.py)
+for _k, _n in REMIX.host_slots:
+    if _k in LINKED_PARAMS:
+        LINKED_PARAMS[_k] = tuple(i for i in LINKED_PARAMS[_k] if i < _n)
 
 
 # P-relative: the per-parameter value-COUNT array and the defaults array.
@@ -107,9 +116,10 @@ P_FMT1, P_FMT2, P_FMT3 = 0x0ca, 0x0fa, 0x12a
 # uses all-zeros for a plain numeric knob.
 STEPPED_FMT = (0x4003c718, 0x40047254)
 # The ColdFire cave region (docs/firmware/PARAM_PAGES.md section 7): clones, the tempo
-# caves and PLAN §6's label formatters all live in here and nowhere else.
+# caves and the mode-select label formatters all live in here and nowhere else.
 CAVE_LO, CAVE_HI = 0x400d6b20, 0x400d7c3c
 OVF_LO, OVF_HI = 0x400d24d0, 0x400d2ce0
+ISL_LO, ISL_HI = 0x400c45b0, 0x400c4702    # the 338 B zero run (Spectrum's SHPE formatter)
 REG_FMT = {(_c.registers_formatter.module, _c.registers_formatter.slot):
            (_c.pinned, _c.registers_formatter.offset)
            for _k in REMIX.modules for _c in _MODS[_k].cf_patches
@@ -302,13 +312,22 @@ def main():
                   f"{name}: p{i} default {dflt} is inside its value count "
                   f"{cnt}")
 
+        _host_n = dict(REMIX.host_slots).get(name)
         for i in sorted(got):
             cnt = rd32(img, P + P_COUNTS + i * 4)
             f1 = rd32(img, P + P_FMT1 + i * 4)
             f2 = rd32(img, P + P_FMT2 + i * 4)
             f3 = rd32(img, P + P_FMT3 + i * 4)
+            if _host_n is not None and i >= _host_n:
+                # past a host page's slots: no widget (a bare rts), 0x12a 0;
+                # A stays whatever the slot's own rules made it
+                check(f2 == NO_WIDGET and f3 == 0,
+                      f"{name}: p{i} is past the host page's {_host_n} slots, so its "
+                      f"widget is the rts 0x{NO_WIDGET:08x} and 0x12a is 0 "
+                      f"(got 0x{f2:08x}/0x{f3:08x})")
+                continue
             if cnt < 128:
-                # SINCE PLAN §6 the "A" callback may be one of our label
+                # The "A" callback may be one of our label
                 # caves instead of stock's 0x4003c718 -- that is the whole
                 # point: A decides WHAT IS PRINTED, and a select that prints
                 # ROOM/PLATE/BIG rather than 1/2/3 still has to be DRAWN as a
@@ -331,7 +350,8 @@ def main():
                       f"enumerated formatter or a label cave "
                       f"(got 0x{f1:08x}/0x{f2:08x}/0x{f3:08x})")
             elif ((name, i) in REG_FMT
-                  and (CAVE_LO <= f1 < CAVE_HI or OVF_LO <= f1 < OVF_HI)
+                  and (CAVE_LO <= f1 < CAVE_HI or OVF_LO <= f1 < OVF_HI
+                       or ISL_LO <= f1 < ISL_HI)
                   and img[f1 - REG_FMT[(name, i)][1] - BASE:
                           f1 - REG_FMT[(name, i)][1] - BASE
                           + len(REG_FMT[(name, i)][0])]
@@ -349,7 +369,7 @@ def main():
                 # -64..+63 -- A = 0x4003c7a0, B = 0, 0x12a = the signed number
                 # renderer 0x400328e4, read from the stock descriptor at
                 # donor_desc + 0x38. Build-time bytes only until a flash shows
-                # the dial (the descriptor trap family, CLAUDE.md).
+                # the dial (the descriptor trap family, AGENTS.md).
                 check(f1 == 0x4003c7a0 and f2 == 0 and f3 == 0x400328e4,
                       f"{name}: p{i} count {cnt} is a BIPOLAR knob, so it carries "
                       f"SPRING BAL's dial (got 0x{f1:08x}/0x{f2:08x}/0x{f3:08x})")
@@ -382,14 +402,14 @@ def main():
         # The stock list is left where it is; the refs point elsewhere. The
         # cursor table is rewritten WHOLE (every dropped id clamped to row
         # 0), which the FX1 section above checks entry by entry.
-        _skip.update(range(FX1_CHOOSER - BASE, FX1_CHOOSER - BASE + 0x40))
+        _skip.update(range(FX1_CHOOSER - BASE, FX1_CHOOSER - BASE + FX1_CHOOSER_LEN))
         _skip.update(range(FX1_ID2POS - BASE, FX1_ID2POS - BASE + 0x80))
     for _eid in _rep_ids:
         _a = FX1_ID_LOOKUP + _eid * 4 - BASE
         _skip.update(range(_a, _a + 4))
         _stock_P = next((m.menu.donor_desc + 0x38 for m in _MODS.values()
                          if m.is_stock and m.menu.fx2_id == _eid), None)
-        for _o in range(0, 0x40, 4):
+        for _o in range(0, FX1_CHOOSER_LEN, 4):
             if int.from_bytes(stock[FX1_CHOOSER - BASE + _o:
                                     FX1_CHOOSER - BASE + _o + 4], "big") == _stock_P:
                 _skip.update(range(FX1_CHOOSER - BASE + _o,
@@ -405,7 +425,7 @@ def main():
     _except = " and".join(_except)
     _same(FX1_ID_LOOKUP - BASE, 0x80,
           "FX1 id lookup table (0x400d5f58, 32 entries) unchanged" + _except)
-    _same(FX1_CHOOSER - BASE, 0x40,
+    _same(FX1_CHOOSER - BASE, FX1_CHOOSER_LEN,
           "FX1 chooser list (0x400d6060, 11 entries) unchanged" + _except)
     # ==== FX1 rows this remix asked for ==================================
     # The same shape as the FX2 checks above, because it is the same

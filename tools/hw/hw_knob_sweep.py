@@ -25,17 +25,17 @@ LOG = pathlib.Path("out/hw/bustest/sweep.log")
 
 # (cc, name, a, b)  -- BusVerb slot order: page 1 then page 2
 VERB = [
-    (41, "TIME", 0, 127), (42, "SIZE", 0, 127), (43, "SHMR", 0, 127), (44, "SHFT", 0, 3), (45, "WET", 0, 127),
+    (42, "SIZE", 0, 127), (43, "SHMR", 0, 127), (44, "SHFT", 0, 5), (45, "WET", 0, 127),
     (62, "MODE", 0, 2),   (63, "TONE", 0, 127), (64, "DIFF", 0, 127),
-    (66, "GATE", 0, 127),
+    (66, "GATE", 0, 127), (67, "TIME", 0, 127),     # TIME on page-2 slot 11 since 26 Sep 2026
 ]
 DELAY = [
-    (41, "TIME", 0, 127), (42, "FDBK", 0, 127), (43, "TONE", 0, 127), (44, "PING", 0, 127), (45, "MIX", 0, 127),
-    (62, "MODE", 0, 2),   (63, "SCAT", 0, 127), (64, "DENS", 0, 127), (65, "SIZE", 0, 3),
-    (66, "PTCH", 0, 127), (67, "WOW", 0, 127),
+    (42, "FDBK", 0, 127), (43, "TONE", 0, 127), (44, "PING", 0, 127), (45, "MIX", 0, 127),
+    (62, "MODE", 0, 2),   (63, "SCTR", 0, 127), (64, "DENS", 0, 127), (65, "SIZE", 0, 3),
+    (66, "PTCH", 0, 127), (67, "TIME", 0, 127),     # TIME on page-2 slot 11 since 26 Sep 2026 (WOW went)
 ]
-RESTORE = {40: 90, 41: 20, 42: 64, 43: 0, 44: 127, 45: 100,
-           62: 1, 63: 0, 64: 64, 65: 0, 66: 0, 67: 1}
+RESTORE = {40: 90, 41: 0, 42: 64, 43: 0, 44: 127, 45: 100,
+           62: 1, 63: 0, 64: 64, 65: 0, 66: 0, 67: 20}
 
 LINE = re.compile(r"TEST page-2\s+CC(\d+) (\d+)<->(\d+):\s+gapfloor d=([+-][\d.]+)dB \(t=([+-][\d.]+)\)\s+\| rms d=([+-][\d.]+) \(t=([+-][\d.]+)\)\s+tilt d=([+-][\d.]+) \(t=([+-][\d.]+)\)")
 CTRL = re.compile(r"CONTROL page-1\s+CC40 .*?gapfloor d=([+-][\d.]+)dB \(t=([+-][\d.]+)\)")

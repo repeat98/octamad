@@ -30,7 +30,7 @@ NOTEMPO=1 installs neither; the DSP then reads no note and TIME draws in
 milliseconds.
 """
 
-from remix.schema import CavePatch, FormatterReg, Kind, Module
+from remix.schema import Category, Proof, CavePatch, FormatterReg, Kind, Module
 
 # The per-frame voice-record writer, at the instruction that publishes the
 # FX2 id. Ten bytes: three instructions, displaced into the cave.
@@ -52,6 +52,8 @@ MODULE = Module(
     name="tempo-sync",
     key="TEMPO SYNC",
     kind=Kind.CF_PATCH,
+    category=Category.BUS, author="sambanks", author_url="https://github.com/sambanks",
+    proof=Proof.HARDWARE, proof_note="Sam's MKII",
     doc="ColdFire caves: publishes the held MIDI note to BusDelay, and draws "
         "BusDelay TIME as a tempo division.",
     cf_patches=(
@@ -71,9 +73,10 @@ MODULE = Module(
             source="modules/tempo-sync/time_fmt.s",
             # A (P+0x0ca) points at the cave and B (P+0x0fa) stays zero --
             # stock DELAY TIME's own configuration.
-            # TIME is slot 1 since the one-aux re-slot (7 Sep 2026); at slot 0
-            # the division labels drew on SEND (seen on the unit, 15 Sep 2026).
-            registers_formatter=FormatterReg(module="DELAY SERVER", slot=1),
+            # TIME is page-2 slot 11 since 26 Sep 2026 (slot 1 from the
+            # one-aux re-slot, 7 Sep 2026; at slot 0 the division labels
+            # drew on SEND, seen on the unit, 15 Sep 2026).
+            registers_formatter=FormatterReg(module="DELAY SERVER", slot=11),
             report_note=", registered as BusDelay TIME's formatter",
         ),
     ),

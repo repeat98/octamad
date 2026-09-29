@@ -130,10 +130,10 @@ the local emulator.
 |---|---|---|---|
 | [**CF METER**](modules/cfmeter/README.md) | [sambanks](https://github.com/sambanks) | Probe: frame-interrupt duration and (with CF METER IDLE) idle time, printed as audio on T8's FX2. | port-gated: the readout chain and the interrupt timing under the port; the numbers need the unit |
 | [**CF METER IDLE**](modules/cfmeter-idle/README.md) | [sambanks](https://github.com/sambanks) | Probe: main's idle loop timed, for CF METER's idle-time slot. | `make check`: boots and loads a project under the port (28 Sep 2026); the idle number needs the unit |
-| [**DSP LOADER RUNTIME**](modules/dsp-loader-runtime/README.md) | [repeat98](https://github.com/repeat98) | Experimental firmware P residency manager, verified uploads and stock dispatch binding. | port-gated: Emulator qualification only; static fallback code remains resident. |
-| [**DSP LOADER RUNTIME B**](modules/dsp-loader-runtime-b/README.md) | [repeat98](https://github.com/repeat98) | Core 1 of the experimental residency manager. | port-gated: Emulator qualification only; not a flash candidate. |
-| [**DSP LOADER TRANSFER**](modules/dsp-loader-transfer/README.md) | [repeat98](https://github.com/repeat98) | Experimental two-core DMA mailbox and deferred UI error message; bounded staging without execution. | port-gated: Both-core DMA and bounded P staging; no effect activation or hardware qualification. |
-| [**DSP LOADER TRANSFER B**](modules/dsp-loader-transfer-b/README.md) | [repeat98](https://github.com/repeat98) | Core 1 mailbox receiver for DSP LOADER TRANSFER; bounded staging without execution. | port-gated: Both-core DMA and bounded P staging; no effect activation or hardware qualification. |
+| [**DSP DYNLOAD**](modules/dsp-dynload/README.md) | [repeat98](https://github.com/repeat98) | Experimental firmware P residency manager, verified uploads and stock dispatch binding. | port-gated: Emulator qualification only; static fallback code remains resident. |
+| [**DSP DYNLOAD B**](modules/dsp-dynload-b/README.md) | [repeat98](https://github.com/repeat98) | Core 1 of the experimental residency manager. | port-gated: Emulator qualification only; not a flash candidate. |
+| [**DSP DYNLOAD TRANSPORT**](modules/dsp-dynload-transport/README.md) | [repeat98](https://github.com/repeat98) | Experimental two-core DMA mailbox and deferred UI error message; bounded staging without execution. | port-gated: Both-core DMA and bounded P staging; no effect activation or hardware qualification. |
+| [**DSP DYNLOAD TRANSPORT B**](modules/dsp-dynload-transport-b/README.md) | [repeat98](https://github.com/repeat98) | Core 1 mailbox receiver for DSP DYNLOAD TRANSPORT; bounded staging without execution. | port-gated: Both-core DMA and bounded P staging; no effect activation or hardware qualification. |
 
 <!-- modules:end -->
 

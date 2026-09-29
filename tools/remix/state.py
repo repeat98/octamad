@@ -362,7 +362,7 @@ class State:
         # effect's, so adding a module of ours is the moment a choice has to
         # be made about which one to give up. It arrives as a problem with a
         # one-key fix rather than as a build failure.
-        if not self.harvest and [m for m in self.selected if m.dsp is not None]:
+        if not self.harvest and [m for m in self.selected if m.places_dsp]:
             out.append("every stock effect is on a chooser, so there is "
                        "nowhere to place your modules — x drops the three "
                        "reverbs (2,724 words), or take off whichever you "

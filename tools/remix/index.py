@@ -90,6 +90,10 @@ def main():
             bits.append(f"{len(m.active_params)} knobs")
         if m.dsp is not None:
             bits.append(f"asm {m.dsp.asm}")
+        for d in m.dsp_sites:
+            bits.append(f"DSP site P:0x{d.site:05x}+{d.words} ({d.kind}, "
+                        f"payload {'/'.join(sorted(d.payloads))}, "
+                        f"{'copy of P:0x%05x..0x%05x' % d.copy if d.copy else 'asm ' + d.asm})")
         if m.cf_patches:
             bits.append(f"{len(m.cf_patches)} ColdFire cave"
                         f"{'s' if len(m.cf_patches) > 1 else ''}")

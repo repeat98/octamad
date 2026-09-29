@@ -207,6 +207,10 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	python3 tools/verify/verify_modulation.py
 	python3 tools/verify/verify_nimbus.py
 	python3 tools/verify/verify_hello.py
+	@# DSP sites: the splice does what it declares and nothing else (four
+	@# corrupted builds must each fail); with OT_PROJECT the copy is
+	@# byte-identical to the image without the jump under the port.
+	python3 tools/verify/verify_dspsite.py --selftest
 	@# The isolated DSP gates build their own remixes over mainos_bus.bin.
 	@# Restore the selected image before inspecting its chooser tables.
 	$(MAKE) bus REMIX=$(REMIX)

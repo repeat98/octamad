@@ -760,7 +760,7 @@ class RemixerScreen(Screen):
                         f"Choosers · {st.loaded_name or 'unsaved'}",
                         disp(mod) if mod is not None else "Unit"]
         can_fix = bool(self.blockers(probs)) or (
-            not st.harvest and [m for m in st.selected if m.dsp is not None])
+            not st.harvest and [m for m in st.selected if m.places_dsp])
         if can_fix != getattr(self, "_can_fix", None):
             self._can_fix = can_fix
             self.refresh_bindings()          # the footer follows it
@@ -992,7 +992,7 @@ class RemixerScreen(Screen):
                     continue
                 out.append(f"[dim {WARN}] —  {titlecase(cname):<13}"
                            f"donor, taken[/]")
-        elif [m for m in st.selected if m.dsp is not None]:
+        elif [m for m in st.selected if m.places_dsp]:
             out.append(f"[dim {WARN}] —  Plate, Spring, Dark Rev (donors)[/]")
         # THE SHARED COST, ONCE. Every module that pins FX2 buffers costs
         # the same seven stock effects, so saying it on each of them read as
@@ -1088,7 +1088,7 @@ class RemixerScreen(Screen):
             return "[dim]" + " · ".join(
                 one(n, placeable(st.sel, t, u, st.harvest)[0])
                 for n, t, u, _f in st.regions) + "[/]" + boot
-        if not [m for m in st.selected if m.dsp is not None]:
+        if not [m for m in st.selected if m.places_dsp]:
             return "[dim]a stock chooser: 14 effects, no modules[/]"
         return "[dim]building…[/]"
 
@@ -1382,7 +1382,7 @@ class RemixerScreen(Screen):
                     f" {'':<{W}}[dim]{len(_rs)} separate runs — one module "
                     f"must fit one run, largest is {_big:,} words[/]")
             out.append(None)                # the key goes here -- see below
-        elif not [m for m in st.selected if m.dsp is not None]:
+        elif not [m for m in st.selected if m.places_dsp]:
             # No build to read -- and none is possible, because a selection
             # with no module of ours has no fallback to name. The region is
             # still fully accounted for: the three reverbs are in it.
@@ -2165,7 +2165,7 @@ class RemixerScreen(Screen):
         # meet. The three reverbs are the conventional choice -- the biggest,
         # and FX2-only, so taking them costs FX1 nothing -- not a default the
         # image imposes.
-        if not st.harvest and [m for m in st.selected if m.dsp is not None]:
+        if not st.harvest and [m for m in st.selected if m.places_dsp]:
             from remix.schema import DEFAULT_HARVEST
             for k in DEFAULT_HARVEST:
                 if k in st.sel:

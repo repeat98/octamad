@@ -11,6 +11,9 @@ Checked, and how it knows:
   hook sites         declared. Two modules hooking one instruction: the
                      second overwrites the first's jsr and the first never
                      runs.
+  DSP sites          declared (schema.DspSite). Two modules rewriting the same
+                     stock program words in one payload, or a copy body taken
+                     from words another module's jump has replaced.
   detours, pokes,    declared. Fixed-address rewrites, checked against every
   table refs,        cave, hook site and emit poke; a runtime's recipe
   runtime writes     writes are claims of the same kind.
@@ -226,6 +229,37 @@ def check(selected) -> list[str]:
                         clash("poke site", f"{oowner} ({olabel})", f"{m.name} ({c.label})",
                               f"0x{max(ostart, pa):08x} -- both rewrite the same bytes")
                 pokes.append(span)
+
+    # ---- DSP sites (schema.DspSite) ---------------------------------------
+    # A site rewrites stock program words in one payload; two modules on
+    # overlapping words would leave the second's jump over the first's, and
+    # the first body would never run. A copy body's SOURCE span is claimed as
+    # well: a body copied from words another module has since replaced with a
+    # jump would copy the jump. (A span that ENDS where another site begins
+    # is fine and is the normal composition: the mixdown copy exits into the
+    # seam the strip hooks.)
+    dsp_sites: list[tuple[str, int, int, str, str, str]] = []
+    dsp_copies: list[tuple[str, int, int, str, str]] = []
+    for m in selected:
+        for d in getattr(m, "dsp_sites", ()):
+            for pl in sorted(d.payloads):
+                for opl, ostart, olen, oowner, olabel, _ in dsp_sites:
+                    if opl == pl and _overlap(ostart, olen, d.site, d.words):
+                        clash("DSP site", f"{oowner}'s {olabel}",
+                              f"{m.name}'s {d.label}",
+                              f"payload {pl} P:0x{max(ostart, d.site):05x} -- both "
+                              f"rewrite the same stock words")
+                dsp_sites.append((pl, d.site, d.words, m.name, d.label, ""))
+                if d.copy is not None:
+                    dsp_copies.append((pl, d.copy[0], d.copy[1] - d.copy[0],
+                                       m.name, d.label))
+    for pl, start, length, owner, label, _ in dsp_sites:
+        for cpl, cstart, clen, cowner, clabel in dsp_copies:
+            if cpl == pl and cowner != owner and _overlap(cstart, clen, start, length):
+                clash("DSP site", f"{owner}'s {label}",
+                      f"{cowner}'s copy in {clabel}",
+                      f"payload {pl} P:0x{max(cstart, start):05x} -- the copy would "
+                      f"take the jump, not the stock words")
 
     # ---- pinned return addresses (schema.Runtime.pinned_returns) ----------
     # A runtime's replacement routine may validate its CALLER: Octakit's

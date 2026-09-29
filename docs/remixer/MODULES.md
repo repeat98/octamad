@@ -373,6 +373,65 @@ dsp=DspSection(
   (X:0x4840) and points the source's `$fab1e0` literal at.
 - **Program space is per core.** `make bus` prints the live ledger.
 
+## Declaring a DSP site: code in stock program space
+
+Every DSP module above is reached through the effect dispatch table, by an id
+on a track. A **DSP site** (`schema.DspSite`, kind `Kind.DSP_SITE`) is reached
+by a *stock instruction* instead: the build plants a long `jmp` (or `jsr`) over
+two stock words of payload A or B, and the body it reaches goes into the
+harvested region like any module's code. It is how a module changes what the
+firmware does between its own calls: the summing mixdown of payload A
+(P:0x238..0x2d4) and the seam after it (P:0x2d5) are the first users
+(`docs/proposals/MIXER.md`; `modules/mixdown`, `modules/seam`). No FX2 id, no
+chooser row, no clone; a site-only module is a `SYSTEM` entry in the rig.
+
+```python
+dsp_sites=(DspSite(
+    label="mixdown", site=0x238, words=2, kind="jmp", payloads=frozenset({"A"}),
+    stock_sha256="...",                       # the words the jump replaces
+    copy=(0x238, 0x2d5), copy_sha256="...",   # a body made from stock words ...
+    fixes=(SiteFix(0x25c, "loop_end"), SiteFix(0x291, "bra_to_jmp", target=0x2d5)),
+    # ... or: asm="modules/<name>/body.asm", identity=True|False
+),)
+```
+
+- **Nothing of Elektron's is stored.** The replaced words and a copied span are
+  pinned by SHA-256 over the bytes as the image holds them (three bytes a
+  word, little-endian) and read from the user's own image at build time. A
+  wrong pin fails the build and prints the hash it found, so a new site's pin
+  is one failed build away. Disassemble (`tools/build/dsp_disasm_all.py`) before
+  you pin: the hash proves the words, not that the span ends on an instruction
+  boundary.
+- **A `copy` body is a word copy, never a re-assembly.** `dsp_asm` mis-encodes
+  some instructions silently (`CLAUDE.md`; whether it would for this span was
+  not tested, because a copy of the author's own words is what "a port is a
+  proof" asks for anyway). Only the operands that name an address change, and each is
+  declared and asserted: `loop_end` (a `do #n,>end`'s end, moved with the copy)
+  and `bra_to_jmp` (a one-word PC-relative `bra` that *leaves* the span, made a
+  one-word absolute `jmp`, same length so every other relative branch keeps its
+  meaning). A branch that stays inside the span needs nothing.
+- **An `asm` body** has an `entry` label and is assembled where it lands. It
+  replays the displaced words itself, then does its work, then `rts` (for a
+  `jsr` site) or `jmp`s to `site + words`. Registers, accumulators and the
+  condition codes the stock code leaves live at the site are the body's to
+  preserve: disassemble what follows the site and see what it reads.
+- **Sites compose.** The mixdown copy exits with a `jmp` to P:0x2d5, which the
+  seam module has hooked; the ledger refuses two modules rewriting the same
+  words, and a copy taken from words another module's jump has replaced.
+- **The gate.** `tools/verify/verify_dspsite.py` (in `make check`; `--selftest`
+  corrupts a built image five ways and requires each to fail) checks from the
+  built image alone that the jump is planted, that a copy is stock plus exactly
+  the declared fixes, that its disassembly equals stock's line for line, and
+  that no other stock program word changed. With `OT_PROJECT` and the port, an
+  *identity* (a copy, or an asm body declared `identity=True`) is held to the
+  same image with the jumps removed: core 0's TX0 and every host-port block
+  byte for byte, with MAIN audible. A body that does real work is held by its
+  own module's gate and leaves `identity` False.
+- **What it does not prove.** Timing on the unit (the burn knob measures the
+  real margin), and track audio through a copy when the project plays no
+  samples. Payload A's `P:0x238` is the mixdown; payload B's is other code, so
+  a site names its payload.
+
 ## Declaring a ColdFire module
 
 Two forms. Linked units in DRAM is the default; the ROM-cave form
@@ -657,8 +716,8 @@ own.
 ## Resource claims and the ledger
 
 `tools/remix/ledger.py` refuses a build whose selected modules collide, and
-names both: FX2 ids, cave ranges, hook sites, detour sites, pokes, runtime
-writes, core-private Y words, the per-core FX2 instance buffer region,
+names both: FX2 ids, cave ranges, hook sites, detour sites, DSP sites, pokes,
+runtime writes, core-private Y words, the per-core FX2 instance buffer region,
 appended runtimes (one per image), arena reserves.
 
 Core-private Y is derived by scanning your source for `y:>$09xx`. Low Y is

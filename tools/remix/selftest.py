@@ -18,8 +18,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import too
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 from remix import ledger, registry, schema, state, stock  # noqa: E402
-from remix.schema import (CavePatch, Claims, DspSection, Kind, MenuEntry,  # noqa: E402
-                          Module, Param, YBase)
+from remix.schema import (CavePatch, Claims, DspSection, DspSite, Kind,  # noqa: E402
+                          MenuEntry, Module, Param, SiteFix, YBase)
 
 
 def _effect(name, fx2_id, priority=0, reserved=(), buffers=False,
@@ -70,7 +70,26 @@ def _cave(name, cave_addr, length=16, hook_addr=None):
     )
 
 
+def _site(name, site, words=2, copy=None, fixes=()):
+    """A module that splices into stock DSP program space (schema.DspSite)."""
+    return Module(
+        name=name, key=name.upper(), kind=Kind.DSP_SITE, doc="fixture",
+        dsp_sites=(DspSite(label=f"{name} site", site=site, words=words,
+                           stock_sha256="0" * 64, copy=copy, fixes=fixes,
+                           copy_sha256="1" * 64 if copy else "",
+                           asm=None if copy else "does/not/exist.asm"),))
+
+
 CASES = [
+    # A splice rewrites stock words in one payload; a second on the same words
+    # leaves its jump over the first's, and the first body never runs.
+    ("two modules splicing the same stock DSP words",
+     [_site("alpha", 0x238), _site("beta", 0x239)], "DSP site"),
+    # A copy body is made from stock words at build time; taken from words
+    # another module's jump has replaced, it would copy the jump.
+    ("a copy taken from words another module's jump replaced",
+     [_site("alpha", 0x230, copy=(0x230, 0x2d5)), _site("beta", 0x240)],
+     "DSP site"),
     ("two modules claiming one FX2 id",
      [_effect("alpha", 0x07), _effect("beta", 0x07)], "fx2 id"),
     ("two caves overlapping in memory",
@@ -117,6 +136,8 @@ CLEAN = [_effect("alpha", 0x07, reserved=(0x0905,)),
          # keeps them apart -- that is what it is for).
          _stock("filter", 0x04, False),
          _stock("compressor", 0x18, False)]
+# The normal composition: the mixdown's copy ends where the seam's site begins.
+CLEAN_SITES = [_site("alpha", 0x238, copy=(0x238, 0x2d5)), _site("beta", 0x2d5)]
 CLEAN_STOCK_PAIR = [_stock("chorus", 0x12, True), _stock("comb", 0x13, True),
                     _effect("alpha", 0x07)]
 
@@ -194,7 +215,9 @@ def main():
                   f"both modules, got {found}")
     for label, mods in (("modules that do not collide", CLEAN),
                         ("two buffered stock effects + a zero-buffer insert",
-                         CLEAN_STOCK_PAIR)):
+                         CLEAN_STOCK_PAIR),
+                        ("a DSP site copy that ends where another site begins",
+                         CLEAN_SITES)):
         found = ledger.check(mods)
         if found:
             bad += 1
@@ -208,6 +231,36 @@ def main():
         print("  [FAIL] a module on a stock FX2 id (0x0c, EQUALIZER) was accepted")
     except ValueError:
         print("  [PASS] a module on a stock FX2 id is refused")
+
+    # ---- DSP site declarations (schema.DspSite) ---------------------------
+    for label, make in (
+            ("a body that is both assembled source and a copy",
+             lambda: DspSite(label="x", site=0x238, stock_sha256="0" * 64,
+                             asm="a.asm", copy=(0x238, 0x2d5), copy_sha256="1" * 64)),
+            ("a body that is neither",
+             lambda: DspSite(label="x", site=0x238, stock_sha256="0" * 64)),
+            ("a site of one word (a long jump is two)",
+             lambda: DspSite(label="x", site=0x238, words=1, stock_sha256="0" * 64,
+                             asm="a.asm")),
+            ("a hash that is not 64 hex digits",
+             lambda: DspSite(label="x", site=0x238, stock_sha256="abc", asm="a.asm")),
+            ("a fix outside the copied span",
+             lambda: DspSite(label="x", site=0x238, stock_sha256="0" * 64,
+                             copy=(0x238, 0x2d5), copy_sha256="1" * 64,
+                             fixes=(SiteFix(0x300, "loop_end"),))),
+            ("a bra_to_jmp with no target",
+             lambda: SiteFix(0x291, "bra_to_jmp")),
+            ("a DSP_SITE module with a chooser row",
+             lambda: Module(name="x", key="X", kind=Kind.DSP_SITE, doc="",
+                            menu=MenuEntry(fx2_id=0x07, donor_desc=0x400d58b8,
+                                           abbr=b"X", fullname=b"X"),
+                            dsp_sites=_site("y", 0x238).dsp_sites))):
+        try:
+            make()
+            bad += 1
+            print(f"  [FAIL] {label} was accepted")
+        except ValueError:
+            print(f"  [PASS] {label} is refused")
 
     try:
         Param(b"SIXSIX")

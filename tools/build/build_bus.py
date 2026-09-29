@@ -158,6 +158,9 @@ if not (BUILD_TAG.isdigit() and 1 <= len(BUILD_TAG) <= 2):
 # proved runs custom DSP code on real hardware. schema.py enforces the range.
 _MODS = remix_modules()
 _SEL = [_MODS[k] for k in CARRIED]
+# Modules that splice DSP code into stock program space (schema.DspSite): a
+# menu-less DSP_SITE module is not CARRIED (no id, no clone), a HYBRID is both.
+_SITE_MODS = [_MODS[k] for k in REMIX.modules if _MODS[k].dsp_sites]
 # A STOCK row (tools/remix/stock.py) gets no clone, no code and no words:
 # its descriptor and dispatch are where stock put them. The build writes
 # its list row and cursor position and nothing else, so everything derived
@@ -501,7 +504,8 @@ def _dev_hooks(key, src):
 _SCRATCH = None
 
 
-def assemble(src_text, org):
+def assemble_syms(src_text, org):
+    """Assemble at `org`: (words, every label -> address)."""
     global _SCRATCH
     if _SCRATCH is None:
         import tempfile
@@ -516,7 +520,59 @@ def assemble(src_text, org):
              for i in range(0, len(blob), 3)]
     syms = dict((k, int(v, 16)) for k, v in
                 (l.split() for l in symf.read_text().split("\n") if l))
+    return words, syms
+
+
+def assemble(src_text, org):
+    words, syms = assemble_syms(src_text, org)
     return words, syms["init"], syms["proc"]
+
+
+# ---- DSP sites (schema.DspSite) -------------------------------------------------
+# Pure helpers; the orchestration is in main()'s per-payload loop.
+_LONG_JMP, _LONG_JSR = 0x0af080, 0x0bf080      # `jmp >a` / `jsr >a`, the address the next word
+
+
+def words_sha256(words):
+    """SHA-256 over 24-bit words as the image holds them: three bytes each,
+    little-endian -- the same bytes a `.incbin` of the payload would hash."""
+    return hashlib.sha256(b"".join(w.to_bytes(3, "little") for w in words)).hexdigest()
+
+
+def bra_target(addr, w):
+    """Destination of the one-word PC-relative `bra` `w` at `addr`
+    (`0000 0101 0000 11aa aa0a aaaa`, a 9-bit signed offset), or None if
+    `w` is not one."""
+    if (w & 0xfffc20) != 0x050c00:
+        return None
+    off = ((w >> 8 & 3) << 7) | ((w >> 6 & 3) << 5) | (w & 0x1f)
+    return addr + (off - 512 if off & 0x100 else off)
+
+
+def relocate_copy(span, lo, org, fixes, who):
+    """The stock words `span` (from P:`lo`) as they must read at `org`:
+    every declared operand fixed and asserted, nothing else touched."""
+    out = list(span)
+    for f in fixes:
+        i = f.addr - lo
+        w = out[i]
+        if f.kind == "loop_end":
+            if i < 1 or (out[i - 1] & 0xff00ff) != 0x060080:
+                sys.exit(f"{who}: fix at P:0x{f.addr:05x} is not the operand word "
+                         f"of a `do #n,>end` (the word before it is "
+                         f"0x{out[i - 1] if i else 0:06x})")
+            if not lo <= w < lo + len(span):
+                sys.exit(f"{who}: the loop end 0x{w:05x} at P:0x{f.addr:05x} "
+                         f"leaves the copied span -- that is a branch out, not a fix")
+            out[i] = w + (org - lo)
+        else:
+            got = bra_target(f.addr, w)
+            if got != f.target:
+                sys.exit(f"{who}: the word 0x{w:06x} at P:0x{f.addr:05x} is "
+                         + ("not a one-word `bra`" if got is None else
+                            f"a `bra` to P:0x{got:05x}, not the declared 0x{f.target:05x}"))
+            out[i] = 0x0c0000 | f.target
+    return out
 
 
 def main():
@@ -1998,7 +2054,8 @@ mkgo:""",
             # Nothing harvested is the honest default for a stock chooser --
             # every word belongs to a stock effect that is using it -- but a
             # module of ours has to go somewhere.
-            _need = [m for m in _SEL if m.dsp is not None]
+            _need = [m for m in _SEL if m.dsp is not None] + \
+                [m for m in _SITE_MODS if m.dsp is None]
             if _need:
                 sys.exit(f"payload {tag}: nothing is harvested, so there is "
                          f"nowhere to place "
@@ -2707,6 +2764,85 @@ hostquit:
             print(f"  {'SEND @ 0x08':13} P:0x{fb_init:05x} "
                   f"(reuses the SEND client)  id 0x{STOCK_DELAY_ID:02x} "
                   f"*** DELAY's slot now runs SEND; audio passes through ***")
+        # ---- DSP sites: bodies into the region, jumps over stock words --------
+        # After every effect, so a remix without sites places byte for byte
+        # what it always did (refhash). The body goes first-fit into the
+        # harvested runs exactly like a module's code (the region's free
+        # words are the ledger, `used` below counts them), then the jump is
+        # planted. Nothing of Elektron's is stored in the manifest: the
+        # replaced words and a copied span are pinned by hash and read from
+        # this image.
+        def _p_at(addr):
+            for _sp, _a, _cnt, _off in mods:
+                if _sp == 0 and _a <= addr < _a + _cnt:
+                    return va - BASE + _off + (addr - _a) * 3
+            return None
+
+        def _rd_p(addr, who):
+            _i = _p_at(addr)
+            if _i is None:
+                sys.exit(f"payload {tag}: {who}: P:0x{addr:05x} is in no program record")
+            return img[_i] | (img[_i + 1] << 8) | (img[_i + 2] << 16)
+
+        for _m in _SITE_MODS:
+            for _d in _m.dsp_sites:
+                if tag not in _d.payloads:
+                    continue
+                _who = f"{_m.name}'s DSP site {_d.label!r}"
+                if any(r["base"] <= a < r["base"] + r["words"]
+                       for r in runs for a in range(_d.site, _d.site + _d.words)):
+                    sys.exit(f"payload {tag}: {_who} at P:0x{_d.site:05x} lies inside "
+                             f"the harvested region -- this remix's own code lands there")
+                _stock = [_rd_p(_d.site + k, _who) for k in range(_d.words)]
+                if words_sha256(_stock) != _d.stock_sha256:
+                    sys.exit(f"payload {tag}: {_who}: the {_d.words} words at "
+                             f"P:0x{_d.site:05x} hash to {words_sha256(_stock)}, not "
+                             f"the pinned {_d.stock_sha256} -- the stock image differs "
+                             f"or the site is wrong; disassemble before pinning")
+                if _d.copy is not None:
+                    _lo, _hi = _d.copy
+                    _span = [_rd_p(a, _who) for a in range(_lo, _hi)]
+                    if words_sha256(_span) != _d.copy_sha256:
+                        sys.exit(f"payload {tag}: {_who}: the copied span "
+                                 f"P:0x{_lo:05x}..0x{_hi:05x} hashes to "
+                                 f"{words_sha256(_span)}, not the pinned {_d.copy_sha256}")
+                    _src = None
+                else:
+                    _src = pathlib.Path(_d.asm).read_text()
+                _fit = None
+                for _r in runs:
+                    _c, _end = _r["cursor"], _r["base"] + _r["words"]
+                    if _d.copy is not None:
+                        _w = relocate_copy(_span, _lo, _c, _d.fixes, _who)
+                        _entry = _c
+                    else:
+                        _w, _sy = assemble_syms(_src, _c)
+                        if "entry" not in _sy:
+                            sys.exit(f"{_who}: {_d.asm} has no `entry` label")
+                        _entry = _sy["entry"]
+                    if _c + len(_w) <= _end:
+                        _fit = (_r, _c, _w, _entry)
+                        break
+                if _fit is None:
+                    sys.exit(f"payload {tag}: {_who} ({len(_w)} words) does not fit "
+                             f"the free tail of any harvested run "
+                             f"({max((r['base'] + r['words'] - r['cursor'] for r in runs), default=0)} "
+                             f"words at most)")
+                _r, _c, _w, _entry = _fit
+                place(_w, _c)
+                _r["cursor"] = _c + len(_w)
+                if len(runs) < 2:
+                    cursor = _r["cursor"]
+                for _k, _v in enumerate([_LONG_JMP if _d.kind == "jmp" else _LONG_JSR,
+                                         _entry] + [0] * (_d.words - 2)):
+                    _i = _p_at(_d.site + _k)
+                    wrw_p(BASE + _i, _v)
+                print(f"  {'DSP SITE':13} P:0x{_d.site:05x}+{_d.words} -> {_d.kind} "
+                      f"P:0x{_entry:05x}  {_m.key}/{_d.label} ({len(_w)} words at "
+                      f"P:0x{_c:05x}"
+                      + (f", copy of P:0x{_lo:05x}..0x{_hi:05x}, {len(_d.fixes)} operand(s) "
+                         f"fixed" if _d.copy is not None else "") + ")")
+
         if len(runs) < 2:
             # ⚠️ WORDING FROZEN for a single run: the build report is API
             # (refhash hashes it verbatim, verify_* parse it).

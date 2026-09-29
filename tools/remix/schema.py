@@ -23,6 +23,9 @@ class Kind(Enum):
     DSP_CLIENT = "dsp_client"   # DSP code + menu entry, but serves no bus
     CF_PATCH = "cf_patch"       # ColdFire behaviour only, no DSP code
     HYBRID = "hybrid"           # both, e.g. an engine plus a display cave
+    DSP_SITE = "dsp_site"       # DSP code spliced into STOCK program space at a
+                                # fixed address (schema.DspSite): no FX id, no
+                                # chooser row, no clone
     STOCK = "stock"             # a STOCK FX2 effect kept in the chooser: no
                                 # code, no clone, no words -- its descriptor
                                 # and dispatch are already in the image; its
@@ -588,6 +591,127 @@ class Poke:
     note: str = ""
 
 
+SITE_FIX_KINDS = ("loop_end", "bra_to_jmp")
+SITE_KINDS = ("jmp", "jsr")
+
+
+@dataclass(frozen=True)
+class SiteFix:
+    """One address operand of a COPIED stock span that has to follow the copy.
+
+    A word-for-word copy of DSP code is position-independent except for the
+    operands that name an address, and those are few and known; each one is
+    declared and asserted against the word it is about to rewrite, so a stock
+    span that changed cannot be relocated by accident.
+
+      loop_end     the second word of a two-word `do #n,>end`: the address of
+                   the loop's last instruction. Offset by the distance moved.
+      bra_to_jmp   a one-word PC-relative `bra` that LEAVES the span
+                   (`0000 0101 0000 11aa aa0a aaaa`, a 9-bit signed offset),
+                   rewritten to the one-word absolute `jmp $target` (target
+                   below 0x1000). Same length, so every other relative
+                   branch in the span keeps its meaning. `target` is asserted
+                   against the word's own decoded destination.
+
+    A PC-relative branch whose destination is inside the span needs no fix.
+    """
+
+    addr: int                   # P address of the word, in the STOCK span
+    kind: str
+    target: int | None = None
+
+    def __post_init__(self):
+        if self.kind not in SITE_FIX_KINDS:
+            raise ValueError(f"SiteFix kind {self.kind!r}: one of {SITE_FIX_KINDS}")
+        if (self.kind == "bra_to_jmp") != (self.target is not None):
+            raise ValueError("SiteFix: bra_to_jmp takes a target, loop_end none")
+        if self.target is not None and not 0 <= self.target < 0x1000:
+            raise ValueError(f"SiteFix target 0x{self.target:x}: the one-word "
+                             f"jmp reaches 0..0xfff")
+
+
+@dataclass(frozen=True)
+class DspSite:
+    """A splice into STOCK DSP program space: a jump planted at a fixed
+    address, and the body it reaches, placed in the remix's harvested region.
+
+    Every DSP module until now was reached through the effect dispatch
+    table, by an id. A site is reached by a stock instruction instead, so a
+    module can change what the firmware does between its own calls: the
+    mixdown (P:0x238..0x2d4 of payload A) and the seam after it (P:0x2d5)
+    are the first users (docs/proposals/MIXER.md).
+
+    Nothing of Elektron's is stored here. The words a site replaces, and the
+    span a `copy` body is made from, are pinned by SHA-256 over their bytes
+    as the image holds them (three bytes a word, little-endian), the way
+    every other identity in this repo is pinned, and read from the user's
+    own image at build time. The build refuses on any drift and prints the
+    hash it found, so a new site's hash is one failed build away.
+
+    The body is EITHER assembled source (`asm`; its `entry` label is what the
+    site reaches, and it is placed like any module's code) OR a copy of a
+    stock span (`copy`, the start of which is the entry) with its address
+    operands fixed (`fixes`). The site's replaced words are not replayed for
+    you: an `asm` body does that itself (its first instructions are the
+    displaced ones, then its own work, then a jump back to `site + words`),
+    a `copy` body already contains them.
+
+    `jmp` plants `jmp >entry`; `jsr` plants `jsr >entry`, for a body that
+    returns with `rts`. Both are two words; `words` past two are padded with
+    nops, and the replaced span must end on an instruction boundary (the
+    build checks the hash, not the boundary: disassemble first).
+    """
+
+    label: str                       # the name in the build report and the ledger
+    site: int                        # P address of the first replaced word
+    stock_sha256: str                # over the replaced words as the image holds them
+    words: int = 2
+    kind: str = "jmp"                # "jmp" | "jsr"
+    payloads: frozenset[str] = frozenset({"A"})
+    asm: str | None = None           # repo-relative source with an `entry` label
+    copy: tuple[int, int] | None = None   # [start, end) of a stock span
+    copy_sha256: str = ""            # over the whole copied span
+    fixes: tuple[SiteFix, ...] = ()
+    # An `asm` body that changes nothing audible, and says so: its first
+    # instructions replay the displaced words, then it returns or jumps on.
+    # The port gate then holds it to the image without the jump, bit for bit
+    # (tools/verify/verify_dspsite.py). A `copy` body is an identity by
+    # construction and needs no flag. Anything that does real work leaves
+    # this False and is held by its own module's gate.
+    identity: bool = False
+
+    def __post_init__(self):
+        if self.kind not in SITE_KINDS:
+            raise ValueError(f"{self.label}: kind {self.kind!r}: one of {SITE_KINDS}")
+        if self.words < 2:
+            raise ValueError(f"{self.label}: a site replaces at least the two "
+                             f"words of a long jump, got {self.words}")
+        if not self.payloads or not self.payloads <= {"A", "B"}:
+            raise ValueError(f"{self.label}: payloads {sorted(self.payloads)}")
+        if (self.asm is None) == (self.copy is None):
+            raise ValueError(f"{self.label}: exactly one of asm and copy")
+        if len(self.stock_sha256) != 64 or int(self.stock_sha256, 16) < 0:
+            raise ValueError(f"{self.label}: stock_sha256 is 64 hex digits")
+        if self.copy is not None:
+            lo, hi = self.copy
+            if not 0 <= lo < hi:
+                raise ValueError(f"{self.label}: copy span 0x{lo:x}..0x{hi:x}")
+            if len(self.copy_sha256) != 64 or int(self.copy_sha256, 16) < 0:
+                raise ValueError(f"{self.label}: copy_sha256 is 64 hex digits")
+            seen = set()
+            for f in self.fixes:
+                if not lo <= f.addr < hi:
+                    raise ValueError(f"{self.label}: fix at 0x{f.addr:x} is "
+                                     f"outside the copied span")
+                if f.addr in seen:
+                    raise ValueError(f"{self.label}: two fixes at 0x{f.addr:x}")
+                seen.add(f.addr)
+        elif self.fixes or self.copy_sha256:
+            raise ValueError(f"{self.label}: fixes and copy_sha256 belong to a copy body")
+        if self.identity and self.copy is not None:
+            raise ValueError(f"{self.label}: identity is for an asm body; a copy is one already")
+
+
 @dataclass(frozen=True)
 class SymbolRef:
     """Rewrite one stock u32 data pointer to a linked symbol.
@@ -725,6 +849,9 @@ class Module:
     tables: tuple[TableGrow, ...] = ()
     symbol_refs: tuple[SymbolRef, ...] = ()
     pokes: tuple[Poke, ...] = ()
+    # Splices into STOCK DSP program space (schema.DspSite): a jump at a fixed
+    # address and the body it reaches, placed in the harvested region.
+    dsp_sites: tuple[DspSite, ...] = ()
     # Pages of the audio page arena this module's DRAM lives in
     # (schema.ArenaReserve). DRAM units need none: the platform reserves
     # its own (arena.PLATFORM_PAGES) whenever a remix carries any.
@@ -811,7 +938,22 @@ class Module:
                     f"0x{self.menu.fx2_id:02x} is not a stock effect's -- a "
                     f"replacement must carry the id it replaces, or the stock "
                     f"effect stays and yours is a separate row")
-        if self.kind is Kind.STOCK and (self.dsp is not None or self.cf_patches):
+        if self.dsp_sites:
+            if self.kind not in (Kind.DSP_SITE, Kind.HYBRID):
+                raise ValueError(f"{self.name}: dsp_sites need kind DSP_SITE "
+                                 f"(or HYBRID beside an effect)")
+            _labels = [d.label for d in self.dsp_sites]
+            if len(set(_labels)) != len(_labels):
+                raise ValueError(f"{self.name}: two DSP sites share a label")
+        if self.kind is Kind.DSP_SITE:
+            if not self.dsp_sites:
+                raise ValueError(f"{self.name}: kind DSP_SITE without dsp_sites")
+            if self.menu is not None or self.dsp is not None:
+                raise ValueError(f"{self.name}: a DSP_SITE module has no chooser "
+                                 f"row and no effect code; an engine that also "
+                                 f"splices is kind HYBRID")
+        if self.kind is Kind.STOCK and (self.dsp is not None or self.cf_patches
+                                        or self.dsp_sites):
             raise ValueError(f"{self.name}: a STOCK entry carries no code or "
                              f"caves -- they are already in the image (its "
                              f"params are READ from the stock descriptor, "
@@ -910,6 +1052,12 @@ class Module:
         build-time bytes until the first flash shows it."""
         return tuple(i for i, p in enumerate(self.params)
                      if p.formatter is Formatter.BIPOLAR)
+
+    @property
+    def places_dsp(self) -> bool:
+        """Does this module put DSP code of its own into the image -- an
+        effect or a splice? Both need somewhere in the harvested region."""
+        return self.dsp is not None or bool(self.dsp_sites)
 
     @property
     def is_cf_patch(self) -> bool:

@@ -189,10 +189,10 @@ answer.
 
 Each step is flashable and checkable on its own.
 
-1. **A mixer that matches stock exactly.** Our code replaces P:0x238–0x2d4. **Done as a
-   probe, §9.** Still to do: the same through the build (a declared DSP site, not a
-   hand patch) and a burn knob inside the mixer to measure the real DMA margin on the
-   unit, the one number the port cannot give.
+1. **A mixer that matches stock exactly.** Our code replaces P:0x238–0x2d4. **Done: as a
+   probe (§9) and through the build as a declared DSP site (§10).** Still to do: a burn
+   knob inside the mixer to measure the real DMA margin on the unit, the one number the
+   port cannot give.
 2. **Master strip, Oxide as INS 1, inline at P:0x2d5.** Gate: with the strip's gains at
    unity the output equals stock bit for bit (no delay: it is inline); a recording of
    MAIN includes the insert; the cue pair's main share does too.
@@ -231,8 +231,11 @@ patched image):
 | `--dsp-stopwatch 0:238:2d5`, instructions per 16-sample frame (mean / min / max) | 839 / 828 / 839 | 838 / 827 / 838 |
 
 The mixer therefore costs about 52 instructions per sample, and moving it costs
-nothing measurable (the meter counts 838 against 839; the one-instruction difference is
-the meter's start convention, not investigated).
+nothing measurable. The meter differs by one instruction between the two images and
+the sign flipped between this run (relocated 838, stock 839) and the one in §10
+(relocated 839, stock 838), so it is the meter's floor, not the jump's cost: a `jmp`
+adds one instruction, which neither run can resolve from the other effects in the
+window.
 
 What this does not show: the track slots carry silence (the fixture has no samples; only
 the two input pairs and the click are audible), so the copy's arithmetic on track data
@@ -247,3 +250,38 @@ Commands: `verify_set.py hello --project P --frames 300` stages the card
 `--dsp-stopwatch 0:238:2d5`. The click run is the same with `METRONOME_ENABLED=1`,
 `METRONOME_MAIN_VOLUME=127`, `METRONOME_CUE_VOLUME=127` and both DIR at 0 in
 `project.work`.
+
+## 10. The mechanism: DSP sites (29 Sep 2026)
+
+The probe was a script. The build now has the mechanism: `schema.DspSite` (kind
+`DSP_SITE`, no FX id, no chooser row), placed by `build_bus.py` after the effects into
+the harvested region, claimed in the ledger, documented in `docs/remixer/MODULES.md`
+("Declaring a DSP site"). Two modules use it, both identities:
+
+- `modules/mixdown` (**MIXDOWN COPY**): the §9 copy, declared: the two replaced words and the
+  157-word span pinned by SHA-256 (no Elektron byte in the repo), three operands fixed
+  (`loop_end` twice, `bra_to_jmp` once).
+- `modules/seam` (**MIXER SEAM**): an `asm` body on P:0x2d5, where the copy exits: a `jsr` over the
+  two-word `move x:>$206,r0` to a body that replays it and returns. The empty hook the master strip grows from.
+
+The remix `dspsite` carries both. What was measured (29 Sep 2026, this tree on `origin/main`
+`0980fb5`):
+
+| check | result |
+|---|---|
+| `scripts/refhash.sh check`, the build change against a baseline saved on the untouched tree | all 24 cases bit-identical (artifacts and reports): a remix with no site places what it always did |
+| `tools/remix/selftest.py` | 154 pass, including two ledger collisions, one clean composition (a copy that ends where another site begins) and seven refused declarations |
+| `verify_dspsite.py`, built image alone | jumps planted (`jmp` at P:0x238 to P:0x1000, `jsr` at P:0x2d5 to P:0x109d); the copy is stock plus exactly the three declared fixes; its 139 instructions disassemble as stock's, differing only at the declared exit; the seam body replays the two displaced words; no other stock P word changed |
+| `verify_dspsite.py --selftest` | a bit flipped in a copied word, an unrelated stock word, a loop end, the exit's target, and the replayed displaced word: each caught |
+| the port, same card, image vs the same image with both jumps removed | core 0's TX0 byte-identical (21,652,028 bytes), MAIN audible (4,723 frames, so not a comparison of silence), 27 host-port block classes identical |
+| the port control: the built image with one instruction of the copy changed | flipping bit 4 of P:0x26e (the input pair's `mac y0,x0,a`, now `mac x0,y1,a`): core 0's TX0 differs, so the comparison can fail. The first control flipped P:0x266, a **track slot's** `mac`, and TX0 stayed identical: the fixture's tracks are silent, so track-slot arithmetic is exactly what this gate cannot see (measured, not only expected) |
+
+Not done, and what it changes: nothing runs on the unit; the copy's arithmetic on track
+audio is unexercised while the fixture has no samples (the control above shows a track-slot
+error would pass); the pricer (`make cycles`) does not count site bodies, which for the
+identities is one `jmp` and one `jsr`; the burn knob is still to build;
+`MASTER_TRACK` cannot be gated under the port (§6). The mechanism holds one thing back on
+purpose: a site that *changes* the sound has no automatic gate beyond structure, because
+the gate compares to "the same image without the jump", which is only the right reference
+for an identity. That module's own gate is its job (the mixer's, §8 step 2: unity sends
+equal stock bit for bit).

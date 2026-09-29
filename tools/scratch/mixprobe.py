@@ -7,8 +7,9 @@ Copies payload A's mixdown block P:0x238..0x2d4 (157 words) to P:NEW, fixes
 the three operands that name an address (two DO loop ends, the exit BRA that
 becomes a short JMP to P:0x2d5), and plants `jmp >NEW` over P:0x238 (a
 2-word `move x:>$205,r0`, whose copy is the first instruction at NEW).
-Nothing else in the image changes. The words are copied, never re-assembled:
-`dsp_asm` mis-encodes instructions the mixdown uses.
+Nothing else in the image changes. The words are copied, never re-assembled
+(`dsp_asm` mis-encodes some instructions silently; a copy of the author's own
+words needs no assembler). Superseded by schema.DspSite and verify_dspsite.py.
 """
 import argparse, pathlib, subprocess, sys, tempfile
 

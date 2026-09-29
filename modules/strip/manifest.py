@@ -103,6 +103,9 @@ MODULE = Module(
                "MIXER close: our layers off, then its own", kind="jsr"),
         Detour(0x4007C458, H("4fefffcc48d77cfc"), "stripui", "mx_draw",
                "MIXER draw (every caller): the stock draw, then the page", pad_to=8),
+        Detour(0x4000E79C, H("4e56ffd448d73cfc"), "stripxport", "mixcc",
+               "the CC handler's entry (CC MAP's and Octakit's chains end there): the mixer's CC 74..107, "
+               "then the stock handler", pad_to=8),
     ),
     symbol_refs=(
         SymbolRef(0x400ab626, 0x400049ca, "stripxport", "strip_xport",

@@ -86,7 +86,7 @@
 
         .text
         .global strip_xport, strip_model, aux_model, ret_model, retlvl_model, strip_sent, strip_frames, strip_tx
-        .global strip_store, strip_default, strip_seen, strip_cand, strip_lock, ret_store
+        .global strip_store, strip_default, strip_seen, strip_cand, strip_lock, ret_store, ret_store_cc, mixcc
 
 strip_xport:
         tst.b   strip_sent
@@ -613,7 +613,12 @@ pack16: mvz.b   (%a0),%d0               | the id
 | main context, every register but d0/d1/a0/a1 kept): the five cells into ret_seen, from
 | there to the window, the part's SRAM twin and the stock editors' marks, as strip_store
 ret_store:
-        lea     -20(%sp),%sp
+        clr.b   rs_nodirty
+        bra.s   rstore
+ret_store_cc:                           | from a MIDI CC: no refresh call (the editors' marks are set)
+        moveq   #1,%d0
+        move.b  %d0,rs_nodirty
+rstore: lea     -20(%sp),%sp
         movem.l %d2-%d4/%a2-%a3,(%sp)
         moveq   #1,%d0
         move.b  %d0,strip_lock          | the ISR's looks wait
@@ -674,13 +679,90 @@ ret_store:
         moveq   #1,%d0
         move.l  %d0,(%a1)
         move.l  %d0,0x100f8598
+        tst.b   rs_nodirty
+        bne.s   rrdone
         jsr     DIRTY
 rrdone: clr.b   strip_lock
         movem.l (%sp),%d2-%d4/%a2-%a3
         lea     20(%sp),%sp
         rts
 
+| ------------------------------------------------------ the mixer's MIDI CC --
+| The stock CC handler (0x4000e79c, the dispatch's entry for status 0xB, and where CC MAP's
+| and Octakit's chains end) is detoured here: a CC the mixer takes writes its value into a
+| model and the Part keeps it (ret_store_cc); every other CC goes on to the stock handler,
+| its displaced prologue replayed. Any channel; only while AUDIO CC IN is on, as the stock
+| handler's own writes. The numbers (free in stock, MIXER.md section 21):
+|   74..85   AUX A's sends: T1..T8, IN AB, IN CD, RET A, RET B
+|   86..95   AUX B's sends: T1..T8, IN AB, IN CD
+|   102, 103 AUX B's sends from RET A, RET B
+|   104..107 RET B's level, its CUE send, RET A's level, its CUE send
+|   96..101 (data entry, NRPN) and 108..111 are not taken.
+        .equ    CCIN,      0x80000049   | AUDIO CC IN
+        .equ    STOCKCC,   0x4000e7a4   | the stock CC handler past its 8-byte prologue
+mixcc:  move.l  4(%sp),%a0              | the message {status, cc, value}
+        mvz.b   1(%a0),%d0
+        sub.l   #74,%d0
+        cmp.l   #38,%d0
+        bhs.s   1f                      | below 74 wraps high: not ours either
+        lea     CCTAB,%a1
+        move.l  (%a1,%d0.l*4),%d1
+        beq.s   1f
+        tst.b   CCIN
+        beq.s   1f
+        move.l  %d1,%a1
+        mvz.b   2(%a0),%d0
+        and.l   #0x7f,%d0
+        move.b  %d0,(%a1)
+        jsr     ret_store_cc
+        rts
+1:      linkw   %fp,#-44                | the stock handler's prologue, as it was
+        moveml  %d2-%d7/%a2-%a5,%sp@
+        jmp     STOCKCC
+
         .balign 4
+CCTAB:
+        .long   aux_model+4+0
+        .long   aux_model+4+1
+        .long   aux_model+4+2
+        .long   aux_model+4+3
+        .long   aux_model+4+4
+        .long   aux_model+4+5
+        .long   aux_model+4+6
+        .long   aux_model+4+7
+        .long   aux_model+4+8
+        .long   aux_model+4+9
+        .long   aux_model+4+10
+        .long   aux_model+4+11
+        .long   aux_model+16+4+0
+        .long   aux_model+16+4+1
+        .long   aux_model+16+4+2
+        .long   aux_model+16+4+3
+        .long   aux_model+16+4+4
+        .long   aux_model+16+4+5
+        .long   aux_model+16+4+6
+        .long   aux_model+16+4+7
+        .long   aux_model+16+4+8
+        .long   aux_model+16+4+9
+        .long   0
+        .long   0
+        .long   0
+        .long   0
+        .long   0
+        .long   0
+        .long   aux_model+16+4+10
+        .long   aux_model+16+4+11
+        .long   retlvl_model+4
+        .long   retlvl_model+5
+        .long   retlvl_model+16+4
+        .long   retlvl_model+16+5
+        .long   0
+        .long   0
+        .long   0
+        .long   0
+rs_nodirty:     .byte   0
+        .balign 4
+
 strip_frames:   .long   0               | records sent
 strip_sent:     .byte   0               | our burst is in flight
         .balign 4

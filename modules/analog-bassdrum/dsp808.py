@@ -7,6 +7,8 @@ from pathlib import Path
 import dsp909
 HERE=Path(__file__).resolve().parent
 RATE=44100
+# Post-desk attenuation: default 500 ms hit energy matches the 909 within 0.1 dB.
+OUTPUT_TRIM=0.215
 SWORDS=48
 OFF=dict(U=0,EH=1,EL=2,EP=3,PC=4,PS=5,DC=6,TF=7,INC=8,BEND=9,DE=10,DP=11,KT=12,GAIN=13,VEL=14,ATK=15,SEG=16,YL=20,KLPF=32)
 OFF.update({k:v for k,v in dsp909.OFF.items() if v>=37})
@@ -28,11 +30,19 @@ def layout(base):
     return {k:base+128*i for i,k in enumerate(tables())}
 def data_lines(lay):
     return ''.join('X %x '%lay[k]+' '.join('%06x'%dsp909.q24(v) for v in vs)+'\n' for k,vs in tables().items())
-def source(lay,shared):
+def source(lay,shared,*,output_trim=True):
     text=(HERE/'bd808.asm').read_text()
     full=dsp909.source(shared)
     for tag in ('desk-decode','desk'):
         block=full[full.index(';<' + tag + '>'):full.index(';</' + tag + '>')]
+        if tag=='desk' and output_trim:
+            # Limit to the same 24-bit sample as the original output store first.
+            # The oscillator, LPF and saturation states are untouched.
+            stores='        move    a,x:(r0)+'
+            at=block.index(stores)
+            block=block[:at]+('        move    a,x0\n'
+                             f'        move    #>${dsp909.q24(OUTPUT_TRIM):06x},y0\n'
+                             '        mpy     y0,x0,a\n')+block[at:]
         text=text.replace('@'+tag+'@',block)
     subs={k:f'${v:x}' for k,v in {**OFF,**lay,'T_LPF':shared['T_LPF']}.items()}
     con=dict(PK=2*math.sin(math.pi*129.10747/RATE),PD=-math.expm1(-1/(RATE*.00203264)),DD=-math.expm1(-1/(RATE*.00301295)),PC0=3.27303983/4,PS0=-1.57554231/4,DC0=-1.09270470/4,U0=(-1.3892912-math.pi/2)/math.pi,
@@ -78,5 +88,5 @@ class Voice(dsp909.Voice):
             self.tf=f(self.tf+kt*(y-self.tf))
             y=f(max(-1,min(1-2**-23,4*self.tf))*vel)
             self.yl+=self.t['T_LPF'][k[8]]*(y-self.yl)
-            out.append(self.desk(self.yl))
+            out.append(f(f(self.desk(self.yl))*q(OUTPUT_TRIM)))
         return out

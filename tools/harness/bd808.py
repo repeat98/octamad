@@ -6,10 +6,10 @@ sys.path.insert(0,str(bd909.ROOT/'modules/analog-bassdrum'))
 import dsp808,dsp909
 OUT=bd909.ROOT/'out/bd808'
 INIT=[64,80,80,64,64,0,0,100,127,64,64,0]
-def build():
+def build(*,output_trim=True):
     bd909.build_host();OUT.mkdir(parents=True,exist_ok=True)
     shared=dsp909.default_layout(0x1000);lay=dsp808.layout(0x3200)
-    syms,_=dsp909.assemble(0x2000,{},OUT/'bd808.bin',dsp808.source(lay,shared))
+    syms,_=dsp909.assemble(0x2000,{},OUT/'bd808.bin',dsp808.source(lay,shared,output_trim=output_trim))
     (OUT/'bd808.data').write_text(dsp909.data_lines(shared)+dsp808.data_lines(lay));return syms
 
 def render(labels,blocks,tag):
@@ -19,7 +19,7 @@ def render(labels,blocks,tag):
     a=array.array('i');a.frombytes(raw.read_bytes());assert a[::2]==a[1::2],'stereo mismatch'
     peak=max(map(int,meter.read_text().split()))
     # Measured code-growth guard, NOT a hardware timing budget (CPU.md).
-    assert peak<=3504,('808 instruction cost grew; re-benchmark full chains',peak)
+    assert peak<=3552,('808 instruction cost grew; re-benchmark full chains',peak)
     return [v/8388608 for v in a[::2]],peak
 def reference(blocks):
     v=dsp808.Voice();return [x for k,t in blocks for x in v.block(k,t)]

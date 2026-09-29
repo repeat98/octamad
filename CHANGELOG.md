@@ -14,6 +14,12 @@ flashed image was built from.
   that nothing requires. A USB MIDI change:
   26 commands full, 2 quick.
 
+- Analog BD: engine selection now lives only in the pool-style browser; the
+  former SRC SETUP MODEL control and its encoder editing path are removed.
+  The 808 receives a fixed post-desk output trim so default hit energy matches
+  the 909 within 0.03 dB over 500 ms. The 909 and both engines' internal states
+  are unchanged; the 808 trim adds three DSP instructions per sample.
+
 - The image-stage gates on their own shard (29 Sep 2026): `verify_set
   --stage-only` stages the image and card without running; the image-stage
   module gates (TEMPO BUS reads its host ids from its own run now) are one

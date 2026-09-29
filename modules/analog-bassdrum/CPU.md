@@ -1,4 +1,34 @@
-# Current Analog BD load measurements
+# Analog BD load measurements
+
+## Default-level follow-up, 29 September 2026
+
+The 808 now applies a 0.215 trim after its final desk limiter: three extra
+instructions per sample and four P words. Its measured standalone peak is
+220.9375 instructions/sample (3535/block); the 909 remains 322.125. The
+808 regression ceiling is now 3552/block, reflecting exactly the added
+48 instructions/block. The combined engine/glue is 996 words plus the
+35-word preserved stock helper, still within the 1063-word donor.
+
+The original audio/state hashes are retained. The exact gate verifies the
+untrimmed 808 against those hashes, then verifies every shipping 808 sample
+is precisely the fixed-point-scaled original, with identical internal states.
+The 909 still matches both original hashes directly. No baseline was replaced.
+`verify_analog_bd_levels.py` measures actual firmware defaults over 100/500 ms.
+
+Four full-image cases were rerun at 900 sequencer frames each, with all eight
+tracks active and DJ EQ in both slots. Every track produced stereo audio.
+
+| Current layout | Core 0 peak | Core 1 peak |
+|---|---:|---:|
+| Eight 808s + sixteen DJ EQs | 3926.375 | 3927.6875 |
+| Alternating 808/909 + sixteen DJ EQs | 4106.25 | 4107.5625 |
+
+Units are executed instructions/sample for the full four-track loop, not
+hardware cycles. Image SHA256:
+`ee9c0db94743913658269ecf23b8b7d7b7381341829a27111f0dc046b6439cb9`.
+The earlier eight-909/double-EQ failure remains a qualification limit; that
+engine is unchanged. The historical measurements below predate this trim.
+
 
 Measured 28 September 2026 on the DSP 808/909 audition image. Historical two-voice measurements follow below. The two-instance ceiling
 was removed on 29 September; see the eight-track results below. Hardware
@@ -37,7 +67,7 @@ The builder now copies that routine from the user's pristine image into the last
 
 The 808 is cheaper than SPRING; the 909 is slightly more expensive than Mini Verb. Neither voice has a full inactive bypass: silent 909 blocks still execute about 320 instructions/sample. Capacity estimates therefore cannot assume that silence releases DSP capacity.
 
-The existing DSP gates now enforce **code-growth ceilings** of 3504 instructions/block for 808 and 5168 for 909. These are measured regression limits, **not hardware budgets**. A failure calls for a new full-chain benchmark, rather than silently increasing the limit.
+At that revision, the DSP gates enforced **code-growth ceilings** of 3504 instructions/block for 808 and 5168 for 909. These are measured regression limits, **not hardware budgets**. A failure calls for a new full-chain benchmark, rather than silently increasing the limit.
 
 ## Final full-firmware load tests
 

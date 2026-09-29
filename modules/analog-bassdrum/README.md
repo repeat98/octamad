@@ -1,7 +1,7 @@
 # Analog BD
 
-One native Octatrack track machine with a stepped **MODEL: 808 / 909**
-selector in SRC SETUP. Both original fixed-point synthesis engines run on
+One native Octatrack track machine with **808 / 909** selection in its
+sample-pool-style engine browser. Both original fixed-point synthesis engines run on
 the DSP, upstream of stock AMP and both track FX slots. No recordings are
 embedded. Earlier image ANALOGBD1 was auditioned on an MK1; the current
 engine browser and eight-track changes still need hardware qualification.
@@ -10,14 +10,20 @@ engine browser and eight-track changes still need hardware qualification.
 |---|---|---|---|---|---|---|
 | 808 SRC | PITCH | DECAY | TONE | ATK | SWEEP | SAT |
 | 909 SRC | PITCH | DECAY | TUNE | ATK | TDEP | SAT |
-| Both SRC SETUP | MODEL | ACCNT | LPF | LOW | HIGH | — |
+| Both SRC SETUP | — | ACCNT | LPF | LOW | HIGH | — |
 
 Both models use the same Mackie desk stage and output LPF. SAT controls
 drive; LOW/HIGH are neutral at 64. LPF is OFF at 0, 500 Hz at 1, **ORIG**
 (~6.57 kHz) at 64, and **18 kHz at the new-assignment default of 127**.
-Stored patches retain their bytes, including when changing MODEL. Volume
+Stored patches retain their bytes, including when changing engines. Volume
 remains on stock AMP. Old patches with both desk bands at zero need them
 raised to hear the source.
+
+The 808 has a fixed post-desk output trim of 0.215 (−13.35 dB) so the actual
+new-assignment defaults have comparable hit energy: 500 ms RMS is −32.23 dBFS
+for 808 and −32.25 dBFS for 909. Their first-100-ms RMS differs by 0.24 dB.
+This trim also lowers existing 808 patches; oscillator, envelope, filter and
+saturation states are unchanged. The 909 output is unchanged.
 
 The 808 is calibrated against the user's 32 clean `_Orig.wav` recordings;
 Tape/TapeSat, X/X2 and unlabeled special effects are excluded. Its body
@@ -40,7 +46,8 @@ The chooser and Part storage follow the measured Machinedrum registration
 seams. Parts store FLEX plus `AB\x01` in unused NEIGHBOR page bytes. All eight
 tracks can store and run independent patches; the two-instance admission
 ceiling has been removed. Stock Part save/copy/reload carries the twelve bytes.
-The model selector uses the stock stepped-control widget. Double-tapping an
+The engine id remains stored internally; its former page-2 control is hidden
+and its encoder is ignored. Double-tapping an
 Analog BD track opens a sample-pool-style engine browser with 808 and 909
 rows. UP/DOWN or LEVEL browses, YES selects, and NO cancels. LEFT returns
 to the machine chooser; RIGHT on ANALOG BD opens the engine pool. Both
@@ -55,7 +62,8 @@ SPRING REV code region and private X tables/state. Both track FX slots are
 available; SPRING REV is excluded from this standalone remix. Its shared
 35-word DARK reverb routine is preserved, with stock/patched audio identity
 checked on both cores. The optimized kick engines are also held to exact
-pre-optimization audio and internal-state hashes.
+pre-optimization internal-state hashes. The 909 audio remains exact; the
+808 audio is checked against the original with an exact post-desk trim.
 MACHINEDRUM, SYNTH MACHINE and POLY still conflict with the registration
 seams and require a shared registry before composition.
 

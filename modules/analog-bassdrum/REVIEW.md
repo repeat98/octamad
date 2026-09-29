@@ -80,7 +80,7 @@ eight-voice/every-effect qualification. The new full-height engine browser
 and eight-track admission require fresh hardware testing. CPU.md records the
 local eight-voice successes and the all-909/double-DJ-EQ failure explicitly.
 
-## Final local validation
+## Initial review validation (before the level follow-up)
 
 The final engine browser uses the same header chevrons as STATIC/FLEX.
 The native ABI gate checks the chooser's stock and Analog BD title branches;
@@ -110,3 +110,19 @@ Octemu and the final panel gate used identical MAIN OS bytes, SHA256
 The full reach plan finished with five of six top-level gates passing; only
 its aggregate acceptance command failed. No hardware qualification is inferred
 from these local runs.
+
+## Browser-only selection and default levels
+
+The follow-up removes the page-2 MODEL control (label, enable bit and value
+widget). Its former encoder is intercepted before stock's parameter write;
+merely hiding the knob would still let that writer overwrite the engine id.
+The id remains in the same stored byte, and only the engine browser edits it.
+Other controls keep their existing positions and saved values.
+
+Actual defaults previously gave 808/909 first-500-ms RMS levels of
+−18.88/−32.25 dBFS. A fixed 0.215 post-desk trim brings the 808 to −32.23 dBFS;
+the first-100-ms RMS differs by 0.24 dB. This affects existing 808 patches too.
+The 909 output is unchanged. The trim follows the original 24-bit limiter,
+so the drive, EQ and envelope states remain exact. The original golden hashes
+are retained: a verified untrimmed render supplies the exact integer-scaled
+reference for every shipping 808 sample. All eight reference/state cases pass.

@@ -235,7 +235,10 @@ ab_setup_open:
 ab_setup_edit6:
         cmpi.l  #AB_ROW,%d2
         bne.s   1f
-        moveq   #FLEX,%d2
+        move.l  %a3,%d0
+        bne.s   2f
+        jmp     (0x4003a624).l          | hidden MODEL slot is browser-only
+2:      moveq   #FLEX,%d2
 1:      move.l  %d2,%d0
         lsl.l   #3,%d0
         add.l   %d2,%d2

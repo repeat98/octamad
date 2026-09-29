@@ -5,7 +5,7 @@ MODULE=Module(
     name="analog-bassdrum", key="ANALOG BD", kind=Kind.CF_PATCH,
     category=Category.MACHINES, author="repeat98", author_url="https://github.com/repeat98",
     doc="Analog BD track machine: switchable 808/909 circuit-informed synthesis.",
-    proof=Proof.PORT, proof_note="source/AMP/main on both cores and chooser/MODEL gates; hardware matching pending",
+    proof=Proof.PORT, proof_note="source/AMP/main on both cores and engine-browser/hidden-control gates; hardware matching pending",
     pressure_blocker="DSP source engines are outside the FX pressure pricer; "
                      "see modules/analog-bassdrum/CPU.md and benchmark_analog_bd.py",
     linked=(
@@ -80,6 +80,7 @@ MODULE=Module(
            Gate("tools/harness/bd909.py", remix_arg=False),
            Gate("tools/harness/bd808.py", remix_arg=False),
            Gate("tools/harness/verify_analog_bd_exact.py", remix_arg=False),
+           Gate("tools/harness/verify_analog_bd_levels.py", remix_arg=False),
            Gate("tools/harness/verify_analog_bd_reverbs.py", remix_arg=False, stage="image"),
            Gate("tools/verify/verify_analog_bassdrum_cf.py", remix_arg=False,
                 venv=True, stage="image"),

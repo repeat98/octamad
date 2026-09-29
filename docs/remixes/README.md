@@ -21,6 +21,7 @@ A remix is a named selection of modules; `make image REMIX=<name>` builds it int
 
 | remix | contains | proof |
 |---|---|---|
+| [`mixer`](../../remixes/mixer/README.md) | The extended mixer: master inserts, RETURN A on the delay (core 1) and RETURN B on the reverb (core 0), sends per source, pages, Part storage and MIDI CC. | port-gated: the strip, RET A / RET B (0 LSB at every hop with OXIDE as the effect, the reverb runs and warms), the RETURN pages, the Part's cells and MIDI CC under the port (29 Sep 2026); not flashed |
 | [`restock`](../../remixes/restock/README.md) | every stock FX2 effect, all fourteen: put my unit back. | `make check` |
 
 ## Test remixes

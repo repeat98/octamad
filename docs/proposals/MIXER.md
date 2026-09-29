@@ -32,22 +32,32 @@ falsify it.
   (P:0x292, bit 10 of `x:(r6+$7e)`: T1–T7 summed into `X:0x4278..` for T8 to
   process, main = slot 7) both end at **P:0x2d5**.
 - **After the exit:** P:0x2d5–0x2eb packs the main pair and the input pairs into
-  `X:0x4700..` (the recorder's sources, and where USB audio reads);
-  P:0x2ec–0x309 mixes a 16-word block from `Y:0x280` into both buses with two
-  gains that it squares (words `+0x32`/`+0x33` of the r4 block) and then the cue
-  mix follows (P:0x30a–0x359).
-- ❓ **`Y:0x280` is the core 1 → core 0 mailbox.** Payload B parks its `Y:0x280`
-  words at `X:0x38000–0x3800f` every frame and core 0 copies them back
-  (`docs/proposals/MACHINEDRUM_MACHINE.md`, "0x38000–0x3800f is a live
-  core 1 → core 0 mailbox", 🟡 under the port: stock reads zeros). That the
-  block is the metronome click and that the two gains are the metronome
-  CUE/MAIN volumes is the leading reading, not settled: `LEVEL_LAW.md` §3 (28 Sep)
-  says the bytes could equally be the LEVEL knobs. Falsifier: poke either pair
-  under the port and see which output moves.
-- **Timing.** ✅ Under the port the mixdown lands about half a sample before the
+  `X:0x4700..` (the recorder's sources, and where USB audio reads). P:0x2ec–0x309
+  adds a mono 16-word block from `Y:0x280` into the ring, `x1·y0` into ring words 0/1
+  (the CUE bus) and `y1·y0` into words 2/3 (MAIN), where `x1` and `y1` are the squares
+  of `x:(r0+$32)` and `x:(r0+$33)` (the `(L/128)²` law). The cue mix follows
+  (P:0x30a–0x359).
+- 🟡 **That block is the metronome click, and the two gains are its volumes.**
+  Measured under the port on 29 Sep 2026 (`METRONOME_ENABLED=1`,
+  `METRONOME_MAIN_VOLUME=127`, `METRONOME_CUE_VOLUME=127`, both DIR at 0, the
+  tones on the inputs): TX0 ring words 0–3 carry the click, peak 8,258,048 =
+  (127/128)² × 2²³ exactly, one squaring; with the click off and the METRONOME
+  volumes at their stock 0/32 nothing does. `LEVEL_LAW.md` §3 left open whether the
+  bytes at `0x8000005e/5f` are these volumes or the LEVEL knobs; the code says `+0x32`
+  → CUE bus and `+0x33` → MAIN, which is the parse's order (`5e` CUE, `5f` MAIN).
+  Not isolated: the path is inferred from the code and from nothing else adding at
+  P:0x2ec (a watch on `Y:0x280` would show it). Where the MAIN LEVEL and CUE LEVEL
+  knobs enter is still unlocated.
+- 🟡 **`Y:0x280` also carries core 1's mailbox** (`X:0x38000–0x3800f`, read at
+  P:0x9b; `docs/proposals/MACHINEDRUM_MACHINE.md` on branch `machinedrum`): stock
+  reads zeros; the MD fills it.
+- **Timing.** 🟡 Under the port the mixdown lands about half a sample before the
   output DMA enters the half it wrote; every effect and voice call runs after it,
   for the next frame (O23: DSR2 `0x807d`/`0x807a`, 1,748 / 522 / 1,690 / 509 of
-  4,469 frames). That margin is the reason a master insert cannot run inline.
+  4,469 frames). The DMA then reads one sample per 4,160 cycles, so work done in
+  order on the ring keeps ahead of it as long as each sample costs far less than that
+  (below, §3). Not measured on the unit; the burn knob inside the mixer (§8 step 1)
+  is the measurement.
 - **The stock DELAY is not on the DSP** (`COLDFIRE_DELAY.md`): it runs over
   SDRAM rings after the read-back, so nothing placed on the DSP hears it.
 
@@ -79,12 +89,29 @@ click / MD  (the P:0x2ec path)   │
 - **Effects on a strip.** A strip's chain is a normal effect chain (same calling
   convention, same modules) on the strip's own core. It can only use effects built
   into that core's program (`SPEC=1`).
-- **The master inserts run one frame late.** The mixer stores the MAIN sum for
-  the inserts, takes the previous frame's insert output to the output, and the
-  inserts run after T8's effects like any effect call: 16 samples (0.36 ms). Inline
-  they would race the output DMA inside the half-sample margin above, and
-  the harness cannot show that race.
-- **Return latency (❓ estimates):** RET B on core 0 adds one frame; RET A on core 1
+- **The master inserts run inline, in place, at P:0x2d5** (`jmp` over its 2-word
+  `move x:>$206,r0`, the same shape as the mixdown's own site). MAIN is in the ring at
+  that point (words 2/3 of each 8-word sample group); the strip gathers it into a
+  contiguous block, runs the insert, and scatters it back, before the pack at
+  P:0x2df.. and the cue mix at P:0x30a.., so the recorder, USB audio and the phones'
+  MAIN share all hear the inserts. Timing (🟡 arithmetic on O23's phase, unmeasured on
+  the unit): the insert costs ~164 cycles per sample (Oxide), the DMA needs sample j at
+  about 2,000 + 4,160·j cycles after the mixdown, the insert has it at 164·(j+1), so an
+  in-order pass stays ahead by 1,800 cycles at sample 0 and more after. This corrects
+  the first version of this document, which put the strip a frame late and called
+  the inline pass a race with the DMA: the race only exists if a sample is produced
+  slower than it is read. A frame late remains the fallback if the burn knob shows the
+  real margin thinner than the port's.
+- **A strip needs what a track has and a strip does not: parameters and state.** An
+  effect reads its twelve knobs through `r6` (a track's 84-word record from the
+  ColdFire, per core) and keeps its state at `r7` (an instance block). The master strip
+  has neither, so it needs a record of its own delivered like a track's (the MD's
+  `md_xport.s` adds a block to the host-transfer chain, WP-C1, on branch
+  `machinedrum`: the precedent) and an instance block of its own (~0x84 words of Y
+  plus the modules' delay lines). Until the ColdFire side exists a test remix stamps
+  fixed defaults, which is enough for Oxide's IN/OUT.
+- **Return latency (❓ estimates):** RET B on core 0 adds one frame (its wet is computed
+  from the previous frame's AUX B); RET A on core 1
   is a one-writer/one-reader hand-off each way through rotating buffers, about
   7 blocks (~2.5 ms). A delay on RET A can subtract it from TIME.
 - **The click / MD path survives** as a source with its own gains.
@@ -135,7 +162,9 @@ answer.
 2. **Feedback runaway.** A loop gain of 1 or more pins the output at full scale;
    the 6 Sep master loop silenced the unit (`FAILURE_MODES.md`). Each AUX input needs
    a soft clip and the self-send range a cap.
-3. **The MASTER TRACK path must keep working** (see §3).
+3. **The MASTER TRACK path must keep working** (see §3). Under the port, with it on,
+   nothing reaches TX0 (`verify_set.py` forces it off; unmeasured whether that is the
+   port's or the unit's), so nothing here can be gated with it on until that is understood.
 4. **The MD's route into the mix** must survive the replacement.
 5. **One mixer, two hooks.** Replacing P:0x238–0x2d4 changes code the recorder,
    USB audio and the MD read the outputs of. Bit-identity at unity (§8 step 1) is
@@ -152,18 +181,21 @@ answer.
 3. **Pre- or post-fader sends.** Proposed: post-fader.
 4. **Core split.** Reverb on core 0, delay on core 1.
 5. **The MIXER page layout.** Not designed.
+6. **Where a strip's parameters and instance block come from** (§3): a record delivered
+   like a track's, and Y space for the state. Proposed: the ColdFire ships one record per
+   strip on the host-transfer chain, from a Part-stored block.
 
 ## 8. Order of work
 
 Each step is flashable and checkable on its own.
 
-1. **A mixer that matches stock exactly.** Our code replaces P:0x238–0x2d4.
-   Gate: main, cue and every read-back word bit-identical to stock on a real
-   project under the port (`make check` with `OT_PROJECT`), plus a burn knob inside
-   the mixer to measure the real DMA margin on the unit (the one number the port
-   cannot give).
-2. **Master strip, Oxide as INS 1.** Gate: bypassed, output equals stock delayed by
-   exactly 16 samples; a recording of MAIN includes the insert.
+1. **A mixer that matches stock exactly.** Our code replaces P:0x238–0x2d4. **Done as a
+   probe, §9.** Still to do: the same through the build (a declared DSP site, not a
+   hand patch) and a burn knob inside the mixer to measure the real DMA margin on the
+   unit, the one number the port cannot give.
+2. **Master strip, Oxide as INS 1, inline at P:0x2d5.** Gate: with the strip's gains at
+   unity the output equals stock bit for bit (no delay: it is inline); a recording of
+   MAIN includes the insert; the cue pair's main share does too.
 3. **AUX B and RET B** (BusVerb as a pure-wet strip). Gate: a runaway test with
    the self-send raised.
 4. **AUX A and RET A on core 1.** Gate: `verify-twocore` with the cores skewed;
@@ -176,3 +208,42 @@ Each step is flashable and checkable on its own.
 
 Before any step is merged: `make check REMIX=<name>`, and
 `scripts/refhash.sh check` if the build changed (`AGENTS.md`).
+
+## 9. Step 1 probe, measured (29 Sep 2026)
+
+`tools/scratch/mixprobe.py patch` copies payload A's P:0x238..0x2d4 (157 words) to
+free words of the harvested region (P:0x1020..0x10bc in a `hello` build, whose ledger
+says P:0x1000..0x101a used of 0x1aa4), by **word copy, not re-assembly**, with three
+operands fixed (the two `do` loop ends, and the exit `bra $2d5`, PC-relative, which
+becomes `jmp $2d5` of the same one word) and a long `jmp` over the 2-word first
+instruction at P:0x238. The disassembly of the copy differs from stock in five lines,
+all address operands or labels.
+
+Under the port (`ot_emu`, the same card, 300 frames after the transport start, both
+DIR at 127 and the tones on the inputs so MAIN and CUE are live; stock image vs
+patched image):
+
+| | stock | relocated |
+|---|---|---|
+| TX0 capture of core 0 (`--audio-out`), 902,166 frames × 8 slots | | **byte-identical**, 21,652,028 bytes |
+| host-port blocks (`--block-dump`), every class, both cores, both directions | | 0 differing blocks in every class |
+| MAIN L/R and CUE L/R, non-zero frames, peak | 4,723 / 4,702, −16.4 / −15.2 dBFS | the same |
+| `--dsp-stopwatch 0:238:2d5`, instructions per 16-sample frame (mean / min / max) | 839 / 828 / 839 | 838 / 827 / 838 |
+
+The mixer therefore costs about 52 instructions per sample, and moving it costs
+nothing measurable (the meter counts 838 against 839; the one-instruction difference is
+the meter's start convention, not investigated).
+
+What this does not show: the track slots carry silence (the fixture has no samples; only
+the two input pairs and the click are audible), so the copy's arithmetic on track data
+is not exercised. It is the same words, so a difference could only come from an address
+operand, and the three operands are the ones the diff shows; but a gate on the shipping
+path wants audible tracks. And nothing about the unit: whether P-memory execution
+from the harvested region costs the same there is the burn knob's question.
+
+Commands: `verify_set.py hello --project P --frames 300` stages the card
+(`out/setverify/card.img`); `mixprobe.py patch out/setverify/image.bin out.bin --new
+0x1020`; then `ot_emu` on each image with `--audio-out`, `--block-dump` and
+`--dsp-stopwatch 0:238:2d5`. The click run is the same with `METRONOME_ENABLED=1`,
+`METRONOME_MAIN_VOLUME=127`, `METRONOME_CUE_VOLUME=127` and both DIR at 0 in
+`project.work`.

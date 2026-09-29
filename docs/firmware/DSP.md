@@ -473,6 +473,15 @@ Each established on hardware:
   never parallel; `mpy y0,x0,a` takes a parallel move, `mpy x0,y0,a`
   discards it; XY dual moves need the X pointer in R0–R3 and Y in R4–R7.
   Disassemble what you assemble.
+  ❌ (29 Sep 2026, the vendored `dsp_asm` at the `8ccdd843` pin) the right
+  pointers are NOT enough: an ALU op with an XY dual move does not assemble
+  at all. Both moves are dropped and the multiply comes out `mpysu`/`macsu`,
+  measured with the stock mixdown's own `mac y0,x0,b x:(r0)+,x0 y:(r5)+,y0`
+  (`f0b8da` on the chip) and `mpy y0,x0,b x:(r1)+,x0 y:(r5)+,y0`. A single X
+  or Y move beside an ALU op encodes correctly, and so does an XY move with
+  no ALU op (`move x:(r1)+,x0 y:(r4)+,y0`). Signed-safe operand orders, `mpy`
+  and `mac` alike: `x0,y1` `y1,x1` `x1,y0` `y0,x0` `x1,x0` `y1,y0`; the
+  other six come out `su` (`modules/oxide/README.md`).
 - Two data moves between writing an address register and using it, never
   an M-register write there; no M-register write inside the sample loop.
 - A modulo offset larger than the buffer is undefined: silent, not an

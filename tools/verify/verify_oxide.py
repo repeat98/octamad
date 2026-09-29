@@ -9,7 +9,7 @@ from the design, a channel that reads the other's state or a stale
 extension byte cannot pass; and it reports how far `fixed()` sits from
 `reference()`, which is the price of 24 bits.
 
-  1. every `; COEF NAME` immediate in oxide.asm equals design.coefficients_q23()
+  1. the coefficient ring's order in oxide.asm is design.RING
   2. the source assembled alone and disassembled: no mpysu/macsu form, and
      every line comes back as written (dsp_asm drops XY parallel moves and
      re-encodes operand orders silently -- CLAUDE.md, DSP.md 8)
@@ -62,18 +62,21 @@ def gate(name, ok, detail=""):
         fails += 1
 
 
-# ---- 1. the coefficient census ---------------------------------------------
-print("coefficients:")
-want = design.coefficients_q23()
-seen = {}
+# ---- 1. the coefficient ring ----------------------------------------------
+# The numbers themselves reach the DSP through the P table (design.ptable())
+# and the renders below would miss by thousands of LSB if one were wrong;
+# what the renders cannot name is WHICH, so the order oxd_ch assumes, as its
+# header documents it, is checked against design.RING here.
+print("coefficient ring:")
+doc = {}
 for line in ASM.read_text().splitlines():
-    m = re.search(r"#>\$([0-9a-f]{6}),\w+\s*;\s*COEF (\w+)", line)
-    if m:
-        seen[m.group(2)] = int(m.group(1), 16)
-bad = [f"{k}: asm ${seen.get(k, 0):06x} design ${v & 0xFFFFFF:06x}"
-       for k, v in want.items() if seen.get(k) != v & 0xFFFFFF]
-gate(f"{len(want)} COEF immediates equal design.py", not bad and len(seen) == len(want),
-     "; ".join(bad) or f"{len(seen)} found")
+    if line.startswith(";"):
+        for off, name in re.findall(r"\$(2[0-9a-f])\s+([A-Z][A-Z0-9]+)", line):
+            doc[int(off, 16) - 0x20] = name
+order = tuple(doc[i] for i in sorted(doc))
+gate("the ring documented in oxide.asm is design.RING", order == design.RING,
+     " ".join(order))
+gate("no coefficient left as an immediate", "COEF" not in ASM.read_text())
 
 # ---- 2. assemble alone, disassemble, compare --------------------------------
 print("round trip:")

@@ -95,15 +95,17 @@ def coefficients():
     c["B0S"] = (1 + G * w) / (1 + w) / 8       # sh1 on hh = h/2 into s = u/16
     c["B1S"] = (G * w - 1) / (1 + w) / 8
     c["P2"] = (1 - w) / (1 + w)
-    # the RBJ low shelf as a TPT SVF: y = hp + A*k*bp + A^2*lp with the SVF at
-    # g = tan(pi f0/fs)/sqrt(A) (the same bilinear map: identical response)
+    # the RBJ low shelf as a TPT SVF at g = tan(pi f0/fs)/sqrt(A) (the same
+    # bilinear map: identical response). Its outputs satisfy hp + k bp + lp = x
+    # exactly, so y = hp + A k bp + A^2 lp = x + k(A-1) bp + (A^2-1) lp, and hp
+    # is never formed: v1 = g D (x - s2 - (k+g) s1).
     A = 10 ** (E2_LS_DB / 40); k = 1 / E2_LS_Q
     g = _tan(E2_LS_HZ) / math.sqrt(A)
     c["KG2"] = (k + g) / 2
-    c["DD"] = 1 / (1 + g * (g + k))
+    c["GD"] = g / (1 + g * (g + k))
     c["GG"] = g
-    c["AK"] = A * k
-    c["A2"] = A * A
+    c["M1"] = k * (A - 1)
+    c["M2"] = A * A - 1
     w = _tan(E2_HS_HZ); G = 10 ** (E2_HS_DB / 20)
     c["HB0"] = (G + w) / (1 + w) / 2           # hs1, halved
     c["HB1"] = (w - G) / (1 + w) / 2
@@ -132,10 +134,19 @@ def curve_tables():
     return vt, st
 
 
+# The coefficient ring: the sixteen numbers a channel multiplies by, in the
+# order oxd_ch uses them (r3 walks it modulo 16). GIN and COUT are the knobs,
+# written every block; the rest are copied from the P table's tail once.
+RING = ("C1H", "P1", "B0S", "B1S", "P2", "GIN", "KG2", "GD",
+        "GG", "M2", "M1", "HB0", "HB1", "HP", "KAP", "COUT")
+
+
 def ptable():
-    """The P table, in the order oxide.asm reads it: VT(32) ST(32) IN(17) OUT(17)."""
-    vt, st = curve_tables(); gi, go = gain_tables()
-    return tuple(w & 0xFFFFFF for w in vt + st + gi + go)
+    """The P table, in the order oxide.asm reads it: VT(32) ST(32) IN(17)
+    OUT(17), then the ring (16, the knobs' places zero)."""
+    vt, st = curve_tables(); gi, go = gain_tables(); c = coefficients_q23()
+    ring = tuple(c.get(n, 0) for n in RING)
+    return tuple(w & 0xFFFFFF for w in vt + st + gi + go + ring)
 
 
 # ---- the float reference (the fitted model, what the DSP approximates) ----
@@ -158,14 +169,13 @@ def reference(x, in_knob=IN_ZERO, out_knob=OUT_ZERO):
 
 def _svf_lowshelf(x, c):
     import numpy as np
-    k_g = 2 * c["KG2"]; D = c["DD"]; g = c["GG"]
+    k_g = 2 * c["KG2"]; gd = c["GD"]; g = c["GG"]
     s1 = s2 = 0.0
     y = np.empty_like(x)
     for n, xn in enumerate(x):
-        hp = (xn - s2 - k_g * s1) * D
-        v1 = g * hp; bp = v1 + s1; s1 = bp + v1
+        v1 = gd * (xn - s2 - k_g * s1); bp = v1 + s1; s1 = bp + v1
         v2 = g * bp; lp = v2 + s2; s2 = lp + v2
-        y[n] = hp + c["AK"] * bp + c["A2"] * lp
+        y[n] = xn + c["M1"] * bp + c["M2"] * lp
     return y
 
 
@@ -203,6 +213,7 @@ def fixed(xs, in_knob=IN_ZERO, out_knob=OUT_ZERO):
     """xs: one channel of signed 24-bit ints. Returns the DSP's output ints."""
     C = coefficients_q23(); vt, st = curve_tables(); gi, go = gain_tables()
     gin = _knob(gi, in_knob); cout = _knob(go, out_knob)
+    # (the ring's order changes no arithmetic: every product is exact)
     X1 = H1 = S1 = C1 = C2 = Y1 = Z1 = Q1 = 0
     out = []
     for x in xs:
@@ -221,10 +232,10 @@ def fixed(xs, in_knob=IN_ZERO, out_knob=OUT_ZERO):
         frac = ((t & 0x7FFFF) << 4)                    # and, asl #4, b1
         a = _mpy(frac, st[kk + 16]) + (vt[kk + 16] << 24)
         # E2a: the SVF
+        v = _lim(a)                                    # move a,y0: kept for the mix
         a = a - (C2 << 24) - _mpy(C1, C["KG2"]) - _mpy(C1, C["KG2"])
         hpd = _lim(_rnd(a))                            # macr
-        hp = _lim(_rnd(_mpy(hpd, C["DD"])))            # mpyr
-        v1 = _rnd(_mpy(hp, C["GG"]))
+        v1 = _rnd(_mpy(C["GD"], hpd))                  # mpyr
         b = (C1 << 24) + v1                            # bp
         C1 = _lim(v1 + b)
         bp = _lim(b)
@@ -232,7 +243,7 @@ def fixed(xs, in_knob=IN_ZERO, out_knob=OUT_ZERO):
         b = (C2 << 24) + v2                            # lp
         C2 = _lim(v2 + b)
         lp = _lim(b)
-        b = _mpy(lp, C["A2"]) + (hp << 24) + _mpy(C["AK"], bp)
+        b = _mpy(lp, C["M2"]) + (v << 24) + _mpy(C["M1"], bp)
         y = _lim(_rnd(b))                              # macr
         # E2b: z = hb0 y + hb1 y1 + hp z1
         a = _mpy(y, C["HB0"]) + _mpy(Y1, C["HB1"]) + _mpy(Z1, C["HP"])
@@ -269,4 +280,4 @@ if __name__ == "__main__":
     print(f"SVF vs RBJ low shelf, max impulse-response difference: {d:.2e}")
     for k, v in coefficients_q23().items():
         print(f"  {k:4s} = ${v & 0xFFFFFF:06x}  ({coefficients()[k]:+.9f})")
-    print("P table:", len(ptable()), "words")
+    print("P table:", len(ptable()), "words (the ring:", ", ".join(RING) + ")")

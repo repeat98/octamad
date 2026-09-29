@@ -123,6 +123,19 @@ This is a partial route closure, **not permission to reclaim the originals**:
 chain restart, Part copy/reload/reset, background bank reload, new-project paths
 and pending stopped-Part retirement are listed in [PUBLICATION.md](PUBLICATION.md).
 
+## CHARACTER on FX2 is refused by design (29 September 2026)
+
+Seen in octemu with the DSP_Dynload_T1 image: choosing CHARACTER on T1's FX2
+shows `DSP LOAD FAILED`. Measured in the port (FX2 selector `0x40052474`,
+chooser row 10, id 28): `dl_selection_refused` 1, `dl_residency_failures` 1,
+nothing uploaded, the live FX2 array unchanged; the same call with EQUALIZER
+(row 2) completes and loads 282 words on core 1. The catalog qualifies a module
+package for the slots it claims (`build_candidates.py`: `slots=('fx1',)`), and
+CHARACTER claims FX1 only. This remix lists the row in the FX2 chooser as well,
+so it is offered and then refused; the refusal is generic (modal reason 1, the
+same text as a DSP fault). Not measured: what the static image does with
+CHARACTER on FX2 (the module's own claim says a dry pass). Use CHARACTER on FX1.
+
 ## Chain restart, Part edits and tripwire (29 September 2026)
 
 - `verify_chain_stop`: a real chain under the sequencer. STOP restarts the

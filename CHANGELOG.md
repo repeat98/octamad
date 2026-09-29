@@ -170,6 +170,18 @@ On the unit: sequencer stuck on step 1 at the first play (one-word displaced
 Y stores, a form no stock site runs; inferred).
 - The core-1 rotation tracker heals a lead of one within a frame (stamps in the cleared buffers, a hold flag).
 
+## Analog BD1 — MK1 audition reported 28 Sep 2026
+
+- `OCTATRACK_ANALOGBD1.bin`, SHA256
+  `3672634dedb8ce0138d7cf4216bd051a47afac6601dcd2a3c1830def24f39704`.
+  mathgonzlez reported that every parameter worked and tweaking caused no
+  glitches or unexpected sounds; parameter labels were close to the area edge.
+- This is the earlier standalone Analog BD image. The later engine browser,
+  horizontal navigation and eight-track admission were not in this report.
+  Save/reload, eight simultaneous voices and every FX combination remain
+  outside its reported coverage. See `modules/analog-bassdrum/README.md`.
+
+
 ## Image 43 — 21 Sep 2026 (`OCTABAM43`, bamsep26 at `b3f6471`)
 
 On the unit: the sample-host wash gone (T3 STATIC, a trig every step, eight

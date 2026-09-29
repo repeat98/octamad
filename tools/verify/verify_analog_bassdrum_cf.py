@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare the built ColdFire engine with portable C, sample for sample.
+"""Verify the built ColdFire control transport and source setup ABI.
 
 Requires the selected firmware's runtime and Unicorn from the repo venv.
 Instruction counts are diagnostics, not hardware timing measurements.
@@ -12,12 +12,11 @@ import sys
 
 from unicorn import Uc, UC_ARCH_M68K, UC_MODE_BIG_ENDIAN, UC_HOOK_CODE
 from unicorn.m68k_const import (UC_CPU_M68K_CFV4E, UC_M68K_REG_A7,
-                               UC_M68K_REG_D0, UC_M68K_REG_D1, UC_M68K_REG_D2, UC_M68K_REG_A0,
+                               UC_M68K_REG_D0, UC_M68K_REG_D1, UC_M68K_REG_D2, UC_M68K_REG_D6, UC_M68K_REG_A0,
                                UC_M68K_REG_A1, UC_M68K_REG_A2, UC_M68K_REG_PC, UC_M68K_REG_SR)
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tools/harness'))
-from analog_bassdrum import library, Voice, DEFAULTS
 
 
 def main():
@@ -36,7 +35,7 @@ def main():
     uc.mem_map(mapped, (base - mapped + len(data) + 4095) & ~4095)
     uc.mem_write(base, data)
     uc.mem_map(0x10000, 0x20000)
-    stop, voice, params, stack = 0x10000, 0x11000, 0x12000, 0x20000
+    stop, stack = 0x10000, 0x20000
     uc.reg_write(UC_M68K_REG_SR, 0x2000)
     instructions = [0]
 
@@ -59,10 +58,15 @@ def main():
     for track in (0, 4):
         uc.mem_write(part + 0x22 + track, b'\x01')
         uc.mem_write(part + 60 + 30 * track, b'AB\x01')
-    assert call('ab_admit_track', part, 7) == 0
+    assert call('ab_admit_track', part, 7) == 1
     assert call('ab_admit_track', part, 0) == 1
     assert call('ab_admit_track', part, 4) == 1
-    print('PASS two-instance admission; existing assignments remain selectable')
+    for track in range(8):
+        uc.mem_write(part+0x22+track,b'\x01')
+        uc.mem_write(part+60+30*track,b'AB\x01')
+    for track in range(8):assert call('ab_admit_track',part,track)==1
+    assert call('ab_admit_track',part,8)==0
+    print('PASS all eight tracks admitted; invalid tracks rejected')
 
     for value,label in ((0,b'OFF'),(1,b'500'),(64,b'ORIG'),(127,b'18000')):
         uc.mem_write(0x24000,bytes(16))
@@ -98,7 +102,7 @@ def main():
     for address in (0x40058000,0x40079000,0x460e7000):
         uc.mem_map(address,0x1000)
     def stop_shortcut(_uc,address,_size,_data):
-        if address in (0x400584d0,0x400791f6):
+        if address in (symbols['ab_engine_open'],0x400791f6):
             _uc.emu_stop()
     # Observe TST flags through a branch, not Unicorn's lazy SR readout.
     # beq +4; moveq #0,d2; bra +2; moveq #1,d2; nop
@@ -114,7 +118,7 @@ def main():
             for i,reg in enumerate(registers):uc.reg_write(reg,0x12340000+i)
             uc.reg_write(UC_M68K_REG_A7,stack)
             uc.emu_start(symbols['ab_pool_open'],stop,count=10000)
-            assert uc.reg_read(UC_M68K_REG_PC)==(0x400584d0 if signed else 0x400791f6)
+            assert uc.reg_read(UC_M68K_REG_PC)==(symbols['ab_engine_open'] if signed else 0x400791f6)
             assert uc.reg_read(UC_M68K_REG_A7)==stack-(0 if signed else 4)
             for i,reg in enumerate(registers):assert uc.reg_read(reg)==0x12340000+i
             if not signed:
@@ -123,64 +127,74 @@ def main():
     uc.hook_del(hook)
     print('PASS track shortcut ABI: stock continuation, flags, stack and registers')
 
+    uc.mem_map(0x40077000,0x1000)
+    def stop_title(_uc,address,_size,_data):
+        if address in (0x40077b62,0x40077b70): _uc.emu_stop()
+    hook=uc.hook_add(UC_HOOK_CODE,stop_title)
+    for signed in (False,True):
+        uc.mem_write(livepart+60,b'AB\x01' if signed else b'\0\0\0')
+        for row in range(6):
+            uc.reg_write(UC_M68K_REG_D0,row)
+            uc.reg_write(UC_M68K_REG_A0,0x400334d8)
+            uc.reg_write(UC_M68K_REG_A7,stack)
+            uc.emu_start(symbols['ab_pool_title'],stop,count=10000)
+            expected=0x40077b62 if row<2 or (row==5 and signed) else 0x40077b70
+            assert uc.reg_read(UC_M68K_REG_PC)==expected,(row,signed)
+            assert uc.reg_read(UC_M68K_REG_D0)==row
+            assert uc.reg_read(UC_M68K_REG_D6)==1
+            assert uc.reg_read(UC_M68K_REG_A0)==0x400334d8
+            assert uc.reg_read(UC_M68K_REG_A7)==stack
+    uc.hook_del(hook)
+    print('PASS pool header: stock chevrons for STATIC/FLEX and signed Analog BD; other rows unchanged')
+
     uc.mem_write(livepart+0x22,b'\x01')
     uc.mem_write(livepart+60,b'AB\x01')
     uc.mem_write(0x800062a4,struct.pack('>I',0x26000))
     uc.mem_write(0x800062a8,struct.pack('>I',0x27000))
     knobs=[64,32,64,32,64,99,1,100,0,64,127,0]
-    for model in (0,1):
-        knobs[6]=model
-        uc.mem_write(0x27000,b''.join(struct.pack('>H',v<<8) for v in knobs[:6]))
-        uc.mem_write(0x80000830,bytes(knobs[6:]))
-        for split in range(16):
-            uc.mem_write(cursor,bytes([0xa5])*200)
-            uc.mem_write(0x80001c80,struct.pack('>I',cursor))
-            uc.mem_write(0x46104d0c,b'\x10')
-            call('ab_render',0,0,0,split)
-            call('ab_render',0,0,split,16)
-            expected=struct.pack('>4I12H',0xab090000,0x09090001,0,0,*knobs)
-            assert bytes(uc.mem_read(cursor,len(expected)))==expected,split
-            assert int.from_bytes(uc.mem_read(0x80001c80,4),'big')==cursor+160
-            assert bytes(uc.mem_read(cursor+160,40))==bytes([0xa5])*40
-    print('PASS DSP control record: all 16 trigger offsets, knobs and next-record boundary')
-    lib = library()
-    for model in (0, 1):
-        p = DEFAULTS.copy()
-        p[6] = model
-        array = (ct.c_uint8 * 12)(*p)
-        state = Voice()
-        uc.mem_write(params, bytes(p))
-        call('ab_reset', voice)
-        call('ab_trigger', voice, params)
-        lib.ab_reset(ct.byref(state))
-        lib.ab_trigger(ct.byref(state), array)
-        before = instructions[0]
-        for i in range(800):
-            actual = call('ab_sample', voice, params)
-            expected = lib.ab_sample(ct.byref(state), array)
-            assert actual == expected, (model, i, actual, expected)
-        # Check every state word as well as audio, then exercise model
-        # switches and retriggers without resetting the voice.
-        def same_state():
-            expected = b''.join(struct.pack('>I', int(getattr(state, field)) & 0xffffffff)
-                                for field, _ctype in Voice._fields_)
-            assert bytes(uc.mem_read(voice, ct.sizeof(Voice))) == expected, 'state mismatch'
-        same_state()
-        average = (instructions[0] - before) / 800
-        print(f'PASS ColdFire/native: model {model}, 800 identical samples; '
-              f'{average:.1f} instructions/sample (not chip cycles)')
-        for i in range(800):
-            if i % 127 == 0:
-                array[6] = 1-array[6]
-                array[0] = (i*17) & 127
-                array[1] = (i*31) & 127
-                array[8] = (i*11) & 127
-                uc.mem_write(params, bytes(array))
-                call('ab_trigger', voice, params)
-                lib.ab_trigger(ct.byref(state), array)
-            assert call('ab_sample', voice, params) == lib.ab_sample(ct.byref(state), array)
-        same_state()
-        print('PASS ColdFire/native: retriggers, model changes and complete voice state')
+    for track in range(8):
+        uc.mem_write(livepart+0x22+track,b'\x01')
+        uc.mem_write(livepart+60+30*track,b'AB\x01')
+    for track in range(8):
+      for ping in (0,1):
+        cursor=0x80001c90+ping*0xa80+336*track
+        for model in (0,1):
+            knobs[6]=model
+            uc.mem_write(0x27000,b''.join(struct.pack('>H',v<<8) for v in knobs[:6]))
+            uc.mem_write(0x80000830+72*track,bytes(knobs[6:]))
+            for split in range(16):
+                uc.mem_write(cursor,bytes([0xa5])*200)
+                uc.mem_write(0x80001c80,struct.pack('>I',cursor))
+                uc.mem_write(0x46104d0c+track,b'\x10')
+                call('ab_render',track,ping,0,split)
+                call('ab_render',track,ping,split,16)
+                expected=struct.pack('>4I12H',0xab090000,0x09090001,0,0,*knobs)
+                assert bytes(uc.mem_read(cursor,len(expected)))==expected,split
+                assert int.from_bytes(uc.mem_read(0x80001c80,4),'big')==cursor+160
+                assert bytes(uc.mem_read(cursor+160,40))==bytes([0xa5])*40
+    print('PASS DSP control record: all 8 tracks, both ping buffers, all 16 trigger offsets, knobs and next-record boundary')
+
+    # Engine list commits update Part, SRAM, live byte and dirty flags together.
+    for address,size in ((0x100a4000,0x9000),(0x100f8000,0x1000),
+                         (0x40027000,0x1000),(0x4004d000,0x1000),
+                         (0x400d3000,0x1000),(0x400d5000,0x1000)):
+        uc.mem_map(address,size)
+    for address in (0x40027e00,0x4004d948):uc.mem_write(address,bytes.fromhex('4e75'))
+    for track in range(8):
+        uc.mem_write(0x100b14cc,bytes([track]))
+        for name,value in (('engine_bank',bank),('engine_part',0),('engine_track',track)):
+            uc.mem_write(symbols[name],struct.pack('>I',value))
+        for model in (1,0):
+            at=0x1e0+30*track
+            call('ab_engine_select',model)
+            for address in (livepart+at,0x100a4ece+at,0x80000830+72*track):
+                assert bytes(uc.mem_read(address,1))==bytes([model]),(track,model,hex(address))
+        call('ab_engine_select',2)
+        assert bytes(uc.mem_read(livepart+at,1))==b'\0'
+        uc.mem_write(0x100b14cc,bytes([(track+1)%8]))
+        call('ab_engine_select',1)
+        assert bytes(uc.mem_read(livepart+at,1))==b'\0','stale browser changed another track'
+    print('PASS engine browser commit: both models, all tracks, mirrors, invalid/stale selection')
 
 
 if __name__ == '__main__':

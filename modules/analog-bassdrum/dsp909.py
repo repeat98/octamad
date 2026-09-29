@@ -274,7 +274,7 @@ def desk_source(layout):
     cut = lambda tag: full[full.index(f';<{tag}>'):full.index(f';</{tag}>')]
     return ('zt01:\n        move    #>$ffffff,m0\n        move    #>$ffffff,m1\n'
             '        move    #>$ffffff,m4\n' + cut('desk-decode') +
-            '        move    n7,a\n        do      a1,zt02\n        move    x:(r0),a\n' +
+            '        do      n7,zt02\n        move    x:(r0),a\n' +
             cut('desk') + 'zt02:\n        rts\n')
 
 

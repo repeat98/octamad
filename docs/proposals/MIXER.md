@@ -218,8 +218,8 @@ Each step is flashable and checkable on its own.
 4. **AUX A and RET A on core 1.** Gate: `verify-twocore` with the cores skewed;
    on the unit, the track × delay-mode sweep used for the bus.
 5. **UI and storage on the ColdFire.** Pulled forward for the master strip (29 Sep
-   2026): the record is built (§12); the MIXER pages, the SETUP window and Part storage
-   are next, in that order.
+   2026): the record is built (§12), and the MIXER pages (§13); the SETUP window and Part
+   storage are next, in that order.
 6. **The 100 % wet delay as a ColdFire return** (Tape Echo over SDRAM, seconds of
    delay at little DSP cost). Needs AUX A delivered to the ColdFire and the result
    back.
@@ -417,7 +417,64 @@ empty to 602 with OXIDE on both; tail 1,108 to 7,690, the apply included. With b
 slots, sample j's writes finish well inside the output DMA's 2,000 + 4,160 j cycles
 (§3), by the port's count.
 
-**Not shown:** anything on a unit; the page that edits the model and the Part that
-stores it (next); a record lost in transit on the unit (the DSP would keep the previous
+**Not shown:** anything on a unit; the Part that stores the model (the page that edits
+it is §13); a record lost in transit on the unit (the DSP would keep the previous
 frame's slots).
+
+## 13. The MIXER pages (29 Sep 2026)
+
+`modules/strip/strip_ui.s`, a second DRAM unit, pages the MIXER window in the layout of
+§7 decision 5: **LEFT / RIGHT** walk the strips (MIXER, MASTER; the returns join later),
+**UP / DOWN** the MASTER strip's slots (INS 1, INS 2), **A–F** turn the shown slot's six
+page-1 knobs in `strip_model`, **LEVEL** turns MAIN. The MIXER strip is the stock page
+with a ▶ at the right end of its title band; MASTER keeps the frame, the title band
+(◀, "MASTER") and the MUTE band, and redraws the three boxes above the band as two: MAIN
+as a number over a speaker, and the slot, its name down the side and its effect's knobs
+as numbers, named and formatted by the effect's own descriptor. A slot with no effect, or
+a knob the effect does not draw, shows an empty cell and turns nothing.
+
+**Three detours**, all in the stock window (`0x4007c458..0x4007d478`): the opener's
+`LPUSH` of its input layer (`0x4007d41c`) also pushes ours, a key layer for the four
+arrow keys, on top; the close's `LPOP` (`0x4007d2a4`) takes ours (and the knobs' layer,
+when MASTER registered it) off first; the draw's entry (`0x4007c458`, which the opener,
+every stock knob, the mutes and FUNC call) runs the stock draw and then the page. Every
+close is the window's close routine `0x4007d274` (MIXER's release, NO, FUNC + UP/DOWN,
+and the window manager, which holds it as the window's callback), and the one `LPOP` of
+the window's layer is in it. Every drawing call is one the stock draw makes, in the shape
+it makes it (the title `0x400570b8`, boxes, fills, dotted rules, the icon routine,
+labels `0x40013904`, values `0x400479b4` with flags 6 as MAIN, CUE and the GAINs are).
+
+**The knobs** take a stock knob's step: on MASTER a layer of seven encoder records
+(A–F and LEVEL) goes on top, and before it does, each of A–F gets the tails a stock page
+gives its knobs (`0x40032784` with the effect's minimum and maximum, from its descriptor's
+`MINS` and `COUNTS`); the handler steps with `0x400328e4` and clamps to the parameter's
+range, so `strip_model` never holds a value outside its count (the DSP only masks to
+0..127). LEVEL is the stock A handler (`0x4007d03c`, MAIN), called with LEVEL's index.
+An edit sets the window's edited flag as a stock knob does (MIXER's release closes on it).
+**The tempo nudge**: LEFT / RIGHT are the nudge on the stock MIXER page while the
+transport runs; with the pages they are the strips', the choice made on 29 Sep 2026.
+
+**Measured under the port** (`tools/verify/verify_mixerpages.py`, the user's project,
+MKI keymap, against the same image with the three detour sites' stock bytes back):
+
+| case | result |
+|---|---|
+| MIXER | the stock page but for the ▶: 15 pixels differ, all inside the arrow's box |
+| MIXER, RIGHT, LEFT; MIXER, RIGHT, MIXER, MIXER | the MIXER page again, 0 pixels differ |
+| MIXER, RIGHT | the MUTE band and the frame below the boxes are stock's, 0 pixels differ; ◀ and no ▶; both boxes lit, the stock boxes' edges inside box 2 gone (62 lit on stock, 0 here); OXIDE's IN and OUT drawn, its four undrawn cells empty |
+| DOWN | INS 2 (empty): six empty cells; beyond them only the side label's digit changes |
+| a trig on MASTER | the mute toggles, the page above the band is unchanged |
+| A +10, +40; B −5, −20; LEVEL +10, +40 on MASTER | IN +49, OUT −24, MAIN +49: exactly what A moves MAIN (+49) and LEVEL moves MIX (−24) by on the stock page; only the three value cells redraw; slot 2 untouched |
+| DOWN, A +10, UP, A +10 | nothing on the empty INS 2; IN +9 on INS 1 |
+| with the DSP: MASTER, A +10 | core 0's slot 1 record (X:0x7c20) holds `57 << 16`, `80 << 16`: the page's edit reaches the DSP |
+| MIXER, NO, or FUNC + UP from MASTER | the handle is 0; no layer of the unit or the window is left registered |
+| layers while open | MIXER: the stock layer, then ours, no knobs' layer; MASTER: then the knobs' layer, last |
+
+**What the gate cannot see:** the unit's LCD (the port composites the firmware's window
+planes); the MKII keymap (the MKI's boots under the port; the arrow keys, MIXER, FUNC and
+the trigs have the same codes); a real encoder's acceleration beyond the port's one delta
+per event; anything on a unit. Not flashed.
+
+**Next:** the SETUP window (YES on a slot: its effect list and page-2 knobs), then Part
+storage of `strip_model`, then MIDI CC for the page's controls.
 

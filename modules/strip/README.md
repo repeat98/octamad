@@ -1,10 +1,10 @@
 # MASTER STRIP
 
 Two insert slots on the summed MAIN, run inline after payload A's mixdown: the master strip
-of `docs/proposals/MIXER.md` (step 2, §11 and §12). Which effect each slot runs and its
-knobs come from a model on the ColdFire, `strip_model`, which the MIXER page will edit and
-a Part will store; until then it starts at OXIDE on slot 1 at its 0 dB points (IN 48,
-OUT 80) and slot 2 empty. The main out, the recorder and USB audio (stock's pack) and the
+of `docs/proposals/MIXER.md` (step 2, §11 to §13). Which effect each slot runs and its
+knobs come from a model on the ColdFire, `strip_model`, which the MASTER page of the MIXER
+window edits and a Part will store; until then it starts at OXIDE on slot 1 at its 0 dB
+points (IN 48, OUT 80) and slot 2 empty. The main out, the recorder and USB audio (stock's pack) and the
 phones' MAIN share all hear the slots; the metronome click, which stock adds to MAIN after
 the pack, is added after them and is not processed.
 
@@ -43,6 +43,26 @@ the pack, is added after them and is not processed.
   0x7e00 (`boot.asm` has the map); the record lands at X:0x3c80 or 0x5c80. None of them is
   written by anything else under the port on the user's project.
 
+## The MIXER pages
+
+`strip_ui.s` pages the MIXER window, in the layout Jannik locked on 29 Sep 2026:
+
+- **LEFT / RIGHT** walk the strips: MIXER (the stock page, with a ▶ in its title band)
+  and MASTER (◀). **UP / DOWN** walk MASTER's slots, INS 1 and INS 2. While the MIXER
+  is open the arrow keys are the pages', so LEFT / RIGHT no longer nudge the tempo there.
+- **MASTER** keeps the window's frame and the MUTE band (the trigs mute, FUNC works) and
+  redraws the boxes above the band as two: MAIN as a number over a speaker, and the slot,
+  its name down the side and its effect's six page-1 knobs as numbers, named and printed
+  by the effect's own descriptor.
+- **A–F** turn those knobs in `strip_model`, with a stock MIXER knob's step, held inside
+  each parameter's range; **LEVEL** turns MAIN (the stock handler of A on the MIXER page).
+  An empty slot, or a knob the effect does not draw, is an empty cell and turns nothing.
+  The edit reaches core 0 in the next frame's record.
+- Three detours in the stock window: the opener's layer push (ours goes on top), the
+  close's layer pop (ours come off first) and the draw's entry (the stock draw, then the
+  page), so every stock redraw (a knob, a mute, FUNC) redraws the page too. The window
+  reopens on MIXER.
+
 Why split: the first version ran all 16 samples at P:0x2d5, and under the port the phones'
 first sample of every frame went out two frames stale, because the pass held stock's cue
 mix back past the DMA (MIXER.md §11).
@@ -50,14 +70,16 @@ mix back past the DMA (MIXER.md §11).
 ## `strip_model`
 
 Two slots of 16 bytes: the FX id at +0 (0 = none), three spare bytes, then the twelve knob
-values, page 1 at +4..+9 and page 2 at +10..+15. The MIXER page (next) writes it; each
-value must already be inside its parameter's count (the DSP only masks to 0..127, and a
-select read past its count is the trap in `AGENTS.md`).
+values, page 1 at +4..+9 and page 2 at +10..+15. The MASTER page writes page 1 (the
+SETUP window, next, will write the id and page 2); each value must already be inside its
+parameter's count (the DSP only masks to 0..127, and a select read past its count is the
+trap in `AGENTS.md`), which the page's clamp holds.
 
 ## Not yet
 
-- No page edits the model yet, and no Part stores it: it holds its boot value until the
-  MIXER page (stage B, the layout Jannik locked on 29 Sep 2026) and Part storage land.
+- No Part stores the model: it holds its boot value, plus the page's edits, until the
+  unit restarts. The slot's effect cannot be chosen yet, and page 2 cannot be edited:
+  both are the SETUP window (YES on a slot), next.
 - Only OXIDE is on the list. An insert joins it once it is shown to run correctly one frame
   per call with no dispatcher state: Character, for one, glides its knobs per call and reads
   X:0x213 at init.
@@ -91,3 +113,13 @@ each frame included; the recorder/USB pack's CUE half is identical; every other 
 and host-port block is identical. Statically: the boot's start and `strip_model`'s agree,
 and the chain's state 3 entry is `strip_xport`. The fixtures' MAIN carries the input
 tones: under the port no track reaches the mixdown yet (`docs/remixer/EMU.md`).
+
+`tools/verify/verify_mixerpages.py`, under the port on the same card against the image
+with the three detours' stock bytes put back: the MIXER page is the stock page but for its
+▶ (and again after RIGHT, LEFT and after a close and reopen, pixel for pixel); MASTER's
+MUTE band is stock's and its boxes draw as locked, with OXIDE's IN and OUT and four empty
+cells; INS 2 shows six empty cells; a trig mutes and leaves the page; A, B and LEVEL move
+IN, OUT and MAIN by exactly what A and LEVEL move MAIN and MIX by on the stock page, and
+the edit reaches core 0's record; MIXER, NO and FUNC + UP close the window and leave no
+layer behind. It cannot see the unit's LCD, the MKII keymap or a real encoder's
+acceleration.

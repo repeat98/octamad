@@ -5,12 +5,14 @@ re-send the voice as new; the +0x98 store is always replayed. Hook
 +/-1.5-sample seam. On hardware as OCTABAM82/83.
 """
 
-from remix.schema import CavePatch, Kind, Module
+from remix.schema import Category, Proof, CavePatch, Kind, Module
 
 MODULE = Module(
     name="flex-seekbind-ctr",
     key="FLEX SEEK BIND CTR",
     kind=Kind.CF_PATCH,
+    category=Category.FIXES, author="sambanks", author_url="https://github.com/sambanks",
+    proof=Proof.HARDWARE, proof_note="OCTABAM83, 12 Sep 2026",
     doc="ColdFire cave: on a same-sample FLEX re-bind, do not bump the voice's "
         "per-bind counter (pairs with FLEX SEEK BIND).",
     cf_patches=(

@@ -21,6 +21,7 @@
 // sample (`ips`) is a knob with a default, not a truth.
 #pragma once
 
+#include <algorithm>
 #include <array>
 
 #include <cstdint>
@@ -34,6 +35,7 @@
 #include "card.h"
 #include "machine.h"
 #include "periph.h"
+#include "usb.h"
 
 namespace ot
 {
@@ -59,6 +61,24 @@ namespace ot
 	inline constexpr uint32_t g_projectName = 0x100f8378;	// current PROJECT folder
 	inline constexpr uint32_t g_postLoad    = 0x40023c7c;	// (name*) -> posts engine command 4
 	inline constexpr uint32_t g_partPtr     = 0x46c82456;	// null until a project loads
+	// The engine's command loop: a queue receive (`pea 0x460d17ce / jsr
+	// 0x40000d00` at 0x4008484e) and a `jmp` through the 45-entry table at
+	// 0x40084870; every handler ends by jumping back to the receive. LOAD
+	// Measured 28 Sep 2026:
+	// Octakit's post-load persistence work (her banks-load wrapper's
+	// load-or-migrate, 2.7 G instructions of card writes on a fresh card)
+	// runs inside that handler, and a fixed load budget left it running
+	// into the transport, her lifecycle QUIESCED and every page-1 write
+	// dropped as busy (bottleservice's CC 40/41 at --ata-latency 8).
+	// PROJECT is entry 4 = 0x40085336. The receive blocks when the queue's
+	// count (`tstl 4(queue)` at 0x40000d1c) is zero, so the load is COMPLETE
+	// when the engine has entered the handler and is next at the receive
+	// with an empty queue: the handler's own return is followed at once by
+	// a second command sys posted while it ran (Octakit's background
+	// banks-load path, ~360 M instructions, the hosts muted throughout).
+	inline constexpr uint32_t g_engineQueue   = 0x460d17ce;
+	inline constexpr uint32_t g_engineReceive = 0x4008484e;
+	inline constexpr uint32_t g_loadHandler   = 0x40085336;
 
 	// ✅ O7b, 8 Sep 2026. `sys`'s media case reloads the current project when
 	// one is named: `0x4006203a` calls `0x40056744` and, if it answers ZERO,
@@ -86,7 +106,7 @@ namespace ot
 	inline constexpr uint32_t g_mainGainTable   = 0x80003c60;	// 10 longwords, gain:(-1-gain), read per voice by 0x4000cca4
 
 	inline constexpr uint32_t g_fwTransport   = 0x4009b964;	// (arg) transport start/stop; start posts to the UI queue
-	inline constexpr uint32_t g_fwStartTrack  = 0x4009b5c8;	// (track) promote a track to running
+	inline constexpr uint32_t g_fwStartTrack  = 0x4009b5c8;	// (track) the trig-key start of a PLAYS FREE track (pattern +0x54 set); returns at 0x4009b634 otherwise (12 Sep 2026)
 	inline constexpr uint32_t g_fwSeqSelect   = 0x400a1030;	// sequencer select(bank, pattern): LOAD PROJECT's last step
 	inline constexpr uint32_t g_fwSeqBank     = 0x800065bd;	// the sequencer's own playing bank byte
 	inline constexpr uint32_t g_fwSeqPattern  = 0x800065be;	// ... and playing pattern
@@ -102,6 +122,8 @@ namespace ot
 
 	inline constexpr uint32_t g_intc0 = 0xfc048000, g_intc1 = 0xfc04c000;
 	inline constexpr uint32_t g_pit0  = 0xfc080000, g_pit1  = 0xfc084000;
+	inline constexpr uint32_t g_dtim  = 0xfc070000;		// DTIM0..3, 0x4000 apart; INTC0 sources 32..35
+	inline constexpr double   g_busClockHz = 132e6;		// the internal bus clock the DMA timers count (CHIP.md)
 	inline constexpr uint32_t g_dspi  = 0xfc05c000;
 	inline constexpr uint32_t g_uart0 = 0xfc060000;		// MIDI IN (KERNEL.md: vector 0x5a, INTC0 source 26, RX ISR 0x400106ec)
 	inline constexpr uint32_t g_uartA = 0xfc064000, g_uartB = 0xfc068000;
@@ -130,6 +152,7 @@ namespace ot
 		// state is real either way; only the model's assertion is gated.
 		explicit Rtos(Machine& _m, double _ips = 3990.0, double _pitClockHz = 264e6,
 			bool _frame = false);
+		~Rtos();		// prints the burst counters on stderr when OT_BURST_STATS=1 (O15a)
 
 		// A DELIBERATE DEPARTURE FROM ROUTE A, for the negative control only.
 		// The gate compares the serial byte count, and a gate that has never
@@ -138,8 +161,18 @@ namespace ot
 		// machine a second time with `clearTransmitInterrupt` false and
 		// requires the count to CHANGE, which is what makes the comparison
 		// evidence rather than decoration. Nothing but the test sets it.
-		struct Quirks { bool clearTransmitInterrupt = true; };
+		// `skipBootLogo` (12 Sep 2026, with the DMA-timer block): the boot-logo
+		// animation times itself on DTIM3 and holds the CPU for 2.8 s of bus
+		// clock; the all-ones stub it replaced made the logo leave on its
+		// first pass, and every measurement in the tree was taken that way.
+		// On by default so they stand: DTIM3 reads 2.8 s ahead
+		// (DmaTimer::setBias, applied at install). `--boot-logo` runs the logo.
+		struct Quirks { bool clearTransmitInterrupt = true; bool skipBootLogo = true; };
 		void setQuirks(const Quirks& _q) { m_quirks = _q; }
+		const Quirks& quirks() const { return m_quirks; }
+		// 560 * 660,000: the logo loop's own units (DTCN3 / 660000.0, i.e. 5 ms
+		// of the 132 MHz bus) one past its `cmpil #559` at 0x40055b74.
+		static constexpr uint32_t g_bootLogoCounts = 369600000;
 
 		// Install the models over the peripheral window and SEED them by
 		// replaying every write the boot made into the stub. Route A's
@@ -151,11 +184,33 @@ namespace ot
 		// The same loop -- idle skip included, which is what makes a frame
 		// run cheap -- stopping on a caller's condition instead of the gate.
 		// Returns Stop::Gate when the condition came true.
-		Stop runUntil(double _ms, const std::function<bool()>& _stop);
+		//
+		// O15e: `_changes` says WHAT CAN CHANGE THE CONDITION, and the caller
+		// is answerable for it. `Anything`: the condition is asked before
+		// every instruction, no bursts (the pre-O15e loop). `OnEvent`: it can
+		// only change on an instruction that ends a burst anyway -- the CPU
+		// acknowledging a vector (the frame count, the tick count, the ATA
+		// count: the ack hook wakes), a peripheral access (touched), or a
+		// write the Rtos watches for the purpose (`wakeOnWrite`) -- so it is
+		// asked at every burst end and comes true on the same instruction,
+		// at the same sample, as it did per instruction. A condition on plain
+		// memory nobody watches is NOT an event: pass `Anything` or add the
+		// watch first.
+		enum class Changes { Anything, OnEvent };
+		Stop runUntil(double _ms, const std::function<bool()>& _stop, Changes _changes = Changes::Anything);
 
 		// Run until the PC is parked at main's spin -- what `callAsMain`
 		// needs before it can borrow the slot.
 		Stop runToMainSpin(double _ms = 5000.0);
+		// A mod may DETOUR main's park: CF METER IDLE replaces the `jsr` at
+		// g_mainSpin-6 with `jmp m_idle` and spins in its own DRAM loop, never
+		// reaching the stock `bras .`. install() reads the site: a `jmp abs.l`
+		// there makes [target, target+0x80) count as the park for the idle
+		// skip, the burst end and runToMainSpin. A borrowed call still returns
+		// to the stock `bras .` (intact behind the detour), where main then
+		// parks for good; the meter's own idle accounting stops there.
+		std::pair<uint32_t, uint32_t> spinRange() const { return {m_spinLo, m_spinHi}; }
+		bool atSpin(const uint32_t _pc) const { return _pc == g_mainSpin || (_pc >= m_spinLo && _pc < m_spinHi); }
 
 		// ---- the card ------------------------------------------------------
 		// Interpose on the task-file window so the card raises INTRQ the way
@@ -172,6 +227,19 @@ namespace ot
 		// for a machine running its own RTOS.
 		void attachCard(AtaCard& _card);
 		void mapCardMemory();
+
+		// ---- USB ---------------------------------------------------------
+		// The device controller (usb.h), attached BEFORE install like the
+		// card so the boot's replayed writes seed it. Without one the
+		// window stays the all-ones stub every gate was measured against:
+		// the firmware then sees no session and never brings the controller
+		// up, which is the stock behaviour of every run to date.
+		void attachUsb(UsbDevice& _usb) { m_usb = &_usb; }
+		UsbDevice* usb() const { return m_usb; }
+		// The firmware's own "USB DISK MODE is active" word (0x460e76a0,
+		// set after it unmounted the card, cleared before it remounts),
+		// polled so a run can log the attach/detach edges the host would see.
+		void setUsbNotify(const std::string& _path) { m_usbNotify = _path; }
 
 		// Borrow main's idle slot to call an OS subroutine the way a UI action
 		// would, with the normal trap-dispatch loop still live underneath, so
@@ -260,12 +328,6 @@ namespace ot
 		// Called every `_every` stepped or skipped instructions inside run():
 		// where a live input source is read.
 		void setPoll(std::function<void()> _fn, uint64_t _every = 4096) { m_poll = std::move(_fn); m_pollEvery = _every; }
-		// --fast N: timers, interrupt delivery and the caller's stop
-		// condition are evaluated every N instructions instead of every
-		// one. Interrupt latency then jitters by up to N instructions, so a
-		// run under it is NOT bit-identical to the exact mode (measured
-		// 18 Sep 2026: the block dump differs). N = 1 is the exact mode.
-		void setFast(uint64_t _n) { m_fastEvery = _n ? _n : 1; }
 		size_t midiPending() const { return m_uart60.pending(); }
 		uint32_t midiImr() const { return m_uart60.imr(); }
 
@@ -274,6 +336,16 @@ namespace ot
 		// posts to the UI queue, and FW_START_TRACK(t) writes a per-track
 		// state byte directly. Neither has a wait primitive on its path, so
 		// both are safe under callAsMain.
+		// ⚠️ 12 Sep 2026 (KEYMAP.md "the trig-row running light"): pattern
+		// +0x54 + 2330·t is the per-track PLAYS FREE flag, not an "active"
+		// flag. FW_TRANSPORT(0) sets up every track whose byte is ZERO
+		// (0x4009bc76; a set byte skips the track), and FW_START_TRACK(t) is
+		// the trig-key path that starts a track whose byte is SET (0x4009b630).
+		// With the fixture's bytes all clear the eight calls below return at
+		// 0x4009b634 having done nothing -- the trigs fire from FW_TRANSPORT
+		// alone -- and setting the bytes before PLAY (the panel's
+		// activate_tracks) is exactly what stops the sequencer from playing
+		// any track: no step handler, no trigs-fired note, no trig LEDs.
 		bool startTransportLive();
 
 		// Set a trig on track 1 at `step` (1-64) in whichever bank PART_PTR
@@ -334,7 +406,11 @@ namespace ot
 			// How the load's own run ENDED. Time is the ordinary case (the
 			// budget ran out); Fault/Illegal say the machine stopped, which
 			// the ATA counts alone cannot distinguish from a stall.
-			Stop stop = Stop::Time; std::string stopWhy; };
+			// Gate = the LOAD PROJECT handler was entered and the engine is back
+			// at its queue receive (the load is complete); Time = the budget ran
+			// out first (`handlerEntered` says how far it got).
+			Stop stop = Stop::Time; std::string stopWhy;
+			bool handlerEntered = false; double handledMs = 0; uint64_t handledInstr = 0; };
 		// ⚠️ `_namesEarly` DECIDES WHETHER THE PROJECT LOADS ONCE OR TWICE, and
 		// it is a property of the HARNESS, not of the firmware. See
 		// `g_mediaCaseJoin`: with the name already written when `sys` runs its
@@ -353,13 +429,66 @@ namespace ot
 		struct Created { double sample; uint32_t tcb, entry, prio, stack, size, creator; };
 		struct Dispatch { double sample; uint32_t tcb, pc; };
 
+		// O18: THE DISPATCH RECORD, BOUNDED. One record per scheduler `rte`
+		// (~1,000-2,500 per emulated second of play, 24 bytes each) used to be
+		// kept for the life of the process -- the panel's child runs for hours.
+		// Everything that is ever printed from it survives: the COUNT
+		// (`size()`, the batch's "N dispatches" and the load's delta), the
+		// FIRST 200 (the goldens' "dispatches" array, `writeGoldenJson`), the
+		// LAST 14 (the batch's "dispatch tail") and the set of TCBs that ran
+		// (`ran()`, the M6a gate). The first `g_head` records are kept whole
+		// (a batch run never gets past them: boot 51, load ~24,400, a 3,000
+		// frame render ~10,000 more), then a ring of the last `g_tail`; an
+		// index that fell between answers a zero record, which no reader asks
+		// for. `kept()` is the number actually held.
+		class DispatchLog
+		{
+		public:
+			static constexpr size_t g_head = 65536, g_tail = 4096;
+			void push(const Dispatch& _d)
+			{
+				++m_count;
+				m_ran.insert(_d.tcb);
+				if(m_head.size() < g_head)
+				{
+					m_head.push_back(_d);
+					return;
+				}
+				if(m_tail.empty())
+					m_tail.resize(g_tail);
+				m_tail[(m_count - 1 - g_head) % g_tail] = _d;
+			}
+			size_t size() const { return m_count; }
+			bool empty() const { return m_count == 0; }
+			size_t kept() const { return m_head.size() + std::min(m_count - m_head.size(), g_tail); }
+			const Dispatch& operator[](const size_t _i) const
+			{
+				if(_i < m_head.size())
+					return m_head[_i];
+				if(_i < m_count && m_count - _i <= g_tail && !m_tail.empty())
+					return m_tail[(_i - g_head) % g_tail];
+				static const Dispatch s_none{};
+				return s_none;
+			}
+			const std::unordered_set<uint32_t>& ran() const { return m_ran; }
+		private:
+			std::vector<Dispatch> m_head, m_tail;
+			size_t m_count = 0;
+			std::unordered_set<uint32_t> m_ran;
+		};
+
 		const std::vector<Created>& created() const { return m_created; }
-		const std::vector<Dispatch>& dispatches() const { return m_dispatches; }
+		const DispatchLog& dispatches() const { return m_dispatches; }
 		std::unordered_set<uint32_t> ran() const;
 		std::pair<uint32_t, uint32_t> firstSwitch() const { return m_firstSwitch; }
 		double sample() const { return m_sample; }
 		double ms() const { return m_sample / g_sampleHz * 1000.0; }
 		uint64_t pit0Fired() const { return m_pit0.fired(); }
+		// DTIM1 is the LED countdown's 120 Hz clock, DTIM2 the soft-timer
+		// dispatcher's one-second delay (periph.h, DmaTimer).
+		const DmaTimer& dtim(size_t _n) const { return m_dtim[_n & 3]; }
+		uint64_t dtimFired(size_t _n) const { return m_dtim[_n & 3].fired(); }
+		uint64_t dtim1Fired() const { return m_dtim[1].fired(); }	// the UI tick (#424)
 		uint64_t frameCount() const { return m_frameCount; }
 		bool framePending() const { return m_framePending; }
 		const Intc& intc0() const { return m_intc0; }
@@ -373,6 +502,10 @@ namespace ot
 		uint64_t hostWordsOut() const { return m_hostWordsOut; }
 		uint64_t hostWordsIn() const { return m_hostWordsIn; }
 		uint64_t hostWordsShort() const { return m_hostWordsShort; }
+		// O20: memory-to-memory eDMA copies made (channels with neither end in
+		// the host-port window: the Echo Freeze Delay's ring fetches and writes).
+		uint64_t memToMemBlocks() const { return m_m2mBlocks; }
+		uint64_t memToMemBytes() const { return m_m2mBytes; }
 		// ⚠️ THE COUNT THAT DECIDES WHETHER ANY OF IT MEANS ANYTHING. Blocks and
 		// words moved say the plumbing runs; only a non-zero count says the
 		// frames carry content. An end-of-run peek of the DSP's record buffer
@@ -382,10 +515,13 @@ namespace ot
 		uint64_t hostNonZeroIn() const { return m_hostNonZeroIn; }
 		void setDspDrainPacing(bool _on) { m_edma.setDrainPaced(_on); m_edma.setBusPaced(!_on); }
 		void setBlockLog(bool _on) { m_blockLogOn = _on; }
+		uint32_t tcdWords(uint32_t _ch) const;		// O17c: a host-port TCD's block in DSP words
 		// O9d: every host-port block's CONTENT, binary, taken at the move
 		// (a later peek cannot tell "nothing sent" from "consumed"). Record:
 		// u8 dir('>'/'<'), u32 frame, u16 ch, u8 core, u32 ram, u32 nwords, u16[nwords].
 		void setBlockDump(const std::string& _path) { m_blockDump.open(_path, std::ios::binary); }
+		void flushBlockDump() { if(m_blockDump.is_open()) m_blockDump.flush(); }
+		void closeBlockDump() { if(m_blockDump.is_open()) m_blockDump.close(); }
 		const std::vector<std::string>& blockLog() const { return m_blockLog; }
 		uint64_t ataInterrupts() const { return m_ataInterrupts; }
 		bool ataLineAsserted() const { return m_ataIrq; }
@@ -396,6 +532,31 @@ namespace ot
 		const std::vector<std::string>& ataTrace() const { return m_ataTrace; }
 
 		uint64_t idleSkips() const { return m_idleSkips; }
+		// O15a: the burst loop's own bookkeeping (a mechanism count like the
+		// idle skips, never firmware behaviour). `bursts` bursts ran
+		// `burstInstr` instructions between them; `exactInstr` went through
+		// stepOnce (the entry step, the horizon tails, the gated/untilGate
+		// runs); a burst ended on a peripheral access, a wake (ack, host word),
+		// the horizon, or the PC landing on main's spin.
+		// O15e adds two ends: the M6a gate went dirty (a create or a dispatch
+		// under `run(_ms, true)`), and the PC reached a caller's address
+		// (`runToPc`, `runToMainSpin`, `callAsMain`'s return).
+		struct BurstStats { uint64_t bursts = 0, burstInstr = 0, exactInstr = 0,
+			endPeriph = 0, endWake = 0, endHorizon = 0, endSpin = 0, endGate = 0, endPc = 0,
+			exactWake = 0, exactBySrc[8] = {}; };	// O17 diagnostic: exact steps by cause (a wake, or the horizon source: frame/ata/pit/dtim/edma)
+		const BurstStats& burstStats() const { return m_burstStats; }
+		// O18: the sizes of every record the Rtos, its machine, its card and
+		// its co-processor keep -- one line. OT_MEMSTAT=1 prints it on stderr
+		// at the end of every `run()` and when the Rtos is destroyed; the
+		// memory instrument that found the panel child's growth.
+		std::string memStat() const;
+		static bool memStatOn();
+		// The knobs, read once from the environment: OT_BURST = the quantum
+		// (default 4096; 0 = every instruction exact, the pre-O15a loop),
+		// OT_STEPFAST=0 = Machine::step inside bursts (diagnosis only).
+		static int burstQuantum();
+		static bool burstStepFast();
+		static bool dspSyncAtTick();		// O16c: OT_DSP_SYNC=0 = no per-burst sync of a lazy pair (a measurement knob)
 		uint64_t forces() const { return m_forces; }
 		uint32_t currentTcb() { return curTcb(); }
 		void setAtaLatency(double _samples) { m_ataLatency = _samples; }
@@ -415,7 +576,15 @@ namespace ot
 		size_t seeded() const { return m_seeded; }
 		size_t serialSent() const { return m_uart64.tx().size() + m_uart68.tx().size(); }
 		const std::vector<uint8_t>& serialTxA() const { return m_uart64.tx(); }
+		// The panel's own wire, both ways, for a driver outside the run loop
+		// (main.cpp's --interactive): `uartA().rxPush(row); rxPush(mask)` is a
+		// matrix report, `serialTxA()` past a cursor is what the panel would
+		// have drawn. And the DSPI, for its RTC.
+		Uart& uartA() { return m_uart64; }
+		Dspi& dspi() { return m_dspi; }
+		bool frameOn() const { return m_frame; }
 		const std::vector<uint8_t>& serialTxB() const { return m_uart68.tx(); }
+		const std::vector<uint8_t>& serialTx0() const { return m_uart60.tx(); }	// MIDI OUT: every byte the firmware wrote to UART0's transmitter
 		size_t serialA() const { return m_uart64.tx().size(); }
 		size_t serialB() const { return m_uart68.tx().size(); }
 		const std::string& why() const { return m_why; }
@@ -426,8 +595,7 @@ namespace ot
 
 		void writeGoldenJson(const std::string& _path) const;
 
-		// The M6c facts, in the same shape route A's `--sequencer --golden`
-		// writes them, for `tools/emu/ot_emu/oracle.py`: the trig log with frame
+		// The M6c facts as JSON (oracle.sh byte-compares them): the trig log with frame
 		// numbers relative to the transport start, the tick count, the frames
 		// run, and the four bank/pattern bytes.
 		struct M6c { uint64_t frame0 = 0, ticks0 = 0, frames = 0, ticks = 0;
@@ -438,14 +606,48 @@ namespace ot
 		uint32_t curTcb();
 		bool peripheralRead(uint32_t _addr, uint8_t _size, uint32_t& _out);
 		void peripheralWrite(uint32_t _addr, uint8_t _size, uint32_t _val, bool _replay);
-		Stop runInternal(double _ms, bool _untilGate, const std::function<bool()>* _stop);
+		// O15e: ONE loop for every way the machine is run. Before it, the
+		// plain run had the bursts (O15a) and the five other loops -- the
+		// gated run, runUntil, runToMainSpin, callAsMain, and the waits in
+		// loadProjectLive / selectBankLive / setMainLevelLive -- each stepped
+		// exactly, one stepOnce per instruction. They differ only in WHEN THEY
+		// STOP, which a RunSpec spells out; the stepping, the idle skip and
+		// the bursts are the same code, so what O15a proved for the plain run
+		// holds for all of them. Stop::Gate = a condition came true, Stop::
+		// Time = the sample or instruction budget ran out, Illegal/Fault as
+		// before. `m_why` is set only where the old loop set it (`whyGate`,
+		// `whyTime`; null = leave it).
+		struct RunSpec
+		{
+			double ms = 0.0;						// the sample budget from entry (hasEnd)
+			bool hasEnd = true;
+			uint64_t budget = 0;					// an instruction budget (0 = none): callAsMain
+			bool untilGate = false;					// the M6a gate, asked when m_gateDirty
+			uint32_t pc = 0;						// stop BEFORE executing this address (pcArmed)
+			bool pcArmed = false;
+			uint32_t pcLo = 0, pcHi = 0;			// ... or any address in [pcLo, pcHi) (the detoured park)
+			const std::function<bool()>* stop = nullptr;	// the caller's condition, asked before each instruction
+			bool stopOnEvent = false;				// ... and it can only change on a burst-ending instruction: bursts stay on
+			bool idleSkip = true;					// advance the clock over main's idle park
+			bool needInstall = true;				// the public entry points refuse an uninstalled Rtos
+			const char* whyGate = nullptr;
+			const char* whyTime = nullptr;
+		};
+		Stop runLoop(const RunSpec& _s);
+		// Arm a write watch that wakes the burst loop (`m_wake`) on any store
+		// into [addr, addr+len): a memory condition then changes only on an
+		// instruction that ends its burst, and `Changes::OnEvent` is honest
+		// for it. Once, per range (`_armed`); watches are never removed.
+		void wakeOnWrite(uint32_t _addr, uint32_t _len, bool& _armed);
 		void tickTimers();
 		// One instruction plus everything the run loop does around it, so a
 		// borrowed call runs against the same live machine the loop does.
-		bool stepOnce(bool _tick = true);
+		bool stepOnce();
 		bool deliver();
 		bool anyPending() const;
 		bool nextExpiry(double& _out) const;
+		double nextEvent() const;
+		mutable uint8_t m_horizonSrc = 0;	// O17 diagnostic: which source nextEvent() answered with (0 frame, 1 ata, 2 pit, 3 dtim, 4 edma)
 		void recordCreate();
 
 		Machine& m_machine;
@@ -453,6 +655,7 @@ namespace ot
 		double m_sample = 0.0;
 
 		Pit m_pit0, m_pit1;
+		DmaTimer m_dtim[4] = {{"DTIM0", g_busClockHz}, {"DTIM1", g_busClockHz}, {"DTIM2", g_busClockHz}, {"DTIM3", g_busClockHz}};
 		Edma m_edma;
 		Intc m_intc0, m_intc1;
 		Uart m_uart60{"UART@fc060000", g_uart0}, m_uart64{"UART@fc064000", g_uartA}, m_uart68{"UART@fc068000", g_uartB};
@@ -468,7 +671,17 @@ namespace ot
 		void noteBlock(char _dir, uint32_t _ch, uint32_t _ramAddr, const std::vector<uint16_t>& _hw,
 			uint64_t _nonZero, const std::string& _note);
 		void installHostPortMover();
+		// O20: a memory-to-memory eDMA channel's copy (the delay's ring taps).
+		void copyMemToMem(uint32_t _ch, uint32_t _saddr, uint32_t _daddr);
+		uint64_t m_m2mBlocks = 0, m_m2mBytes = 0;
 		AtaCard* m_card = nullptr;
+		UsbDevice* m_usb = nullptr;
+		std::string m_usbNotify;
+		bool m_usbActive = false;
+		uint64_t m_nextUsbPoll = 0;
+		double m_usbNextSof = 0.0;
+		double m_usbNextIso = 0.0;
+		unsigned m_usbMissRun = 0;
 		// ⚠️ INTRQ IS NOT INSTANTANEOUS, and the firmware depends on it. The
 		// driver writes the command and THEN calls the RTOS event wait; a
 		// drive that asserted INTRQ on the same instruction would run the ISR,
@@ -482,7 +695,17 @@ namespace ot
 		// PHYSICAL behaviour and route A's is the artefact.
 		bool m_ataIrq = false;
 		double m_ataIrqDue = 0.0;			// 0 = nothing pending
-		double m_ataLatency = 1.0;			// samples; ~23 us at 44.1 kHz
+		// Samples between an ATA data sector and its interrupt. 8 (~180 us)
+		// since 27 Sep 2026: at 1 the engine raced through the load's card
+		// reads and `sys` consumed the engine's own reset-time "select bank
+		// 0" AFTER the BANK= parse (RTOS_FORK section 7: the unit does not,
+		// measured 6 Sep 2026), so the load ended on bank A instead of the
+		// saved bank and, with Octakit's lifecycle checks in the image
+		// (mods, ok-ms, rig-mods), halted at gk_lifecycle_activation
+		// (engine part 1 vs UI part 0). At 8 sys drains its queue inside the
+		// engine's card waits, the load ends on the saved bank unaided and
+		// those remixes load. --ata-latency overrides it.
+		double m_ataLatency = 8.0;
 		uint64_t m_ataInterrupts = 0;
 		std::vector<std::string> m_ataTrace;
 		bool m_ataTraceOn = false;
@@ -495,12 +718,17 @@ namespace ot
 		uint64_t m_pcRingBudget = 0;
 
 		std::vector<Created> m_created;
-		std::vector<Dispatch> m_dispatches;
+		DispatchLog m_dispatches;
 		std::pair<uint32_t, uint32_t> m_firstSwitch{0, 0};
 		uint64_t m_idleSkips = 0, m_forces = 0;
 		std::function<void()> m_poll;
-		uint64_t m_pollEvery = 4096, m_pollCount = 0;
-		uint64_t m_fastEvery = 1, m_fastCount = 0;
+		uint64_t m_pollEvery = 4096, m_nextPoll = 0;
+		BurstStats m_burstStats;
+		// Something the burst loop cannot see from the horizon happened: an
+		// interrupt was acknowledged, the DSP raised its host word, or the run
+		// is being entered (keys pushed, memory poked, the frame switched in
+		// between). The next instruction goes through stepOnce.
+		bool m_wake = true;
 		// ⚠️ A LATCH, NOT A COUNT. While the source is masked -- through the
 		// boot, and through the handler's own self-mask for the whole DSP
 		// exchange -- a real edge source remembers ONE edge, not how many it
@@ -512,7 +740,11 @@ namespace ot
 		std::vector<MemWrite> m_memWrites;
 		bool m_trigLogInstalled = false;
 		bool m_partPtrWatched = false;
+		// O15e: the wake watches behind the memory conditions (card ready,
+		// the bank byte, the main gain table); armed once, at first use.
+		bool m_cardReadyWatched = false, m_curBankWatched = false, m_gainTableWatched = false;
 		int m_savedBank = -1;
+		uint32_t m_spinLo = 0, m_spinHi = 0;	// the detoured park's range (spinRange), 0:0 when the site is stock
 		bool m_frame = false;
 		bool m_framePending = false;
 		bool m_frameFromDsp = false;
@@ -523,6 +755,7 @@ namespace ot
 		std::string m_why;
 		Quirks m_quirks;
 		bool m_installed = false;
+		bool m_fenceTrace = false;		// O17b diagnostic (OT_FENCE_TRACE=1): the frame source's mask changes and the INTC0 acks on stderr
 		bool m_gateDirty = true;
 		uint32_t m_injectedLevel = 0, m_injectedVector = 0;   // the line currently offered
 	};

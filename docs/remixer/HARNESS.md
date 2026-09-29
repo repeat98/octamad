@@ -28,15 +28,16 @@ modules/*/*.asm (+ dsp/ probes)
 
 ```bash
 make reverb IN=loop.wav ARGS='--wet --mode all'   # hear BusVerb
-make render                                       # the full bus, SEND → REVERB
-make render-delay                                 # BusDelay via the DEV hatch
-make render-rig                                   # eight tracks on both cores
-python3 tools/harness/send_probe.py --mem out/dsp/mem_dev_A.mem --direct --pick W   # an insert on its own track
+make render REMIX=<name>                          # the full bus, SEND → REVERB
+make render-delay REMIX=<name>                    # BusDelay via the DEV hatch
+make render-rig REMIX=<name>                      # eight tracks on both cores
+python3 tools/harness/send_probe.py --mem out/dsp/mem_dev_A.mem --direct --pick 2   # an insert (Character) on its own track
 ```
 
 An insert has no bus accumulator, so `send_probe` refuses a layout of
-nothing but inserts; `--direct` renders it on its own track. The letter is
-the module's `harness.layout_char`; build a DEV image for a remix that
+nothing but inserts; `--direct` renders it on its own track. The letter (a
+digit for the stations) is the module's `harness.layout_char`; build a DEV
+image for a remix that
 contains it first (`REMIX=<name> DEV=1 XBUS=1 SPEC=1 python3
 tools/build/build_bus.py`).
 
@@ -186,7 +187,7 @@ rather than under the port (`docs/firmware/LEVEL_LAW.md`); the AMP stage
 was measured on a THRU and is inferred for FLEX/STATIC.
 
 **The rig on a real set:** `tools/hw/ot_project.py rigproj SONGSET
-out/set/RIGSONG bamsep26` writes the rig's layout (ids, defaults, mode
+out/set/RIGSONG bottleservice` writes the rig's layout (ids, defaults, mode
 views) into every part of a copy of the song set;
 `tools/harness/set_stems.py out/set/RIGSONG --bank B --part P --audio DIR
 --out D/stems` writes T1..T8 from each track's STATIC sample at its slot
@@ -241,7 +242,7 @@ probe (`--tone out/o9d/kickAB_late.wav`) for anything with a delay in it.
 
 ## pressure.py
 
-`python3 tools/harness/pressure.py price --remix bamsep26` enumerates every
+`python3 tools/harness/pressure.py price --remix bottleservice` enumerates every
 per-core layout the remix lets a user select (four tracks × FX1 ∈ {none,
 the FX1 rows of ours} × FX2 ∈ {SEND, this core's server, ours on the FX2
 chooser, stock rows at 0}, at most one server per core) and sums the static

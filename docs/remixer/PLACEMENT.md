@@ -27,7 +27,8 @@ run at `0x401087e4` and the unit raised `VEC:03` in the menu draw loop
 ```
 0x400c45b0..0x400c4702     338 B
 0x400d24d0..0x400d2ce0   2,064 B
-0x400d2ee6..0x400d3020     314 B
+0x400d2ee6..0x400d3020     314 B   (refused at placement by the build, 25 Sep 2026:
+                                    a live descriptor, modules/midi-scenes' CAVE2 note)
 0x400d64da..0x400d7c3c   5,986 B   (the FX2 chooser's NONE row + terminator sit at
                                     0x400d6b00 in every build; descriptor clones
                                     grow from 0x400d6b20)
@@ -159,6 +160,13 @@ and that every window reads back equal to its linked image except the
 bytes a runtime writes about itself.
 
 ## Shared sites: the bridges
+
+Two pairs no bridge covers (measured 28 Sep 2026, building `mods` with each
+module removed in turn): DIRECT JUMP's queue hook `0x400a06d6` is a site
+Octakit's recipe writes, so the two never share an image; and in the free
+ROM, SCALE QUANTIZER's 2,916 B unit beside REPITCH's 576 B leaves CC MAP's
+724 B cave no run, so `mods` carries REPITCH and CC MAP without octatrick's
+three.
 
 A stock site claimed by two mods is refused by the ledger unless a bridge
 carries it. A bridge is a stub that does what both hooks did, in an order

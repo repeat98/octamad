@@ -1,6 +1,7 @@
 # LOFI AMF fix
 
-Ported from [bryantysinger/octa-bt-pt](https://github.com/bryantysinger/octa-bt-pt).
+Fixes stock LO-FI's AMF knob jumping the pitch backwards at some settings:
+one DSP multiply, in both payloads. Ported from [bryantysinger/octa-bt-pt](https://github.com/bryantysinger/octa-bt-pt).
 `Kind.CF_PATCH`: two DSP-word pokes, no cave, no menu, no FX2 id.
 
 Stock LO-FI's AMF coefficient computation runs `mpysu x0,y0,a` (signed ×

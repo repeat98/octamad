@@ -1,22 +1,25 @@
 #!/usr/bin/env python3
-"""THE ONE AUX BUS, measured on both cores (the hardwired rig).
+"""THE TWO SENDS (DEL into the delay, REV into the reverb), measured on both
+cores (the hardwired rig).
 
 Every case below renders through tools/harness/dsp_host with BOTH payloads booted
 (docs/remixer/HARNESS.md "Two cores"): the senders and the delay on payload B where
 the unit runs them, the reverb on payload A, so the chain buffer and its
 liveness stamp cross the real core boundary. The image is the rig remix
-(bamsep26) as SPEC -- the stations must be in it. Since 20 Sep 2026 each
+(registry.fixture: the smallest carrying both servers, SEND, the stations and RIG HOSTS) as SPEC -- the stations must be in it. Since 20 Sep 2026 each
 engine's wet comes out on the track that hosts it (the hosts are not fed, so
 a host's stream IS its engine's wet*WET); there is no return station.
 
-  chain        both engines: T5 (reverb host) prints the reverb, stereo;
-               T1 (delay host) prints the delay
-  the delay reaches the reverb
-               T5's print with the delay in the layout != without it
-  passthrough  delay WET 0 with both engines == reverb only fed the tone two
-               blocks later (the chain buffer's own latency), within -80 dB
-  delay only   no reverb in the layout: T1 prints the delay
-  reverb only  no delay: T5 prints the reverb (it reads the aux directly)
+  both sends   T2/T6 at DEL 100 REV 100: T5 (reverb host) prints the
+               reverb, stereo; T1 (delay host) prints the delay; identical
+               under four skews
+  REV only     T1 prints nothing; T5 == the same layout without the delay,
+               bit for bit
+  DEL only     at DLY 0 T5 prints nothing; at DLY 127 it prints the reverb
+               of the repeats; T1 does not depend on DLY
+  phantom      a DEL-only send leaves T5 bit-identical (DLY 0), a REV-only
+               send leaves T1 bit-identical: an idle knob registers nothing
+  host SEND    the reverb host's own SEND reaches the reverb only
   WET 0        a host at WET 0 prints nothing but its (silent) dry
   the reverb takes nothing out
                T1's print is bit-identical with the reverb at WET 0, at WET
@@ -29,7 +32,6 @@ a host's stream IS its engine's wet*WET); there is no return station.
                part), on T8 or T4, prints nothing of its own and changes
                neither host; a station with the old send bytes (slots 4/5 =
                127) contributes nothing to the bus
-  skew         the chain case under four interleaves: identical
 
 What this cannot show: the chip's timing (lock-step, or a guessed -skew),
 and anything the ColdFire does (knobs are poked into r6).
@@ -50,7 +52,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import too
 import send_probe  # noqa: E402
 from remix import registry  # noqa: E402
 
-REMIX = "bamsep26"
+REMIX = registry.fixture("REVERB SERVER", "DELAY SERVER", "SEND", "SPECTRUM", "CHARACTER", "MODULATION", "RIG HOSTS")   # the one-aux rig
 OUT = ROOT / "out/dsp"
 SCRATCH = OUT / "_onebus"
 IMAGE = ROOT / "out/mainos_bus.bin"
@@ -194,10 +196,10 @@ def main():
     # (measured -9 dB at PING 127 with TIME 40: test artefact, not engine).
     R = lambda **k: Inst("REVERB SERVER", 0, 0, **k)   # noqa: E731  (the tank mod is pinned since 15 Sep 2026; no MOD knob)
     D = lambda **k: Inst("DELAY SERVER", 1, 0, PING=0, TIME=20, **k)   # noqa: E731  (5,184 samples: the first repeat lands inside BLOCKS; TIME is 64 + knob*256 since the 32K lines)
-    S6 = lambda **k: Inst("SEND", 0, 1, fed=True, SEND=100, **k)   # noqa: E731
-    S2 = lambda **k: Inst("SEND", 1, 1, fed=True, SEND=100, **k)   # noqa: E731
+    S6 = lambda **k: Inst("SEND", 0, 1, fed=True, **{"DEL": 100, "REV": 100, **k})   # noqa: E731
+    S2 = lambda **k: Inst("SEND", 1, 1, fed=True, **{"DEL": 100, "REV": 100, **k})   # noqa: E731
 
-    print("== the chain: T2/T6 send, T1 delay -> T5 reverb; each host prints its wet ==")
+    print("== both sends: T2/T6 DEL + REV, T1 delay -> T5 reverb; each host prints its wet ==")
     both = [R(), S6(), D(), S2()]
     st = run(mems, both, tag="both")
     t5, t1 = st[0], st[2]
@@ -206,28 +208,75 @@ def main():
     check("T1 (delay host) prints the delay", rms_db(t1[0]) > -40, f"rms {rms_db(t1[0]):.1f} dB")
     for sk in SKEWS:
         s2 = run(mems, both, skew=sk, tag="bothsk")
-        check(f"chain under skew {sk:5d}: both hosts identical", s2[0] == t5 and s2[2] == t1)
+        check(f"under skew {sk:5d}: both hosts identical", s2[0] == t5 and s2[2] == t1)
 
-    print("\n== the chain is real: the delay's repeats reach the reverb ==")
-    ronly = [R(), S6(), S2()]
-    st_r = run(mems, ronly, tag="ronly")
-    check("reverb only: T5 prints the reverb (it reads the aux directly)", rms_db(st_r[0][0]) > -40,
-          f"rms {rms_db(st_r[0][0]):.1f} dB")
-    check("both != reverb only (the reverb hears the delay)", t5 != st_r[0])
+    print("\n== REV only: the reverb hears the sends, the delay nothing ==")
+    ronly_s = [R(), S6(DEL=0), D(), S2(DEL=0)]
+    st_ro = run(mems, ronly_s, tag="revonly")
+    check("REV only: T1 prints nothing (its delay heard no send)",
+          peak(st_ro[2][0] + st_ro[2][1]) == 0, f"peak {peak(st_ro[2][0] + st_ro[2][1])}")
+    check("REV only: T5 prints the reverb", rms_db(st_ro[0][0]) > -45, f"rms {rms_db(st_ro[0][0]):.1f} dB")
+    st_nod = run(mems, [R(), S6(DEL=0), S2(DEL=0)], tag="revonly_nodelay")
+    check("REV only: T5 == the same layout without the delay, bit for bit", st_ro[0] == st_nod[0])
 
-    print("\n== the passthrough: delay WET 0 == no delay, three blocks later ==")
-    # The chain buffer costs three blocks (two until 22 Sep 2026), and the
-    # reverb is time-variant even at MOD 0 (a fixed-depth allpass
-    # modulator), so the reference is NOT the reverb-only output shifted --
-    # it is the reverb-only run fed the SAME tone three blocks later, which
-    # the chain then reproduces sample for sample. What is left is one auto-gain table against the other:
-    # rounding, -100 dB or so.
-    pt = [R(), S6(), D(WET=0), S2()]
-    st_p = run(mems, pt, tag="pass")
-    st_r45 = run(mems, ronly, tag="ronly45", tone="tone45.raw")
-    lag, db = best_lag(st_r45[0][0], st_p[0][0], lo=0, hi=2)
-    check(f"delay WET 0: T5 == reverb-only fed the tone 3 blocks later (lag {lag})",
-          lag == 0 and db < -80, f"residual {db:.1f} dB")
+    print("\n== DEL only: the reverb hears the repeats x DLY and nothing else ==")
+    st_d0 = run(mems, [R(DLY=0), S6(REV=0), D(), S2(REV=0)], tag="delonly_dly0")
+    check("DEL only, DLY 0: T5 prints nothing", peak(st_d0[0][0] + st_d0[0][1]) == 0,
+          f"peak {peak(st_d0[0][0] + st_d0[0][1])}")
+    check("DEL only: T1 prints the delay", rms_db(st_d0[2][0]) > -40, f"rms {rms_db(st_d0[2][0]):.1f} dB")
+    st_d127 = run(mems, [R(), S6(REV=0), D(), S2(REV=0)], tag="delonly_dly127")
+    check("DEL only, DLY 127: T5 prints the reverb of the repeats", rms_db(st_d127[0][0]) > -60,
+          f"rms {rms_db(st_d127[0][0]):.1f} dB")
+    check("DEL only: T1's print does not depend on DLY", st_d0[2] == st_d127[2])
+
+    print("\n== an idle knob registers nothing (the phantom-client rule, per bus) ==")
+    ref_r = run(mems, [R(DLY=0), S6(DEL=0), D()], tag="ph_ref_r")
+    ph_r = run(mems, [R(DLY=0), S6(DEL=0), D(), S2(REV=0)], tag="ph_r")
+    check("a DEL-only send leaves T5 bit-identical at DLY 0 (it does not count on the REV bus)",
+          ph_r[0] == ref_r[0])
+    ref_d = run(mems, [R(), D(), S2(REV=0)], tag="ph_ref_d")
+    ph_d = run(mems, [R(), S6(DEL=0), D(), S2(REV=0)], tag="ph_d")
+    check("a REV-only send leaves T1 bit-identical (it does not count on the delay's bus)",
+          ph_d[2] == ref_d[1])
+
+    print("\n== the reverb host's REV goes into the reverb only ==")
+    rh = [R(REV=100, DLY=0), S6(DEL=0, REV=0), D(), S2(DEL=0, REV=0)]
+    rh[0].fed = True
+    st_rh = run(mems, rh, tag="revhost")
+    check("T5's own REV: T1 prints nothing", peak(st_rh[2][0] + st_rh[2][1]) == 0,
+          f"peak {peak(st_rh[2][0] + st_rh[2][1])}")
+
+    # 26 Sep 2026: the hosts carry SEND's two knobs. T5's DEL is a core-0
+    # write into the delay's aux, T1's REV a core-1 write into the reverb's
+    # REV accumulator; each must land exactly as a SEND track's on the same
+    # core does (same tone, same level, same ramp, same count).
+    print("\n== T5's DEL lands in the delay exactly as T6's SEND DEL does ==")
+    t5d = [R(DEL=100, DLY=0), S6(DEL=0, REV=0), D(), S2(DEL=0, REV=0)]
+    t5d[0].fed = True
+    st_t5d = run(mems, t5d, tag="t5del")
+    ref_t5d = run(mems, [R(DLY=0), S6(DEL=100, REV=0), D(), S2(DEL=0, REV=0)], tag="t5del_ref")
+    check("T5's DEL: T1 prints the delay", rms_db(st_t5d[2][0]) > -40,
+          f"rms {rms_db(st_t5d[2][0]):.1f} dB")
+    check("T5's DEL 100 == T6's SEND DEL 100 on T1's print, bit for bit",
+          st_t5d[2] == ref_t5d[2],
+          f"T5 {rms_db(st_t5d[2][0]):.2f} dB vs T6 {rms_db(ref_t5d[2][0]):.2f} dB")
+    for sk in SKEWS:
+        s5 = run(mems, t5d, skew=sk, tag="t5delsk")
+        check(f"under skew {sk:5d}: T5's DEL, T1 identical", s5[2] == st_t5d[2])
+
+    print("\n== T1's REV lands in the reverb exactly as T2's SEND REV does ==")
+    t1r = [R(DLY=0), S6(DEL=0, REV=0), D(REV=100), S2(DEL=0, REV=0)]
+    t1r[2].fed = True
+    st_t1r = run(mems, t1r, tag="t1rev")
+    ref_t1r = run(mems, [R(DLY=0), S6(DEL=0, REV=0), D(), S2(DEL=0, REV=100)], tag="t1rev_ref")
+    check("T1's REV: T5 prints the reverb", rms_db(st_t1r[0][0]) > -45,
+          f"rms {rms_db(st_t1r[0][0]):.1f} dB")
+    check("T1's REV 100 == T2's SEND REV 100 on T5's print, bit for bit",
+          st_t1r[0] == ref_t1r[0],
+          f"T1 {rms_db(st_t1r[0][0]):.2f} dB vs T2 {rms_db(ref_t1r[0][0]):.2f} dB")
+    for sk in SKEWS:
+        s1 = run(mems, t1r, skew=sk, tag="t1revsk")
+        check(f"under skew {sk:5d}: T1's REV, T5 identical", s1[0] == st_t1r[0])
 
     print("\n== delay only, and WET 0 ==")
     donly = [S6(), D(), S2()]
@@ -246,11 +295,11 @@ def main():
     check("T1's print with the reverb at WET 127 == delay only, bit for bit", t1 == st_d[1])
 
     print("\n== the send is refused on track 8, and only there ==")
-    t8 = [R(), S6(), Inst("SEND", 0, 3, fed=True, SEND=127), D(), S2()]
+    t8 = [R(), S6(), Inst("SEND", 0, 3, fed=True, DEL=127, REV=127), D(), S2()]
     st_8 = run(mems, t8, tag="t8")
-    check("a SEND on T8 (core 0 pos 3) at SEND 127 changes both hosts NOT AT ALL",
+    check("a SEND on T8 (core 0 pos 3) at DEL 127 REV 127 changes both hosts NOT AT ALL",
           st_8[0] == t5 and st_8[3] == t1)
-    t4 = [R(), S6(), D(), S2(), Inst("SEND", 1, 3, fed=True, SEND=127)]
+    t4 = [R(), S6(), D(), S2(), Inst("SEND", 1, 3, fed=True, DEL=127, REV=127)]
     st_4 = run(mems, t4, tag="t4")
     check("a SEND on T4 (core 1 pos 3, the mirror) DOES change T5's print", st_4[0] != t5)
 

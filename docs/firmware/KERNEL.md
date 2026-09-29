@@ -112,7 +112,7 @@ per tick = 220.5 samples = 13.8 audio frames. PIT1 `0xfc084000` (PCSR
   `0x4000d3ae`); the level chain at `0x4000ccae` runs at `0x60` (S/U = bit 6
   = 16-bit rounding on read-out). Stock Unicorn computes fractional `macl`
   as unsigned `>> 32` and reads the MAC/MSAC bit from the wrong word;
-  `tools/patches/unicorn_emac_fractional.patch` (`CLAUDE.md`).
+  `tools/patches/unicorn_emac_fractional.patch` (`AGENTS.md`).
 - The mount's INTRQ is not instantaneous and the firmware depends on that;
   a "stall" at 1,407 ATA commands was a line-A exception the UART hid
   (`docs/history/COLDFIRE_PORT.md` O7).

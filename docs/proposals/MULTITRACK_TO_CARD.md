@@ -2,7 +2,7 @@
 
 A technical proposition. It says what the firmware already does, what the
 numbers are, what nobody has measured, and the order in which to measure it.
-It is not a build plan and nothing here is on `PLAN.md`.
+It is not a build plan.
 
 Confidence markers as in `docs/firmware/CHIP.md`: ✅ measured, 🟡 inferred with
 a falsifier stated, ❌ retracted. Where a number is arithmetic on measured
@@ -143,9 +143,9 @@ and let a background task drain the ring to eight files.
   runtime mechanism (`docs/remixer/PLACEMENT.md`).
 - New: one per-frame copy, one ring, one drainer task, one header fix-up.
 - Leaves the eight recorders free for the user.
-- Needs a DRAM placement for the ring. `PLAN.md` item 6, measuring
-  `0x46000000` to `0x47502c10` with samples loaded and the recorder running,
-  is the prerequisite. The ring holds the raw 1,024-byte frames, so the
+- Needs a DRAM placement for the ring. Measuring `0x46000000` to
+  `0x47502c10` with samples loaded and the recorder running
+  (`docs/remixer/PLACEMENT.md`, unmeasured) is the prerequisite. The ring holds the raw 1,024-byte frames, so the
   per-frame hook stays a memcpy and the packing to 24-bit happens in the
   drainer. At 2.82 MB/s a ring of 4 MiB holds 1.5 seconds of card stall,
   which is the budget a slow card gets before samples drop. Packing before
@@ -189,7 +189,8 @@ is real.
 3. **The tap's position relative to LEVEL and the delay.** Same fixture,
    sweep both. Decides where in the frame routine the hook goes.
 
-4. **DRAM for the ring.** `PLAN.md` item 6, unchanged.
+4. **DRAM for the ring.** The `0x46000000..0x47502c10` measurement
+   above (`docs/remixer/PLACEMENT.md`).
 
 5. **ColdFire headroom.** No figure exists. The "~64k instructions per
    frame" in `RTOS_FORK.md` §4 is 95,782 cycles/frame at an ASSUMED CPI of
@@ -211,8 +212,6 @@ is real.
 
 - Not a change to the DSP. The stems are already delivered.
 - Not a change to the recorders. Option C does not touch them.
-- Not on `PLAN.md`. The remixer's work order stands; this is a survey for the
-  people who asked.
 - Not a claim that it works. Nothing has been built, flashed or timed.
   Measurement 1 is where that starts.
 

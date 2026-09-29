@@ -42,7 +42,7 @@ except ImportError:
 from rich.markup import escape  # noqa: E402  (rich ships with textual)
 
 from remix import audition, registry, rig, stock  # noqa: E402
-from remix.schema import NO_FALLBACK, on_the_bus  # noqa: E402
+from remix.schema import CATEGORY_TITLE, Category, NO_FALLBACK, on_the_bus  # noqa: E402
 from remix.state import (BUILT_IMAGE, CAVE_BYTES, DONOR_WORDS, ROOT,  # noqa: E402
                          State)
 
@@ -120,7 +120,7 @@ def titlecase(s: str) -> str:
         if w.upper() in _ACRONYMS:
             return w.upper()
         if not w.isupper() and any(c.isupper() for c in w[1:]):
-            return w                      # BusDelay, BusVerb, WarpFold
+            return w                      # BusDelay, BusVerb
         return w[:1].upper() + w[1:].lower()
     parts = re.split(r"([ \-/]+)", s)
     return "".join(word(p) if i % 2 == 0 else p
@@ -129,7 +129,7 @@ def titlecase(s: str) -> str:
 
 def disp(mod) -> str:
     """What to CALL a module on screen: the name the panel shows, not the
-    directory slug. `warpfold` is a path; `WarpFold` is what the operator
+    directory slug. `busverb` is a path; `BusVerb` is what the operator
     reads on the unit."""
     if mod.menu is not None:
         return titlecase(mod.menu.fullname.decode("latin1") or mod.name)
@@ -409,7 +409,7 @@ PLATE, SPRING and DARK REV's code IS the donor region, so the `held by` line is 
 You CAN keep them. The build takes only the reverbs your modules actually reach, and the pane says which went (`— Plate Rev  donor, taken`). `remixes/restock.py` is thirteen stock effects plus SEND: the smallest buildable image, costing only PLATE. (Until 2 Sep 2026 all three were nulled unconditionally and the honest answer here was "you cannot, ever". That is no longer true.)
 
 [bold]there is one FX2 buffer per track[/]
-"Free" there means "no module has pinned it", not "unused": a track whose buffer no module claims still HAS that buffer, ready for whatever is selected on it. Only a MODULE claims one for the life of the image. BusVerb holds all four of its core's, BusDelay two of its core's, Nimbus two of whichever core hosts it — and they go in PAIRS, so "4 free" is two pairs, not four independent slots.
+"Free" there means "no module has pinned it", not "unused": a track whose buffer no module claims still HAS that buffer, ready for whatever is selected on it. Only a MODULE claims one for the life of the image. BusVerb holds all four of its core's, BusDelay two of its core's — and they go in PAIRS, so "4 free" is two pairs, not four independent slots.
 
 A stock effect never appears in that row: it takes a slot from the allocator at runtime, per effect per block, only while it is selected on that track — which no image can reserve. That runtime contest is why the ledger refuses an allocating stock effect beside a pinner, and it is what the ⚠ is asking you to remove. FLANGER, CHORUS, SPATIALIZER and COMB FILTER keep their FX1 rows and still work; the three reverbs were FX2-only in stock and are lost outright.
 
@@ -628,15 +628,16 @@ class RemixerScreen(Screen):
         self.rerender()
 
     # ---- the rows each pane walks ---------------------------------------
-    # Group order for the library pane: the way you meet them -- the two big
-    # bus effects, then the inserts that stack, then the firmware mods, then
-    # plumbing, then stock.
-    _GROUPS = (rig.SERVER, rig.INSERT, rig.MOD, rig.SYSTEM)
+    # Group order for the library pane: schema.Category's, the module
+    # table's (the bus, on a track, machines, Parts, MIDI/USB, fixes,
+    # reference), then stock.
+    _GROUPS = tuple(Category)
 
     def avail_rows(self):
-        """Everything that COULD be in an image: our modules, then stock."""
+        """Everything that COULD be in an image: our modules by category
+        (schema.Category, the module table's grouping), then stock."""
         mods = [m for m in registry.modules().values() if not m.is_stock]
-        mods.sort(key=lambda m: (self._GROUPS.index(rig.category(m)),
+        mods.sort(key=lambda m: (self._GROUPS.index(m.category or Category.REFERENCE),
                                  disp(m).lower()))
         return mods + list(stock.MODULES)
 
@@ -895,8 +896,7 @@ class RemixerScreen(Screen):
         cur_line, group = head, None
         verdicts = self._mod_verdicts(st)
         for i, m in enumerate(rows):
-            cat = rig.STOCK if m.is_stock else rig.category(m)
-            g = rig.GROUP_TITLE[cat]
+            g = CATEGORY_TITLE[m.category or Category.REFERENCE]
             if g != group:
                 group = g
                 out.append(f"[dim {WARN}]── {g} ──[/]")
@@ -1619,7 +1619,8 @@ class RemixerScreen(Screen):
                         self._head("Unit", UNIT) + ["[dim]nothing selected[/]"])
             return
         out = self._head(disp(mod), UNIT)
-        bits = [rig.GROUP_TITLE[rig.category(mod)]]
+        bits = [CATEGORY_TITLE[mod.category or Category.REFERENCE],
+                rig.GROUP_TITLE[rig.category(mod)]]
         if mod.menu:
             bits.append(f"id 0x{mod.menu.fx2_id:02x}")
             bits.append("+".join(rig.menus(mod, st.fx1)))
@@ -1661,7 +1662,7 @@ class RemixerScreen(Screen):
                 out.append(f"[reverse]{line}[/]" if here else line)
                 continue
             # ⚠️ THE DISPLAY NAME IS NOT THE STORAGE KEY. A mode view renames
-            # a slot (MDEP -> SCAT in GRAIN); storing under the display name
+            # a slot (MDEP -> SCTR in GRAIN); storing under the display name
             # would make the value look reset every time the mode moved.
             canon = mod.canon_name(slot)
             v = vals.get(canon, 0)
@@ -1743,7 +1744,7 @@ class RemixerScreen(Screen):
 
         ⚠️ SHOWN ONLY WHEN THE SELECTION ACTUALLY CHANGES IT, which is the
         case this view was built for -- a patched-in top-level row
-        (PLAN.md section 5) -- and which no remix yet hits: a selection can
+        -- and which no remix yet hits: a selection can
         change the top-level menu only by writing the tables at 0x400cbc00,
         and every one of them changes ZERO bytes of it. As a permanent
         fixture it was the same picture every time.
@@ -1857,7 +1858,7 @@ class RemixerScreen(Screen):
         more room" and "put it in the strip" pull opposite ways.
 
         Clearing is what is left, and it is the right half of the old
-        behaviour: an action message ("added Nimbus · added Send as the
+        behaviour: an action message ("added BusVerb · added Send as the
         fallback") is context for the moment it happened, so it must not
         still be sitting there describing a row you have since left.
         """
@@ -2213,11 +2214,11 @@ class RemixerScreen(Screen):
             if gone:
                 # NAME THE CULPRIT AND COUNT THEM. Listing seven effects
                 # took four lines of the pane and still did not say WHY or
-                # WHICH module was doing it -- "why did adding nimbus remove
+                # WHICH module was doing it -- "why did adding a module remove
                 # so many?" is the question it produced. The list is one
                 # keystroke away and the reason is what is actually wanted.
                 # BOTH: the cause AND the names. Listing seven names alone
-                # produced "why did adding nimbus remove so many?"; replacing
+                # produced "why did adding a module remove so many?"; replacing
                 # them with a count alone produced "it's worse now that it
                 # doesn't show which ones". The reason belongs first because
                 # it is the question, and the list belongs after it because
@@ -2481,11 +2482,16 @@ class RemixerScreen(Screen):
                 return
 
             def documented(doc):
-                pth = ROOT / f"remixes/{name}.py"
-                pth.write_text(st.as_remix(
-                    name, doc or "a selection composed in the remixer"))
+                doc = doc or "a selection composed in the remixer"
+                d = ROOT / "remixes" / name
+                d.mkdir(exist_ok=True)
+                (d / "remix.py").write_text(st.as_remix(name, doc))
+                if not (d / "README.md").exists():
+                    (d / "README.md").write_text(
+                        f"# `{name}` -- {doc}\n\nWritten by the remixer; "
+                        f"say what is in it and where it has run.\n")
                 st.loaded_name = name
-                st.msg = f"wrote remixes/{name}.py"
+                st.msg = f"wrote remixes/{name}/remix.py"
                 self.rerender()
             self.app.push_screen(TextPrompt("one-line description:"),
                                  documented)

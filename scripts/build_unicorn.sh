@@ -15,8 +15,8 @@
 #
 # Output: .venv/lib/unicorn-emac/libunicorn.2.dylib (or .so.2). The
 # Python bindings stay the stock pip package; emu_bringup exports
-# LIBUNICORN_PATH to this directory when it exists, and refuses route A
-# on a stock EMAC (emu_bringup.emac_selftest).
+# LIBUNICORN_PATH to this directory when it exists
+# (emu_bringup.emac_selftest pins the semantics).
 #
 # Host note: build for the CPU your .venv's Python runs on. An x86_64
 # (Rosetta) build with Xcode 26's clang produced a library that crashed

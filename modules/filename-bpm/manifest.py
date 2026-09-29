@@ -39,7 +39,8 @@ show 40a1f19:tools/patch_menu.s`), which ran on hardware; this module's
 own hooks have not been on a unit.
 """
 
-from remix.schema import Detour, Kind, Linked, Module, Poke, TableGrow
+from remix.schema import (Category, Detour, Gate, Kind, Linked, Module, Poke, Proof,
+                          TableGrow)
 
 H = bytes.fromhex
 
@@ -61,6 +62,10 @@ MODULE = Module(
     name="filename-bpm",
     key="FORCE FILENAME BPM",
     kind=Kind.CF_PATCH,
+    category=Category.FIXES,
+    author="repeat98", author_url="https://github.com/repeat98",
+    proof=Proof.PORT,
+    proof_note="`verify_fnbpm`: its hooks executed under the ColdFire port; not on a unit",
     doc="PERSONALIZE: force a sample's tempo to the BPM in its filename "
         "(stock only uses it to pick half/double).",
     linked=(Linked("fnbpm", "modules/filename-bpm/fnbpm.s"),),
@@ -89,4 +94,7 @@ MODULE = Module(
         Poke(0x40068FB2, expect=H("720f"), write=H("7210"),
              note="PERSONALIZE item count 15/16 -> 16/17"),
     ),
+    # It read out/mainos_bus.bin and skipped a remix without the module; the
+    # Makefile listed it by hand before the gates followed the modules.
+    gates=(Gate("tools/verify/verify_fnbpm.py", remix_arg=False, stage="image"),),
 )

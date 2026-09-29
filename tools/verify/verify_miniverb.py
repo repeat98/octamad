@@ -218,7 +218,7 @@ def verify(mems):
 if __name__ == '__main__':
     name = sys.argv[1] if len(sys.argv) > 1 else 'miniverb'
     if 'MINIVERB' not in registry.remix(name).modules:
-        print(f'[SKIP] verify_miniverb: {name} does not carry MINIVERB')
+        print(f'[N/A] verify_miniverb: {name} does not carry MINIVERB')
     else:
         if len(sys.argv) > 1:
             # make check has just built the selected remix. Exercise its

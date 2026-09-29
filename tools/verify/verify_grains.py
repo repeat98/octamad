@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The GRAIN cycle lever changes GRAIN and nothing else.
 
-    python3 tools/verify/verify_grains.py [remix]      (default: bamsep26)
+    python3 tools/verify/verify_grains.py [remix]      
 
 `schema.Remix.grains = 2` rolls BusDelay's reader from four grains per line
 to two, for the cycles: the delay's core cannot carry four active stations
@@ -37,7 +37,7 @@ SRC = pathlib.Path("modules/busdelay/delay_server.asm")
 
 def main():
     from remix import grains, registry
-    name = sys.argv[1] if len(sys.argv) > 1 else "bamsep26"
+    name = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("REMIX")
     remix = registry.remix(name)
     if remix.grains == 4:
         print(f"  [ -- ] {name} runs four grains -- no lever to check")
@@ -73,7 +73,8 @@ def main():
                 return int(line.split()[1])
         return None
 
-    four = price({"REMIX": "bus"})
+    plain = registry.fixture("REVERB SERVER", "DELAY SERVER", "SEND", grains=4)
+    four = price({"REMIX": plain})
     two = price({"REMIX": name})
     if four and two:
         check("the pricer sees the lever: the rolled engine is cheaper",
@@ -92,7 +93,7 @@ def main():
     # because standalone the variable was unset). Pin it to the plain remix.
     r = subprocess.run([sys.executable, "tools/verify/verify_delay.py", str(cand)],
                        capture_output=True, text=True,
-                       env={**os.environ, "REMIX": "bus"})
+                       env={**os.environ, "REMIX": plain})
     lines = [l for l in r.stdout.splitlines() if "[PASS]" in l or "[FAIL]" in l]
     if not lines:
         check("verify_delay ran", False, (r.stdout + r.stderr).strip()[-200:])

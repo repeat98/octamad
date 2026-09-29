@@ -263,7 +263,7 @@ def write_wav(path, L, R):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--image", default="out/mainos_bus.bin", help="a BUILT image (make bus REMIX=...)")
-    ap.add_argument("--remix", default=os.environ.get("REMIX", "bamsep26"),
+    ap.add_argument("--remix", default=os.environ.get("REMIX"),
                     help="which remix the image is (resolves ids to modules)")
     ap.add_argument("--tracks", default="", help="T1=D,T2=S,... (letter or module KEY; 'a+b' = FX1+FX2)")
     ap.add_argument("--project", help="project dir: take ids AND knobs from a part")
@@ -285,7 +285,11 @@ def main():
     ap.add_argument("-v", "--verbose", action="store_true")
     ap.add_argument("--frames", type=int, default=FRAMES, help="samples per dsp_host block (16 = the firmware's frame, the default; 15 = the old harness)")
     ap.add_argument("--extra", default="", help="extra dsp_host arguments, e.g. '-dumpy 36000,360d3,file' (the bus scratch after the render)")
+    ap.add_argument("--mem", help="payload A already dumped from --image (send_probe.dump_mem); with --memB, no dump here")
+    ap.add_argument("--memB", help="payload B already dumped from --image")
     a = ap.parse_args()
+    if bool(a.mem) != bool(a.memB):
+        die("--mem and --memB go together")
 
     image = pathlib.Path(a.image)
     if not image.is_file():
@@ -307,10 +311,15 @@ def main():
     if a.amp is None:
         a.amp = 1.0 if model else 0.5
 
-    # both payloads
+    # both payloads: dumped here, or handed in by a caller that runs several
+    # renders of one image side by side (pressure.py; the dump's path is
+    # per remix, not per process)
     mems = {}
-    for core, tag in ((0, "A"), (1, "B")):
-        mems[core] = send_probe.dump_mem(image, ROOT / f"out/dsp/mem_{a.remix}_{tag}.mem", tag)
+    if a.mem:
+        mems[0], mems[1] = pathlib.Path(a.mem), pathlib.Path(a.memB)
+    else:
+        for core, tag in ((0, "A"), (1, "B")):
+            mems[core] = send_probe.dump_mem(image, ROOT / f"out/dsp/mem_{a.remix}_{tag}.mem", tag)
     send_id = send_probe.SERVER_ID["S"]
     send_ep = {c: send_probe.entry_points(mems[c], send_id) for c in (0, 1)}
 
@@ -371,6 +380,7 @@ def main():
         g = a.amp * mixer.vol_gain(mix[t]["vol"])
         return g * gl, g * gr
     tag = os.getpid()
+    (ROOT / "out/dsp").mkdir(parents=True, exist_ok=True)
     raws = {}
     for t, (xl, xr) in stems.items():
         p = ROOT / f"out/dsp/_rig_in_T{t}_{tag}.raw"

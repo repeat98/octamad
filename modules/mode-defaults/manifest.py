@@ -16,7 +16,7 @@ page-1 slots through the stock page-1 writer 0x40054cd8(track, flat,
 value), page-2 slots with the editor's own stores (Part, shadow, live
 lane, the slot's redraw flag). SEND (slot 0 of the bus engines) is never
 in a view. The table is generated per remix from every module in the
-image that declares ModeViews. A MODE over MIDI (CC PAGE 2) is
+image that declares ModeViews. A MODE over MIDI (CC MAP) is
 re-defaulted too: its cave calls CC_MODEDEF2 / CC_MODEDEF1 here after its
 write.
 
@@ -27,7 +27,7 @@ the FX1 editor likewise for a station. Not measured: the panel redraw on
 hardware.
 """
 
-from remix.schema import Detour, Kind, Linked, Module
+from remix.schema import Gate, Category, Proof, Detour, Kind, Linked, Module
 
 H = bytes.fromhex
 
@@ -56,6 +56,8 @@ MODULE = Module(
     name="mode-defaults",
     key="MODE DEFAULTS",
     kind=Kind.CF_PATCH,
+    category=Category.BUS, author="sambanks", author_url="https://github.com/sambanks",
+    proof=Proof.HARDWARE, proof_note="Sam's MKII (images 26/27, 15 Sep 2026)",
     doc="A MODE turned on the panel re-defaults the knobs around it "
         "(the manifests' ModeViews), on FX1 and FX2.",
     linked=(Linked("modedef", "modules/mode-defaults/modedef.s", include=table_inc),),
@@ -65,4 +67,5 @@ MODULE = Module(
         Detour(0x4003ACF2, H("4eb940027e00"), "modedef", "fx1_hook",
                "FX1 page-2 editor: after the Part store, apply the mode's view", kind="jsr"),
     ),
+    gates=(Gate('tools/verify/verify_modedefaults.py'),),
 )

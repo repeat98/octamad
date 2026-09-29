@@ -24,7 +24,7 @@ from remix import registry, runtime_build  # noqa: E402
 
 mod = registry.modules().get("OCTAKIT")
 if mod is None or mod.runtime is None:
-    print("  [SKIP] verify_octakit: no OCTAKIT module")
+    print("  [N/A] verify_octakit: no OCTAKIT module")
     sys.exit(0)
 if not (ROOT / mod.runtime.recipe).exists():
     print("  [SKIP] verify_octakit: submodule not checked out "

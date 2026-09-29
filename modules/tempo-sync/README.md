@@ -1,6 +1,7 @@
 # Tempo sync
 
-Two ColdFire code caves.
+Feeds the held MIDI note to BusDelay and draws BusDelay's TIME knob as a
+tempo division. Two ColdFire code caves.
 
 **The note cave** hooks the per-frame voice-record writer, replays the
 instruction it displaced, and for a track whose FX2 is BusDelay stores the
@@ -18,7 +19,9 @@ deriving samples per MIDI clock on the DSP.
 milliseconds). `TEMPOCAVE=replay` installs a cave that only replays the
 displaced instructions, isolating the hook mechanism from the store.
 
-On the unit since 24 Aug 2026 as a tempo/period/fader/note publish into
+## On the unit
+
+Since 24 Aug 2026 as a tempo/period/fader/note publish into
 halfwords 18-21; note-only since 15 Sep 2026 (image 24): halfwords 18-20
 are the FX1 instance's page 2 and 21 the AMP page 2's first halfword, so
 on a delay or reverb host every FX1 effect's page 2 read the tempo bytes

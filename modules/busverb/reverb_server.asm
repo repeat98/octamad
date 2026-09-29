@@ -13,66 +13,119 @@
 ; literal per payload):
 ;   lines      base+0x0000 .. base+0x7fff   4096 words each, spacing 0x1000
 ;              taps to ~3914 (89 ms) at SIZE max
-;   input APs  shared+0x2000 .. 0x3fff      2048 words each, taps 641..1949
-;   pre-delay  shared+0x1000 .. 0x1fff      4096 words (93 ms)
+;   pre-delay  shared+0x1000 .. 0x1fff      4096 words: mapped and cleared
+;                                           by the warm-up, never read or
+;                                           written otherwise
+;   input APs  shared+0x2000 .. 0x3fff      2048 words each, taps
+;                                           641/1051/1511/1949
 ;   shimmer    shared+0x0800 ..             2048 words (NOSHIM=1 excises it)
 ;   in-loop AP shared+0x4000/0x4200         512 words each, taps 298 446
-;   tank state shared+0x4500 ..             per-line tables A and B
+;   tank state shared+0x4500 .. 0x453f      table A (6 words/line) at +0x4500,
+;                                           table B (2 words/line) at +0x4530
+;   bloom APs  shared+0x4800/0x5000         2048 words each, taps 1801/1291
 ;
 ; Tap constants are fractions of the line length ($3DD800 = 1979/2048), so a
 ; re-layout moves only the modulo, the spacing and the shift counts.
 ;
-; The tank state table, thirteen words per line (8 x 13 = 104 of 256):
-;   GROUP A -- tank tap loop (words +0..+5, stride 6 within group):
+; The tank state tables, 64 words:
+;   table A, six words per line, walked at stride 6 by the tank loop:
 ;     +0  read offset   (4096 - tap) - LFO offset        per block
 ;     +1  interpolation fraction                         per block
 ;     +2  d0 carry: last sample's tap                    per sample, seeded per block
 ;     +3  damping state                                  PERSISTENT
 ;     +4  LO state                                       PERSISTENT
 ;     +5  this line's output                             per sample
-;   GROUP B -- write-back params (words +6..+12, read by the write-back loop):
-;     +6  wb_left        Hadamard source index, left term   constant
-;     +7  wb_right       Hadamard source index, right term  constant
-;     +8  wb_left_sign   +1 or -1, Q23 encoded              constant
-;     +9  wb_input_sign  +1, -1, or 0                       constant
-;    +10  wb_input_scale 1.0, 0.5, or 0.25                  constant
-;    +11  wb_has_ap      0 = plain write, nonzero = allpass  constant
-;    +12  fb_scratch     write-back result, per sample       per sample
+;   table B, two words per line, walked by the feedback loops fbA/fbB:
+;     +0  input weight  (+1, -1 or 0, scaled)            per block
+;     +1  line gain G_k                                  per block
 ; The persistent words need no save/restore (one REVERB SERVER per bank; the
-; warm-up zeroes the whole allocation, this table included).
+; warm-up zeroes the whole allocation, these tables included).
 ;
-; State in the per-instance r7 block ($00..$83 all in use; $84+ hangs the
-; DSP):
-;   r7+$83        write phase (persistent, masked on load as well as save)
+; State in the per-instance r7 block ($00..$83; $84+ hangs the DSP). A slot
+; census of the source, 23 Sep 2026:
+;   r7+$00..$07   LFO int/frac, lines 4..7 ($00/$01 line 4, ...)   per block
+;   r7+$08        line 4's (4096 - tap) (per block); the bloom output (per
+;                 sample, for the wet sums)
+;   r7+$09/$0a    (4096 - tap), lines 5/6                          per block
+;   r7+$0b/$0d    table A / table B base                           per block
+;   r7+$0c        REV bus auto-gain 1/sqrt(N)                      per block
+;   r7+$0e        SHMR, glided                                     per block
+;   r7+$0f        shimmer write phase (persistent, masked)
+;   r7+$14        the dispatcher's call flag; a shimmer park (head 0's t0)
+;   r7+$15        the tank input (per sample)
+;   r7+$16..$19   Hadamard u0..u3 (lines 0..3), walked by pointer
+;   r7+$1a..$1d   feedback scratch fb0..fb3 (fbA writes, the APs and the
+;                 write-back read)
+;   r7+$1e        k_mode, the TIME law's mode constant
+;   r7+$1f        DAMP coefficient, glided
+;   r7+$20        wet gain (wgain/2)
+;   r7+$21..$24   LFO int/frac, lines 0/1                          per block
+;   r7+$28        tank modulation depth (pinned, scaled per mode)
+;   r7+$29        GHOLD; $30 GCNT; $62 GLVL (the gate)
+;   r7+$2a/$2b    (4096 - tap), lines 1/2                          per block
+;   r7+$2c        SHFT's read-phase step
+;   r7+$2d/$2e    wet L / R (per sample)
+;   r7+$2f        LFO base increment
+;   r7+$31        the private line base
+;   r7+$32..$35   input diffuser bases; $36/$37/$4c/$4d line 4..7 bases
+;   r7+$38        shimmer read fraction (per sample)
+;   r7+$3a..$3d   Hadamard u4..u7 (lines 4..7), walked by pointer
+;   r7+$3e/$4f/$50/$51/$47/$48/$49/$4a   LFO phase, lines 0..7 (persistent)
+;   r7+$3f        DIFF's mode offset; $6d g, glided
+;   r7+$40        LO coefficient, glided
+;   r7+$41..$44   feedback scratch fb4..fb7
+;   r7+$45/$46    (4096 - tap), lines 0/3; $4b line 7              per block
+;   r7+$4e        shimmer one-pole state
+;   r7+$52..$55   in-loop AP LFO int/frac, A / B                   per block
+;   r7+$56..$59   LFO int/frac, lines 2/3                          per block
+;   r7+$5a/$5b    LFO triangle stash, lines 0/1                    per block
+;   r7+$5c/$5d    in-loop AP d1 carry, A / B (per sample)
+;   r7+$5e/$5f    in-loop AP bases; $60/$61 their (512 - tap)
+;   r7+$63/$6a    this call's REV ACC read / write address (the loop walks
+;                 them in n3 / n2)
+;   r7+$64/$65    this call's chain read address (walked in the slot) / the
+;                 chain gain, 1/8 while the delay is live, else 0
+;   r7+$67        this call's frame offset; $6b last-seen rotation
+;   r7+$6c        lines 4-7 tap scale; $6f SIZE's mode scale
+;   r7+$70        WET, glided; $72/$73 damping / modulation scale per mode
+;   r7+$74..$77   this mode's line fractions
+;   r7+$78/$79    wet high-cut states M / S (persistent); $7a its coefficient
+;   r7+$7b        bloom g; $7e..$81 the diffuser taps (n5 values)
 ;   r7+$82        warm-up counter, $2c0000 | blocks, capped at 0x100
-;   r7+$40        LO coefficient
-;   r7+$0b        state table base
-;   r7+$0c        bus auto-gain 1/sqrt(N) (housekeeper block; read per sample)
-;   r7+$6c        lines 4-7 tap scale (per-mode)
-;   r7+$0d        write-back table base
-;   r7+$16..$19   Hadamard inputs/outputs u0..u3 (lines 0..3)
-;   r7+$3a..$3d   Hadamard inputs/outputs u4..u7 (lines 4..7)
-;   r7+$1a..$1d   write-back scratch (fb values for lines 0..3)
-;   r7+$41..$44   write-back scratch (fb values for lines 4..7)
-;   r7+$3e/$4f/$50/$51/$47/$48/$49/$4a   LFO phase, lines 0..7
-;   r7+$00..$07   LFO tank int/frac for lines 4..7 ($00/$01 line 4, etc.)
-;   r7+$08..$0a   per-block (2048-tap) temp for lines 4..6
-;   r7+$4b        per-block (2048-tap) temp for line 7
-;   r7+$15..$66   per-sample scratch
-;   r7+$6a        this call's DELAY ACC write address
-;   r7+$1e        k_mode, the TIME law's mode constant (per-mode)
+;   r7+$83        write phase (persistent, masked on load as well as save)
+;   $71 WET ramped per sample, $7c its per-sample step (per block)
+;   r7+$10        TIME's t, glided (per block, 26 Sep 2026)
+;   r7+$11..$13   wet limiter: gain (persistent), y parked, |yR| for the
+;                 next sample's detector
+;   (27 Sep 2026: four per-block slots moved into the one-word displacement
+;   range for the wet limiter's words -- $6d -> $25, $67 -> $26, $62 -> $27,
+;   $5e -> $39; the lines above still name them by their old numbers, the
+;   code reads the new ones)
+;   (27 Sep 2026, the second pass: thirteen more swaps, per-sample slot <->
+;   per-block slot, so the sample loop's displaced accesses are one word:
+;   $71<->$09, $4e<->$0a, $5c<->$10, $5d<->$26, $64<->$28, $78<->$2a,
+;   $79<->$2b, $52<->$31, $53<->$33, $54<->$34, $55<->$35, $40<->$36,
+;   $5f<->$37. Read the map above through this table.)
+;   free: $5e, $62, $66, $67, $68, $69, $6d, $6e, $7d
+;   (fourteen; $25/$26 and $39 went to registers 23 Sep 2026)
 ;
-; Parameters:
-;   p0 AUX  -> this host's own dry send into the one aux bus (written to the
-;              AUX accumulator, flagged at y:$981)
-;   p1 TIME -> feedback, 0.875 .. 0.999
-;   p2 SHMR (MOD until 15 Sep 2026; the tank modulation is pinned at MOD 30), p3 SIZE
-;   p4 TONE -> HP and LP on one knob (the HI/LO blocks)
+; Parameters (page 1 slots 0-5, page 2 slots 6-11):
+;   p0 DEL  -> this host's own dry send into the delay (the AUX
+;              accumulator, counted as an AUX client while nonzero; ramp
+;              and pointer in core-private y:$09f4..$09f6)
+;   p1 REV  -> this host's own dry send into the reverb (written to the
+;              REV accumulator, flagged at y:$981); slot 0 until 26 Sep 2026
+;   p2 SIZE, p3 SHMR (linked), p4 SHFT (6 intervals, -12..+24)
 ;   p5 WET  -> the reverb's level: the host prints wet*WET under its dry
-;   page 2: MODE (slot 6, $c KNOB field), DIFF, SHFT, GATE (slots 7 and
-;   11 are blank since 15 Sep 2026: SHMR moved to page-1 slot 2, RATE went)
-;   core-private y:$09f1 delay-liveness grace; $09f0 the SEND level for
-;   the loop
+;   page 2: MODE (slot 6, $c's KNOB field), TONE (slot 7, $c's companion:
+;   LP and HP on one knob, the HI/LO blocks), DIFF (slot 8, $d's KNOB
+;   field), GATE (slot 9, $d's companion), DLY (slot 10, $e's KNOB
+;   field), TIME (slot 11, $e's companion: the decay law, README.md; page-1
+;   slot 1 until 26 Sep 2026)
+;   core-private y:$09f1 delay-liveness grace; $09f0 the REV level for
+;   the loop; $09f3 SIZE's glide state; $09f4/$09f5 DEL's ramp and step;
+;   $09f6 DEL's AUX write pointer; $0905/$0906 the shimmer's read
+;   phase and HP state
 ;
 ; Every proc() call runs the position-0 rotation-flip-and-clear housekeeping
 ; modules/send/send_client.asm describes, sums the shared REVERB accumulator
@@ -93,11 +146,14 @@ init:
         clr     a
         move    a,x:(r7+$0e)            ; SHMR
         move    a,x:(r7+$1f)            ; TONE's c
-        move    a,x:(r7+$40)            ; TONE's LO
-        move    a,x:(r7+$6d)            ; DIFF's g
+        move    a,x:(r7+$36)            ; TONE's LO
+        move    a,x:(r7+$25)            ; DIFF's g
         move    a,x:(r7+$70)            ; WET
+        move    a,x:(r7+$5c)            ; TIME's t (the glide state)
         move    a,y:>$09f3              ; SIZE's f (the glide state)
-        rts
+        move    #>$ffffff,a
+        move    a,y:>$09f4              ; DEL's ramp (the per-sample level): -1,
+        rts                             ; so it starts AT the knob (SEND's seed)
 
 proc:
 ; ---- HOSTGUARD: a remix that hides or locks this engine has the build put
@@ -117,13 +173,14 @@ proc:
 ; white noise while the port stayed clean, the shape of a stash that does
 ; not survive between the two calls: a second call taken for a first one
 ; advances position 0's rotation tracker twice in a frame, and the tracker
-; keeps a lead of one for ever (the R25 "metallic" mode). r0 needs no state.
+; keeps a lead of one for ever (a metallic wash on every power cycle). r0
+; needs no state.
         move    r0,a
         asr     #$1,a,a                 ; words -> frames
         and     #>$f,a                  ; 0..15 by construction; garbage masked
         move    a1,x0
         move    x0,a                    ; A2-clean
-        move    a,x:(r7+$67)            ; this call's frame offset
+        move    a,x:(r7+$5d)            ; this call's frame offset
 bus_off_done:
 
 ; ---- position-0 housekeeping: flip the shared bus rotation, clear the new
@@ -152,7 +209,7 @@ bus_off_done:
 ; below was written around, one level up. Payload B is sent straight to
 ; bus_notfirst, so it still finds this block's write targets but never elects.
 ; Inert in a normal build: it is a comment.
-        move    x:(r7+$67),a
+        move    x:(r7+$5d),a
         tst     a
         bne     bus_notfirst                ; not this block's first call
         move    r7,a
@@ -175,6 +232,8 @@ bus_dohk:                               ; nobody did -- take over this block
         move    y:>$900,a
         add     #>$10,a
         and     #>$70,a
+        move    a1,x0                   ; A2-clean: a boot word with bit 23 set
+        move    x0,a                    ; would saturate the store
         move    a,y:>$900               ; the new CURRENT rotation
 ; ⚠️ CLEAR THE BUFFER WRITTEN **NEXT** BLOCK, NOT THIS ONE.
 ; Clearing the buffer we are about to write races the OTHER core's writers:
@@ -200,6 +259,13 @@ bus_dohk:                               ; nobody did -- take over this block
         do      #16,>bus_zclr
         move    a,y:(r2)+
 bus_zclr:
+        move    #>$9d8,b                ; the REV accumulator: the chain's
+        add     #>$80,b                 ; base plus its length
+        add     x0,b
+        move    b,r2                    ; r2 = REV ACC[new] base
+        do      #16,>bus_racclr
+        move    a,y:(r2)+
+bus_racclr:
         nop
 ; ---- release both server-role locks for this block (BUS.md hardware test 3)
 ; a is still 0 from the clear loop above. Whichever of the three effects is
@@ -221,6 +287,12 @@ bus_zclr:
         move    a,r1
         clr     a
         move    a,y:(r1)                ; AUX count = 0
+        move    r1,b                    ; the REV count, same index: 0x983
+        move    #>$44,x0                ; sits 0x44 below the AUX count
+        sub     x0,b                    ; 0x9c7 (both relocate together)
+        move    b,r1
+        nop
+        move    a,y:(r1)                ; REV count = 0
 bus_seen:
         move    y:>$900,a               ; remember this block's offset so next
         and     #>$70,a                 ; block we can tell whether anybody
@@ -272,45 +344,42 @@ bus_mine:
 ; The delay stamps y:$9c3 nonzero every block it processes (after its
 ; warm-up); this reads it, clears it (clear-on-read, single writer, single
 ; reader -- the station has its own word, $9c5) and keeps 3 blocks of grace
-; in CORE-PRIVATE y:$09f1 (r7 is full). While live, this
-; block's input is the delay's output buffer at $901 instead of the aux
-; accumulator -- see the two Tccs below and the gain override in the
-; resolve block. So delay-only, reverb-only, both, or neither all work and
-; no project setting can silence the aux (the one-aux rig, 7 Sep 2026).
+; in CORE-PRIVATE y:$09f1 (r7 is full). The tank hears the REV accumulator
+; (every REV send and this host's own SEND) plus, while the delay is live,
+; the chain buffer (the repeats x DLY); a chain gain of 0 keeps a stale
+; chain out when it is not (25 Sep 2026: the sends split into DEL and REV;
+; the aux was the reverb's input until then).
         move    y:>$09f1,b              ; blocks of grace left
         move    #>$9c3,r5               ; the delay's stamp word
         bsr     stampgr                 ; b = grace after this block's stamp
         move    b,y:>$09f1
         clr     a                       ; (BEFORE the tst: clr sets the CCR)
-        move    #>$d7,x0                ; the distance from the AUX accumulator
-        tst     b                       ; ($901) up to the CHAIN buffer ($9d8)
-        tne     x0,a                    ; while the delay is live,
-        move    a,y1                    ; else 0; the read address adds it
+        move    #$10,x0                 ; 1/8: the loop's asl #3 lands the
+        tst     b                       ; chain word untouched (mpy by
+        tne     x0,a                    ; $100000 then <<3 is the identity)
+        move    a,x:(r7+$65)            ; this block's chain gain, else 0
 
         move    y:>$900,a
         move    a,x1                    ; x1 = write offset (0..112)
         add     #>$50,a                    ; five buffers on == three buffers back
         and     #>$70,a                    ; mod 8
         move    a,x0                    ; x0 = the read offset
-        move    #>$901,a                ; the AUX accumulator (one bus, 6 Sep
-        add     x0,a                    ; 2026)
-        move    x:(r7+$67),b            ; this call's split-aware frame offset
-        add     b,a                     ; a = AUX ACC read address
-        add     y1,a                    ; ... or the CHAIN buffer's, same
-                                        ; rotation and frame offset, while
-                                        ; the delay is live (y1 from above)
-        move    a,x:(r7+$63)            ; this call's read address
-; ---- this call's AUX ACC write address: the host's own AUX send (v8 ->DEL) -
-; Back from its 18 Aug 2026 retirement, for a different reason: the rig puts
-; the host's OWN send pair on its FX2 page (5 Sep 2026, "real send knobs"),
-; and a BusVerb host has no station to carry ->DEL. Same address recipe as
-; SEND's r2: base $961 + write offset (x1, 0/16/32/48) + the split-aware
-; frame offset (b). The one free r7 slot ($6a) holds the address; the
-; level is read straight from the knob in the sample loop.
-        move    #>$901,a
+        move    x:(r7+$5d),b            ; this call's split-aware frame offset
+        move    #>$9d8,a                ; the CHAIN buffer
+        add     x0,a
+        add     b,a
+        move    a,x:(r7+$28)            ; this call's chain read address
+        add     #>$80,a                 ; the REV accumulator sits $80 above
+        move    a,x:(r7+$63)            ; this call's REV read address
+; ---- this call's REV ACC write address: the host's own SEND ---------------
+; SEND's recipe: the REV base + write offset (x1, 0/16/../112) + the
+; split-aware frame offset (b). The loop walks it in n2; the level is the
+; knob's copy at y:$09f0.
+        move    #>$9d8,a                ; the REV accumulator: the chain's
+        add     #>$80,a                 ; base plus its length
         add     x1,a
         add     b,a
-        move    a,x:(r7+$6a)            ; this call's DELAY ACC write address
+        move    a,x:(r7+$6a)            ; this call's REV ACC write address
 
 ; ---- bus auto-gain: resolve 1/sqrt(N) for this block's READ buffer ------
 ; ---- the module's P table: n4 holds its base for the block --
@@ -323,15 +392,15 @@ bus_mine:
         add     #>$50,a                    ; read offset = write + 5 buffers = 3 back
         and     #>$70,a                    ; mod 8
         asr     #$4,a,a                 ; -> bare index (0..7)
-        add     #>$9c7,a                  ; the AUX count (one bus)
+        add     #>$983,a                ; the REV count
         move    a,r5
         move    #>$1,x0                 ; the "one more client" increment
         clr     b                       ; b = 0 -- BEFORE the tst below
-        move    y:>$981,a               ; our own AUX flag (last block's: the
+        move    y:>$981,a               ; our own SEND flag (last block's: the
                                         ; write below runs after this) -- the
-                                        ; host's dry is IN THE ACCUMULATOR now,
-                                        ; as a SEND's is, so it counts the same
-                                        ; way (ONE AUX; IN retired)
+                                        ; host's dry is in the REV accumulator,
+                                        ; as a REV send's is, so it counts the
+                                        ; same way
         tst     a
         tne     x0,b                    ; sending -> b = 1
         move    y:(r5),a                ; clients that wrote the buffer we read
@@ -342,16 +411,7 @@ bus_mine:
         move    a,n5                    ; the count, 0..7
         move    n4,r5                   ; the table (m5 linear, set above)
         move    p:(r5+n5),a             ; 1/sqrt(N): the reciprocals lead the table
-; CHAIN INPUT (the one aux bus): while the delay -- chain stage 1
-; -- is LIVE, this block's input is its OUTPUT BUFFER at unity, not the aux
-; accumulator; the gain becomes exactly 1/8 so the loop's `asl #3` lands the
-; chain sample untouched (bit-exact: mpy by $100000 then <<3 is the identity
-; on a1). y:$09f1 is the delay-liveness grace counter (chain_live below).
-        move    y:>$09f1,b
-        tst     b                       ; delay live? (grace > 0)
-        move    #$10,x0
-        tne     x0,a                    ; live -> gain 1/8
-        move    a,x:(r7+$0c)            ; this block's bus gain, used per sample.
+        move    a,x:(r7+$0c)            ; this block's REV bus gain, used per sample.
                                         ; $0c, NOT $6d: $6d is the DIFFUSION
                                         ; allpass coefficient g. And $0c is
                                         ; the bus gain's ALONE: the md_* tap
@@ -359,46 +419,91 @@ bus_mine:
                                         ; sample multiplied the bus by ~0.75
                                         ; instead of 1/N. It lives in $6c now.
 
-; ---- ->DEL: tell the DELAY SERVER this host is a client (v8, 5 Sep 2026) --
-; NOT the count read-modify-write the 18 Aug send did (19 words, two gates,
-; and a cross-core RMW on a shared word). The knob field itself goes to
-; y:$981 every block -- one writer, one word, idempotent across a split
-; block -- and the delay's auto-gain resolve counts it as one client while
-; it is nonzero. An idle host writes 0 and takes no share, so the phantom-
-; client rule (the -6.02 dB defect of 17 Aug 2026 was THIS registration,
-; ungated) holds by construction. The delay's warm-up zeroes the word, so a
-; rig without a reverb never counts boot garbage; with one, the reverb
-; overwrites it every block. Sticky rather than clear-on-read (stampgr's
-; shape) because a stamp lost to the other core's timing would step the
-; delay's gain for a block; a sticky word cannot be lost.
-; $941 is the dead REVERB-wet range in SEND's map. ⚠️ NOT $9d3..$9d7: the
-; per-block state R36 put there was dead on hardware, mechanism unknown.
-; What would falsify this: a delay whose level drops by 1/sqrt(N) when the
-; reverb host's ->DEL comes up with nothing playing on it -- that is the
-; flag counted without the contribution, i.e. the knob field carrying bits
-; the sample loop does not multiply by (it multiplies by exactly this word).
-        move    x:(r6),a                ; AUX (slot 0), the knob itself: the
-                                        ; host's own dry into the ONE aux bus
-        move    a,y:>$981               ; the aux client flag (shared window);
-                                        ; the delay's resolve counts it, and so
-                                        ; does ours above
-; ... and the sample loop's copy of the level. ⚠️ NOT read from r6 in the
-; loop: r6 walks the per-line state table there (the reason IN is copied to
-; $70 per block), and the first cut of this send did exactly that -- it
-; assembled, rendered, and sent garbage, i.e. silence. r7 has no slot left,
-; so the copy lives in CORE-PRIVATE Y at $09f0: a zero-padded `$09xx`
-; literal is the one form the XBUS pass leaves alone (build_bus.py), which
-; is the delay's own trick for its RATE/snap state on core 1. Core-private
-; rather than the shared window for the in-loop read because R36's
-; per-block shared-window state was dead on hardware (in-loop reads never
-; saw the writes; mechanism unknown) -- the flag above is only ever read per
-; block, the chain-live stamp's proven pattern. Outside the old core-private bus map
-; ($900-$a59, live in a non-XBUS build) and the delay's $0901-$090a.
-        move    a,y:>$09f0              ; ->DEL level, for the loop
+; ---- the SEND knob is the host's client flag ------------------------------
+; The knob field goes to y:$981 every block (one writer, one word, idempotent
+; across a split block); the REV auto-gain above counts it as one client
+; while it is nonzero, so an idle host takes no share (the phantom-client
+; rule). Sticky
+; rather than clear-on-read: a stamp lost to the other core's timing would
+; step the delay's gain for a block. Not $9d3..$9d7: per-block state there
+; was dead on hardware, mechanism unknown. What would falsify this: a delay
+; whose level drops by 1/sqrt(N) when the reverb host's SEND comes up with
+; nothing playing on it.
+        move    x:(r6+$1),a             ; REV (slot 1 since 26 Sep 2026, slot 0
+        and     #>$7f0000,a             ; until then), the knob field: the
+                                        ; host's own dry into the REV bus
+        move    a1,y:>$981              ; the REV client flag (shared window)
+; The sample loop's copy of the level. r6 walks the state table in the loop,
+; so the knob is copied to core-private Y at $09f0: a zero-padded `$09xx`
+; literal is the one form the XBUS pass leaves alone (build_bus.py).
+; Core-private rather than the shared window because per-block
+; shared-window state was dead on hardware for in-loop reads (mechanism
+; unknown); the flag above is only ever read per block. Outside the delay's
+; own core-private words ($0901-$0904, $0907-$090d).
+        move    a1,y:>$09f0             ; REV level, for the loop
+
+; ---- DEL: this host's own send into the delay's aux (26 Sep 2026) --------
+; SEND's DEL recipe (modules/send/send_client.asm): the level ramped per
+; sample from where the last block's ramp ended (core-private y:$09f4, zeroed
+; at init; its step at $09f5), written with 3 bits of headroom into the AUX
+; accumulator at this block's write offset (x1) plus this call's frame
+; offset (the pointer at $09f6, walked per sample), and counted as an AUX
+; client, on a block's first call, only while nonzero (an idle client that
+; registers dilutes the real ones). Tapped from the dry at the loop's top,
+; before the tank: T5's own wet never reaches the delay.
+        move    x:(r6),a                ; DEL (slot 0), the knob field
+        and     #>$7f0000,a
+        move    a,y1
+        move    y:>$09f4,b              ; the ramp's running value: -1 on the
+        tst     b                       ; first block, so it starts AT the knob
+        tmi     y1,b
+        move    b,x0
+        sub     x0,a                    ; 1/64 of the gap per sample (SEND's
+        asr     #$6,a,a                 ; law since 26 Sep 2026)
+        move    a,y0                    ; a0 holds the shifted-out bits: a
+        move    y0,a                    ; clean reload, so Z reads a1 alone
+        tst     a
+        move    x0,b
+        teq     y1,b                    ; a step of 0: on the knob
+        move    b,y:>$09f4
+        move    a,y:>$09f5              ; ... its per-sample step
+        move    #>$901,a                ; the AUX accumulator
+        add     x1,a                    ; + this block's write offset
+        move    x:(r7+$5d),x0           ; + this call's frame offset
+        add     x0,a
+        move    a,y:>$09f6              ; the AUX write pointer, for the loop
+        move    x:(r7+$5d),a
+        tst     a
+        bne     rvdelcnt                ; not this block's first call
+        move    x1,a                    ; the WRITE buffer's count, as a bare
+        asr     #$4,a,a                 ; index
+        move    a1,x0
+        move    x0,a
+        move    #>$9c7,x0               ; the AUX count region
+        add     x0,a
+        move    a,r5                    ; (m5 linear: set above)
+        move    #>$1,x0
+        clr     b                       ; b = 0 -- BEFORE the tst below
+        move    x:(r6),a                ; DEL
+        and     #>$7f0000,a
+        tst     a
+        tne     x0,b                    ; sending -> b = 1
+        move    y:(r5),a
+        add     b,a
+        move    a,y:(r5)                ; AUX count += 1 ONLY if sending
+rvdelcnt:
+
+; ---- DLY: how much of the delay's repeats the chain carries ---------------
+; Page-2 slot 10, $e's KNOB field, published to y:$982 every block (one
+; writer, one word, like $981); the delay reads it per block and scales the
+; wet it writes into the chain buffer. 0 = the tank hears the send alone.
+        move    x:(r6+$e),a             ; DLY: page-2 slot 10
+        and     #>$7f0000,a             ; knob field only
+        move    a1,y:>$982              ; A1: the A2 an AND leaves is stale
 
         move    #>$ffffff,m0            ; audio is read and written via r0
         move    #>$4000,x0
-        move    x0,x:(r7+$31)
+        move    x0,x:(r7+$52)
 
 ; ---- warm-up: stock DARK's shape, adapted --------------------------------
         move    x:(r7+$82),a
@@ -424,12 +529,12 @@ warmrun:
                                         ; 0x8000 words: 256 blocks x 128 =
                                         ; 32,768. That allocation is now tank
                                         ; lines and nothing else.
-        move    x:(r7+$31),x0
+        move    x:(r7+$52),x0
         add     x0,a
         move    a,r5                    ; base + count*128, count < 0x100 so
                                         ; the last word is base+0x7fff
         clr     b                       ; the zero source ...
-        move    x:(r7+$31),x0           ; ... and both fill the AGU slot
+        move    x:(r7+$52),x0           ; ... and both fill the AGU slot
         do      #128,>warmz
         move    b,y:(r5)+
 warmz:
@@ -446,6 +551,9 @@ warmz:
         add     x0,a
         add     #>$800,a                
         move    a,r5
+        move    #$7f,a                  ; wet limiter gain = 0.992 (climbs to
+        move    a,x:(r7+$11)            ; 1.0 within its release; $13 is
+                                        ; rewritten every sample)
         clr     b                       ; TWO instructions between the r5 write
         move    x:(r7+$15),x0           ; and the AGU read in the loop -- the
                                         ; same spacing the private clear above
@@ -458,9 +566,9 @@ warmz:
         do      #80,>wshclr
         move    b,y:(r5)+
 wshclr:
-        move    b,x:(r7+$3e)
-        move    b,x:(r7+$78)            ; wet high-cut states (Round 11): boot
-        move    b,x:(r7+$79)            ; garbage here would click at warm-end
+        move    b,x:(r7+$81)
+        move    b,x:(r7+$2a)            ; wet high-cut states (Round 11): boot
+        move    b,x:(r7+$2b)            ; garbage here would click at warm-end
         move    b,x:(r7+$4f)
         move    b,x:(r7+$50)
         move    b,x:(r7+$51)
@@ -476,7 +584,7 @@ wshclr:
         bra     dry                     ; output stays dry until warm
 warmdone:
 ; MARKER_WARM
-        move    x:(r7+$31),x0           ; the base again: everything below
+        move    x:(r7+$52),x0           ; the base again: everything below
                                         ; derives buffers from x0
 
 ; ---- every buffer base, derived once per block --------------------------
@@ -516,10 +624,10 @@ warmdone:
 ; a bare line base (without phase) for lines 4..7.
         move    #>$4000,a               ; line 4 base (4 * 0x1000)
         add     x0,a
-        move    a,x:(r7+$36)
+        move    a,x:(r7+$40)
         move    #>$5000,a               ; line 5 base (5 * 0x1000)
         add     x0,a
-        move    a,x:(r7+$37)
+        move    a,x:(r7+$5f)
         move    #>$6000,a               ; line 6 base (6 * 0x1000)
         add     x0,a
         move    a,x:(r7+$4c)
@@ -531,21 +639,21 @@ warmdone:
 ; x0 is reloaded with the shared base and every derivation below keeps the
 ; same `add x0,a` shape it had against the private base.
         move    #>$30000,x0             ; -> $38000 on payload B (see above)
-; Input allpasses, still 2048 words apart. Their taps are 179/293/419/547 so
-; 1024 would do, but shrinking them is a SEPARATE change: this relocation is
-; required to render bit-identically and a size change would forfeit that test.
+; Input allpasses, 2048 words apart: their taps are 641/1051/1511/1949
+; (manifest _MODE_COMMON, as 2048 - tap), so 2048 is the smallest power of
+; two that holds them.
         move    #>$2000,a
         add     x0,a
         move    a,x:(r7+$32)
         move    #>$2800,a
         add     x0,a
-        move    a,x:(r7+$33)
+        move    a,x:(r7+$53)
         move    #>$3000,a
         add     x0,a
-        move    a,x:(r7+$34)
+        move    a,x:(r7+$54)
         move    #>$3800,a
         add     x0,a
-        move    a,x:(r7+$35)
+        move    a,x:(r7+$55)
         move    #>$4500,a
         add     x0,a
         move    a,x:(r7+$0b)            ; the tank's per-line state table A
@@ -584,7 +692,7 @@ warmdone:
                                         ; track 2's page held bit-23-set garbage,
                                         ; track 1's did not. Reproduced in the
                                         ; emulator by poisoning X:(r7+$83).
-        move    x:(r7+$31),x0
+        move    x:(r7+$52),x0
         add     x0,a                    ; base + LINE_OFF(0x0)
         move    a,r1                    ; line 0
         move    #>$1000,x0
@@ -596,15 +704,13 @@ warmdone:
         move    a,r4                    ; line 3
         move    #>$fff,m1               ; MODULO 4096: r1..r4 are the four line
         move    #>$fff,m2               ; pointers and each wraps inside its own
-        move    #>$fff,m3               ; line. Restored in v62 -- this is the
-        move    #>$fff,m4               ; original design, and it is what makes
-                                        ; n1/n4 live again so SIZE reaches all
-                                        ; four lines. Bases are base+0/0x1000/
+        move    #>$fff,m3               ; line (the priming reads y:(rN+nN)
+        move    #>$fff,m4               ; through them). Bases are base+0/0x1000/
                                         ; 0x2000/0x3000 and base is the literal
                                         ; 0x4000, so every line is 4096-aligned
                                         ; as modulo requires.
 
-; ---- MODE: character select, page-2 slot 6 ($c bits 16-23; v7,
+; ---- MODE: character select, page-2 slot 6 ($c bits 16-23) ----------------
         move    x:(r6+$c),a
         and     #>$ff0000,a             ; slot 6's KNOB field, not SHMR's
                                         ; companion byte below it
@@ -635,7 +741,7 @@ mdcpy:
     ; ---- SIZE: scale all eight tap lengths ----------------------------------
             move    x:(r6+$2),x0            ; SIZE: page-1 slot 2 (16 Sep 2026,
                                             ; linked to TIME on its left)
-            move    #$4c,y1                 ; v77: SIZE FLOOR RAISED.
+            move    #$4c,y1                 ; SIZE span
             mpy     x0,y1,a
             add     #>$333000,a                  ; 0.125 .. 0.993 ; f = 0.400 .. 0.989, was
 ; SIZE GLIDES (20 Sep 2026): f moves 1/64 of the way to the knob per block,
@@ -671,7 +777,7 @@ mdcpy:
                                             ; An address register is free during
                                             ; setup and move n0,b is 1 word where
                                             ; move #>$1000,b is 2.
-            move    x:(r7+$74),x0           ; this MODE's line 0 fraction
+            move    x:(r7+$00),x0           ; this MODE's line 0 fraction
             mpy     x0,x1,a
             asr     #$a,a,a                 ; back to an integer tap (4096-word lines)
             or      y1,a                    ; force the tap ODD. y1 = 1, hoisted
@@ -683,37 +789,23 @@ mdcpy:
                                             ; there), y1 is free across this block.
             move    n0,b
             sub     a,b                     ; 4096 - tap, for the modulated read
-            move    b,x:(r7+$45)            ; line 0 -- was n1, which only worked
-                                            ; for a STATIC tap. All four lines are
-                                            ; modulated now, so all four go through
-                                            ; the interpolated path.
-            move    x:(r7+$75),x0           ; this MODE's line 1 fraction
+            move    b,x:(r7+$45)            ; line 0 (all four lines read
+                                            ; through the interpolated path)
+            move    x:(r7+$01),x0           ; this MODE's line 1 fraction
             mpy     x0,x1,a
             asr     #$a,a,a                 ; back to an integer tap (4096-word lines)
-            or      y1,a                    ; force the tap ODD. y1 = 1, hoisted
-                                            ; above: SIZE scales and truncates the
-                                            ; prime nominals and the results share
-                                            ; factors -- gcd hit 204 at SIZE=104,
-                                            ; two lines locked at 216 Hz. x0 cannot
-                                            ; hold it (each line loads its fraction
-                                            ; there), y1 is free across this block.
+            or      y1,a                    ; force the tap ODD (as line 0)
             move    n0,b
             sub     a,b                     ; 4096 - tap, for the modulated read
-            move    b,x:(r7+$2a)
-            move    x:(r7+$76),x0           ; this MODE's line 2 fraction
+            move    b,x:(r7+$78)
+            move    x:(r7+$02),x0           ; this MODE's line 2 fraction
             mpy     x0,x1,a
             asr     #$a,a,a                 ; back to an integer tap (4096-word lines)
-            or      y1,a                    ; force the tap ODD. y1 = 1, hoisted
-                                            ; above: SIZE scales and truncates the
-                                            ; prime nominals and the results share
-                                            ; factors -- gcd hit 204 at SIZE=104,
-                                            ; two lines locked at 216 Hz. x0 cannot
-                                            ; hold it (each line loads its fraction
-                                            ; there), y1 is free across this block.
+            or      y1,a                    ; force the tap ODD (as line 0)
             move    n0,b
             sub     a,b                     ; 4096 - tap, for the modulated read
-            move    b,x:(r7+$2b)
-            move    x:(r7+$77),x0           ; this MODE's line 3 fraction
+            move    b,x:(r7+$79)
+            move    x:(r7+$03),x0           ; this MODE's line 3 fraction
             mpy     x0,x1,a
             asr     #$a,a,a                 ; back to an integer tap (4096-word lines)
             move    n0,b
@@ -723,39 +815,40 @@ mdcpy:
             move    x:(r7+$6c),y0           ; this MODE's lines 4-7 tap scale
             mpy     x1,y0,a                 ; x1 is dead after this block (the
             move    a,x1                    ; decay block reloads it at ~1300)
-            move    x:(r7+$74),x0           ; this MODE's line 0 fraction, rescaled
+            move    x:(r7+$00),x0           ; this MODE's line 0 fraction, rescaled
             mpy     x0,x1,a
             asr     #$a,a,a                 ; back to an integer tap (4096-word lines)
             or      y1,a                    ; force the tap ODD (y1=1)
             move    n0,b
             sub     a,b                     ; 4096 - tap
             move    b,x:(r7+$08)            ; line 4
-            move    x:(r7+$75),x0           ; this MODE's line 1 fraction, rescaled
+            move    x:(r7+$01),x0           ; this MODE's line 1 fraction, rescaled
             mpy     x0,x1,a
             asr     #$a,a,a
             or      y1,a                    ; force the tap ODD (y1=1)
             move    n0,b
             sub     a,b
-            move    b,x:(r7+$09)            ; line 5
-            move    x:(r7+$76),x0           ; this MODE's line 2 fraction, rescaled
+            move    b,x:(r7+$71)            ; line 5
+            move    x:(r7+$02),x0           ; this MODE's line 2 fraction, rescaled
             mpy     x0,x1,a
             asr     #$a,a,a
             or      y1,a                    ; force the tap ODD (y1=1)
             move    n0,b
             sub     a,b
-            move    b,x:(r7+$0a)            ; line 6
-            move    x:(r7+$77),x0           ; this MODE's line 3 fraction, rescaled
+            move    b,x:(r7+$4e)            ; line 6
+            move    x:(r7+$03),x0           ; this MODE's line 3 fraction, rescaled
             mpy     x0,x1,a
             asr     #$a,a,a
             move    n0,b
             sub     a,b                     ; 4096 - tap
             move    b,x:(r7+$4b)            ; line 7
-            move    #>$fff,m6           ; PRE-DELAY modulo (4096, unchanged --
-                                        ; the pre-delay buffer did not shrink
-                                        ; in the 8-line re-layout). Moved off
-                                        ; m5 in v70 so m5 can carry the
-                                        ; allpasses. r6 is unused inside the
-                                        ; sample loop, so it costs nothing.
+            move    #>$fff,m6           ; r6 walks the state tables (the
+                                        ; priming, the tank loop, the collect)
+                                        ; inside one 4096-aligned block; set
+                                        ; per block so whatever the previous
+                                        ; effect left in m6 cannot wrap them.
+                                        ; Left at $fff on rts (unchanged since
+                                        ; the reverb first shipped)
             move    #>$fff,m5           ; LINE modulo, 4096 (increment 2): what
                                         ; runs under m5 between here and the
                                         ; sample loop is the lines 4-7 priming,
@@ -774,7 +867,27 @@ mdcpy:
                                         ; at the end forces it linear again.
 
 ; ---- feedback gain from TIME --------------------------------------------
-        move    x:(r6+$1),x0            ; TIME: slot 1 (one-aux re-slot), t
+        move    x:(r6+$e),a             ; TIME: page-2 slot 11, $e's companion
+        and     #>$7f00,a               ; field (page-1 slot 1 until 26 Sep
+        asl     #$8,a,a                 ; 2026) -> value<<16, t
+; t GLIDES (26 Sep 2026): 1/32 of the way to the knob per block in $10,
+; snapping to it when the step rounds to nothing; 0 (init) starts at the
+; knob. The line gains below are per block, and a TIME jump stepped them.
+        move    a1,y1                   ; t, the knob
+        move    x:(r7+$5c),b
+        tst     b
+        teq     y1,b                    ; the first block: at the knob
+        move    y1,a
+        move    b,x0
+        sub     x0,a
+        asr     #$5,a,a
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        add     x0,a
+        cmp     x0,a                    ; no progress: at the knob
+        teq     y1,a
+        move    a,x:(r7+$5c)
+        move    a,x0
         move    #>$3bbbbb,y1            ; the bloom's g: 0.40 + 0.467 t
         mpy     x0,y1,a
         add     #>$333333,a
@@ -804,22 +917,22 @@ mdcpy:
         move    x:(r7+$1e),a
         sub     x1,a
         move    a,y1                    ; ($1e - a), group A's multiplier
-        move    x:(r7+$74),x0           ; line 0 fraction (half-scale)
+        move    x:(r7+$00),x0           ; line 0 fraction (half-scale)
         mpy     x0,y1,a                 ; frac*($1e-a) -- plain product
         asl     a                       ; r_0*($1e-a), r_0 = 2*frac_0 = 0.966
         add     x1,a                    ; + a
         move    a,y:(r5)+n5             ; line 0 gain
-        move    x:(r7+$75),x0
+        move    x:(r7+$01),x0
         mpy     x0,y1,a
         asl     a
         add     x1,a
         move    a,y:(r5)+n5             ; line 1 gain
-        move    x:(r7+$76),x0
+        move    x:(r7+$02),x0
         mpy     x0,y1,a
         asl     a
         add     x1,a
         move    a,y:(r5)+n5             ; line 2 gain
-        move    x:(r7+$77),x0
+        move    x:(r7+$03),x0
         mpy     x0,y1,a
         asl     a
         add     x1,a
@@ -830,42 +943,35 @@ mdcpy:
         move    x:(r7+$6c),x0           ; lines 4-7 tap scale (positive)
         mpy     x0,y1,a                 ; scale*($1e-a)
         move    a,y1                    ; group B's multiplier
-        move    x:(r7+$74),x0
+        move    x:(r7+$00),x0
         mpy     x0,y1,a
         asl     a
         add     x1,a
         move    a,y:(r5)+n5             ; line 4 gain
-        move    x:(r7+$75),x0
+        move    x:(r7+$01),x0
         mpy     x0,y1,a
         asl     a
         add     x1,a
         move    a,y:(r5)+n5             ; line 5 gain
-        move    x:(r7+$76),x0
+        move    x:(r7+$02),x0
         mpy     x0,y1,a
         asl     a
         add     x1,a
         move    a,y:(r5)+n5             ; line 6 gain
-        move    x:(r7+$77),x0
+        move    x:(r7+$03),x0
         mpy     x0,y1,a
         asl     a
         add     x1,a
         move    a,y:(r5)                ; line 7 gain
 
-; ---- HI: high cut, on the knob LABELLED LP ($4) --------------------------
-; The one-pole is s += c*(d-s), so a LARGE c tracks the input and keeps highs.
-; HI reads as an EQ control, so it has to run the other way from the old DAMP:
-; HI=0 gives c=0.125 (dark), HI=127 gives c~0.99 (bright).
-;
-; MOVED from $1 (labelled SHVG) to $4 (labelled LP) in v61. A one-pole in
-; the feedback path IS a low-pass, so this control finally sits under the
-; name that describes it. See the LO block below for the other half.
-;
-; v8: ONE TONE KNOB ($3) DRIVES BOTH CUTS, and $4 is the ->DEL
-; send. TONE 0..64 is the old LP 0..127 with HP at 0 (dark to flat); 64..127
-; is the old HP 0..126 with LP wide open (flat to thin). Both halves come
-; from ONE sub: b = (TONE-64)<<16 sets N while TONE < 64, and the tmi floors
-; it to a clean 0 for the LO block below (HP-equivalent = 2*(TONE-64), so
-; 0 up to 64: bypassed exactly, as HP=0 always was).
+; ---- TONE, upper half = HI: the high cut inside the feedback path ---------
+; The one-pole is s += c*(d-s), so a LARGE c tracks the input and keeps
+; highs: LP 0 gives c = 0.125 (dark), LP 127 gives c ~ 0.99 (bright).
+; ONE TONE KNOB (page-2 slot 7, $c's companion) DRIVES BOTH CUTS. TONE 0..64
+; is LP 0..127 with HP at 0 (dark to flat); 64..127 is HP 0..126 with LP
+; wide open (flat to thin). Both halves come from ONE sub: b = (TONE-64)<<16
+; sets N while TONE < 64, and the tmi floors it to a clean 0 for the LO
+; block below (HP-equivalent = 2*(TONE-64), so 0 up to 64: bypassed exactly).
 ; The LP-equivalent is min(2*TONE, 127), the clamp a second Tcc off the same
 ; sub (moves between, so the CCR survives): TONE >= 64 loads 63.5<<16 before
 ; the doubling, which is 127<<16 after it -- the old default EXACTLY.
@@ -893,7 +999,7 @@ mdcpy:
         move    #$10,a                  ; c = 0.125 + 0.875*LP: the constant
         move    #$70,y1                 ; first, then mac -- one word fewer
         mac     x0,y1,a                 ; than mpy + add, and the same 56 bits
-        move    a,x1                    ; v95: scale by MODE's damping constant
+        move    a,x1                    ; scale by MODE's damping constant
         move    x:(r7+$72),y1           ; before it lands. The scale is <= 1.0,
         mpy     x1,y1,a                 ; so c stays inside its safe range and
         move    x:(r7+$1f),x0           ; the knob still spans within a mode;
@@ -902,79 +1008,83 @@ mdcpy:
         add     x0,a
         move    a,x:(r7+$1f)
 
-; ---- LO: low cut inside the feedback path, on the knob LABELLED HP ($3) --
+; ---- TONE, lower half = LO: the low cut inside the feedback path ----------
         move    b,x0                    ; x0 = (TONE-64)<<16, floored
         move    #$08,y1
         mpy     x0,y1,a
-        move    x:(r7+$40),x0           ; LO coefficient, glided
+        move    x:(r7+$36),x0           ; LO coefficient, glided
         sub     x0,a
         asr     #$3,a,a
         add     x0,a
-        move    a,x:(r7+$40)
-
-; ---- ER level: REMOVED -----------------------------------------
+        move    a,x:(r7+$36)
 
 ; ---- WET: the reverb's level on top of the chain input -------------------
         move    x:(r6+$5),a             ; WET target
-        move    x:(r7+$70),x0
+        move    x:(r7+$70),x0           ; last block's glided WET: where this
+        move    x0,x:(r7+$09)           ; block's per-sample ramp starts
         sub     x0,a
         asr     #$3,a,a
         add     x0,a
         move    a,x:(r7+$70)            ; WET, glided (y:$09f3 is SIZE's
                                         ; glide state since 20 Sep 2026)
+        sub     x0,a                    ; this block's change, spread over its
+        asr     #$4,a,a                 ; 16 frames: the gain on the tail moved
+        move    a,x:(r7+$7c)            ; in one step per block until 23 Sep
+                                        ; 2026, a click per block while the
+                                        ; knob turned (images 58-66)
 
-; ---- (the ->DEL level decode lived here until; see the note at
-
-; ---- MOD: modulation depth, scales the LFO triangle ---------------------
-; MOVED from $4 to $1 (labelled SHVG) in v61, swapping with HI above: $4
-; is labelled LP and now carries the high cut, which is what it says.
+; ---- the tank modulation depth, scales the LFO triangle -------------------
         move    #$1e,x0                 ; the tank modulation depth, PINNED at
                                         ; what the MOD knob's default (30) gave:
                                         ; the knob went 15 Sep 2026 (Sam: the
                                         ; modulation is the LFOs' and the
                                         ; station's; the tank must not go
                                         ; static), SHMR took its slot
-        move    x:(r7+$73),y1           ; v95: scaled per MODE, only ever down
+        move    x:(r7+$73),y1           ; scaled per MODE, only ever down
         mpy     x0,y1,a                 ; (BIG sits at unity), so the knob keeps
         asl     #$1,a,a
-        move    a,x:(r7+$28)            ; its full range inside each character
+        move    a,x:(r7+$64)            ; its full range inside each character
 
-; ---- SHFT: shimmer interval select -- slot 9, $d's LOW bits (v6) ---------
-; WIDTH RETIRED (Sam, 23 Aug 2026): its knob was a 4-step select that spent a
-; panel slot on mono/narrow/normal/wide, and the shimmer's interval was the
-; control the ear actually wanted. Width is PINNED at the old default (wide,
-; 0.75) at the output stage; this slot now selects the shimmer READ-PHASE
-; STEP, in 11.12 fixed-point words per sample (write is decimated 2:1, so
-; step/0.5 is the pitch ratio):
-;   0 -> $1000  1.0  w/s  ratio 2.0   +12  (the R18 voicing, bit-identical)
-;   1 -> $1800  1.5  w/s  ratio 3.0   +19  (octave + fifth, the classic alt)
-;   2 -> $0c00  0.75 w/s  ratio 1.5   +7   (bare fifth)
-;   3 -> $0400  0.25 w/s  ratio 0.5   -12  (sub-octave)
-; Any wild index falls through to -12, the tamest failure. The step lands in
-; $2c -- WIDTH's freed slot -- and the shimmer block integrates it into the
-; read phase at 0905h (core-private, above the delay's 0901h-0904h so a DEV
-; build with both effects on one core cannot collide).
-; (The WIDTH_OVERRIDE marker retired with the knob: dsp_host has driven
-; companion fields directly since 17 Aug 2026, so the harness selects SHFT
-; through the normal parameter path.)
-        move    x:(r6+$4),a             ; SHFT: page-1 slot 4 since 16 Sep 2026
-        and     #>$7f0000,a             ; (linked to SHMR on its left)
+; ---- SHFT: shimmer interval select, page-1 slot 4 ------------------------
+; The width is pinned at 0.75 at the output stage. SHFT selects the shimmer
+; READ-PHASE STEP, in 11.12 fixed-point words per sample (the write is
+; decimated 2:1, so step/0.5 is the pitch ratio), low to high:
+;   0 -> $0400  ratio 0.5    -12  (sub-octave)
+;   1 -> $0aab  ratio 4/3    +5   (fourth)
+;   2 -> $0c00  ratio 3/2    +7   (fifth)
+;   3 -> $1000  ratio 2      +12  (the default)
+;   4 -> $1800  ratio 3      +19  (octave + fifth)
+;   5 -> $2000  ratio 4      +24  (two octaves)
+; An index past the table falls to -12. The step lands in $2c and the
+; shimmer block integrates it into the read phase at y:$0905 (core-private,
+; outside the delay's words, so a DEV build with both effects on one core
+; cannot collide). Every `move #imm,b` below leaves the flags alone, so each
+; beq tests the sub before it.
+        move    x:(r6+$4),a             ; SHFT: page-1 slot 4
+        and     #>$7f0000,a
         asr     #$10,a,a
         move    a1,x0
         move    x0,a                    ; SHFT index, A2-clean
-        move    #>$1000,b               ; +12
+        move    #>$400,b                ; -12
         tst     a
         beq     shfst
         move    #>1,x0
         sub     x0,a
-        move    #>$1800,b               ; +19  (the move leaves Z alone)
+        move    #>$aab,b                ; +5
         beq     shfst
-        sub     x0,a                    ; x0 still holds 1 -- the b moves do
-                                        ; not touch it (2 words saved: what
-                                        ; unblocked verify_burn's plain fit)
+        sub     x0,a
         move    #>$c00,b                ; +7
         beq     shfst
-        move    #>$400,b                ; -12, and the wild-index floor
+        sub     x0,a
+        move    #>$1000,b               ; +12
+        beq     shfst
+        sub     x0,a
+        move    #>$1800,b               ; +19
+        beq     shfst
+        sub     x0,a
+        move    #>$2000,b               ; +24
+        beq     shfst
+        move    #>$400,b                ; past the table: -12
 shfst:
         move    b,x:(r7+$2c)            ; read-phase step (WIDTH's old slot)
 
@@ -990,15 +1100,13 @@ shfst:
         add     x0,a                    ; PLATE overflowed $7fffff at DIFF=127
         move    x:(r7+$3f),x0           ; and g read NEGATIVE; the others sat at
         add     x0,a                    ; 0.88-0.97, where an allpass is a
-        move    x:(r7+$6d),x0           ; g, for every allpass -- glided
-        sub     x0,a
-        asr     #$3,a,a
-        add     x0,a
-        move    a,x:(r7+$6d)
+        move    x:(r7+$25),x0           ; g, for every allpass -- glided, 1/64
+        sub     x0,a                    ; per block (1/8 until 26 Sep 2026:
+        asr     #$6,a,a                 ; a jump stepped the allpasses,
+        add     x0,a                    ; tools/verify/verify_knob_clicks.py)
+        move    a,x:(r7+$25)
 
-; ---- RATE: LFO increment, ~0.34 Hz .. ~3 Hz -----------------------------
-; 8x what it would be per sample, because the LFO is stepped once per block.
-; ---- SHMR: page-1 slot 3 since 16 Sep 2026 ------------------------------
+; ---- SHMR: page-1 slot 3 ------------------------------------------------
         move    x:(r6+$3),a
         and     #>$7f0000,a             ; knob field, value<<16
         move    a1,x0                   ; SCALED TO A QUARTER. The raw knob is a
@@ -1012,7 +1120,10 @@ shfst:
                                         ; already runs away. A quarter puts that
                                         ; sweet spot near the top of the travel
                                         ; instead of a fifth of the way up.
-        move    #$28,a                  ; 40 << 16, where the knob used to land
+; ---- the LFO increment: pinned at what RATE 40 gave (the knob went 15 Sep
+; 2026); 8x what it would be per sample, because the LFO is stepped once per
+; block.
+        move    #$28,a                  ; 40 << 16
         move    a1,x0
         move    x0,a
         move    a,x0
@@ -1024,7 +1135,7 @@ shfst:
                                         ; FFT bins, and the surviving modes
                                         ; towered 50-65 dB over the diffuse
                                         ; tail -- THE metallic end-ring,
-                                        ; measured (latetail probe). v84's
+                                        ; measured (latetail probe). An earlier
                                         ; seasick 2.84 Hz was fast-DEEP; this
                                         ; is fast-SHALLOW: every mode's depth
                                         ; scale is set so vibrato stays under
@@ -1047,17 +1158,17 @@ shfst:
         bra     g_st
 g_off:
         move    #>$7fffff,a
-        move    a,x:(r7+$62)            ; GLVL: open now, not after an attack
+        move    a,x:(r7+$27)            ; GLVL: open now, not after an attack
         move    #$40,a                  ; ~4.19M samples ~= 95 s: never closes
         move    a,x:(r7+$30)            ; GCNT: never runs out at GATE=0
 g_st:                                   ; (g_off falls through with a still
                                         ; $400000, so one load serves GCNT and
-                                        ; GHOLD -- the v8 2-word trim)
+                                        ; GHOLD)
         move    a,x:(r7+$29)            ; GHOLD
 
 ; ---- EIGHT INDEPENDENT LFOs, one per tank line --------------------------
 
-        move    x:(r7+$3e),a            ; line 0  (1.000x) phase
+        move    x:(r7+$81),a            ; line 0  (1.000x) phase
         move    x:(r7+$2f),x0           ; base increment, from RATE
         move    #$7f,y1                    ; rate x0.992
         mpy     x0,y1,b                 ; this line's own rate
@@ -1068,7 +1179,7 @@ g_st:                                   ; (g_off falls through with a still
         move    x:(r7+$14),b            ; call flag: advance once per block,
         tst     b                       ; but USE the advanced value on both
         beq     lf3e
-        move    x0,x:(r7+$3e)
+        move    x0,x:(r7+$81)
 lf3e:
         move    x0,a
         sub     #>$400000,a                
@@ -1076,31 +1187,23 @@ lf3e:
         move    a,x:(r7+$5a)            ; stash: the AP modulator below clobbers it
         move    a,x0
 ; ---- in-loop allpass modulation (Dattorro): FIXED depth, never zero ------
-; The in-loop allpasses were static. Dattorro modulates his, and a moving
-; allpass smears the modes on every circulation -- which REVERB.md names as
-; the only structural fix for the ringing at this delay budget. Costs cycles
-; and NO memory, which is the right shape now: the 32K re-layout filled the
-; allocation, but the cycle budget has spare (make cycles for the live
-; number; 819/sample room).
-;
-; Depth is fixed at $200000 rather than following MOD, so it can never reach
-; zero -- the same rule this file already records for the tank ("modulation
-; must never reach zero"; a completely static tank rings). MOD stays the
-; tank's control alone.
+; A moving allpass in the feedback path smears the modes on every
+; circulation (REVERB.md). Depth is fixed at $200000 so it can never reach
+; zero: a completely static tank rings.
         move    #$20,y1
         mpy     x0,y1,a
         move    a1,x1
         asl     #$8,a,a
         move    a2,x0
-        move    x0,x:(r7+$52)            ; AP integer offset, 0..~31 samples
+        move    x0,x:(r7+$31)            ; AP integer offset, 0..~31 samples
         move    x1,a
         and     #>$00ffff,a                
         asl     #$7,a,a                 ; shift by n-1, never n (REVERB.md's
         move    a,x0                    ; interpolation fraction rule)
-        move    x0,x:(r7+$53)            ; AP fraction
+        move    x0,x:(r7+$33)            ; AP fraction
         move    x:(r7+$5a),a            ; triangle back for the tank's own use
         move    a,x0
-        move    x:(r7+$28),y1           ; MOD depth
+        move    x:(r7+$64),y1           ; MOD depth
         mpy     x0,y1,a
         move    a1,x1
         asl     #$8,a,a
@@ -1130,32 +1233,21 @@ lf4f:
         abs     a                       ; triangle, 0 .. $400000
         move    a,x:(r7+$5b)            ; stash: the AP modulator below clobbers it
         move    a,x0
-; ---- in-loop allpass modulation (Dattorro): FIXED depth, never zero ------
-; The in-loop allpasses were static. Dattorro modulates his, and a moving
-; allpass smears the modes on every circulation -- which REVERB.md names as
-; the only structural fix for the ringing at this delay budget. Costs cycles
-; and NO memory, which is the right shape now: the 32K re-layout filled the
-; allocation, but the cycle budget has spare (make cycles for the live
-; number; 819/sample room).
-;
-; Depth is fixed at $200000 rather than following MOD, so it can never reach
-; zero -- the same rule this file already records for the tank ("modulation
-; must never reach zero"; a completely static tank rings). MOD stays the
-; tank's control alone.
+; ---- in-loop allpass B modulation, as A above -----------------------------
         move    #$20,y1
         mpy     x0,y1,a
         move    a1,x1
         asl     #$8,a,a
         move    a2,x0
-        move    x0,x:(r7+$54)            ; AP integer offset, 0..~31 samples
+        move    x0,x:(r7+$34)            ; AP integer offset, 0..~31 samples
         move    x1,a
         and     #>$00ffff,a                
         asl     #$7,a,a                 ; shift by n-1, never n (REVERB.md's
         move    a,x0                    ; interpolation fraction rule)
-        move    x0,x:(r7+$55)            ; AP fraction
+        move    x0,x:(r7+$35)            ; AP fraction
         move    x:(r7+$5b),a            ; triangle back for the tank's own use
         move    a,x0
-        move    x:(r7+$28),y1           ; MOD depth
+        move    x:(r7+$64),y1           ; MOD depth
         mpy     x0,y1,a
         move    a1,x1
         asl     #$8,a,a
@@ -1191,7 +1283,7 @@ lfrsk:
         sub     #>$400000,a                
         abs     a                       ; triangle, 0 .. $400000
         move    a,x0
-        move    x:(r7+$28),y1           ; MOD depth
+        move    x:(r7+$64),y1           ; MOD depth
         mpy     x0,y1,a
         move    p:(r5)+,n7              ; integer slot -- hoisted 3 above use
         move    a1,x1
@@ -1201,8 +1293,8 @@ lfrsk:
         move    p:(r5)+,n7              ; fraction slot -- hoisted 5 above use
         move    x1,a
         and     #>$00ffff,a                
-        asl     #$7,a,a                 ; n-1, never n (REVERB.md's rule; the
-        move    a,x0                    ; v95 regression story lives at line 0)
+        asl     #$7,a,a                 ; n-1, never n (REVERB.md's rule)
+        move    a,x0
         move    x0,x:(r7+n7)
 lfrol:
         move    x:(r7+$15),a            ; restore the sample count
@@ -1219,28 +1311,9 @@ lfrol:
 ; at block boundaries -- the divergence lived entirely inside the block.
         move    #>$fff,m5               ; the priming's wrap, put back
 
-; ---- STAGE 1: loop constants preloaded into spare AGU registers ---------
-; `move #>$7ff,x0` is a TWO-WORD instruction: opcode plus a 24-bit immediate,
-; and the extra program fetch costs an extra CYCLE. `move n1,x0` is one word
-; and one cycle. The masks and the allpass coefficient are loop-invariant and
-; were being re-fetched every time -- 17 wasted cycles a sample.
-;
-; n1..n4 and n6 are genuinely free: v65 moved lines 0 and 3 onto arithmetic
-; interpolated reads, which orphaned n1/n4, and n2/n3/n6 were never used. The
-; tank pointers r1..r4 use modulo (m1..m4) but never indexed (rN+nN)
-; addressing, so nothing reads these as offsets.
-;
-; Written here, well before the loop, with data moves following -- an AGU
-; register write next to its address register is the interlock that froze v47.
-                                        ; (n6 now carries the pre-delay offset;
-                                        ; the allpass mask is gone -- the AGU
-                                        ; masks for free under m5 = $7ff)
-        move    x:(r7+$31),x0           ; two data moves before the loop, to
-        move    x:(r7+$31),x0           ; clear the AGU write
-
-; ---- in-loop allpass setup (v74) ---------------------------------------
+; ---- in-loop allpass setup ------------------------------------------------
 ; Dattorro puts a MODULATED allpass inside each tank half, before the long
-; delay -- not in the input diffusion chain (v73 tried that and measured
+; delay -- not in the input diffusion chain (that placement measured
 ; worse). An allpass in the feedback path multiplies echo density on every
 ; circulation, which is how a smooth tail comes out of finite memory. We had
 ; none at all: one echo per line per pass, where Dattorro gets a burst.
@@ -1255,10 +1328,10 @@ lfrol:
         move    #>$30000,x0             ; -> $38000 on payload B
         move    #>$4000,a
         add     x0,a
-        move    a,x:(r7+$5e)            ; allpass A base, on line 0
+        move    a,x:(r7+$39)            ; allpass A base, on line 0
         move    #>$4200,a
         add     x0,a
-        move    a,x:(r7+$5f)            ; allpass B base, on line 1
+        move    a,x:(r7+$37)            ; allpass B base, on line 1
         move    #>214,a
         move    a,x:(r7+$60)            ; 512 - 298    (9.7% of the longest line)
         move    #>66,a
@@ -1284,7 +1357,7 @@ lfrol:
         move    a,y:(r6)+               ;     and it spaces the n1 write
         move    y:(r1+n1),a
         move    a,y:(r6)+n6             ; w2: seed the interpolation carry
-        move    x:(r7+$2a),a            ; -- line 1
+        move    x:(r7+$78),a            ; -- line 1
         move    x:(r7+$21),x0
         sub     x0,a
         move    a,y:(r6)+
@@ -1295,7 +1368,7 @@ lfrol:
         move    a,y:(r6)+
         move    y:(r2+n2),a
         move    a,y:(r6)+n6
-        move    x:(r7+$2b),a            ; -- line 2
+        move    x:(r7+$79),a            ; -- line 2
         move    x:(r7+$56),x0
         sub     x0,a
         move    a,y:(r6)+
@@ -1328,45 +1401,45 @@ lfrol:
 ; at (line_base + phase + offset), one sample before the block's first
 ; tap, under m5 = $fff -- same modulo the sample loop's tank walk uses.
         move    x:(r7+$08),a            ; -- line 4: (4096 - tap)
-        move    x:(r7+$00),x0           ;    its LFO integer offset
+        move    x:(r7+$74),x0           ;    its LFO integer offset
         sub     x0,a
         move    a,y:(r6)+               ; w0
         move    x1,x0
         sub     x0,a
         move    a,n5                    ; carry seed index (reuses n5)
-        move    x:(r7+$01),a            ; w1: the interpolation fraction
+        move    x:(r7+$75),a            ; w1: the interpolation fraction
         move    a,y:(r6)+
         move    r1,a                    ; line 0 base + phase
         and     #>$fff,a                ; just the phase (m5=$fff wraps it)
-        move    x:(r7+$36),x0           ; line 4 base
+        move    x:(r7+$40),x0           ; line 4 base
         add     x0,a
         move    a,r5
         move    y:(r5+n5),a
         move    a,y:(r6)+n6             ; w2: seed the interpolation carry
-        move    x:(r7+$09),a            ; -- line 5
-        move    x:(r7+$02),x0
+        move    x:(r7+$71),a            ; -- line 5
+        move    x:(r7+$76),x0
         sub     x0,a
         move    a,y:(r6)+
         move    x1,x0
         sub     x0,a
         move    a,n5
-        move    x:(r7+$03),a
+        move    x:(r7+$77),a
         move    a,y:(r6)+
         move    r1,a
         and     #>$fff,a
-        move    x:(r7+$37),x0           ; line 5 base
+        move    x:(r7+$5f),x0           ; line 5 base
         add     x0,a
         move    a,r5
         move    y:(r5+n5),a
         move    a,y:(r6)+n6
-        move    x:(r7+$0a),a            ; -- line 6
-        move    x:(r7+$04),x0
+        move    x:(r7+$4e),a            ; -- line 6
+        move    x:(r7+$7a),x0
         sub     x0,a
         move    a,y:(r6)+
         move    x1,x0
         sub     x0,a
         move    a,n5
-        move    x:(r7+$05),a
+        move    x:(r7+$7e),a
         move    a,y:(r6)+
         move    r1,a
         and     #>$fff,a
@@ -1376,13 +1449,13 @@ lfrol:
         move    y:(r5+n5),a
         move    a,y:(r6)+n6
         move    x:(r7+$4b),a            ; -- line 7
-        move    x:(r7+$06),x0
+        move    x:(r7+$7f),x0
         sub     x0,a
         move    a,y:(r6)+
         move    x1,x0
         sub     x0,a
         move    a,n5
-        move    x:(r7+$07),a
+        move    x:(r7+$80),a
         move    a,y:(r6)+
         move    r1,a
         and     #>$fff,a
@@ -1400,7 +1473,7 @@ lfrol:
 
 ; ---- prime the IN-LOOP ALLPASS interpolation carries ---------------------
 ; The same seeding the four tank lines get above, for the same reason, and
-; the allpasses (v90) never had it.
+; the allpasses did not have until later.
 ;
 ; The carried d1 is only "last sample's d0" while the READ OFFSET holds
 ; still. Inside a block it does: r5 walks one per sample and n5 is fixed.
@@ -1416,33 +1489,37 @@ lfrol:
 ; is what the in-loop comment ("no other way to do this") ruled out. That
 ; was true per SAMPLE; it is not true once per block.
         move    x:(r7+$60),a            ; allpass A: (512 - tap) - offset - 1
-        move    x:(r7+$52),x0
+        move    x:(r7+$31),x0
         sub     x0,a
         sub     #>$1,a                
         move    a,n5
-        move    #>$1ff,m5               ; v127: the in-loop allpasses are 512
+        move    #>$1ff,m5               ; the in-loop allpasses are 512
         move    r1,a                    ; the AP phase IS the tank phase
         and     #>$1ff,a                ; (same derivation as $39 in the loop)
-        move    x:(r7+$5e),x0           ; base A
+        move    x:(r7+$39),x0           ; base A
         add     x0,a
         move    a,r5
         move    x:(r7+$61),b            ; spaces the r5 write, and preloads
         move    y:(r5+n5),a             ; d1 for the block's first sample
-        move    a,x:(r7+$5c)
-        move    x:(r7+$54),x0           ; allpass B: b still holds (512 - tap)
+        move    a,x:(r7+$10)
+        move    x:(r7+$34),x0           ; allpass B: b still holds (512 - tap)
         move    b,a
         sub     x0,a
         sub     #>$1,a                
         move    a,n5
         move    r1,a
         and     #>$1ff,a
-        move    x:(r7+$5f),x0           ; base B
+        move    x:(r7+$37),x0           ; base B
         add     x0,a
         move    a,r5
-        move    x:(r7+$5c),b            ; spaces the r5 write
+        move    x:(r7+$10),b            ; spaces the r5 write
         move    y:(r5+n5),a
-        move    a,x:(r7+$5d)
-        move    #>$7ff,m5               ; v100: back to the diffusers' 2048
+        move    a,x:(r7+$26)
+        move    #>$7ff,m5               ; back to the diffusers' 2048
+        move    x:(r7+$6a),n2           ; this call's AUX write address and
+        move    x:(r7+$63),n3           ; read address: the loop walks them
+                                        ; through n2/n3 (free: the priming's
+                                        ; use of n2/n3 is over)
 
         do      n7,>rvend
 
@@ -1451,43 +1528,58 @@ lfrol:
         move    x:(r0)-,x0              ; R, and r0 back on L (m0 linear)
         add     x0,a
         asr     #$1,a,a
-; RETURN input (v4): own share = dry * IN, with the SAME 3-bit headroom every
-; bus writer applies, summed with the accumulator BEFORE the auto-gain -- so
-; the host is one client among N, exactly the delay's recipe. mpy x1,y1 is the
-; mpysu-encoded order (audited family): safe because y1 = IN >= 0.
+; The host's own sends: dry mono x DEL into the delay's AUX accumulator, and
+; dry mono x REV (the knob's copy at y:$09f0: r6 walks the state table in
+; this loop) into this call's REV ACC slot, each with the writers' 3-bit
+; headroom; the REV bus is read back three blocks on through the auto-gain,
+; so the host is one client among N. mpy x1,y1 is the mpysu-encoded order:
+; safe because y1 = REV >= 0. The pointers advance
+; through r5's post-increment under m5 = $7ff: the accumulators sit inside
+; one 2048-aligned block, so the modulo never wraps there.
         move    a,x1
-; ->DEL (v8): the same dry mono, PRE-IN, into the shared DELAY bus -- so the
-; host's dry reaches the delay even at IN=0, exactly as a station's ->DEL
-; would. Level straight from the knob field (val<<16 IS val/128, the IN
-; idiom; y1 >= 0 keeps the mpysu-family order safe), the writers' 3-bit
-; headroom, summed into this call's DELAY ACC slot and the pointer advanced.
-; r5 is free here (every use below recomputes it); b, x0 are dead until
-; reloaded; x1 (the dry) survives for the IN multiply below.
-; ⚠️ The pointer advances through r5's POST-INCREMENT with m5 = $7ff (the
-; diffusers' modulo 2048, set just before the loop): the accumulators live
-; at $961-$9a0, inside one 2048-aligned block, so the modulo never wraps
-; there and (r5)+ is a plain +1. Eight words, because payload A had thirty.
-        move    y:>$09f0,y1             ; ->DEL level (core-private copy; r6
-                                        ; is NOT the knob block in this loop)
-        mpy     x1,y1,a
+; DEL: the dry x the ramped DEL level into the delay's aux
+        move    y:>$09f4,a              ; DEL, ramped per sample
+        move    y:>$09f5,y1             ; + this block's step
+        add     y1,a
+        move    a,y:>$09f4
+        move    a,y1
+        move    x1,x0
+        mpy     x0,y1,a                 ; dry x DEL: x0 signed, y1 >= 0
         asr     #$3,a,a                 ; 3 bits of bus headroom
-        move    x:(r7+$6a),r5           ; this call's DELAY ACC write address
+        move    y:>$09f6,b              ; the AUX write pointer
+        move    b1,r5
+        move    y:>$09f0,y1             ; REV level (spaces the r5 use)
         move    y:(r5),b
         add     b,a
-        move    a,y:(r5)+               ; DELAY ACC[write][i] += contribution
-        move    r5,x:(r7+$6a)           ; advanced one sample
-        move    x:(r7+$63),r5           ; this sample's read address: the aux
-                                        ; accumulator, or the delay's output
-                                        ; buffer while the delay is live
-        move    x:(r7+$0c),y1           ; auto-gain 1/sqrt(N) -- or exactly 1/8
-                                        ; on the chain (spaces the r5 write)
-        move    y:(r5)+,x1              ; last block's fully-summed sends,
-        move    r5,x:(r7+$63)           ; and the pointer advanced one sample
-                                        ; (m5 = $7ff: both buffers sit inside
-                                        ; one 2048-aligned block, no wrap)
-        mpy     x1,y1,a                 ; (unity after the asl)
+        move    a,y:(r5)+               ; AUX ACC[write][i] += contribution
+        move    r5,b
+        move    b,y:>$09f6
+        mpy     x1,y1,a
+        asr     #$3,a,a                 ; 3 bits of bus headroom
+        move    n2,r5                   ; this call's REV write address
+        move    y:(r5),b
+        add     b,a
+        move    a,y:(r5)+               ; REV ACC[write][i] += contribution
+        move    r5,n2                   ; advanced one sample
+        move    n3,r5                   ; this sample's REV read address
+        move    x:(r7+$0c),y1           ; auto-gain 1/sqrt(N) (spaces the r5
+                                        ; write)
+        move    y:(r5)+,x1              ; the fully-summed REV sends three
+        move    r5,n3                   ; blocks back, the pointer advanced
+                                        ; (m5 = $7ff: the accumulators and the
+                                        ; chain sit inside one 2048-aligned
+                                        ; block, no wrap)
+        mpy     x1,y1,a
+        move    x:(r7+$28),r5           ; this sample's chain read address
+        move    x:(r7+$65),y1           ; 1/8 while the delay is live, else 0
+                                        ; (spaces the r5 write)
+        move    y:(r5)+,x0              ; the repeats x DLY, three blocks back
+        move    r5,x:(r7+$28)
+        mac     x0,y1,a                 ; the signed order (x1,y1 encodes macsu)
         asl     #$3,a,a                 ; undo the writers' 3-bit headroom
-        move    a,x:(r7+$1b)            ; the averaged input, feeding the tank
+        move    a,y1                    ; the averaged input, feeding the tank:
+                                        ; the chain word, held in y1 through
+                                        ; the four diffusers
 
         move    x:(r7+$30),a            ; GCNT
         sub     #>$1,a                  ; GCNT - 1  (sets N)
@@ -1496,7 +1588,7 @@ lfrol:
         move    a,x1                    ; counted-down candidate
 ; B. retrigger: if |input| >= threshold, GCNT := GHOLD (else the countdown).
 ;    A `move` does not touch the condition codes, so the sub's N reaches tmi.
-        move    x:(r7+$1b),a            ; full tank input (bus/send too)
+        move    y1,a                    ; full tank input (bus/send too)
         abs     a
         move    #>$008000,x0            ; threshold ~0.004 (-48 dBFS). WAS
         sub     x0,a                    ; N = 0 (plus) when triggered
@@ -1509,7 +1601,7 @@ lfrol:
         move    #0,x0
         teq     x0,a                    ; GCNT == 0 -> target 0
 ; D. one-pole smooth toward target -- the slam ramp:
-        move    x:(r7+$62),b            ; GLVL
+        move    x:(r7+$27),b            ; GLVL
         sub     b,a                     ; delta = target - GLVL  (N=1 if closing)
         move    a,x0                    ; delta
         move    #$02,a                  ; ATTACK coeff ~1.4 ms -- fast, keeps the
@@ -1518,7 +1610,7 @@ lfrol:
         move    a,y0                    ; the moves above don't touch N, so tmi
         mpy     y0,x0,a                 ; sees the sub's flag. coeff * delta
         add     b,a
-        move    a,x:(r7+$62)            ; GLVL += coeff*(target - GLVL)
+        move    a,x:(r7+$27)            ; GLVL += coeff*(target - GLVL)
 
         move    r1,a                    ; the allpass phase IS the tank phase:
         and     #>$7ff,a                ; both advance by 1 a sample, and the
@@ -1530,64 +1622,53 @@ lfrol:
                                         ; to their own wrap. Masking $fff here
                                         ; would walk r5 into the neighbouring
                                         ; buffer for half of every lap.
-                                        ; Immediate, not n6: n6 now carries
-                                        ; the pre-delay offset.
-        move    a,x:(r7+$39)
+        move    a,n0                    ; the phase, held in n0 for the loop
 
-; ---- pre-delay ----------------------------------------------------------
-
-; ---- EARLY REFLECTIONS: REMOVED ------------------------------
-
-        move    x:(r7+$7e),n5        ; this MODE's allpass 0
-        move    x:(r7+$39),a            ; phase   (also spaces the n5 write)
+; The four diffusers sit 2048 words apart ($32..$35 = shared+0x2000 +
+; 0x800 k), so allpasses 1-3 address from allpass 0's r5 + 0x800 each:
+; apbody leaves r5 where it found it.
+        move    x:(r7+$05),n5        ; this MODE's allpass 0
+        move    n0,a                    ; phase   (also spaces the n5 write)
         move    x:(r7+$32),x0            ; base
         add     x0,a
         move    a,r5                    ; = write address
-        move    x:(r7+$6d),y0           ; g, from DIFFUSION (was the fixed
-                                        ; literal 0.703). Loaded once and held
-                                        ; across all four input allpasses.
-        bsr     apbody                  ; the rolled allpass body (v6): reads
-                                        ; $1b, writes $1b and y:(r5)
+        move    x:(r7+$25),y0           ; g, from DIFFUSION; held across all
+                                        ; four input allpasses
+        bsr     apbody                  ; the rolled allpass body: reads $1b,
+                                        ; writes $1b and y:(r5)
 
-        move    x:(r7+$7f),n5        ; this MODE's allpass 1
-        move    x:(r7+$39),a            ; phase   (also spaces the n5 write)
-        move    x:(r7+$33),x0            ; base
-        add     x0,a
+        move    x:(r7+$06),n5        ; this MODE's allpass 1
+        move    r5,a
+        add     #>$800,a
         move    a,r5                    ; = write address
-        bsr     apbody                  ; the rolled allpass body (v6): reads
-                                        ; $1b, writes $1b and y:(r5)
+        bsr     apbody
 
-        move    x:(r7+$80),n5        ; this MODE's allpass 2
-        move    x:(r7+$39),a            ; phase   (also spaces the n5 write)
-        move    x:(r7+$34),x0            ; base
-        add     x0,a
+        move    x:(r7+$07),n5        ; this MODE's allpass 2
+        move    r5,a
+        add     #>$800,a
         move    a,r5                    ; = write address
-        bsr     apbody                  ; the rolled allpass body (v6): reads
-                                        ; $1b, writes $1b and y:(r5)
+        bsr     apbody
 
-        move    x:(r7+$81),n5        ; this MODE's allpass 3
-        move    x:(r7+$39),a            ; phase   (also spaces the n5 write)
-        move    x:(r7+$35),x0            ; base
-        add     x0,a
+        move    x:(r7+$3e),n5        ; this MODE's allpass 3
+        move    r5,a
+        add     #>$800,a
         move    a,r5                    ; = write address
-        bsr     apbody                  ; the rolled allpass body (v6): reads
-                                        ; $1b, writes $1b and y:(r5)
+        bsr     apbody
 
 ; ---- BLOOM ALLPASSES ------------------------------------------
-        move    x:(r7+$5e),a            ; in-loop AP A base = shared+0x4000
+        move    x:(r7+$39),a            ; in-loop AP A base = shared+0x4000
         add     #>$800,a                  ; -> shared+0x4800  (bloom AP a)
-        move    x:(r7+$39),x0           ; phase mod 2048
+        move    a,x0
+        move    n0,a                    ; phase mod 2048
         add     x0,a
         move    a,r5
         move    #247,n5                 ; 2048 - 1801 (41 ms; SHORT immediate,
                                         ; zero-extended in an address register)
         move    x:(r7+$7b),y0           ; g, both bloom APs: 0.40 .. 0.86 with
-        move    x:(r7+$1b),x1           ; chain output in
         move    y:(r5+n5),b             ; d
         move    b,x0
         mpy     x0,y0,a
-        move    x1,x0
-        add     x0,a                    ; v = x + g*d
+        add     y1,a                    ; v = x + g*d (y1 = the chain out)
         move    a,x0                    ; x0 = v, limited as the store was
         mpy     x0,y0,a
         sub     a,b                     ; out = d - g*v
@@ -1608,7 +1689,7 @@ lfrol:
         move    b,x:(r7+$08)            ; -> the bloom component, for the sums
         move    x0,y:(r5)               ; write v (AP b)
 
-        move    x:(r7+$1b),a
+        move    y1,a                    ; the diffused chain
 ; ---- TANK INPUT ATTENUATION: -12 dB of headroom -------------------------
         asr     #$2,a,a                 ; -12 dB
         move    a,x:(r7+$15)            ; diffused input -> tank
@@ -1618,10 +1699,7 @@ lfrol:
 ; uses x1. Both were being re-fetched once per line. The allpasses above do
 ; use y0 and x1, which is why this sits after them.
         move    x:(r7+$1f),y0           ; DAMP, for all eight lines
-        move    x:(r7+$40),x1           ; LO coefficient, for all eight lines
-; (an `asr #$1,a,a / move a,x:(r7+$27)` -- v4's second injection level,
-; marked VESTIGIAL since injection went table-driven -- sat here until
-;; nothing read $27 and `a` is reloaded before its next use)
+        move    x:(r7+$36),x1           ; LO coefficient, for all eight lines
 
 ; ---- the tank's eight taps, damped and low-cut inside the feedback path --
         move    #>$fff,m5               ; r5 walks a 4096-word LINE now
@@ -1643,12 +1721,10 @@ lfrol:
 ; carried value is never overwritten. Seeded one sample further back before
 ; the loop, so sample 0 is exact too.
         move    y:(r6),a                ; w2: d1 = last sample's d0
-        move    b,y:(r6)+               ; carry forward
-        sub     b,a                     ; d1 - d0
+        sub     b,a         b,y:(r6)+   ; carry forward ; d1 - d0
         move    a,x0
         mpy     x0,y1,a                 ; f*(d1-d0)
-        add     b,a                     ; + d0 -> the interpolated tap
-        move    y:(r6),b                ; w3: damping state
+        add     b,a         y:(r6),b    ; + d0 -> the interpolated tap ; w3: damping state
         sub     b,a
         move    a,x0
         mpy     x0,y0,a                 ; y0 = DAMP, held across every line
@@ -1668,174 +1744,167 @@ lfrol:
         move    a,y:(r6)+               ; w5: this line's output
 tankend:
 
-; ---- collect the LINES outputs to r7 slots for the Hadamard ---------------
-; The loop leaves them in the state table at stride 6. Lines 0-3 go to
-; $16..$19, lines 4-7 to $3a..$3d -- the two 4-word groups the 8x8 FWHT
-; operates on in-place.
+; ---- collect the LINES outputs for the Hadamard ---------------------------
+; The tank loop leaves them in the state table at stride 6. Lines 0-3 go to
+; $16..$19 and lines 4-7 to $3a..$3d, the two 4-word groups the 8x8 FWHT
+; operates on in place; r4 (m4 = $fff) and r5 (m5 = $7ff) walk them, and
+; both groups sit inside one aligned block of either modulo for every r7.
         move    #6,n6                   ; the table's stride (short: address
                                         ; register, zero-extended)
-        move    x:(r7+$0b),a
-        add     #>$5,a                
-        move    a,r6                    ; -> line 0's output word
+        move    r6,a                    ; the tank loop left r6 48 words past
+        sub     #>43,a                  ; the table: back to line 0's output
+        move    a,r6                    ; word (table + 5)
         move    #>$7ff,m5               ; back to the input diffusers' 2048
-        nop                             ; two instructions between writing r6
-                                        ; and addressing through it
+        lua     (r7+$16),r4             ; (these two space the r6 write)
+        lua     (r7+$3a),r5
         move    y:(r6)+n6,a
-        move    a,x:(r7+$16)            ; line 0
+        move    a,x:(r4)+               ; line 0
         move    y:(r6)+n6,a
-        move    a,x:(r7+$17)            ; line 1
+        move    a,x:(r4)+               ; line 1
         move    y:(r6)+n6,a
-        move    a,x:(r7+$18)            ; line 2
+        move    a,x:(r4)+               ; line 2
         move    y:(r6)+n6,a
-        move    a,x:(r7+$19)            ; line 3
+        move    a,x:(r4)+               ; line 3
         move    y:(r6)+n6,a
-        move    a,x:(r7+$3a)            ; line 4
+        move    a,x:(r5)+               ; line 4
         move    y:(r6)+n6,a
-        move    a,x:(r7+$3b)            ; line 5
+        move    a,x:(r5)+               ; line 5
         move    y:(r6)+n6,a
-        move    a,x:(r7+$3c)            ; line 6
+        move    a,x:(r5)+               ; line 6
         move    y:(r6)+n6,a
-        move    a,x:(r7+$3d)            ; line 7
+        move    a,x:(r5)+               ; line 7
 
 ; ---- wet output: eight lines summed per channel -------------------------
-        move    x:(r7+$16),a            ; line 0
-        move    x:(r7+$17),x0           ; line 1
-        sub     x0,a
-        move    x:(r7+$18),x0           ; line 2
-        add     x0,a                    ; a = l0-l1+l2   (l3 driven, excluded)
-        move    x:(r7+$3a),x0           ; line 4
-        add     x0,a
-        move    x:(r7+$3b),x0           ; line 5
-        sub     x0,a
-        move    x:(r7+$3c),x0           ; line 6
-        add     x0,a                    ; (l7 driven, excluded)
-        move    x:(r7+$08),b            ; the bloom, pre-filter: the wet
-        asr     #$3,b,b                 ; bloom back at 0.5x (R18: 1x/1.5x/2x
-                                        ; all flutter on plucked transients --
-                                        ; the AP pulse train is audible at any
-                                        ; ring length once the level is up;
-                                        ; the forward primary lives in the
-                                        ; driven-line taps below instead)
-        add     b,a
-        move    x:(r7+$19),b            ; line 3 (driven)
+; L = l0 - l1 + l2 + l3/2 + l4 - l5 + l6 + bloom/8; R = l0 + l1 - l2 + l4 +
+; l5 - l6 + l7/2 + bloom/8 (l3/l7, the driven lines, split L/R keep the
+; image wide; the bloom at 0.5x). 56-bit sums, so the order is free.
+        lua     (r7+$16),r4
+        lua     (r7+$3a),r5
+        move    x:(r7+$08),b            ; the bloom, pre-filter
+        asr     #$3,b,b
+        move    x:(r4)+,a               ; line 0
+        add     b,a         x:(r4)+,x0  ; line 1
+        sub     x0,a        x:(r4)+,x0  ; line 2
+        add     x0,a        x:(r4)+,b   ; line 3 (driven)
         asr     #$1,b,b
-        add     b,a
+        add     b,a         x:(r5)+,x0  ; line 4
+        add     x0,a        x:(r5)+,x0  ; line 5
+        sub     x0,a        x:(r5)+,x0  ; line 6
+        add     x0,a
         move    a,x:(r7+$2d)            ; wet L
-        move    x:(r7+$16),a
-        move    x:(r7+$17),x0
-        add     x0,a
-        move    x:(r7+$18),x0
-        sub     x0,a                    ; a = l0+l1-l2   (l3 excluded)
-        move    x:(r7+$3a),x0           ; line 4
-        add     x0,a
-        move    x:(r7+$3b),x0           ; line 5
-        add     x0,a
-        move    x:(r7+$3c),x0           ; line 6
-        sub     x0,a                    ; (l7 excluded)
-        move    x:(r7+$08),b            ; same bloom on R
-        asr     #$3,b,b                 ; 0.5x, as L
-        add     b,a
-        move    x:(r7+$3d),b            ; line 7 (driven), R side -- split
-        asr     #$1,b,b                 ; l3/l7 keeps the image wide
+        lua     (r7+$16),r4
+        lua     (r7+$3a),r5
+        move    x:(r7+$08),b            ; the bloom again
+        asr     #$3,b,b
+        move    x:(r4)+,a               ; line 0
+        add     b,a         x:(r4)+,x0  ; line 1
+        add     x0,a        x:(r4)+,x0  ; line 2
+        sub     x0,a        x:(r5)+,x0  ; line 4
+        add     x0,a        x:(r5)+,x0  ; line 5
+        add     x0,a        x:(r5)+,x0  ; line 6
+        sub     x0,a        x:(r5)+,b   ; line 7 (driven), R side
+        asr     #$1,b,b
         add     b,a
         move    a,x:(r7+$2e)            ; wet R
 
-; ---- 8x8 Fast Walsh-Hadamard Transform -----------------------------------
+; ---- 8x8 Fast Walsh-Hadamard Transform, in place ---------------------------
+; Stage 1 pairs neighbours (r4 reads, r5 writes one pair behind); stage 2
+; pairs (0,2)/(1,3) with the four values in registers; stage 3 pairs the
+; groups (r4/r6 on $16.., r5 on $3a..). A register park limits exactly as
+; the stores it replaces.
+        lua     (r7+$16),r4
+        lua     (r7+$16),r5
+        move    x:(r4)+,a               ; d0
+        move    x:(r4)+,x0              ; d1
+        move    a,b
+        add     x0,a
+        sub     x0,b        a,x:(r5)+   ; u0 = d0+d1
+        move    b,x:(r5)+               ; u1 = d0-d1
+        move    x:(r4)+,a               ; d2
+        move    x:(r4)+,x0              ; d3
+        move    a,b
+        add     x0,a
+        sub     x0,b        a,x:(r5)+   ; u2 = d2+d3
+        move    b,x:(r5)+               ; u3 = d2-d3
 
-        move    #>$ffffff,m6            ; linear for the walk
+        lua     (r7+$3a),r4
+        lua     (r7+$3a),r5
+        move    x:(r4)+,a               ; d4
+        move    x:(r4)+,x0              ; d5
+        move    a,b
+        add     x0,a
+        sub     x0,b        a,x:(r5)+   ; u4 = d4+d5
+        move    b,x:(r5)+               ; u5 = d4-d5
+        move    x:(r4)+,a               ; d6
+        move    x:(r4)+,x0              ; d7
+        move    a,b
+        add     x0,a
+        sub     x0,b        a,x:(r5)+   ; u6 = d6+d7
+        move    b,x:(r5)+               ; u7 = d6-d7
 
+        lua     (r7+$16),r4
+        lua     (r7+$16),r5
+        move    x:(r4)+,x0              ; u0
+        move    x:(r4)+,x1              ; u1
+        move    x:(r4)+,a               ; u2
+        move    a,b
+        add     x0,a                    ; u0+u2
+        neg     b
+        add     x0,b        a,x:(r5)+   ; u0-u2 ; u0' = u0+u2
+        move    b,y0                    ; u2' = u0-u2, parked
+        move    x:(r4)+,a               ; u3
+        move    a,b
+        add     x1,a                    ; u1+u3
+        neg     b
+        add     x1,b        a,x:(r5)+   ; u1-u3 ; u1' = u1+u3
+        move    y0,x:(r5)+              ; u2'
+        move    b,x:(r5)+               ; u3' = u1-u3
+
+        lua     (r7+$3a),r4
+        lua     (r7+$3a),r5
+        move    x:(r4)+,x0              ; u4
+        move    x:(r4)+,x1              ; u5
+        move    x:(r4)+,a               ; u6
+        move    a,b
+        add     x0,a
+        neg     b
+        add     x0,b        a,x:(r5)+   ; u4' = u4+u6
+        move    b,y0                    ; u6' = u4-u6, parked
+        move    x:(r4)+,a               ; u7
+        move    a,b
+        add     x1,a
+        neg     b
+        add     x1,b        a,x:(r5)+   ; u5' = u5+u7
+        move    y0,x:(r5)+              ; u6'
+        move    b,x:(r5)+               ; u7' = u5-u7
+
+        lua     (r7+$16),r4
+        lua     (r7+$3a),r5
         lua     (r7+$16),r6
-        move    x:(r6)+,a               ; d0
-        move    x:(r6)+,x0              ; d1
+        move    x:(r4)+,a               ; u0
+        move    x:(r5),x0               ; u4
         move    a,b
         add     x0,a
-        sub     x0,b
-        move    a,x:(r6-2)              ; u0 = d0+d1
-        move    b,x:(r6-1)              ; u1 = d0-d1
-        move    x:(r6)+,a               ; d2
-        move    x:(r6)+,x0              ; d3
+        sub     x0,b        a,x:(r6)+   ; u0' = u0+u4
+        move    b,x:(r5)+               ; u4' = u0-u4
+        move    x:(r4)+,a               ; u1
+        move    x:(r5),x0               ; u5
         move    a,b
         add     x0,a
-        sub     x0,b
-        move    a,x:(r6-2)              ; u2 = d2+d3
-        move    b,x:(r6-1)              ; u3 = d2-d3
-
-        lua     (r7+$3a),r6
-        move    x:(r6)+,a               ; d4
-        move    x:(r6)+,x0              ; d5
+        sub     x0,b        a,x:(r6)+   ; u1' = u1+u5
+        move    b,x:(r5)+               ; u5' = u1-u5
+        move    x:(r4)+,a               ; u2
+        move    x:(r5),x0               ; u6
         move    a,b
         add     x0,a
-        sub     x0,b
-        move    a,x:(r6-2)              ; u4 = d4+d5
-        move    b,x:(r6-1)              ; u5 = d4-d5
-        move    x:(r6)+,a               ; d6
-        move    x:(r6)+,x0              ; d7
+        sub     x0,b        a,x:(r6)+   ; u2' = u2+u6
+        move    b,x:(r5)+               ; u6' = u2-u6
+        move    x:(r4)+,a               ; u3
+        move    x:(r5),x0               ; u7
         move    a,b
         add     x0,a
-        sub     x0,b
-        move    a,x:(r6-2)              ; u6 = d6+d7
-        move    b,x:(r6-1)              ; u7 = d6-d7
-
-        move    x:(r7+$16),a            ; u0
-        move    x:(r7+$18),x0           ; u2
-        move    a,b
-        add     x0,a
-        sub     x0,b
-        move    a,x:(r7+$16)            ; u0' = u0+u2
-        move    b,x:(r7+$18)            ; u2' = u0-u2
-        move    x:(r7+$17),a            ; u1
-        move    x:(r7+$19),x0           ; u3
-        move    a,b
-        add     x0,a
-        sub     x0,b
-        move    a,x:(r7+$17)            ; u1' = u1+u3
-        move    b,x:(r7+$19)            ; u3' = u1-u3
-
-        move    x:(r7+$3a),a            ; u4
-        move    x:(r7+$3c),x0           ; u6
-        move    a,b
-        add     x0,a
-        sub     x0,b
-        move    a,x:(r7+$3a)            ; u4' = u4+u6
-        move    b,x:(r7+$3c)            ; u6' = u4-u6
-        move    x:(r7+$3b),a            ; u5
-        move    x:(r7+$3d),x0           ; u7
-        move    a,b
-        add     x0,a
-        sub     x0,b
-        move    a,x:(r7+$3b)            ; u5' = u5+u7
-        move    b,x:(r7+$3d)            ; u7' = u5-u7
-
-        move    x:(r7+$16),a            ; u0
-        move    x:(r7+$3a),x0           ; u4
-        move    a,b
-        add     x0,a
-        sub     x0,b
-        move    a,x:(r7+$16)            ; u0' = u0+u4
-        move    b,x:(r7+$3a)            ; u4' = u0-u4
-        move    x:(r7+$17),a            ; u1
-        move    x:(r7+$3b),x0           ; u5
-        move    a,b
-        add     x0,a
-        sub     x0,b
-        move    a,x:(r7+$17)            ; u1' = u1+u5
-        move    b,x:(r7+$3b)            ; u5' = u1-u5
-        move    x:(r7+$18),a            ; u2
-        move    x:(r7+$3c),x0           ; u6
-        move    a,b
-        add     x0,a
-        sub     x0,b
-        move    a,x:(r7+$18)            ; u2' = u2+u6
-        move    b,x:(r7+$3c)            ; u6' = u2-u6
-        move    x:(r7+$19),a            ; u3
-        move    x:(r7+$3d),x0           ; u7
-        move    a,b
-        add     x0,a
-        sub     x0,b
-        move    a,x:(r7+$19)            ; u3' = u3+u7
-        move    b,x:(r7+$3d)            ; u7' = u3-u7
-
-        move    #>$fff,m6               ; back to the pre-delay's modulo-4096
+        sub     x0,b        a,x:(r6)+   ; u3' = u3+u7
+        move    b,x:(r5)+               ; u7' = u3-u7
 
 ; ⚠️ The marker below said "excised unless SHIMMER=1" until 30 Aug 2026.
 ; Both halves were wrong: the shimmer is IN by default, build_bus.py
@@ -1885,21 +1954,19 @@ tankend:
 ; pointer's discontinuity. The flat top is what keeps the pair summing to ~1;
 ; a pure triangle over the half-range would dip to zero twice a lap.
 ;
-; TRAP (CLAUDE.md): `cmp a,b` has silently encoded as `max a,b`, which updates
+; TRAP (AGENTS.md): `cmp a,b` has silently encoded as `max a,b`, which updates
 ; only C while bge tests N^V. No cmp here at all -- the two comparisons are
-; done as `sub` + branch, which sets N and V properly. Disassembled and
-; checked, along with every mpy (x0,y1 / x1,x0 -- never the mpy x0,y0 form
-; that assembles as mpysu).
+; done as `sub` + branch, which sets N and V properly. Every mpy is x0,y1 or
+; x1,x0 (signed) except head 1's frac multiply, an audited mpysu (y0 >= 0).
 ;
-; STATE: r7+$0e SHMR (cached per block at the TIME block), r7+$0f phase mod
-; 4096, r7+$4e one-pole. The last two free slots in the r7 block.
-; BUFFER: base+0x7000, 2048 words, 2048-aligned so the AGU wraps it free.
+; STATE: r7+$0e SHMR (glided per block), r7+$0f phase mod 4096, r7+$4e
+; one-pole, y:$0905 read phase, y:$0906 HP state.
+; BUFFER: shared+0x0800, 2048 words, 2048-aligned so the AGU wraps it free.
 
-        move    #>$7ff,m5               ; 2048-word shimmer buffer
-        move    x:(r7+$5e),a            ; in-loop allpass A base = shared+0x4000,
-        sub     #>$3800,a                  ; it, at shared+0x0800 -- which is ; so the shimmer buffer is 0x3800 BELOW
+        move    x:(r7+$39),a            ; in-loop allpass A base = shared+0x4000,
+        sub     #>$3800,a                  ; the shimmer buffer at shared+0x0800,
         move    a,r5                    ; 2048-ALIGNED, as the AGU wrap requires
-                                        ; (m5 = $7ff above). Still derived from
+                                        ; (m5 = $7ff). Derived from
                                         ; $5e because the r7 block has no slot
                                         ; to cache it, and still the only reason
                                         ; the two are placed 0x3800 apart.
@@ -1928,13 +1995,13 @@ tankend:
         add     b,a                     ; s' = s + c*(x - s)
         move    a,y:>$0906
         move    x0,a                    ; HP output feeds the LP below
-        move    x:(r7+$4e),b            ; previous filter output
+        move    x:(r7+$0a),b            ; previous filter output
         sub     b,a
         move    a,x0
         move    #>$399999,y1            ; c = 0.45 (R18; was 0.35). Corner ~4.2k
         mpy     x0,y1,a
         add     b,a                     ; y = y_prev + c*(x - y_prev)
-        move    a,x:(r7+$4e)
+        move    a,x:(r7+$0a)
         move    a,y1                    ; hold the filtered sample
 
         move    x1,a
@@ -1944,8 +2011,7 @@ tankend:
         move    y1,a                    ; age below is measured against it and
         move    a,y:(r5+n5)             ; nothing past here clobbers y0.
 
-; ---- CHORUS: wobble the read phase by the MOD-scaled LFO so the octave
-; ---- READ PHASE (v6 SHFT): the heads' own fractional phase ---------------
+; ---- READ PHASE: the heads' own fractional phase, stepped by SHFT ---------
         move    y:>$0905,a              ; read phase
         move    x:(r7+$2c),x0           ; STEP
         add     x0,a
@@ -1953,7 +2019,7 @@ tankend:
         move    a1,x0
         move    x0,a                    ; A2-clean
         move    a,y:>$0905
-        move    a,x:(r7+$14)            ; park for the int/frac splits below
+        move    a,x1                    ; parked for the int/frac splits below
 ; frac_total = wobble frac + read-phase frac, carry out:
         move    x:(r7+$21),a           ; line-0 LFO offset (x MOD depth)
         and     #>$3,a                  ; sub-word bits of the sample offset
@@ -1962,7 +2028,7 @@ tankend:
         asr     #$2,b,b                ; samples -> words
         add     b,a                    ; wobble frac (<= $7fffff, no carry)
         move    a,b                    ; park it (< 1: the move cannot limit)
-        move    x:(r7+$14),a           ; read phase (a2 = 0: wrapped above)
+        move    x1,a                   ; read phase (a2 = 0: wrapped above)
         and     #>$fff,a               ; its frac field
         asl     #$b,a,a                ; -> Q23
         add     b,a                    ; frac sum; a1 bit 23 = the carry
@@ -1977,7 +2043,7 @@ tankend:
         asr     #$2,b,b                ; wobble integer words, 0..31
         add     b,a
         move    a1,x0
-        move    x:(r7+$14),a           ; read phase again
+        move    x1,a                   ; read phase again
         asr     #$c,a,a                ; integer words, 0..2047
         add     x0,a
         move    a1,x1                  ; read position for both head reads
@@ -2026,11 +2092,11 @@ shr0:                                   ; a pure triangle would dip to zero
         move    a,x0                    ; g
         move    a,y1                    ; g
         mpy     x0,y1,a                 ; g^2  (mpy x0,y1 = signed)
-        move    a,x:(r7+$14)            ; park g^2 -- NOT x1 (see above)
+        move    a,b                     ; park g^2 (x1 is the read position)
         move    #>$7fffff,a
         sub     x0,a                    ; 1 - g
         move    a,y1                    ; 1 - g
-        move    x:(r7+$14),x0           ; g^2
+        move    b,x0                    ; g^2
         mpy     x0,y1,a                 ; g^2*(1-g)
         asl     #$1,a,a                 ; 2*g^2*(1-g)
         add     x0,a                    ; s = g^2 + 2*g^2*(1-g)
@@ -2100,54 +2166,47 @@ shr1:                                   ; a pure triangle would dip to zero
         add     x1,a                    ; s = g^2 + 2*g^2*(1-g)
 shd1:
         move    y:(r5+n5),a             ; t0
-        move    a,x:(r7+$14)
+        move    a,x1                    ; parked (x1 is free from here on)
         move    n5,a
         move    #>1,x0
         add     x0,a
         and     #>$7ff,a                  ; pos1 + 1, wrapped
         move    a1,n5
         move    y:(r5+n5),a             ; t1
-        move    x:(r7+$14),x0
-        sub     x0,a                    ; t1 - t0
+        sub     x1,a                    ; t1 - t0
         move    a1,x0
         move    x:(r7+$38),y0           ; frac (write index in y0 is dead now)
         mpy     x0,y0,a                 ; frac*(t1-t0) -- mpysu, y0 >= 0: safe
-        move    x:(r7+$14),x0
-        add     x0,a                    ; interpolated tap 1
+        add     x1,a                    ; interpolated tap 1
         move    a1,x0
         mpy     x0,y1,a                 ; g1 * tap
         add     b,a                     ; the octave-up signal, g0+g1 ~= 1
 
 ; ---- back into the tank input -------------------------------------------
         move    a1,x1
-        move    x:(r7+$0e),x0           ; SHMR, cached per block by the TIME
-        mpy     x1,x0,a                 ; block -- NOT read in the sample loop,
-        move    x:(r7+$15),x0           ; where r6 is the pre-delay pointer
+        move    x:(r7+$0e),x0           ; SHMR (glided per block; r6 walks the
+        mpy     x1,x0,a                 ; state table in this loop, so the knob
+        move    x:(r7+$15),x0           ; is never read here)
         add     x0,a
         move    a,x:(r7+$15)            ; tank input, with the octave folded in
-
-        move    #>$7ff,m5               ; the input diffusers' modulo, unchanged
 ; SHIMMER_END
 
 ; ---- feedback and write back (ROLLED, 8-line) ----------------------------
 
         move    x:(r7+$0d),a            ; table B base
-        move    a,r6                    ; (the global $1e load into y0 that
+        move    a,r6
 
 ; -- Step 1a: rolled feedback, group A (u[0..3] at $16..$19) --------------
 ; r4 walks u[0..3] (post-increment), r5 walks scratch[0..3] ($1a..$1d).
-; r6 already walks table B (weight + gain, 2 words per line). Input reloaded
-; from $15 each iteration because mpy x0,y1,b overwrites b.
+; r6 already walks table B (weight + gain, 2 words per line). The tank input
+; sits in y1 across both groups: nothing in either body writes y1.
         lua     (r7+$16),r4             ; r4 -> u0
         lua     (r7+$1a),r5             ; r5 -> scratch0
-        move    x:(r7+$15),b            ; input, also spaces the r5 write
+        move    x:(r7+$15),y1           ; input, also spaces the r5 write
         nop
         do      #4,>fbA
         move    y:(r6)+,x0             ; weight[k]
-        move    x:(r7+$15),b           ; input (fresh each iteration)
-        move    b,y1
-        mpy     x0,y1,b                ; input * weight[k]
-        move    x:(r4)+,a              ; u[k]
+        mpy     x0,y1,b     x:(r4)+,a   ; input * weight[k] ; u[k]
         move    a,x0
         move    y:(r6)+,y0             ; gain[k]: the read that used to be
                                        ; discarded is the live per-line gain.
@@ -2164,17 +2223,14 @@ fbA:
 ; -- Step 1b: rolled feedback, group B (u[4..7] at $3a..$3d) --------------
 ; r4 walks u[4..7], r5 walks scratch[4..7] ($41..$44).
         lua     (r7+$3a),r4             ; r4 -> u4
-        move    x:(r7+$15),b            ; input (spaces the r4 write)
+        nop                             ; spaces the r4 write
         lua     (r4+$7),r5              ; r5 -> scratch4 = r7+$41, past
                                         ; lua's 7-bit displacement
         nop                             ; r5 is first read ten
                                         ; instructions into the loop
         do      #4,>fbB
         move    y:(r6)+,x0             ; weight[k]
-        move    x:(r7+$15),b           ; input (fresh each iteration)
-        move    b,y1
-        mpy     x0,y1,b                ; input * weight[k]
-        move    x:(r4)+,a              ; u[k]
+        mpy     x0,y1,b     x:(r4)+,a   ; input * weight[k] (y1 from group A) ; u[k]
         move    a,x0
         move    y:(r6)+,y0             ; gain[k], as in fbA
         mpy     x0,y0,a                ; u[k] * G_k
@@ -2190,36 +2246,32 @@ fbB:
         move    x:(r7+$1a),a            ; fb0 from scratch
         move    a,x1                    ; x = the value bound for the line
         move    x:(r7+$60),a
-        move    x:(r7+$52),x0           ; LFO integer offset -- the allpass is
+        move    x:(r7+$31),x0           ; LFO integer offset -- the allpass is
         sub     x0,a                    ; MODULATED now, not static
         move    a,n5                    ; (512 - tap) - offset
-        move    x:(r7+$39),a            ; phase (masked to $7ff above)
+        move    n0,a                    ; phase (masked to $7ff above)
         and     #>$1ff,a                ; ...but these buffers are 512. A2 is
                                         ; already 0 (the phase loads positive),
                                         ; so no A2-clean dance is needed here.
-        move    x:(r7+$5e),x0
+        move    x:(r7+$39),x0
         add     x0,a
         move    a,r5                    ; = write address
-        move    x:(r7+$6d),y1           ; g -- y1 by convention (y0 carried the
-        move    x:(r7+$15),x0           ; global gain before PLAN.md 1.1; it is
-                                        ; per-line now and y0 is free here)
+        move    x:(r7+$25),y0           ; g, held in y0 across both lines
         move    y:(r5+n5),b             ; d0
 ; Interpolate against the PREVIOUS sample's d0.
-        move    x:(r7+$5c),a            ; d1 = last sample's d0
-        move    b,x:(r7+$5c)            ; carry forward
+        move    x:(r7+$10),a            ; d1 = last sample's d0
+        move    b,x:(r7+$10)            ; carry forward
         sub     b,a                     ; d1 - d0
         move    a,x0
-        move    x:(r7+$53),y1           ; fraction (g is reloaded below)
+        move    x:(r7+$33),y1           ; fraction
         mpy     x0,y1,a                 ; f*(d1-d0)
         add     b,a                     ; + d0 -> interpolated tap
         move    a,b
-        move    x:(r7+$6d),y1           ; g back
         move    b,x0
-        mpy     x0,y1,a
-        move    x1,x0
+        mpy     y0,x0,a     x1,x0       ; g*d, signed (y0,x0)
         add     x0,a                    ; v = x + g*d
         move    a,x0                    ; x0 = v, limited as the store was
-        mpy     x0,y1,a
+        mpy     y0,x0,a                 ; g*v
         sub     a,b                     ; out = d - g*v
         move    x0,y:(r5)               ; store v
         move    b,a                     ; out -> the line
@@ -2229,32 +2281,28 @@ fbB:
         move    x:(r7+$1b),a            ; fb1 from scratch
         move    a,x1                    ; x = the value bound for the line
         move    x:(r7+$61),a
-        move    x:(r7+$54),x0           ; LFO integer offset -- the allpass is
+        move    x:(r7+$34),x0           ; LFO integer offset -- the allpass is
         sub     x0,a                    ; MODULATED now, not static
         move    a,n5                    ; (512 - tap) - offset
-        move    x:(r7+$39),a            ; phase (masked to $7ff above)
+        move    n0,a                    ; phase (masked to $7ff above)
         and     #>$1ff,a                ; ...but these buffers are 512
-        move    x:(r7+$5f),x0
+        move    x:(r7+$37),x0
         add     x0,a
         move    a,r5                    ; = write address
-        move    x:(r7+$6d),y1           ; g -- y1, NOT y0
-        move    x:(r7+$15),x0
         move    y:(r5+n5),b             ; d0
-        move    x:(r7+$5d),a            ; d1 = last sample's d0
-        move    b,x:(r7+$5d)            ; carry forward
+        move    x:(r7+$26),a            ; d1 = last sample's d0
+        move    b,x:(r7+$26)            ; carry forward
         sub     b,a                     ; d1 - d0
         move    a,x0
-        move    x:(r7+$55),y1           ; fraction (g is reloaded below)
+        move    x:(r7+$35),y1           ; fraction
         mpy     x0,y1,a                 ; f*(d1-d0)
         add     b,a                     ; + d0 -> interpolated tap
         move    a,b
-        move    x:(r7+$6d),y1           ; g back
         move    b,x0
-        mpy     x0,y1,a
-        move    x1,x0
+        mpy     y0,x0,a     x1,x0       ; g*d (y0 = g from line 0)
         add     x0,a                    ; v = x + g*d
         move    a,x0                    ; x0 = v, limited as the store was
-        mpy     x0,y1,a
+        mpy     y0,x0,a                 ; g*v
         sub     a,b                     ; out = d - g*v
         move    x0,y:(r5)               ; store v
         move    #>$7ff,m5               ; back to the input diffusers' 2048
@@ -2266,117 +2314,152 @@ fbB:
         move    n1,x0                   ; line stride, hoisted
         move    r5,b                    ; b carries the ADDRESS from here down
         move    x:(r7+$1c),a            ; fb2
-        move    a,y:(r5)                ; write to line 2
-        add     x0,b
+        add     x0,b        a,y:(r5)    ; write to line 2
         move    b,r5                    ; -> line 3
         move    x:(r7+$1d),a            ; fb3
-        move    a,y:(r5)                ; write to line 3
-        add     x0,b
+        add     x0,b        a,y:(r5)    ; write to line 3
         move    b,r5                    ; -> line 4
         move    x:(r7+$41),a            ; fb4
-        move    a,y:(r5)
-        add     x0,b
+        add     x0,b        a,y:(r5)
         move    b,r5                    ; -> line 5
         move    x:(r7+$42),a            ; fb5
-        move    a,y:(r5)
-        add     x0,b
+        add     x0,b        a,y:(r5)
         move    b,r5                    ; -> line 6
         move    x:(r7+$43),a            ; fb6
-        move    a,y:(r5)
-        add     x0,b
+        add     x0,b        a,y:(r5)
         move    b,r5                    ; -> line 7
         move    x:(r7+$44),a            ; fb7
         move    a,y:(r5)             ; write to line 7
 
-; ---- wet gain for the MIX below ----------------------------------------
-; Loaded HERE, not with the sums above: the write-back clobbers y1, so this
-; has to come after it. The sums themselves never use y1.
-        move    x:(r7+$20),y1           ; wet gain (constant, v4)
-
-; ---- WIDTH: mid/side, then MIX, then onto the dry -----------------------
-; M = (L+R)/2, S = (L-R)/2, out = M +/- w*S. w=0 collapses to mono, w=1 gives
-; back exactly the two tap sums.
+; ---- WIDTH: mid/side, then the wet high-cut, WET, then onto the dry ------
+; M = (L+R)/2, S = (L-R)/2, out = M +/- w*S. The width w is pinned at 0.75
+; (the knob is SHFT; $2c carries its step). M, w*S and their high-cut
+; values live in y1/x1 (a register move limits exactly as the parked store
+; did); the wet gain sits in b and is moved into y0 per channel.
         move    x:(r7+$2d),a
         move    x:(r7+$2e),x0
         add     x0,a
         asr     #$1,a,a
-        move    a,x:(r7+$25)            ; M
+        move    a,y1                    ; M
         move    x:(r7+$2d),a
         sub     x0,a
         asr     #$1,a,a
         move    a,x0
-        move    #$60,y0                 ; width PINNED at the old default
-                                        ; (wide, 0.75) -- the knob is SHFT
-                                        ; now and $2c carries its step
+        move    #$60,y0                 ; w = 0.75
         mpy     x0,y0,a
-        move    a,x:(r7+$26)            ; w*S
+        move    a,x1                    ; w*S
 
 ; ---- wet high-cut --------------------------------------------
-        move    x:(r7+$25),a            ; M
-        move    x:(r7+$78),b            ; high-cut state, M channel
+        move    y1,a                    ; M
+        move    x:(r7+$2a),b            ; high-cut state, M channel
         sub     b,a
         move    a,x0
-        move    x:(r7+$7a),y0           ; per-mode wet high-cut coefficient
+        move    x:(r7+$04),y0           ; per-mode wet high-cut coefficient
         mpy     x0,y0,a                 ; c*(x - y)
         add     b,a                     ; y += c*(x - y)
-        move    a,x:(r7+$78)
-        move    a,x:(r7+$25)            ; M, high-cut
-        move    x:(r7+$26),a            ; w*S
-        move    x:(r7+$79),b            ; state, S channel
+        move    a,x:(r7+$2a)
+        move    a,y1                    ; M, high-cut
+        move    x1,a                    ; w*S
+        move    x:(r7+$2b),b            ; state, S channel
         sub     b,a
         move    a,x0
         mpy     x0,y0,a
         add     b,a
-        move    a,x:(r7+$79)
-        move    a,x:(r7+$26)            ; w*S, high-cut
+        move    a,x:(r7+$2b)
+        move    a,x1                    ; w*S, high-cut
+        move    x:(r7+$20),b            ; wet gain (wgain/2)
 
-; ---- (the mono M write to the shared REVERB WET lived here until;
-
-        move    x:(r7+$25),a
-        move    x:(r7+$26),x0
-        add     x0,a
+; ---- L = M + w*S, R = M - w*S, each * wgain * GLVL * WET * 2, + dry -----
+        move    y1,a
+        add     x1,a
         move    a,x0
-        mpy     x0,y1,a                 ; * (wgain/2)
+        move    b,y0
+        mpy     y0,x0,a                 ; * (wgain/2), signed (y0,x0)
         asl     #$1,a,a                 ; wet makeup: doubled in full precision
         move    a,x0                    ; GATE: scale the wet by the gate level
-        move    x:(r7+$62),y0           ; GLVL (0..1); y1 still holds wet gain
+        move    x:(r7+$27),y0           ; GLVL (0..1)
         mpy     y0,x0,a                 ; signed (y0,x0): wet * gate
         move    a,x0                    ; gated wet L
 ; THE HOST PRINT: dry + wet*WET, in place. The chain input (the aux, or
 ; the delay's output while it is live) feeds the tank only; the dry the
-; host hears is its own. Until 20 Sep 2026 the stage output in + wet*WET
-; was also published to a shared buffer for the T8 return, and the print
-; was gated off while that return was live. The mpy is the audited-signed
-; y0,x0 form.
-        move    x:(r7+$70),y0           ; WET
+; host hears is its own.
+        move    x:(r7+$09),a            ; WET, ramped per sample: + this
+        move    x:(r7+$7c),y0           ; block's step
+        add     y0,a
+        move    a,x:(r7+$09)
+        move    a,y0
         mpy     y0,x0,a                 ; wet * WET
-        asl     #$1,a,a                 ; x2: WET 127 = +6 dB (Sam, 16 Sep 2026:
-                                        ; "reverb is still too quiet"; the
-                                        ; stores below limit)
+; ---- WET LIMITER, L: a feedback peak limiter on the wet at half scale
+; (before the x2 makeup), stereo-linked. y = wet * g; while max(|yL|,
+; |yR| of the previous sample) is over the ceiling (0.398 here = 0.797 =
+; -2 dBFS after the x2) g steps down x0.9 per sample; while it is under
+; the lower threshold (0.31 = -4 dBFS after the x2) g climbs
+; back linearly, 2^-16 per sample (0.9 -> 1.0 in ~150 ms; the store's own
+; limiter clamps it at 1.0); between the two g holds, so a signal sitting
+; at the ceiling is not modulated sample by sample (the first cut, with
+; no hold, chattered: -54 dBFS of it on a steady 0.3 FS tone, the
+; knob-click gate's floor is -70). Three candidates are computed first, the
+; compares last, and two tmi pick (27 Sep 2026: at a 0 dBFS send PLATE
+; railed 7,463 samples on L and 11,762 on R in 9 s; no div/rep -- neither
+; has a stock site). Slots: $11 g (persistent, warm-up sets it), $12 y
+; parked across the detector, $13 |yR| for the next sample (all three
+; inside the one-word displacement range).
+        move    x:(r7+$11),x0           ; g
+        move    a,y0                    ; wet L, half scale
+        mpy     y0,x0,a                 ; y = wet * g, signed (y0,x0)
+        move    a,x:(r7+$12)            ; parked
+        move    #$73,y0                 ; 0.9 (a gentler 0.953 flagged SHMR
+        mpy     y0,x0,b     x0,a        ; b = g * 0.9, the attack candidate  ; on the knob-click gate as well)
+        add     #>$000080,a             ; a = g + 2^-16, the release
+        move    a,y0
+        move    x:(r7+$12),a
+        abs     a                       ; |yL|
+        move    x:(r7+$13),x0           ; |yR|, the previous sample's
+        cmp     x0,a                    ; N: |yL| < |yR|
+        tmi     x0,a                    ; a = max(|yL|, |yR|)
+        move    x:(r7+$11),x0           ; g, the hold candidate (b = attack,
+                                        ; y0 = release)
+        cmp     #>$330000,a             ; - the ceiling
+        tmi     x0,b                    ; under it -> hold (over: attack)
+        cmp     #>$280000,a             ; - the lower threshold
+        tmi     y0,b                    ; under it -> release
+        move    b,x:(r7+$11)            ; g' (limited to 1.0 by the store)
+        move    x:(r7+$12),a            ; y, on to the makeup
+        asl     #$1,a,a                 ; x2: WET 127 = +6 dB (the stores
+                                        ; below limit)
         move    x:(r0),x0               ; dry L, still in place
-        add     x0,a                    ; + dry at unity (v5)
+        add     x0,a                    ; + dry at unity
         move    a,x:(r0)+               ; L in place -- dry + wet; r0 on to R
-        move    x:(r7+$25),a
-        move    x:(r7+$26),x0
-        sub     x0,a
+        move    y1,a
+        sub     x1,a
         move    a,x0
-        mpy     x0,y1,a
+        move    x:(r7+$20),y0           ; wgain/2 again (b held the limiter's
+                                        ; envelope on the left)
+        mpy     y0,x0,a                 ; * (wgain/2)
         asl     #$1,a,a                 ; wet makeup, right channel
         move    a,x0                    ; GATE: same gate level on the right
-        move    x:(r7+$62),y0           ; GLVL
+        move    x:(r7+$27),y0           ; GLVL
         mpy     y0,x0,a                 ; wet * gate
         move    a,x0                    ; gated wet R
-        move    x:(r7+$70),y0           ; WET
+        move    x:(r7+$09),y0           ; WET, this sample's
         mpy     y0,x0,a                 ; wet * WET
+; ---- WET LIMITER, R: the same g; |yR| feeds the next sample's detector
+        move    x:(r7+$11),x0           ; g
+        move    a,y0                    ; wet R
+        mpy     y0,x0,a                 ; y = wet * g
+        move    a,b                     ; (y fits: a register move limits)
+        abs     b
+        move    b,x:(r7+$13)            ; |yR|
         asl     #$1,a,a                 ; x2, as on L
         move    x:(r0),x0               ; dry R, still in place
-        add     x0,a                    ; + dry at unity (v5)
+        add     x0,a                    ; + dry at unity
         move    a,x:(r0)+               ; R in place -- dry + wet; r0 on to
                                         ; the next frame (n0 is not used)
-        move    (r1)+                   ; all four line pointers advance together
-        move    (r2)+                   ; and each wraps inside its own line
-        move    (r3)+                   ; under m1..m4 = $fff
-        move    (r4)+
+        move    (r1)+                   ; the three line pointers advance
+        move    (r2)+                   ; together and each wraps inside its
+        move    (r3)+                   ; own line under m1..m3 = $fff (r4 is
+                                        ; the feedback walker now, rebuilt by
+                                        ; lua every sample)
 rvend:
 
 noloop:
@@ -2396,34 +2479,24 @@ dry:
         move    #>$ffffff,m5
         rts
 
-; ---- apbody: one input-diffuser allpass (v6 roll) -------------------------
-; The identical 13-instruction body appeared FOUR times (input allpasses
-; 0-3), 17 words each -- found the same way as the delay's smoothw roll, by
-; scanning the built module for repeated instruction runs. This file's first
-; subroutine; the roll paid for the v6 additions (IN wet makeup, SHFT, the
-; shifter-input HP).
+; ---- apbody: one input-diffuser allpass ------------------------------------
 ; In: r5 = write address, n5 = this allpass's tap (m5 = $7ff modulo held by
-; the caller), y0 = g (held across all four calls), $1b = chain in.
-; Out: $1b = chain out, v written at y:(r5). Clobbers a/b/x0/x1 and $1c.
-; The mpy x0,y0 encodes as mpysu (the documented family): safe because the
-; SECOND operand y0 = g is always positive, exactly as at the inline sites
-; this replaces -- the machine code is byte-identical to the old bodies.
+; the caller), y0 = g (held across all four calls), y1 = chain in.
+; Out: y1 = chain out, v written at y:(r5). Clobbers a/b/x0/x1.
+; The mpy x0,y0 encodes as mpysu: safe because the SECOND operand y0 = g is
+; always positive.
 apbody:
-        move    x:(r7+$1b),x1           ; chain in, and spaces the r5 write
+        nop                             ; spaces the caller's r5 write
         move    y:(r5+n5),b             ; d, at (phase - tap) mod 2048
         move    b,x0
         mpy     x0,y0,a
-        move    x1,x0
-        add     x0,a                    ; v = x + g*d
-        move    a,x1                    ; x1 = v. A register move limits
-                                        ; exactly as a store does, so this
-                                        ; IS the value the $1c park held
+        add     y1,a                    ; v = x + g*d
+        move    a,x1                    ; x1 = v (a register move limits
+                                        ; exactly as a store does)
         mpy     x1,y0,a
         sub     a,b                     ; out = d - g*v
-        move    b,x:(r7+$1b)
-        move    x1,y:(r5)               ; write v at base + phase -- no
-                                        ; reload: $1c is fbA's scratch and
-                                        ; fbA rewrites it before its read
+        move    x1,y:(r5)               ; write v at base + phase
+        move    b,y1                    ; chain out
         rts
 
 ; ---- stampgr: a clear-on-read liveness stamp with 3 blocks of grace -------
@@ -2438,7 +2511,7 @@ stampgr:
         and     #>$3,b                  ; boot garbage masked ...
         move    b1,x0
         move    x0,b                    ; ... and B2 clean again (a logical op
-                                        ; leaves it stale; CLAUDE.md)
+                                        ; leaves it stale; AGENTS.md)
         move    #>$1,x0
         sub     x0,b
         move    #0,x0

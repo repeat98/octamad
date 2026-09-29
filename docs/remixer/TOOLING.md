@@ -20,7 +20,7 @@ target.
 `tools/` is grouped by what a tool is for. Every group directory is on
 `sys.path` for every tool (`tools/toolpath.py`), so tools import one
 another by bare name wherever they sit; a new script opens with the one
-line `hello-dram`'s verifier does.
+line `verify_dram_boot.py` does.
 
 | directory | what is in it |
 |---|---|
@@ -28,7 +28,7 @@ line `hello-dram`'s verifier does.
 | `tools/build/` | **the build** (`build_bus.py`) and the tools that understand the OS layout: the DSP load map, disassembly, reachability, the ELUP/`.bin` codecs, label and formatter emitters, cycle pricing |
 | `tools/verify/` | **the gates**: one `verify_*.py` per property, run by `make verify` |
 | `tools/harness/` | **hearing and measuring the DSP side** locally: the emulator harness (`dsp_host/`), `send_probe`, `render_reverb`, `rig_render` |
-| `tools/emu/` | **the ColdFire emulators**: the headless machine port (`ot_emu/`, C++) and the Unicorn bring-up (`emu_bringup`, `emu_card`, `emu_rtos`) |
+| `tools/emu/` | **the ColdFire emulators**: the headless machine port (`ot_emu/`, C++) and the Unicorn bring-up (`emu_bringup`, `emu_card`) |
 | `tools/hw/` | **the unit and its card**: MIDI control, capture, sweeps, project files, MIDI flashing |
 | `tools/patches/` | local patches to the vendored toolchains (dsp56300, elektron-firmware-tool, unicorn) |
 
@@ -51,20 +51,34 @@ ones — the DSP toolchain itself is plain CMake). It builds:
 
 | tool | from | what it is |
 |---|---|---|
-| `dsp_asm` | `vendor/dsp56300` | the DSP56300 assembler. It mis-encodes some instructions silently (`CLAUDE.md`'s trap list). `tools/patches/dsp56300.patch` adds the chip's one-word displaced move (displacement −64..63, data-ALU register); a word or cycle figure recorded before 14 Sep 2026 counts such a move as 2 |
+| `dsp_asm` | `vendor/dsp56300` | the DSP56300 assembler. It mis-encodes some instructions silently (`AGENTS.md`'s trap list). `tools/patches/dsp56300.patch` adds the chip's one-word displaced move (displacement −64..63, data-ALU register); a word or cycle figure recorded before 14 Sep 2026 counts such a move as 2 |
 | `dsp_host` | `tools/harness/dsp_host/` (staged into `vendor/dsp56300` and built there) | the emulator harness written here: runs assembled effects on the dsp56300 emulator core. `docs/remixer/HARNESS.md` |
 | `emu_bringup.py` | `tools/emu/` | Tier-0 ColdFire bring-up: boots the MAIN OS image on Unicorn's CFV4E core to the RTOS handoff (the remixer's emulator view). Needs `unicorn`: `make emu-setup` (uv, the `emu` extra). `docs/remixer/EMU.md` |
-| `ot_emu` | `tools/emu/ot_emu/` (`make emu-cf`) | the headless C++ port of the machine: boots the built image, loads a project from a staged card, runs the sequencer and both DSP cores. `docs/remixer/EMU.md`, `docs/history/COLDFIRE_PORT.md` |
+| `ot_emu` | `tools/emu/ot_emu/` (`make emu-cf`) | the headless C++ port of the machine: boots the built image, loads a project from a staged card, runs the sequencer and both DSP cores. `docs/remixer/EMU.md`, `docs/firmware/COLDFIRE_PORT.md` (O14i-O24; O1-O14: `git show 3ceba41:docs/history/COLDFIRE_PORT.md`) |
 | `ot_spec` | `tools/hw/ot_spec.py` | one JSON spec over a project's parts and patterns: `apply` (FX ids by module name, every knob by name, machine type, part names; per pattern track: length, scale, trigs, locks on every page by knob name — PLAYBACK, LFO, AMP, FX1, FX2 — with `clear`; the lock-trig mask follows), `report` (the same shape back), `diff` (two projects, field by field); checksum + read-back on `.work` and `.strd` |
 | `ot_bank` | `tools/hw/ot_bank.py` | the bank file's pattern records: `report` lock counts per page, `strip --pages fx1,fx2` clears them in every pattern (the stamper never touches patterns) |
-| `verify_character` / `verify_spectrum` / `verify_modulation` / `verify_nimbus` / `verify_hello` | `tools/verify/verify_<module>.py` | the module rendered through `dsp_host` on the audition's scratch image against predictable arithmetic or a float reference (in `make check` since 16 Sep 2026; Character's master path reads the shipping build) |
+| `verify_character` / `verify_spectrum` / `verify_modulation` | `tools/verify/verify_<module>.py` | the module rendered through `dsp_host` on the audition's scratch image against predictable arithmetic or a float reference (in `make check` since 16 Sep 2026; Character's master path reads the shipping build) |
 | `verify_spectrum_ident` | `tools/verify/verify_spectrum_ident.py` | bit-identity of a rewritten Spectrum against a saved reference (`make verify-spectrum-ident SAVE=1`, then without) |
+| `verify_usb` | `tools/verify/verify_usb.py` | the built image enumerated as a USB device under the port: Elektron 1935:0002, the MSC interface, INQUIRY and its CSW over EP1, no uninitialised queue head (`make verify`, 3 s) |
+| `usb_host` | `tools/harness/usb_host.py` | the scripted USB host for the port's bench (`ot_emu --usb-host SOCKET`): enumerate, mass storage, USB-MIDI in/out, drain an isochronous endpoint; octemu's protocol |
 | `verify_set` | `tools/verify/verify_set.py` | a real project on the built image under the port: ids, page-2 delivery, chain audio, the main out (`OT_PROJECT=<dir> make check`, or the path in `~/.octabam_project`) |
 | `elektron-firmware-tool` | `vendor/elektron-firmware-tool` (patched) | packs/unpacks Elektron's OS container formats |
 
 The disassembler from the same dsp56300 project is the other half:
 disassemble what you assemble, because the assembler's failure mode is
-clean assembly of wrong machine code.
+clean assembly of wrong machine code. Every `build_bus.assemble()` call
+runs `dsp_asm -list` against an independent `dsp56kDisassemble` decode of
+the same bytes and compares mnemonics (Jannik Aßfalg, PR #380, 22 Sep
+2026): a mismatch fails the build. `mpy` encoded as `mpysu` is the one
+mismatch the shipping code carries on purpose (AGENTS.md: second operand
+always non-negative at every site); those sites are counted per module in
+`build_bus.MPYSU_AUDITED`, a count that differs from the table fails the
+build with the site list, and a matching count prints nothing. A build
+under a flag that substitutes source (`PROBE`, `NOSHIM`, `MARKER`, a
+candidate engine) prints its counts instead of enforcing the table.
+`NOROUNDTRIP=1` disables the check. It cannot see a resolver picking the
+wrong ADDRESS for a symbolic operand (both tools decode the bytes dsp_asm
+wrote), the label-prefix trap: that one is still read by hand.
 
 ## 2. Acquiring and unpacking an OS
 
@@ -93,6 +107,8 @@ Two instruction sets, two toolchains:
 | `tools/build/dsp_disasm_all.py` | DSP | disassembles every P module of both payloads at its load address: one `.asm` per payload plus per-module binaries |
 | `tools/build/dsp_reach.py` | DSP | control-flow reachability sweep from the real entry points (dispatch tables, vectors, bootstraps) |
 | `scripts/disasm.sh` (`make disasm`) | ColdFire | radare2 on the decompressed MAIN OS with the right arch and base (m68k BE @ `0x40000400`); `emac` uses objdump, the only decoder that reads the ColdFire V4e extensions |
+| `tools/ghidra/ot_ghidra.py` (`make ghidra GHIDRA=<dir> [IMAGE=out/mainos_bus.bin]`) | both | one Ghidra project holding the MAIN OS and both DSP payloads, each with its memory map, peripheral names and vectors, and the dispatch tables' effects named, plus a built image with its DRAM runtimes unpacked (`tools/ghidra/README.md`). The DSP programs need the DSP56300 processor module in `tools/ghidra/processors/`: `make ghidra-install GHIDRA=<stock 12.1.4>` makes a copy of your Ghidra with it and the ColdFire EMAC patch |
+| `tools/build/where.py` (`make where A=<addr> [N=bytes]`) | ColdFire | every doc paragraph citing that address (file:line first), the nearest other cited addresses, and a `scripts/disasm.sh emac` window, in one command (Jannik Aßfalg, PR #380). The docs are scanned on each call; there is no index file to keep in step, and a finding about an address goes in its topical doc |
 
 ### Disassembling the ColdFire ✅ (Bryan T, 30 Aug 2026; re-read here)
 
@@ -123,7 +139,7 @@ the default m68k core does not decode this CPU.
 
 `tools/build/build_bus.py` is the builder (`make bus` = `XBUS=1 SPEC=1`).
 It builds a remix: a named selection of modules (`make bus REMIX=<name>`,
-default `bamsep26`; `make modules` lists the modules and the remixes,
+no default; `make modules` lists the modules and the remixes,
 `make remix` composes one interactively). Each `modules/<name>/manifest.py`
 declares one contribution against `tools/remix/schema.py`, and
 `tools/remix/ledger.py` refuses a selection whose modules collide.
@@ -156,13 +172,15 @@ Render on the desktop at ~6× real time instead of flashing.
 
 ## 6. Verifying
 
-`make check` is the floor for any change. The family, and what each proves:
+`make check` is the floor for any change; `docs/remixer/TESTING.md` is the
+mechanism (the two halves, module gates, `make reach`, shards, `make accept`,
+CI). The family, and what each proves:
 
 | tool | proves |
 |---|---|
 | `tools/build/cycle_count.py` (`make cycles`) | static per-sample cycle count of every module in the selected remix, plus the worst load one core can be asked for |
 | `tools/verify/verify_roll.py` / `verify_delay.py` | an alternate reverb / delay engine is bit-identical to the shipping one |
-| `tools/verify/verify_bus.py` (`make verify-bus`) | a bus-layout change is behaviour-preserving: 21 layouts, stamp-edit-compare (`docs/effects/XBUS.md`) |
+| `tools/verify/verify_bus.py` (`make verify-bus`) | a bus-layout change is behaviour-preserving over its case list (34 layouts on 28 Sep 2026), stamp-edit-compare (`docs/effects/XBUS.md`) |
 | `tools/verify/verify_menu.py` | the built choosers and descriptor clones against the chooser mechanism decompiled from the firmware, including formatter vs count and the name-field lengths |
 | `tools/verify/verify_slots.py` | static dead-store check on the reverb's r7 state block |
 | `tools/verify/verify_midi.py` | the note→PITCH interval path, locally, via a build override |
@@ -170,7 +188,7 @@ Render on the desktop at ~6× real time instead of flashing.
 | `tools/verify/verify_octakit.py`, `verify_midiscenes.py`, `verify_dram_boot.py` | the two ports' oracles; every DRAM remix booted under the port and its window read back |
 | `tools/verify/verify_dirtystate.py`, `verify_initregs.py`, `verify_replaces.py`, `verify_labels.py`, `verify_modenames.py`, `verify_hidden.py`, `verify_grains.py`, `verify_twocore.py`, `verify_onebus.py`, the per-module render gates | every module silent from a garbage block; no init writes r1; no stock effect hijacked; selects print their words on the emulated firmware; the mode formatter renames; hidden engines; the grain lever; both cores; the bus |
 | `tools/remix/selftest.py` | the resource ledger catches every collision it claims to, and every shipped remix is clean (part of `make check`) |
-| `scripts/refhash.sh` | a change to the build (not a module) changed nothing: 26 configurations, artifacts and build reports, bit-identical; save a baseline on a tree you trust first |
+| `scripts/refhash.sh` | a change to the build (not a module) changed nothing: 24 configurations, artifacts and build reports, bit-identical; save a baseline on a tree you trust first |
 
 ## 7. Hardware measurement and control
 
@@ -180,13 +198,17 @@ last section), the hardware rig — protocol in `docs/history/CAPTURE_18AUG.md`:
 | tool | what it does |
 |---|---|
 | `tools/hw/capture_hw.py` | records the unit through an audio interface and analyses the capture numerically |
+| `tools/hw/usb_counters.py` | USB AUDIO's ring counters (`--in`: USB AUDIO IN's) over their vendor requests, once or `--watch` |
+| `tools/hw/usb_probe.py` | a host session (sustained tone or open/close churn) against a unit on `usb-io`, both rings' counters polled while the stream is open, a verdict and a JSON report |
+| `tools/harness/usb_align.py` | the twenty-channel stream's MAIN-to-track alignment under the port: the tone project on a staged card, EP3 IN drained once the sequencer plays, the lag from each tone's phase in its track channel and in MAIN |
 | `tools/hw/rec.swift` | drop-free CoreAudio HAL recorder (compiled on demand); the ffmpeg/avfoundation path drops samples |
 | `tools/hw/ot_midi.py` | drives the Octatrack over CoreMIDI from the CLI: CC, notes, raw bytes |
+| `tools/hw/bcr2000.py` | programs a Behringer BCR2000 for the rig: BCL from the manifests (page-1 CCs + CC MAP's page 2), sent over SysEx with per-line acks or written for BC Manager |
 | `tools/hw/hw_sweep.py` | scripted sweeps: MIDI steps + capture + per-step metrics in one process |
 | `tools/hw/level_cap.py` | quick capture with peak/RMS/crest/clip-run reporting per channel |
 | `tools/hw/gain_pass.py` | gain-matches a whole project bank-by-bank over MIDI |
 | `tools/hw/ot_project.py` | reads and writes Octatrack project/bank files on the CF card: `stamp-defaults` after a layout change, `set-fx`, `stamp-slot`, `rigproj` |
-| `tools/hw/ot_soak.py`, `hw_bus_test.py`, `hw_knob_sweep.py`, `hw_flash7*.py`, `midi_flash.py`, `ot_clock.py` | a soak run that reports a freeze or the idle tick; synchronous-detection A/B of a parameter over MIDI; every knob's liveness; the one-aux bus claims driven over MIDI; OS flashing over MIDI; transport |
+| `tools/hw/ot_soak.py`, `hw_bus_test.py`, `hw_knob_sweep.py`, `hw_flash7.py`, `midi_flash.py`, `ot_clock.py` | a soak run that reports a freeze or the idle tick; synchronous-detection A/B of a parameter over MIDI; every knob's liveness; the one-aux bus claims driven over MIDI; OS flashing over MIDI; transport |
 | `tools/hw/ot_ladder.py` | the rig LADDER: one configuration per bank in a card project (effect selection without the panel), stepped by program change, each rung measured by level, spectrum and the tail after STOP (bus connected, reverb T60, delay time); `proj` / `run` / `analyse` / `summary` |
 | `tools/hw/decode_tempo_probe.py` | decodes captures from the tempo probe build, which streams the DSP's parameter staging block out through the audio |
 
@@ -202,3 +224,6 @@ last section), the hardware rig — protocol in `docs/history/CAPTURE_18AUG.md`:
 - Comments cite probes and tools that were pruned from the tree
   (`dsp/baseprobe.asm`, `tools/build/build_menu.py`, …); they live in git
   history as the provenance of measured numbers: `git show <sha>:<path>`.
+- Every DSP module `build_bus.py` assembles is disassembled and compared
+  against its own listing before the build finishes; `make where A=<addr>`
+  is the ColdFire-side lookup, on demand.

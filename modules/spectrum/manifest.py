@@ -6,9 +6,11 @@ decided from the allocator base at init). MODE selects the filter:
   * LADR -- the linear zero-delay Moog transistor ladder (audiojs/filter
     moogLadder, MIT), 24 dB/oct, resonance to the edge of self-oscillation
     at RES 127 and bounded there;
-  * LP / BP -- a driven Oberheim SEM zero-delay SVF (Zavalishin's
+  * SEM -- a driven Oberheim SEM zero-delay SVF (Zavalishin's
     trapezoidal form, audiojs/filter oberheim, MIT), the cutoff ramped per
-    sample across the block;
+    sample across the block; its SHPE knob (page 2, `---` in every other
+    mode) sweeps LP -> BP -> HP (0 / 64 / 127), an equal-power crossfade
+    between neighbours (27 Sep 2026; BP was its own MODE until then);
   * ISO -- an isolator (Airwindows Capacitor2); RES is the dielectric colour;
   * VOWL -- a three-formant bank (constant-peak-gain resonators) morphed
     across A E I O U by FREQ, RES narrowing the bands.
@@ -16,12 +18,13 @@ decided from the allocator base at init). MODE selects the filter:
 ENV (a block-peak follower, instant attack, LSP = release) and LDP (an LFO,
 LSP = speed) both move the cutoff; WDTH is mid/side width on the output.
 
-Every mpy is `mpy x0,y1`, the audited-signed form; every clip is the store
-limiter.
+Every mpy is `mpy x0,y1`, the audited-signed form, but the VOWL decode's
+`mpy x1,y1,b` (R' > 0, in build_bus.MPYSU_AUDITED); every clip is the
+store limiter.
 """
 
-from remix.schema import (ModeView, BusRole, Claims, DspSection, Formatter, Harness, Kind,
-                          MenuEntry, Module, Param, YBase)
+from remix.schema import (Gate, Category, Proof, ModeView, BusRole, CavePatch, Claims, DspSection, Formatter,
+                          FormatterReg, Harness, Kind, MenuEntry, Module, Param, YBase)
 
 _PLAIN = Formatter.PLAIN
 _STEP = Formatter.STEPPED
@@ -64,8 +67,10 @@ VOWL_ER = (
 MODULE = Module(
     name="spectrum",
     key="SPECTRUM",
-    kind=Kind.DSP_EFFECT,
-    doc="BamSep26 station: a filter pedal -- SEM LP/BP/HP, Airwindows Capacitor2, formants, the Moog ladder; ENV and LFO onto the cutoff; width.",
+    kind=Kind.HYBRID,                 # the engine + SHPE's display cave
+    category=Category.TRACK, author="sambanks", author_url="https://github.com/sambanks",
+    proof=Proof.HARDWARE, proof_note="Sam's MKII",
+    doc="FX1 station: a filter pedal -- the Moog ladder, SEM (LP -> BP -> HP by SHPE), Airwindows Capacitor2, formants; ENV and LFO onto the cutoff; width.",
     menu=MenuEntry(
         fx2_id=0x04,
         replaces="FILTER",            # stock FILTER's id: both menus, every part
@@ -79,7 +84,7 @@ MODULE = Module(
         Param(b"FREQ", 127, active=True, formatter=_PLAIN,
               doc="the cutoff, 60 Hz..15 kHz exponential; in VOWL the vowel A-E-I-O-U; ENV and LFO move it"),
         Param(b"RES", 0, active=True, formatter=_PLAIN, link=True,
-              doc="the flavour: resonance in LP/BP/LADR, sharpness in VOWL, the dielectric colour in ISO"),
+              doc="the flavour: resonance in SEM/LADR, sharpness in VOWL, the dielectric colour in ISO"),
         Param(b"ENV", 64, 128, active=True, formatter=_BIPOL,
               doc="the envelope follower onto the cutoff, drawn -64..+63; 0 = none"),
         Param(b"LDP", 0, active=True, formatter=_PLAIN,
@@ -90,28 +95,52 @@ MODULE = Module(
               doc="stereo width of the output, drawn -64..+63: 0 untouched, -64 mono, +63 double sides"),
         # ---- page 2: knob / select / knob / select / knob / select ----------
         # MODE top left (slot 6, the knob field), as on every effect (16 Sep 2026)
-        Param(b"MODE", 0, 5, active=True, formatter=_STEP,
-              labels=("LADR", "LP", "BP", "ISO", "VOWL"),
-              doc="LADR the Moog (first: the best one); LP/BP the SEM; ISO an isolator (Capacitor2); VOWL"),
-        _BLANK, _BLANK, _BLANK, _BLANK, _BLANK,
+        Param(b"MODE", 0, 4, active=True, formatter=_STEP,
+              labels=("LADR", "SEM", "ISO", "VOWL"),
+              doc="LADR the Moog (first); SEM the SVF (SHPE: LP -> BP -> HP); ISO (Capacitor2); VOWL"),
+        # SHPE on slot 7 ($c's companion field): the SEM's mode pot; `---`
+        # in every other mode (the views below).
+        Param(b"SHPE", 0, 128, active=True, formatter=_PLAIN,
+              doc="SEM only: 0 lowpass, 64 bandpass, 127 highpass, crossfaded; --- in the other modes"),
+        _BLANK, _BLANK, _BLANK, _BLANK,
     ),
     # FREQ is always where, RES always the flavour; a mode labels RES for
     # what it is there. ISO's defaults land by stamp and, with MODE DEFAULTS
     # in the remix, on a panel MODE turn.
     mode_slot=6,
-    mode_views=(ModeView(mode=3, names={0: b"LOW", 1: b"COLR"}, defaults={0: 127, 1: 64}),
-                ModeView(mode=4, names={0: b"VOWL", 1: b"SHRP"})),   # FREQ morphs A E I O U
+    mode_views=(ModeView(mode=0, names={7: b"---"}),
+                ModeView(mode=1, defaults={7: 0}),                    # SEM: SHPE lands on LP
+                ModeView(mode=2, names={0: b"LOW", 1: b"COLR", 7: b"---"}, defaults={0: 127, 1: 64}),
+                ModeView(mode=3, names={0: b"VOWL", 1: b"SHRP", 7: b"---"})),   # FREQ morphs A E I O U
     dsp=DspSection(
         asm="modules/spectrum/spectrum.asm",
         # G2_TABLE is read with p:(r5)+ and interpolated linearly per block.
         ptable=G2_TABLE + COS_TABLE + VOWL_ER,
         priority=12,                  # after every existing module
-        bus_role=BusRole.NONE,        # an insert that also WRITES the bus
+        bus_role=BusRole.NONE,        # an insert: no bus role
         ybase=YBase.NEVER,
         gate_label=None,              # no housekeeping, so no XBUS gate
     ),
     # FX1 only: the rig's cycle envelope closes only with the stations on
     # FX1. The FX2 chooser hides the row; verify_spectrum proves the dry pass.
     claims=Claims(fx1_only=True),
+    # SHPE prints LP / BP / HP at its stops (27 Sep 2026). The cave reads
+    # slot 7's name from the clone (CLONE_SPECTRUM, a build export), so its
+    # bytes depend on where the clone lands: the source is the only truth
+    # (emit returns no bytes; a build without the m68k toolchain refuses).
+    # Pinned in the 338 B zero run at 0x400c45b0 (docs/remixer/PLACEMENT.md):
+    # the clone window had 18 B left and the overflow run none, and a
+    # floating cave there moved MODULATION's 454 B label formatter out of
+    # both (the build refused). midisc's own build used this run on
+    # hardware; in the remixer its enc_unlock is DRAM, so nothing else here.
+    cf_patches=(CavePatch(
+        label="SHPE formatter", cave_addr=0x400c45b0, pinned=b"",
+        source="modules/spectrum/shpe_fmt.s",
+        emit=lambda _addr: (b"", ()),
+        registers_formatter=FormatterReg(module="SPECTRUM", slot=7),
+        report_note=", registered as Spectrum SHPE's formatter (LP / BP / HP at 0 / 64 / 127)",
+    ),),
     harness=Harness(layout_char="1", is_server=False, bus_client=False),
+    gates=(Gate('tools/verify/verify_spectrum.py', remix_arg=False),),
+    dear={'RES': 127, 'MODE': 3, 'ENV': 127, 'LDP': 127},   # MODE 3 = VOWL, the dearest loop (main, 27 Sep 2026)
 )

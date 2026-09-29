@@ -35,18 +35,24 @@ class).
 payload is initialised through the stock part initialiser on load; 48 B
 of runtime, one internal pointer literal, the stamp). abi.inc and the
 reload routine unchanged, so the bridge and the pinned returns stand;
-verify_octakit byte-exact, ok-ms green.
+verify_octakit byte-exact, ok-ms green. 23 Sep 2026: c6d3f39, her README
+only (four feature descriptions: UNDO KIT, FUNC+PASTE+PART, the
+PTN+FUNC+RIGHT chain, PTN+FUNC+TRIG on inactive Patterns); no source
+changed, the build is byte-identical.
 
 Her recipe rewrites the apply_part entry 0x40009094 and the scene-parameter
 writer 0x40052ae8; the ledger refuses any other module on those sites. CC
 PAGE 2 shares her MIDI CC dispatch entry through the SCENES KITS bridge.
+The page-1 writer 0x40054cd8 stays at its stock address but its dirty
+store checks her token above the arguments: TEMPO BUS and MODE DEFAULTS
+push it (P1TOKEN below; README "Calling the page-1 writer beside her").
 """
 
 import pathlib
 import re
 
 from remix import arena
-from remix.schema import ArenaReserve, Kind, Module, Runtime
+from remix.schema import Gate, Category, Proof, ArenaReserve, Kind, Module, Runtime
 
 _ABI = pathlib.Path(__file__).parent / "upstream/runtime/abi.inc"
 
@@ -60,10 +66,24 @@ def _pinned_returns() -> tuple[int, ...]:
                                     _ABI.read_text(), re.M)))
 
 
+# TEMPO BUS and MODE DEFAULTS call the stock page-1 writer with this token
+# pushed above its arguments (P1TOKEN in their sources), which is what lets
+# the call through her write marker. Read from her abi.inc so a change there
+# stops the build instead of halting the unit.
+P1TOKEN = 0x54500000
+_armed = re.search(r"^\.equ\s+GK_TRACK_PARAMETER_TOKEN_ARMED,(0x[0-9a-f]+)", _ABI.read_text(), re.M)
+if _armed is None or int(_armed.group(1), 16) != P1TOKEN:
+    raise SystemExit(f"OCTAKIT: abi.inc's GK_TRACK_PARAMETER_TOKEN_ARMED is "
+                     f"{_armed.group(1) if _armed else 'gone'}, not 0x{P1TOKEN:08x}: "
+                     f"update P1TOKEN in modules/tempo-bus/helpers.s and modules/mode-defaults/modedef.s")
+
+
 MODULE = Module(
     name="octakit",
     key="OCTAKIT",
     kind=Kind.CF_PATCH,
+    category=Category.PARTS, author="emuyia/ems-octakit", author_url="https://github.com/emuyia/ems-octakit",
+    proof=Proof.HARDWARE, proof_note="her build reproduced byte for byte; `ok-ms` on midisc's author's unit, 14 Sep 2026",
     doc="Em's Octakit: 256 Kits per Project instead of 64 Parts, built from "
         "her repo (submodule) as a loader-appended DRAM runtime.",
     runtime=Runtime(
@@ -79,4 +99,5 @@ MODULE = Module(
     # computes the geometry literals from the total (for her alone, her bytes).
     arena=ArenaReserve(pages=528, where="top",
                        recipe_writes=arena.OCTAKIT_RECIPE_WRITES),
+    gates=(Gate('tools/verify/verify_octakit.py', remix_arg=False),),
 )

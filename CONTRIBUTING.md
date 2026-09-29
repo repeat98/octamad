@@ -23,6 +23,32 @@ the same way. Keep a hook to whole instructions and the minimum span; data
 tables, routines and anything longer than the displaced instructions come
 from the user's image at build time.
 
+## Your first pull request
+
+1. Fork `sambanks/octabam` on GitHub and clone your fork with its
+   submodules:
+
+   ```bash
+   git clone --recurse-submodules https://github.com/<you>/octabam
+   cd octabam
+   git remote add upstream https://github.com/sambanks/octabam
+   ```
+
+2. `make setup` builds the toolchain: dsp56300 at its pin with our patch,
+   the ColdFire core, `elektron-firmware-tool` (`scripts/vendor.sh` holds
+   the pins). macOS with Homebrew; `docs/remixes/BUILDING.md` §1a for Linux/WSL2.
+3. `make os && make recon` turns **your own** copy of OS 1.40C into
+   `out/raw/section_3_MAIN_OS.bin`. Every build and most gates read it;
+   it never leaves your machine.
+4. Branch from `upstream/main`, write the module (next section), and run
+   the gates in [Before you open a PR](#before-you-open-a-pr).
+5. Open the PR against `sambanks/octabam:main`. The template asks for the
+   gates you ran and what was measured. CI runs on it; GitHub holds a
+   first-time contributor's first CI run until a maintainer approves it.
+
+Issues are turned off (`README.md`): a question about your change goes in
+its PR.
+
 ## A module
 
 One directory, `modules/<name>/`:
@@ -33,17 +59,33 @@ README.md       what it is, what was MEASURED, what is INFERRED, what is open
 <sources>       .s for the ColdFire, .asm for the DSP -- or `upstream/`, a submodule
 ```
 
-plus a remix that carries it (`remixes/<name>.py`) and, for anything with
-behaviour worth pinning, a gate (`tools/verify/verify_<name>.py`, added to
-`make verify`). Nothing else registers it: the registry discovers every
-`modules/*/manifest.py`, and refuses two modules on one key or one FX2 id.
+plus a remix that carries it (`remixes/<name>/remix.py`, or
+`remixes/test/<name>/remix.py` for a remix of that one module, and a
+`README.md` beside it: what is in it, where it has run;
+`docs/remixes/BUILDING.md` §8) and, for anything with behaviour worth pinning, a gate
+(`tools/verify/verify_<name>.py`, named in the manifest's `gates`, run by
+`make check` for every remix that carries the module). Nothing else
+registers it: the registry discovers every `modules/*/manifest.py`, and
+refuses two modules on one key or one FX2 id.
+
+The manifest's `category`, `author`, `author_url`, `proof` and `proof_note`
+are the README's module table (`make docs` renders it and the remix index
+from the manifests and the selections; the selftest refuses a module
+without them, `verify_docs` a stale copy). `proof` is one of `CHECK`,
+`RENDER`, `PORT`, `HARDWARE`; the note names the unit, image and date, or
+the gate. A remix declares `family` (`rig`, `effects`, `mods`,
+`reference`, `probes`) and the same `proof` pair.
+
+Settings a module keeps on the card (a checkbox, a profile) go in the
+shared OTX store once it exists, not in a file of the module's own;
+`docs/remixer/MODULES.md` "Settings on the card".
 
 Two skeletons and two worked examples:
 
 | you are writing | copy | then read |
 |---|---|---|
-| a ColdFire modification (parts, kits, menus, MIDI, fixes) | `modules/_template_cf/` | `modules/hello-dram/` (one DRAM unit, no hooks), then `modules/midi-scenes/` (a real one, built from its author's repo) |
-| a DSP effect | `modules/_template/` | `modules/hello/` (one knob, 27 words, its own render gate) |
+| a ColdFire modification (parts, kits, menus, MIDI, fixes) | `modules/_template_cf/` | `modules/repitch/` (one linked DRAM unit, detours and pokes), then `modules/midi-scenes/` (built from its author's repo as a submodule) |
+| a DSP effect | `modules/_template/` | `modules/character/` (an in-place insert, its own render gate `verify_character`) |
 
 `docs/remixer/MODULES.md` is the full guide; `docs/remixer/PLACEMENT.md` says
 where the bytes land and how much room there is.
@@ -100,16 +142,47 @@ because the author keeps developing where they are:
 
 ## Gates
 
-**`make check REMIX=<name>` is the floor**, for every remix you touched. It
-builds, prices cycles, runs the ledger selftest, the menu verification,
-the oracles and — for any remix with DRAM code — boots the image under the
-ColdFire port and reads each window back against the linked image. Never
+[`docs/remixer/TESTING.md`](docs/remixer/TESTING.md) is the mechanism:
+what `make check` runs, what each gate proves, what none of them can see.
+The contract:
+
+**`make check REMIX=<name>` is the floor**, for every remix the change
+reaches. There is no default remix: every target that builds or checks an
+image takes `REMIX=<name>` and refuses without it (`make modules` lists
+them). It builds, prices cycles, runs the gates every remix gets (the
+ledger selftest, the stock-id audit, the docs, the knob census, the
+dirty-state render, the menu, the boot under the ColdFire port, a project
+under the port, USB) and then every gate the selected modules declare in
+their manifests (`schema.Gate`). A remix without a module never runs that
+module's gates; a module without gates has only the shared ones. Never
 claim something works because it assembled.
+
+**`make reach`** reads the branch's diff against `origin/main` and prints
+the gates it reaches, in order; `RUN=1` runs them. By default it runs the
+QUICK tier (the remixes users flash that carry the change, no identity, no
+`make accept`, two shards, nice 10); `FULL=1` runs every gate
+at full speed, when you choose to (`docs/remixer/TESTING.md` §6 says what
+quick gives up). It refuses a tree that
+is not rebased onto the base. A change to a module reaches every remix
+that carries it; a change to the build reaches `scripts/refhash.sh check`,
+`make identity` and the cover (the fewest remixes that carry every
+module); a change to a gate reaches the remixes that run it; a doc change
+reaches `verify_docs`. TESTING.md §4 has the full routing.
+
+**`make accept`** is the strict form of the same gates: it refuses a
+`[SKIP]`, a swallowed failure or a missing instrument, prices every
+selectable layout, renders the dearest, and writes a versioned JSON report
+(`docs/remixer/ACCEPTANCE.md`). `STRESS_SOURCE=<a local project>` generates
+the fixture for the remix; `OT_PROJECT=<dir>` uses a project you prepared.
+The pressure stages run only when every DSP module in the selection
+declares its dearest settings (`schema.Module.dear`); a module without them
+blocks the remix, by name, never a render at defaults.
 
 **If you changed the build rather than a module, prove it changed
 nothing**: `scripts/refhash.sh save` on a tree you trust, then
-`scripts/refhash.sh check` — 26 configurations, artifacts *and* build
-reports, bit-identical. Every step of the DRAM platform landed under it.
+`scripts/refhash.sh check` (24 configurations, artifacts *and* build
+reports, bit-identical), and `make identity` (every remix, base against
+head).
 
 **Say what was measured and what was inferred**, in the README, with what
 would falsify each claim; retract in every document that repeated a
@@ -122,9 +195,52 @@ stamp-defaults`), read `docs/remixer/FLASHING.md` first, and record
 anything that goes wrong in `docs/remixer/FAILURE_MODES.md` the moment it
 is seen.
 
+## Before you open a PR
+
+Rebase onto current main, then run the gates on the rebased tree. Gates
+run before the rebase are not a result: a branch that merges without a
+conflict can still fail on main (PR #396's stress fixture named a knob
+that #415 had renamed).
+
+```bash
+git fetch upstream && git rebase upstream/main
+make reach BASE=upstream/main RUN=1 KEEP=1      # QUICK: every module or tool change
+STRESS_SOURCE=<a local project> make reach BASE=upstream/main FULL=1 RUN=1 KEEP=1 JOBS=3
+#   FULL=1 (optional): every gate, identity and accept included, at full speed
+#   KEEP=1: every gate, then one table (instead of stopping at the first failure)
+#   JOBS=3: the per-remix lines over three worktrees at a time
+```
+
+Without `STRESS_SOURCE` the accept line cannot run, so the list carries
+the `make check` lines separately and names the accept line as blocked.
+A remix with a DSP module that declares no `dear` makes `make accept`
+report `blocked` with the module's name; say so in the PR. List each
+command and its result in the PR body (`make reach`'s output is the list;
+the PR template asks for it).
+
+## What CI checks
+
+`.github/workflows/ci.yml` runs on every PR, on `main` and by hand
+(Actions → CI → Run workflow), on Ubuntu and macOS. It has no Elektron
+bytes, so it checks only what needs none:
+
+| job | make target | what it proves |
+|---|---|---|
+| gates the PR reaches | `make reach` | the diff classifies and the tree is rebased; the job log carries the gate list the PR body must answer (pull requests only) |
+| acceptance runner tests | `make test-acceptance` | `make accept` refuses skipped, failed, incomplete and over-budget evidence; `make reach` classifies paths as documented; the shard runner's job list covers the recipe |
+| dsp56300 + our patch | `make ci-dsp` | the vendored DSP emulator at its pin takes `tools/patches/dsp56300.patch`, builds, passes upstream's own test runner, and `dsp_asm` emits the one-word displaced move (`make check-asm`) |
+| ColdFire port unit tests | `make ci-emu` | `tools/emu/ot_emu` builds against the pinned cores and passes its EMAC and peripheral unit tests |
+
+The port's `rtos`, `dsp` and `repitch` tests read the stock OS and are
+excluded from CI by name. **A green CI run says nothing about a
+remix**: building, booting and playing one needs 1.40C, which is why the
+gates above run on your machine. Actions are pinned to commit SHAs (the
+repository requires it); a bump is a PR that changes the SHA and the
+version comment beside it.
+
 ## Etiquette
 
-- Read the traps in `CLAUDE.md` before trusting an assembler, an
+- Read the traps in `AGENTS.md` before trusting an assembler, an
   emulator, or a null result.
 - Collisions are refused by name; `make modules` prints the matrix. If
   your module cannot share an image with another, say so in its README

@@ -46,23 +46,20 @@ writes back the length that was already there: a bit-exact no-op, proven
 for all 11,208 (tempo, RLEN) pairs and observed over 21,000 emulator calls
 at 65.6.
 
-The `recfix` remix is these three and the fourteen stock FX2 effects
-(every octabam image rebuilds the FX2 chooser from the remix's contents;
-listing the stock effects costs nothing and keeps the unit normal).
+The `mods` remix carries these (with the other ColdFire mods) on the fourteen stock FX2 effects; `recfix`, the remix of these fixes alone, was removed on 28 Sep 2026 (`git show 13eb3339:remixes/recfix/remix.py`).
 
 ```bash
 git clone --recurse-submodules https://github.com/sambanks/octabam
 cd octabam
 make setup
 make os && make recon
-make check REMIX=recfix
-make image REMIX=recfix BUILD=84         # -> out/OCTATRACK_OCTABAM84.bin
+make check REMIX=mods
+make image REMIX=mods BUILD=84         # -> out/OCTATRACK_OCTABAM84.bin
 ```
 
-`docs/remixes/BUILDING.md` is the walk-through. Always pass `REMIX=recfix`
-to `make check`, `make bus` and `make image` alike (the Makefile's default
-is a different remix and every verifier reads the one image at
-`out/mainos_bus.bin`). Sam's build of that image is sha256 `ecb574a9…`;
+`docs/remixes/BUILDING.md` is the walk-through. Always pass `REMIX=mods`
+to `make check`, `make bus` and `make image` alike (there is no default
+remix, and every verifier reads the one image at `out/mainos_bus.bin`). Sam's build of that image is sha256 `ecb574a9…`;
 yours should match if your stock 1.40C does (`370c55a3…`).
 
 ## 3. How to test it
@@ -117,13 +114,50 @@ Not proven:
   position): something else, untested. An occasional tick that is not
   once-per-bar is probably this.
 
-## 5. Where the detail is
+## 5. Sound-on-sound (SRC3 = the track)
+
+Bryan T, 12 Sep 2026, on OCTABAM84 in his sound-on-sound setup: still a
+click, every other pass at RLEN 16 at 128 BPM. The port reproduces it
+(26 Sep 2026) and it is a different mechanism from §1, present on stock
+firmware too:
+
+- With a REC3 trig (SRC3 = T1) on the step of the PLAY trig, the recorder
+  arms 64 samples later than with REC1 alone, so the play trig binds before
+  the arm and the voice plays the PREVIOUS pass: the output is the input one
+  bar + 64 samples later (REC1 alone: 64 samples, the pass being recorded).
+- The voice's window is the current arm spacing; its content is the previous
+  pass, one spacing earlier. At 128 BPM they alternate 82,687 / 82,688, so on
+  every pass where the window is one sample longer the voice reads index END,
+  where no block is mapped, and plays one zero sample. SRC3 records it back
+  into the loop. The passes one sample shorter skip one sample instead.
+- `RECORDER SPACING` changes nothing here: the next arm ends each recording,
+  so stock and `recfix` record the same lengths.
+- The fixture in §3 (REC1 only) and a 1 kHz tone (1,875 cycles per bar at
+  128 BPM, so a sample one bar old has the same value) cannot show it.
+
+`RECORDER HOLD` (in `mods`) repeats the last sample in place of the zero.
+In a remix with a DRAM runtime the caves follow the moved arena base (the
+build report prints `arena: hold cave ...`); a build of main before that
+change carries caves that never fire in such a remix.
+Port results and conditions: `modules/recorder-hold/README.md`. The
+one-sample skip or repeat when the loop length changes by one stays: a loop
+whose period is not a whole number of samples cannot be seamless in whole
+samples. At a tempo whose bar is a whole number of samples (120 among them)
+the window and the content always match and sound-on-sound is clean without
+a patch.
+
+On hardware (Bryan T, 26 Sep 2026, his USB recording remix with the caves
+following the moved base): 128 BPM / RLEN 16 still clicks every other pass.
+The port shows the caves firing on those wraps in the same configuration.
+Open: whether the caves fire on the unit.
+
+## 6. Where the detail is
 
 - `docs/history/RTOS_FORK.md` §10.53 (the diagnosis and the tempo table),
   §10.55 (a fix that failed), §10.56-10.57 (the cave and its gates), §10.58
   (the hardware result)
-- `modules/recorder-spacing/`, `modules/flex-seekbind/`,
+- `modules/recorder-spacing/`, `modules/recorder-hold/`, `modules/flex-seekbind/`,
   `modules/flex-seekbind-ctr/`
-- `remixes/recfix.py`, `docs/remixes/recfix.md`
+- `remixes/mods/remix.py`, `remixes/mods/README.md` (`remixes/recfix/` until 28 Sep 2026)
 - `out/hw/softretrig/tempo_seam.py`, `lever_e.py` (the arithmetic gate,
   115,200 cases)

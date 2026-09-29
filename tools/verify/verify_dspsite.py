@@ -2,6 +2,7 @@
 """DSP sites (schema.DspSite): the splice does what it declares and nothing else.
 
     python3 tools/verify/verify_dspsite.py [REMIX ...]      # default: every remix that carries a site
+    (the controls -- corrupted builds that must fail -- run unless --no-selftest)
     OT_PROJECT=<dir> python3 tools/verify/verify_dspsite.py  # + the port half
 
 For each remix that carries a DSP site the remix is built and, independently
@@ -320,8 +321,8 @@ def main():
     ap.add_argument("remix", nargs="*")
     ap.add_argument("--project", default=os.environ.get("OT_PROJECT", ""))
     ap.add_argument("--frames", type=int, default=300)
-    ap.add_argument("--selftest", action="store_true",
-                    help="also corrupt a built image four ways and require the gate to fail each")
+    ap.add_argument("--no-selftest", action="store_true",
+                    help="skip the controls: corrupt a built image and require the gate to fail each")
     a = ap.parse_args()
     if not STOCK.exists():
         print("  [SKIP] verify_dspsite: no stock image (make os)")
@@ -334,10 +335,10 @@ def main():
     stock_img = STOCK.read_bytes()
     for name in names:
         built, mods = structural(name, stock_img)
-        if a.selftest:
+        if not a.no_selftest:
             selftest(name, stock_img)
         if a.project:
-            port_half(name, built, mods, a.project, a.frames, control=a.selftest)
+            port_half(name, built, mods, a.project, a.frames, control=not a.no_selftest)
         else:
             print(f"  [SKIP] {name}: port half -- no project (OT_PROJECT=<dir> or --project)")
     print(f"verify_dspsite: {fails} failure(s)")

@@ -277,7 +277,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--station", required=True); ap.add_argument("--knob", required=True)
     ap.add_argument("--fixed", action="append", default=[])
-    ap.add_argument("--image", default="out/mainos_bus.bin"); ap.add_argument("--remix", default=os.environ.get("REMIX", "bamsep26"))
+    ap.add_argument("--image", default="out/mainos_bus.bin"); ap.add_argument("--remix", default=os.environ.get("REMIX"))
     ap.add_argument("--out", required=True)
     ap.add_argument("--probe", choices=("noise", "sine", "burst", "lfo", "impulse"), default="noise")
     ap.add_argument("--seconds", type=float, default=4.0, help="probe length for lfo / impulse")

@@ -25,10 +25,8 @@ under the ColdFire port and the Python emulator (`docs/firmware/REPITCH.md`,
 and the module binds no keys, so the same build serves it; not yet run on
 an MKI. Image 80 drew the panel right but kept the sample's tempo and
 sounded stretched: the renderer still moved the sample by output samples
-(`docs/remixer/FAILURE_MODES.md`, fixed since).
+(`docs/firmware/REPITCH.md`, fixed since).
 
 ## Open
 
-- The first flash heard no repitch; the port cannot reproduce it
-  (`docs/remixer/FAILURE_MODES.md`).
 - Slices and the recorder buffers are not measured.

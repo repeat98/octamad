@@ -8,10 +8,12 @@ remix the DSP-site gate builds (tools/verify/verify_dspsite.py) and the one a
 new mixer grows from (docs/proposals/MIXER.md). Not flashed.
 """
 
-from remix.schema import Remix
+from remix.schema import Proof, Remix
 
 REMIX = Remix(
     name="dspsite",
+    family="reference", proof=Proof.PORT,
+    proof_note="`verify_dspsite`: the pair is byte-identical to the image without the jumps under the port (29 Sep 2026)",
     doc="The stock effects (no reverbs) and the stock mixdown and seam through DSP sites.",
     modules=("MIXDOWN COPY", "MIXER SEAM", "FILTER", "EQUALIZER", "DJ EQ", "PHASER",
              "FLANGER", "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI",

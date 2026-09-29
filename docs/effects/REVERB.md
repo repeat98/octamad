@@ -34,15 +34,17 @@ chain in ─► 4 series allpasses ─► ┌─ FDN tank ───────�
   words, taps 298/446, LFO-modulated at a fixed non-zero depth.
 - Out: L/R tap sums before the FWHT, sign patterns `+−+−+−+−` and
   `++−−++−−`; shimmer (a pitch shifter in a 2048-word line; `NOSHIM=1`
-  excises it); GATE; mid/side width (pinned wide); the stage crossfade.
-- The 4096-word pre-delay buffer is mapped and never read (PRE retired).
+  excises it); GATE; mid/side width (pinned wide); the wet high-cut; the
+  host print `dry + 2 × wet × GLVL × WET`.
+- The 4096-word pre-delay buffer is mapped and cleared by the warm-up,
+  never read or written otherwise (PRE retired).
 
 ## Parameters
 
 | page | slot | label | reads | function |
 |---|---|---|---|---|
 | 1 | 0 | SEND | `r6+$0` | this host's own dry into the aux bus (3-bit headroom, counted through `Y:0x981`, `0x941` until 22 Sep 2026); default 0 |
-| 1 | 1 | TIME | `r6+$1` | feedback 0.875..0.999 via the mode's `k_mode` |
+| 1 | 1 | TIME | `r6+$1` | the tank law `$1e = a − k_mode·(d_min + d_span·(1−t)²)`, per-line gains `G_i = a + r_i·($1e − a)` (README.md: RT60 ROOM 0.87–3.9 s, PLATE 0.9–4.4, BIG 1.6–11.7) |
 | 1 | 2 | SIZE ⌐ | `r6+$2` | scales all eight taps within the mode; floor `f = 0.4` (~1,810 samples, 24 Hz mode spacing); glided 1/64 per block since 20 Sep 2026 (state `y:$09f3`, zeroed at init, clamped to f's range); drawn linked to TIME |
 | 1 | 3 | SHMR | `r6+$3` | shimmer amount, 0 off (bit-identical to no shimmer) |
 | 1 | 4 | SHFT ⌐ | `r6+$4` | shimmer interval, 4 steps: +12 / +19 / +7 / −12; drawn linked to SHMR; the first stepped select on a page 1 (✅ image 29: draws its words) |
@@ -50,7 +52,7 @@ chain in ─► 4 series allpasses ─► ┌─ FDN tank ───────�
 | 2 | 6 | MODE | `$c` bits 16–23 | 0 ROOM, 1 PLATE, 2 BIG; slot 6 since 4 Sep 2026 (an even slot is one the panel's page-2 editor writes) |
 | 2 | 7 | TONE | `$c` bits 8–15 | LO + HI on one knob: 0..64 = LP 0..127 with HP off, 64..127 = HP 0..126 with LP open; 64 = flat |
 | 2 | 8 | DIFF | `$d` bits 16–23 | allpass coefficient ~0.38–0.80 |
-| 2 | 9 | GATE | `$d` bits 8–15 | gated reverb: 0 off; hold ~46–780 ms before the wet shuts; envelope keyed on the tank input (`$1b`), fast attack, ~20 ms eased release, per-sample multiply on the wet |
+| 2 | 9 | GATE | `$d` bits 8–15 | gated reverb: 0 off; hold `2048 + GATE×256` samples = 52 ms (1) .. 784 ms (127) before the wet shuts; envelope keyed on the tank input (`$1b`), fast attack, ~20 ms eased release, per-sample multiply on the wet |
 | 2 | 10, 11 | — | | (the tank modulation is pinned at MOD 30 / RATE 1× inside the engine since 15 Sep 2026; page 2 fills from the top left) |
 
 The layout is the 16 Sep 2026 knob pass (before it: SEND TIME SHMR SIZE TONE
@@ -94,17 +96,22 @@ the base literal per payload); 65,536 words per server:
 |---|---|---|
 | `base+0x0000..0x7fff` | 8 × 4096 | tank lines, taps to ~3914 (89 ms) at SIZE max |
 | `shared+0x0800..` | 2048 | shimmer line |
-| `shared+0x1000..0x1fff` | 4096 | former pre-delay, never read |
-| `shared+0x2000..0x3fff` | 4 × 2048 | input allpasses |
+| `shared+0x1000..0x1fff` | 4096 | former pre-delay: cleared by the warm-up, never read or written otherwise |
+| `shared+0x2000..0x3fff` | 4 × 2048 | input allpasses, taps 641/1051/1511/1949 |
 | `shared+0x4000` / `0x4200` | 2 × 512 | in-loop allpasses |
-| `shared+0x4500..` | 13 words/line | tank state tables A (tap loop) and B (write-back), 104 of 256 |
+| `shared+0x4500..0x453f` | 8 × 6 + 8 × 2 | tank state table A (tap loop: read offset, fraction, d0 carry, damping state, LO state, output) at `+0x4500`, table B (feedback: weight, gain) at `+0x4530` |
+| `shared+0x4800` / `0x5000` | 2 × 2048 | bloom allpasses (output branch), taps 1801/1291 |
 
-r7 block: `$00..$83` in use, `$84+` hangs the DSP; `$82` warm-up counter
-(`$2c0000 | blocks`, capped 0x100), `$83` write phase; the asm header is the
-slot map. The warm-up zeroes the allocation 128 words a block over 256
+r7 block: `$84+` hangs the DSP; `$82` warm-up counter (`$2c0000 | blocks`,
+capped 0x100), `$83` write phase; the asm header is the slot map, from a
+census of the source (23 Sep 2026: sixteen slots unreferenced, listed
+there). The warm-up zeroes the allocation 128 words a block over 256
 blocks and outputs dry until warm. One BusVerb per bank (role lock); a
-second instance returns as a passthrough. Every address register is
-committed in the sample loop; the rolled tank loops walk the Y state table.
+second instance returns as a passthrough. In the sample loop r0 is the
+audio, r1–r3 the line-0..2 pointers (lines 3–7 are addressed from r3 by
+stride), r4/r5/r6 walk the u vectors, the feedback tables and the state
+table, n0 carries the allpass phase and n2/n3 the aux write/read
+pointers; n1 is the line stride, n4–n6 table strides and taps.
 
 ## Engine rules
 

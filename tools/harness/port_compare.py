@@ -3,7 +3,7 @@
 does `rig_render` (mixer model included) match the ColdFire port?
 
     python3 tools/harness/port_compare.py --project out/o9d/proj_t1eqA --remix bus
-    python3 tools/harness/port_compare.py --project PROJ --image out/mainos_bus.bin --remix bamsep26 \\
+    python3 tools/harness/port_compare.py --project PROJ --image out/mainos_bus.bin --remix bottleservice \\
         --tracks 1,2,5,8 --frames 400
 
 The port (`tools/emu/ot_emu`) boots IMAGE, loads PROJECT from a staged card,
@@ -92,14 +92,14 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--project", required=True, help="project dir (copied; never written)")
     ap.add_argument("--image", default=str(STOCK), help="the image the PORT boots (a built out/mainos_bus.bin, or stock)")
-    ap.add_argument("--remix", default="bus", help="which remix that image is (rig_render resolves ids by it; stock ids always resolve)")
+    ap.add_argument("--remix", default=os.environ.get("REMIX"), help="which remix that image is (rig_render resolves ids by it; stock ids always resolve)")
     ap.add_argument("--set-name", default="OCTABAM")
     ap.add_argument("--name", default="RIG", help="the project's name on the card")
     ap.add_argument("--bank", type=int, default=1)
     ap.add_argument("--part", type=int, default=1)
     ap.add_argument("--tone", default=str(TONE), help="8-channel wav onto RX0 slots 0..7")
     ap.add_argument("--frames", type=int, default=400, help="sequencer frames to run under the port")
-    ap.add_argument("--load-ms", type=int, default=20000)
+    ap.add_argument("--load-ms", type=int, default=90000)
     ap.add_argument("--main-level", type=int, default=64)
     ap.add_argument("--tracks", default="", help="1,2,5 (default: every track whose chain input is not silent)")
     ap.add_argument("--master-off", dest="master_off", action="store_true", default=True)

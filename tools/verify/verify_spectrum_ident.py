@@ -52,7 +52,7 @@ def params(**kw):
 
 def render(samples, **kw):
     """samples: MONO ints in Q23 -- dsp_host feeds one stream to both
-    channels (verify_hello's shape). Returns (L, R) lists."""
+    channels (the render-gate shape). Returns (L, R) lists."""
     src = TMP / "fs_in.raw"
     src.write_bytes(b"".join(struct.pack("<i", m) for m in samples))
     out = TMP / "fs_out.raw"

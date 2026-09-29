@@ -74,14 +74,16 @@ REVERB_ID = SERVER_ID.get("R")
 SEND_ID = SERVER_ID.get("S")
 DELAY_ID = SERVER_ID.get("D")
 
-REV_FLAGS = {"time": "TIME", "mix": "WET", "raux": "SEND",
+REV_FLAGS = {"time": "TIME", "mix": "WET", "raux": "REV",  # the host's own REV send (slot 0 SEND until 26 Sep 2026)
+             "rdel": "DEL",
              "shmr": "SHMR",                  # page-1 slot 2 since 15 Sep 2026 (MOD's; the tank mod is pinned)
              "rmode": "MODE", "width": "SHFT", "gate": "GATE",
-             "rtone": "TONE"}
+             "rtone": "TONE", "rdly": "DLY"}
 DELAY_FLAGS = {"dtime": "TIME", "dfdbk": "FDBK", "dtone": "TONE",
-               "dping": "PING", "dmix": "WET", "din": "SEND",
+               "dping": "PING", "dmix": "WET", "din": "DEL",   # the host's own DEL send (SEND until 26 Sep 2026)
+               "drev": "REV",
                "dmode": "MODE", "drate": "DENS", "dptch": "SIZE",
-               "dspray": "SCAT", "dpitch": "PTCH", "dwow": "WOW"}
+               "dspray": "SCTR", "dpitch": "PTCH"}   # WOW went 26 Sep 2026
 
 
 def _slots(key, flags):
@@ -196,7 +198,7 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
             # the image dispatches to the fallback (SPEC aliases it to SEND),
             # which renders a PLAUSIBLE DRY PASSTHROUGH -- peak == amp, THD at
             # the noise floor, no error anywhere. Reproduced with
-            # --pick B against a `bus` image (no BodeShift in it). Check
+            # --pick of a module against an image that does not carry it. Check
             # which code the entry actually points at before running it.
             if c != "S" and ep[c] == entry_points(mem, SERVER_ID["S"]):
                 _m = registry.by_id(SERVER_ID[c])
@@ -418,10 +420,15 @@ def write_wav(path, L, R):
         w.writeframes(bytes(b))
 
 
-REV_PARAMS  = [0, 64, 0, 127, 64, 127, 0, 0, 64, 0, 0, 0]   # slot 2 = SHMR since 15 Sep 2026 (the tank mod is pinned; slots 7/11 blank)
+# 26 Sep 2026: DEL / REV on slots 0 / 1 and TIME on slot 11 (TIME was slot 1,
+# the host's REV send slot 0), so every knob here keeps its old value and
+# meaning; DEL is new and 0. Slot 10 = DLY, 127 = its default (25 Sep 2026).
+REV_PARAMS  = [0, 0, 0, 127, 64, 127, 0, 0, 64, 0, 127, 64]
 # send: x:(r6+0) = AUX, the one send; main() sets it from --level
 SEND_PARAMS = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-DELAY_PARAMS = [0, 40, 60, 100, 64, 127, 0, 0, 64, 0, 64, 0]
+# 26 Sep 2026: DEL / REV on slots 0 / 1, TIME on slot 11 (was slot 1); WOW,
+# slot 11 until then, is gone. REV is new and 0.
+DELAY_PARAMS = [0, 0, 60, 100, 64, 127, 0, 0, 64, 0, 64, 40]
 
 
 def main():
@@ -437,6 +444,8 @@ def main():
     ap.add_argument("--amp", type=float, default=0.5, help="tone amplitude FS")
     ap.add_argument("--level", type=int, default=127,
                     help="SEND AUX level 0..127 -- the ONE send (7 Sep 2026)")
+    ap.add_argument("--rlevel", type=int, default=None,
+                    help="SEND's REV 0..127 (slot 1); default --level. --dlevel sets DEL.")
     ap.add_argument("--dlevel", type=int, default=None,
                     help="alias of --level (there is one bus now; kept so old\n"
                          "command lines parse). If both are given --dlevel wins.")
@@ -444,6 +453,9 @@ def main():
                     help="reverb WET 0..127 (slot 5, default 127): the reverb's\n"
                          "level on top of the chain input, which passes at\n"
                          "unity (15 Sep 2026; a crossfade before).")
+    ap.add_argument("--rdly", type=int, default=None,
+                    help="reverb DLY 0..127 (page-2 slot 10, default 127): how much\n"
+                         "of the delay's repeats the chain carries into the reverb.")
     ap.add_argument("--raux", "--rin", "--rdel", type=int, default=0, dest="raux",
                     help="reverb AUX 0..127 (slot 0): the host's own dry send\n"
                          "into the one aux bus. 0 = not a client. --rdel and\n"
@@ -497,9 +509,6 @@ def main():
                     help="delay PTCH select 0..3 (slot-9 companion; DINT=\n"
                          "equivalent). Interval in PITCH, interval SET in\n"
                          "GRAIN, segment SIZE in REVERSE.")
-    ap.add_argument("--dwow", type=int, default=None,
-                    help="delay WOW 0..127 (slot-11 companion): tape wobble\n"
-                         "depth on the loop tap, every mode")
     ap.add_argument("--rmode", type=int, default=None,
                     help="reverb MODE 0..2 via the slot-7 COMPANION field\n"
                          "(0=ROOM 1=PLATE 2=BIG) -- the --dmode twin. Default\n"
@@ -507,8 +516,8 @@ def main():
                          "reachable mode here until 18 Aug 2026 (the panel\n"
                          "boots BIG; renders wanting it must say so).")
     ap.add_argument("--shft", "--width", type=int, default=None, dest="width",
-                    help="reverb SHFT 0..3 (slot-9 companion): shimmer\n"
-                         "interval +12/+19/+7/-12. Was WIDTH until v6\n"
+                    help="reverb SHFT 0..5 (page-1 slot 4): shimmer\n"
+                         "interval -12/+5/+7/+12/+19/+24. Was WIDTH until v6\n"
                          "(23 Aug 2026; width is pinned wide now); --width\n"
                          "still parses so older command lines do not break,\n"
                          "but it selects the interval, not the image.")
@@ -594,14 +603,15 @@ def main():
         rev[_rs[_f]] = _v
     for _f, val in (("rmode", a.rmode), ("width", a.width),
                     ("gate", a.gate),
-                    ("rtone", a.rtone)):
+                    ("rtone", a.rtone), ("rdly", a.rdly)):
         if val is not None:
             rev[_rs[_f]] = val
     if a.dvrbw is not None:
         print("note: --dvrbw is retired -- the delay feeds the reverb unconditionally (one aux)")
     # ONE bus: the SEND's one knob, whichever server is measured.
     snd = list(SEND_PARAMS)
-    snd[0] = a.dlevel if a.dlevel is not None else a.level     # AUX, x:(r6+0)
+    snd[0] = a.dlevel if a.dlevel is not None else a.level     # DEL, x:(r6+0)
+    snd[1] = a.rlevel if a.rlevel is not None else a.level     # REV, x:(r6+1)
     wsrc = None
     if a.infile:
         sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
@@ -612,7 +622,7 @@ def main():
     dpar = None
     if any(v is not None for v in (a.dtime, a.dfdbk, a.dmix, a.din, a.dpitch,
                                    a.dtone, a.dping, a.dspray, a.dmode,
-                                   a.drate, a.dptch, a.dwow)):
+                                   a.drate, a.dptch)):
         dpar = list(DELAY_PARAMS)
         _ds = _slots("DELAY SERVER", DELAY_FLAGS)
         for _f, val in (("dtime", a.dtime), ("dfdbk", a.dfdbk),
@@ -620,7 +630,7 @@ def main():
                         ("dmix", a.dmix), ("din", a.din), ("dpitch", a.dpitch),
                         ("dmode", a.dmode),
                         ("drate", a.drate), ("dptch", a.dptch),
-                        ("dspray", a.dspray), ("dwow", a.dwow)):
+                        ("dspray", a.dspray)):
             if val is not None:
                 dpar[_ds[_f]] = val
     ins = None
@@ -713,7 +723,7 @@ def main():
     path = (f"{_srv} on its own track (--direct)" if a.direct
             else f"SEND -> bus -> {_srv}")
     print(f"{a.label}:  tone {TONE_HZ:.2f} Hz through {path} "
-          f"(amp {a.amp}, AUX {snd[0]})")
+          f"(amp {a.amp}, DEL {snd[0]}, REV {snd[1]})")
     if thd is None:
         print(f"  !! SILENT (peak {pk:.2e}, rms {rms:.2e}) -- the bus carried nothing.")
         print("     A silent render is a FAILED measurement, not a clean one.")

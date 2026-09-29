@@ -80,7 +80,7 @@ the per-track record `0x80000510 + 48·t` byte 28; `AUTO` (1) takes the bound
 sample's `TSMODE` (settings `+0x110`); a PICKUP (voice `+20` = 4) with 0
 gets 2; a loop region under 6,144 frames gets 0. The result is voice
 `+24` (voices `0x800049d8 + 168·t`, bound settings pointer at `+8`, machine
-at `+20`). (The `TIMESTRETCH_PIPELINE.md` notes of 31 Jul call voice `+0x18`
+at `+20`). (Notes of 31 Jul, since removed, called voice `+0x18`
 a channel count; it is this resolved TSTR. Their addresses are 0x400 low:
 they assumed the image loads at `0x40000000`.)
 
@@ -139,7 +139,8 @@ tempo if it is short (`0x40095ee0`); the ATTR tempo editors clamp to
 
 ## Tests
 
-- `python3 tools/verify/verify_repitch.py [REMIX]` (in `make verify`): the
+- `python3 tools/verify/verify_repitch.py [REMIX]` (the manifest's gate,
+  run by `make check` for a remix carrying REPITCH): the
   hook contracts, the page drawings, and with `OT_PROJECT` the playback
   cases.
 - `out/emu/ot_repitch_stock_test [--patched IMAGE]`

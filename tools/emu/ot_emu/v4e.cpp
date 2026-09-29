@@ -23,7 +23,7 @@
 // ⚠️ EVERY ENCODING HERE IS VERIFIED AGAINST `m68k-elf-objdump -m m68k:cfv4e`
 // ON THE REAL IMAGE, never against a reading of the manual alone. This
 // project has been bitten twice by a plausible encoding that assembled and did
-// the wrong thing (`CLAUDE.md`: the assembler's `mpysu` family, `tfr a,b` as
+// the wrong thing (`AGENTS.md`: the assembler's `mpysu` family, `tfr a,b` as
 // `rnd b`), and the emulator half cost a week this month (three defects in
 // Unicorn's EMAC, each producing a confident wrong finding). The boot's own
 // first two are the worked example:
@@ -388,9 +388,20 @@ namespace ot::v4e
 		}
 
 		// The extension registers, exactly as route A's `get_mac_extf` /
-		// `get_mac_exti` / `set_mac_extf` read and write them. Nothing this
-		// firmware does reaches them on the M6c path; they are here so that a
-		// path that DOES cannot quietly get a different answer.
+		// `get_mac_exti` / `set_mac_extf` / `set_mac_exti` read and write
+		// them: in fractional mode ACCext holds each accumulator's eight
+		// extension bits and eight low bits; in integer mode its sixteen
+		// extension bits. The frame ISR reaches BOTH directions every frame,
+		// in integer mode: `clrl %d0; movel %d0,%macsr; movel %accext01,%d4;
+		// movel %accext23,%d5` at 0x4000ac96 saves the interrupted context and
+		// `movel #0,%macsr; ...; movel %d4,%accext01; movel %d5,%accext23` at
+		// 0x4000d968 restores it. Until 23 Sep 2026 the write knew only the
+		// fractional layout, so every restore put the low byte of the saved
+		// extension word into ACCn[7:0] and the wrong bits above bit 31
+		// (0x12345678 came back 0x123456ab; the extensions read back 0xfe008900
+		// for 0xfedc89ab) -- found by Jannik Assfalg's A/B/A of a ColdFire
+		// patch whose integer-mode MAC loop was interrupted mid-accumulation.
+		// The EMAC gate holds both layouts now.
 		uint32_t accExtRead(const uint32_t _lo)
 		{
 			const auto a0 = static_cast<uint64_t>(g_emac.acc[_lo]);
@@ -406,6 +417,16 @@ namespace ot::v4e
 
 		void accExtWrite(const uint32_t _lo, const uint32_t _v)
 		{
+			if(!(g_emac.macsr & g_macsrFractional))
+			{
+				int64_t res = static_cast<int64_t>(static_cast<uint32_t>(g_emac.acc[_lo]));
+				res |= static_cast<int64_t>(static_cast<int16_t>(_v)) << 32;
+				g_emac.acc[_lo] = res;
+				res = static_cast<int64_t>(static_cast<uint32_t>(g_emac.acc[_lo + 1]));
+				res |= static_cast<int64_t>(static_cast<int32_t>(_v & 0xffff0000)) << 16;
+				g_emac.acc[_lo + 1] = res;
+				return;
+			}
 			int64_t res = g_emac.acc[_lo] & 0xffffffff00ll;
 			res |= static_cast<int64_t>(static_cast<int16_t>(_v & 0xff00)) << 32;
 			res |= _v & 0xff;
@@ -631,10 +652,17 @@ namespace ot::v4e
 		int64_t addend;
 		if(fi)
 		{
-			int64_t product = static_cast<int64_t>(static_cast<int32_t>(opX))
+			const int64_t product = static_cast<int64_t>(static_cast<int32_t>(opX))
 							* static_cast<int64_t>(static_cast<int32_t>(opY));
-			product <<= 1;
-			addend = product >> 24;			// MACSR's RT (round) bit is clear here
+				// (product << 1) >> 24, written as ONE shift: O21 (13 Sep 2026). The
+				// two-step form overflowed the int64 for the one product that reaches
+				// 2^62, -1.0 x -1.0 (0x80000000 squared, or the 0x8000 halves), and
+				// accumulated -2^39 where the 48-bit EMAC holds +1.0 as +2^39 in its
+				// extension bits (CFPRM, the MAC unit's fractional mode: the product
+				// is representable in the accumulator; only the READ-OUT saturates,
+				// to 0x7fffffff when OMC is set, and wraps to 0x80000000 when it is
+				// clear). The EMAC gate carries both cases; no other input changes.
+				addend = product >> 23;			// MACSR's RT (round) bit is clear here
 		}
 		else if(su)
 		{

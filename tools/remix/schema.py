@@ -34,6 +34,49 @@ class Kind(Enum):
                                 # (tools/remix/stock.py is the whole list)
 
 
+class Category(Enum):
+    """Where a module sits in the module table, the index and the remixer's
+    AVAILABLE pane. A display grouping, not a placement class: rig.category()
+    derives the placement role (server / insert / mod / system) from the
+    declaration and decides track ranges; this says what the module is FOR."""
+
+    BUS = "bus"                 # the aux bus and its plumbing
+    TRACK = "track"             # an effect on a track: stations, inserts, replacements
+    MACHINES = "machines"       # machines and the sequencer
+    PARTS = "parts"             # Parts, Kits and scenes, and the bridges between them
+    MIDI_USB = "midi-usb"       # MIDI and USB
+    FIXES = "fixes"             # a fix to stock behaviour
+    REFERENCE = "reference"     # the canaries
+    STOCK = "stock"             # a stock effect kept in the chooser
+
+
+CATEGORY_TITLE = {
+    Category.BUS: "Effects: the bus",
+    Category.TRACK: "Effects: on a track",
+    Category.MACHINES: "Machines and the sequencer",
+    Category.PARTS: "Parts, Kits and scenes",
+    Category.MIDI_USB: "MIDI and USB",
+    Category.FIXES: "Fixes",
+    Category.REFERENCE: "Reference",
+    Category.STOCK: "Stock effects",
+}
+
+
+class Proof(Enum):
+    """How far a module or a remix has been proven. The vocabulary of the
+    module table's last column and the remix index's; `proof_note` names the
+    unit, image and date for HARDWARE, or the gate for the rest."""
+
+    CHECK = "check"             # builds and boots under the port (make check)
+    RENDER = "render"           # heard or measured in a local render, never flashed
+    PORT = "port"               # a gate under the ColdFire port pins its behaviour
+    HARDWARE = "hardware"       # ran on a unit
+
+
+PROOF_TEXT = {Proof.CHECK: "`make check`", Proof.RENDER: "local render",
+              Proof.PORT: "port-gated", Proof.HARDWARE: "on hardware"}
+
+
 STOCK_FX2_IDS = frozenset({0x04, 0x05, 0x08, 0x0c, 0x0d, 0x10, 0x11, 0x12,
                            0x13, 0x14, 0x15, 0x16, 0x18, 0x19, 0x1c})
 
@@ -241,6 +284,24 @@ class MenuEntry:
 
 
 @dataclass(frozen=True)
+class DspHook:
+    """A `jsr` planted in STOCK DSP code, into a placed section.
+
+    The two stock words at `site` (one two-word instruction) become
+    `jsr >label`; the section replays the displaced instruction itself. The
+    build asserts `stock` before it writes, on every payload the section is
+    placed on, and the ledger refuses two modules hooking one site. This is
+    how DSP code with no chooser row is reached at all: USB AUDIO IN's RX
+    inject at the frame head, P:0x88.
+    """
+
+    site: int                                  # P address of the displaced instruction
+    stock: tuple[int, int]                     # its two words, as the image has them
+    label: str                                 # the section's entry for this site
+    note: str = ""
+
+
+@dataclass(frozen=True)
 class DspSection:
     """The module's DSP56300 code.
 
@@ -275,6 +336,10 @@ class DspSection:
     # its limits). ⚠️ So a module with a table may read P for NOTHING
     # ELSE: every `p:(` in its code is the table.
     ptable: tuple[int, ...] = ()
+    # Entries into this section from STOCK code (schema.DspHook). A section
+    # with hooks and no MenuEntry is placed on `payloads` only and takes no
+    # dispatch entry; one with a menu may carry hooks as well.
+    hooks: tuple[DspHook, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -331,6 +396,11 @@ class CavePatch:
     # included. The installer is generic; what a given cave actually DOES is
     # not, and the build report is the only place a human sees it.
     report_note: str = ""
+    # 32-bit words in the cave equal to the stock audio-arena base
+    # (0x40a955e0, tools/remix/arena.py). The build checks the count and,
+    # when a remix moves the base (any DRAM runtime, octamax), rewrites them
+    # to the moved base like the firmware's own base sites.
+    pool_base_literals: int = 0
     # ---- SOURCE IS THE TRUTH ---------------------------------
     # With the m68k-elf toolchain now a standard dependency (`make setup`),
     # a cave with a `source` is assembled and LINKED by the build at the
@@ -339,7 +409,7 @@ class CavePatch:
     # may therefore hold absolute references to itself, and symbols it needs
     # from the build (the address of a data field, a clone's slot) arrive as
     # `defsyms` -- `ld --defsym NAME=value` -- instead of placeholder words
-    # patched into hand-assembled hex (busscreen's MARKS, ccpage2's VCOUNT).
+    # patched into hand-assembled hex (busscreen's MARKS, cc-map's VCOUNT).
     # An emit() that returns b"" for its bytes says "the source is the only
     # truth"; an emit() that still returns bytes takes the legacy path,
     # unlinked and unchecked, exactly as before. Without a toolchain the
@@ -350,7 +420,7 @@ class CavePatch:
     # A FLOATING source-linked cave has no fixed `pinned` to be held against
     # (its bytes depend on where it lands), so it may supply the oracle as a
     # callable instead: reference(addr) -> the ratified bytes AT that
-    # address -- ccpage2 keeps its hand-patched legacy form for exactly this.
+    # address -- cc-map keeps its hand-patched legacy form for exactly this.
     # Checked on every build; a drift refuses.
     reference: object | None = None
 
@@ -372,7 +442,7 @@ class Claims:
     # The allocator hands the buffer out PER TRACK SLOT: on core 0 the four
     # slots are Y:0x4000, 0x8000, 0x30000 and 0x34000, on core 1 0x4000,
     # 0x8000, 0x38000 and 0x3c000 -- and those are exactly the addresses
-    # BusVerb's tank, Nimbus's line and BusDelay's line hardcode. So a
+    # BusVerb's tank and BusDelay's line hardcode. So a
     # buffered stock effect on the wrong track silently corrupts a server
     # on the same core, and the chooser is one list for all eight tracks,
     # so the build cannot tell which track it will land on. The ledger
@@ -403,6 +473,19 @@ class Claims:
     # guard sees no write above 0x3fff), and the pricer takes it at its
     # word: an fx1_only module is priced on FX1 slots only.
     fx1_only: bool = False
+    # BYTES OF THE PART WINDOW a module stores its own data in: (offset from
+    # the window's base 0x8ed80, length, what). The window (0x18b2 bytes a
+    # part) is dense; the one run known free is 0x90492..0x905b2 (midisc's
+    # 144-byte freeze twin then its 144-byte sparse blob, hardware since
+    # 1.40MIDISC8). SCENES P2's pool is the same 144 bytes as the sparse
+    # blob, so the ledger refuses the pair by name.
+    part_window: tuple[tuple[int, int, str], ...] = ()
+    # ON-CHIP SRAM a module's DMA engine reads or writes: (address, length,
+    # what). 32 KB at 0x80000000; stock's highest static use ends at
+    # 0x80007874 (a 768-byte buffer at 0x80007574). USB AUDIO IN keeps its
+    # dTDs and packet buffers in the top 1 KB. The ledger refuses an overlap
+    # between two modules; the stock extent is the author's census.
+    sram: tuple[tuple[int, int, str], ...] = ()
 
     def __post_init__(self):
         if self.buffer_words is not None and not self.stock_instance_buffer:
@@ -436,6 +519,36 @@ class Harness:
     # fall back to the firmware's own NONE rather than to SEND. See
     # NO_FALLBACK below.
     bus_client: bool = False
+
+
+@dataclass(frozen=True)
+class Gate:
+    """One check `make check` runs because this module is in the remix.
+
+    `make verify` used to list every module's verifier by hand, each one
+    written to SKIP when the remix lacked its module; a new module meant a
+    Makefile edit and every remix ran all of them. The module names its
+    own now (tools/verify/module_gates.py collects the selection's, runs
+    each once, and refuses a script that does not exist).
+
+    `stage` says what the script expects on disk: "isolated" gates build
+    their own scratch image (or none) and run before the selected image is
+    restored; "image" gates read out/mainos_bus.bin and run after
+    `make bus REMIX=<name>` and the shared set gates (a gate that needs
+    verify_set's staged card is an image gate). The runner exports REMIX
+    and BUILD to every gate.
+    """
+
+    script: str                      # repo-relative
+    remix_arg: bool = True           # pass the remix name as argv[1]
+    venv: bool = False               # prefer .venv/bin/python3 (the port's python) when present
+    stage: str = "isolated"          # "isolated" | "image"
+
+    def __post_init__(self):
+        if self.stage not in ("isolated", "image"):
+            raise ValueError(f"Gate({self.script!r}): stage must be 'isolated' or 'image', not {self.stage!r}")
+        if not self.script.startswith("tools/") and not self.script.startswith("modules/"):
+            raise ValueError(f"Gate({self.script!r}): a repo-relative path under tools/ or modules/")
 
 
 @dataclass(frozen=True)
@@ -514,7 +627,7 @@ class Linked:
     label: str
     source: str                          # .s, repo-relative
     cave_addr: int | None = None         # None = floating
-    cpu: str = "5407"                    # m68k-elf-as -mcpu=
+    cpu: str = "5407"                    # m68k-elf-as -mcpu= for the ROM-cave form; a DRAM unit is assembled for the chip (54455)
     reference: tuple[int, str] | None = None
     # DRAM: the unit is linked into octabam's PLATFORM RUNTIME -- one image
     # of every such unit in the remix, linked together (cross-unit symbols
@@ -859,11 +972,40 @@ class Module:
     # Claims of OTHER modules this module's own stand in for
     # (schema.Override) -- a bridge chaining two mods' hooks at one site.
     overrides: tuple[Override, ...] = ()
+    # Module KEYS this one is meaningless without -- a bridge whose overrides
+    # skip another module's writes on the promise that a third module's
+    # stubs stand at those sites (scenes-p2-kits). The ledger refuses a
+    # remix that selects it without them.
+    requires: tuple[str, ...] = ()
     # Which slot carries the MODE select, and what each of its positions
     # renames and re-defaults. Empty for a single-engine module.
     mode_slot: int | None = None
     mode_views: tuple[ModeView, ...] = ()
     name_selects: tuple[NameSelect, ...] = ()
+    # ---- the module table (README.md, `make docs`) ------------------------
+    # The selftest requires all four on every non-stock module; the README's
+    # table is rendered from them (tools/remix/index.py --write) and
+    # verify_docs refuses a stale copy.
+    category: Category | None = None
+    author: str = ""             # a GitHub handle or a name, as the table credits it
+    author_url: str = ""         # the author's repository or profile
+    proof: Proof | None = None
+    proof_note: str = ""         # the unit, image and date; or the gate
+    # ---- the checks (make check, make accept) ------------------------------
+    # The verifiers `make check` runs when a remix carries this module
+    # (schema.Gate). Shared gates -- the ledger selftest, the menu, the
+    # dirty-state render, the set under the port -- stay in the Makefile.
+    gates: tuple[Gate, ...] = ()
+    # Every knob at its DEAREST setting, by the Param's own name: the modes
+    # the pricer calls the worst loop, and the knobs that gate work (a send
+    # at 0 registers nothing, MIX 0 short-circuits a stage) at their
+    # maximum. The pressure render (tools/harness/pressure.py) and the
+    # stress fixture (tools/harness/stress_project.py) read it; a DSP
+    # module without one BLOCKS `make accept` for every remix that carries
+    # it, by name, rather than being rendered at defaults. Validated
+    # against `params` at load, so a knob rename refuses the build instead
+    # of failing a fixture after the merge (PR #396 on #415).
+    dear: dict[str, int] = field(default_factory=dict)
 
     def __post_init__(self):
         if self.params and len(self.params) != 12:
@@ -938,6 +1080,9 @@ class Module:
                     f"0x{self.menu.fx2_id:02x} is not a stock effect's -- a "
                     f"replacement must carry the id it replaces, or the stock "
                     f"effect stays and yours is a separate row")
+        if self.dsp is not None and self.menu is None and not self.dsp.hooks:
+            raise ValueError(f"{self.name}: DSP code with no menu entry and no "
+                             f"DspHook is unreachable -- nothing dispatches it")
         if self.dsp_sites:
             if self.kind not in (Kind.DSP_SITE, Kind.HYBRID):
                 raise ValueError(f"{self.name}: dsp_sites need kind DSP_SITE "
@@ -962,6 +1107,24 @@ class Module:
         # had drawn one there; stock's selects are all on page 2). BusVerb's
         # SHFT is the first (page-1 slot 4, linked to SHMR); image 29 drew it
         # with its words on the unit.
+        if self.dear:
+            if self.dsp is None:
+                raise ValueError(f"{self.name}: dear settings on a module with no DSP code")
+            km = self.knob_map()
+            for nm, val in self.dear.items():
+                if nm not in km:
+                    raise ValueError(f"{self.name}: dear names knob {nm!r}; its knobs are "
+                                     f"{', '.join(km) or 'none'}")
+                cnt = self.params[km[nm]].count or 128
+                if not isinstance(val, int) or not 0 <= val < cnt:
+                    raise ValueError(f"{self.name}: dear {nm}={val!r} is outside 0..{cnt - 1}")
+        seen_scripts = set()
+        for g in self.gates:
+            if not isinstance(g, Gate):
+                raise ValueError(f"{self.name}: gates holds {g!r}, not a schema.Gate")
+            if g.script in seen_scripts:
+                raise ValueError(f"{self.name}: gate {g.script} listed twice")
+            seen_scripts.add(g.script)
 
     def view_for(self, mode: int):
         """The ModeView for a MODE value, or None. Unknown values fall back
@@ -995,7 +1158,7 @@ class Module:
 
     def knob_map_all(self) -> dict[str, int]:
         """Every name a slot answers to: its own, plus each MODE view's alias.
-        The test harness resolves `--set SCAT=40` through this, so a name the
+        The test harness resolves `--set SCTR=40` through this, so a name the
         panel prints is a name the bench accepts."""
         out = dict(self.knob_map())
         for v in self.mode_views:
@@ -1108,7 +1271,7 @@ class Module:
 # only case this is allowed in; registry.remix() enforces it.
 #
 # ⚠️ AND IT CANNOT BE SETTLED LOCALLY EITHER WAY: dsp_host is single-core, so
-# no local test can reproduce a bus timing defect (CLAUDE.md). The refusal is
+# no local test can reproduce a bus timing defect (AGENTS.md). The refusal is
 # what keeps the question off the table rather than answered by inference.
 NO_FALLBACK = "NONE"
 
@@ -1144,9 +1307,10 @@ class Remix:
     tools/remix/stock.py. A stock effect NOT listed is not removed from the
     image -- its code, descriptor and dispatch stay stock, so an old project
     that selects it still runs it -- it just has no chooser row, which is
-    what every remix did to all fourteen of them before. Only
-    the three reverbs are actually consumed (their code is the donor region
-    every module packs into) and they cannot be listed.
+    what every remix did to all fourteen of them before. An effect on
+    neither chooser gives up its words (stock.harvested); the three reverbs
+    are the default room, and a listed effect the placer reaches is refused
+    by the build.
 
     THE FALLBACK IS NOT OPTIONAL, and it is the question a selective build
     forces. The FX2 chooser is one list shared by all eight tracks, and a
@@ -1164,6 +1328,10 @@ class Remix:
     modules: tuple[str, ...]
     fallback: str                # module KEY that unimplemented ids alias to,
                                  # or NO_FALLBACK for the firmware's own NONE
+    # ---- the remix index (docs/remixes/README.md, `make docs`) -----------
+    family: str = ""             # "rig", "effects", "mods", "reference"
+    proof: Proof | None = None   # schema.Proof; as a module's
+    proof_note: str = ""
     # ---- which of them ALSO get a row on FX1 ------------------------------
     # THE OTHER HALF OF "BOTH SLOTS", and it belongs to the REMIX rather than
     # to the module: which menu an effect appears on is a composition choice,
@@ -1194,22 +1362,20 @@ class Remix:
     #     ⚠️ This is not theoretical and it is not new -- docs/firmware/DSP.md's "wrong
     #     claim 1" is this exact failure, bisected on hardware: a 16K layout
     #     at an FX1 base "runs to 0x53ff, through the other FX1 buffers and
-    #     into FX2 slot 0". NIMBUS LITE reads the allocator and IS exposed;
-    #     an earlier draft of this comment claimed nothing was, which was
-    #     wrong -- it had checked only the fixed-base modules.
-    #   * A module with FIXED buffers in the FX2 region (BusVerb, Nimbus,
+    #     into FX2 slot 0".
+    #   * A module with FIXED buffers in the FX2 region (BusVerb,
     #     BusDelay). An FX1 instance still writes to Y:0x4000 and up, i.e.
     #     into some other track's FX2 buffer. The hazard exists on FX2 too --
-    #     it is why Nimbus is documented "one per core" -- but an FX1 row
+    #     it is why such a module is one per core -- but an FX1 row
     #     doubles the slots it can be reached from, a second instance on the
     #     SAME track included.
     #   * A bus SERVER, which is one per core by design (SPEC places one
     #     engine per payload). A second instance on a core is the open
     #     "duplicate instances corrupt audio after ~5.45 s" item.
     #
-    # What is left is exactly the INSERT class: WarpFold, Ripple, Rungs,
-    # Streamz, BodeShift, Hello World -- and SEND, which is buffer-free
-    # (untested there, but nothing measured argues against it).
+    # What is left is exactly the INSERT class (Spectrum, Character) -- and
+    # SEND, which is buffer-free (untested there, but nothing measured
+    # argues against it).
     # PLACED BUT NOT LISTED. Each key here is carried by the image -- code,
     # id, descriptor clone -- and takes NO CHOOSER ROW, with its twelve
     # parameter names blanked so the track page it lands on draws no knobs.
@@ -1235,6 +1401,15 @@ class Remix:
     # that itself, the way modules/modulation does with its allocator slot.
     hidden: tuple[str, ...] = ()
     named: tuple[str, ...] = ()
+    # THE HOST PAGE DRAWS ITS FIRST SLOTS ONLY (26 Sep 2026, Sam: "want
+    # all the tracks to look the same"): (key, n) pairs. The hidden
+    # module's page draws slots 0..n-1 under their manifest names (the rig:
+    # DEL and REV, SEND's two knobs); the rest are blank-named. Unlike a
+    # blanked module it keeps its label formatters, and its MODE rename
+    # cave writes into the names table a linked unit exports as
+    # `NAMES_<fx2 id, 2 hex digits>` (TEMPO BUS), never into the shared
+    # descriptor, so a MODE turn puts no name back on the host page.
+    host_slots: tuple[tuple[str, int], ...] = ()
     # LOCKED TO THE HOST SLOT (22 Sep 2026): a listed module runs only at
     # r7 == 0x6200, its core's position 0 (T1 on core 1, T5 on core 0), and
     # is an exact dry pass anywhere else -- the HOSTGUARD body hidden
@@ -1249,7 +1424,8 @@ class Remix:
         descriptor serves both menus) and not `named`. The ONE definition
         the build and every verifier share."""
         return tuple(k for k in self.hidden
-                     if k not in self.fx1 and k not in self.named)
+                     if k not in self.fx1 and k not in self.named
+                     and k not in dict(self.host_slots))
     # GRAINS PER LINE in BusDelay's GRAIN mode: 4 (the source's own) or 2.
     #
     # A CYCLE LEVER, not a voicing choice. The delay's core cannot carry four
@@ -1265,7 +1441,8 @@ class Remix:
     #
     # ⚠️ The two-grain build is the BETTER-CHECKED one: two triangle windows
     # a half period apart sum to exactly 1, so DC in must come back flat --
-    # the gate that caught Nimbus's double-rate window. Four at quarter
+    # the gate that caught a double-rate window (AGENTS.md, the a0 trap).
+    # Four at quarter
     # offsets have no such exact identity.
     grains: int = 4
     fx1: tuple[str, ...] = ()
@@ -1286,6 +1463,13 @@ class Remix:
             raise ValueError(
                 f"remix {self.name!r}: named={bad} are not in hidden -- "
                 f"`named` only says which HIDDEN modules keep their names")
+        bad = [k for k, _ in self.host_slots if k not in self.hidden or k in self.named]
+        if bad:
+            raise ValueError(
+                f"remix {self.name!r}: host_slots={bad} must be hidden and not named")
+        bad = [n for _, n in self.host_slots if not 0 < n < 12]
+        if bad:
+            raise ValueError(f"remix {self.name!r}: host_slots counts {bad}: 1..11")
         if len(set(self.modules)) != len(self.modules):
             raise ValueError(f"remix {self.name!r}: duplicate module keys")
         # ⚠️ NO PER-KEY CHECK HERE. An fx1 key may be a STOCK effect,

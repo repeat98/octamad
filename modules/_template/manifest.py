@@ -7,13 +7,13 @@ Say what the module is, what it changes, what is measured and what is
 open. Delete every comment below once answered.
 
 docs/remixer/MODULES.md is the guide; tools/remix/schema.py the field list.
-This is the skeleton of a DSP effect. modules/hello/ is a finished one
-(one knob, its own remix and render gates). A module that changes what the
-firmware does starts from modules/_template_cf/ (then modules/hello-dram/,
+This is the skeleton of a DSP effect. modules/character/ is a finished one
+(an in-place insert with its own render gate). A module that changes what
+the firmware does starts from modules/_template_cf/ (then modules/repitch/,
 modules/midi-scenes/).
 """
 
-from remix.schema import (BusRole, DspSection, Formatter, Harness, Kind,
+from remix.schema import (BusRole, DspSection, Formatter, Gate, Harness, Kind,
                           MenuEntry, Module, Param, YBase)
 
 MODULE = Module(
@@ -40,9 +40,10 @@ MODULE = Module(
         build_tag=False,           # append the image's build tag to the name
     ),
 
-    # Exactly twelve slots. Page 1 is 0-5; page 2 is 6-11 and alternates
-    # knob, select, knob, select, knob, select -- a stepped control can only
-    # live on 7, 9 or 11.
+    # Exactly twelve slots. Page 1 is 0-5; page 2 is 6-11. The page-2
+    # knob field carries even slots, the companion field odd slots.
+    # Either can carry a stepped value; put MODE on an EVEN slot, where
+    # the panel's page-2 knob editor has been proven to reach it (Param).
     #
     #   name=None inherits the donor's label; b"" blanks it. Prefer writing
     #   the label even when the donor has it: the test harness reads these.
@@ -73,4 +74,13 @@ MODULE = Module(
     # A letter for send_probe layout strings, if this is something a local
     # render should be able to place on a track.
     harness=Harness(layout_char=None, is_server=False),
+
+    # The checks `make check` runs when a remix carries this module: your
+    # render gates (modules/character has verify_character.py). stage="image" for one that reads the built image.
+    gates=(Gate("tools/verify/verify_template.py", remix_arg=False),),
+    # Every knob at its DEAREST setting, by name: the mode the pricer calls
+    # the worst loop, work-gating knobs at maximum. The pressure render and
+    # the stress fixture use it; without it `make accept` is blocked for
+    # every remix that carries the module. Checked against `params`.
+    dear={"P0": 127, "P1": 127},
 )

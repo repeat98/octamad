@@ -2,7 +2,7 @@
 difference spikes per 1,000-sample window against the MIDI script's frame
 marks (tools/harness/midi/delay_knob_moves.midi, Sam's 20 Sep 2026 recipe):
 
-    OT_PROJECT=<dir> python3 tools/verify/verify_set.py bamsep26 --frames 32000 --midi-file tools/harness/midi/delay_knob_moves.midi
+    OT_PROJECT=<dir> python3 tools/verify/verify_set.py bottleservice --frames 32000 --midi-file tools/harness/midi/delay_knob_moves.midi
     python3 tools/harness/port_click_census.py [out/setverify/port.dump] [track] [thresh] [recipe.midi]
 
 With a recipe the marks are its lines (frame and comment); without one, Sam's.

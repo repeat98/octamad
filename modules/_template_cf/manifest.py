@@ -5,9 +5,9 @@ you, reached from stock code by detours you name by SYMBOL. Copy this
 directory to modules/<yourname>/ and edit. Directories starting with `_`
 are skipped by the registry, so this file is never built.
 
-modules/hello-dram/ is a finished one (one unit, no hooks); modules/
-midi-scenes/ a real one (units built from the author's repository as a
-submodule, detours, pokes). docs/remixer/MODULES.md "Declaring a ColdFire
+modules/repitch/ is a finished one (one linked unit, detours, pokes);
+modules/midi-scenes/ another (units built from the author's repository as
+a submodule). docs/remixer/MODULES.md "Declaring a ColdFire
 module" is the guide; docs/remixer/PLACEMENT.md says where the bytes go.
 
 Say what the module is, which stock routines it changes, what is measured

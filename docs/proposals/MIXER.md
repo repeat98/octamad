@@ -767,3 +767,58 @@ the tail on the chip (the port's DMA is the port's); a Part or panel that sets t
 
 **Next (§17 stage 2):** RET B, the reverb, reads AUX B at X:0x7cc0 from a hostless call
 after the frame's last effect (§16), with the words in §16's ledger against it.
+
+## 19. Stage 2: RET B, a return that runs an effect from the pool (29 Sep 2026)
+
+Built into `modules/strip`, scratch remix `returns` (the strip beside the reverb server and
+SEND, FX1 cut to FILTER, EQUALIZER, DJ EQ, PHASER, LO-FI: 647 words free on payload A, COMPRESSOR
+and COMB FILTER stay stock; SPATIALIZER, FLANGER and CHORUS give up their words).
+
+**A return is a slot, not an effect.** The ColdFire's `ret_model` (the strip's slot layout:
+id, twelve knobs) says which effect RET B runs; the DSP takes it through the stock dispatch
+tables as the strip's slots do, and the list it may choose from is a small allow-list in
+`tslot` (r3): today OXIDE (0x1f) and the reverb server (0x07); an id off it leaves the slot
+dry. More effects join it as they are shown to run one call a frame with no dispatcher state.
+The record grew to 64 halfwords (the DMA is now 8 beats of 16 bytes): magic, two strip slots,
+24 sends (2 buses × 12 sources: T1..T8, IN AB, IN CD, RET A, RET B), RET B's slot, RET A's
+slot (not taken yet), the returns' level and CUE send (`retlvl_model`), spare, checksum.
+
+**Per frame, in the strip's tail, after the AUX passes:** copy AUX B into RET B's block
+(X:0x7dc0, 32-aligned: the server takes its frame offset from r0), call the effect (r6 the
+record at X:0x7cf0, r7 its own 0x100-word instance block at X:0x7f00, n7 16, a the
+dispatcher's call flag); an effect that returns dry + wet (the reverb server, id 7) has the
+dry taken back. The result, this frame's wet, is mixed at the returns' levels into two blocks
+(X:0x7e90 for MAIN, X:0x7eb0 for CUE) that the head adds to the ring's MAIN and CUE before
+its gather, so the strip's inserts, the click, the phones and the pack all hear the return one
+frame late. The wet also feeds the AUX passes (source 11, RET B; RET A is source 10), so the
+self-send and the cross-send are gains in the same table; a return's sends are capped at
+100 (0.61) so a loop through the reverb cannot reach unity in its own gain.
+
+**Measured under the port** (`verify_return`, five runs of `returns` on the user's project, a
+DC on the inputs and, for the reverb, the tones):
+
+| | result |
+|---|---|
+| rest (nothing poked) | both wet blocks and both head blocks are zero, the slot dry |
+| OXIDE as the return, IN 48 / OUT 80, AUX B = IN AB and IN CD | RET B's wet = OXIDE's `fixed()` of AUX B after N calls from its init (N = 119 found by search), 0 LSB, all 16 pairs |
+| the levels | (v/128)² as Q23 |
+| MAIN's add, CUE's add | the wet at the level / the CUE send with mpy's truncation, 0 LSB |
+| the CUE pair of TX0 | moves by the CUE add against the rest run, over the last 160 samples, within 15% (the wet is still settling: not a 0-LSB check) |
+| the reverb as the return | taken (proc set), runs past its role lock, its warm-up counter advances one a block |
+| the maximum self-send and levels, the tones | the last 4,000 samples of CUE and MAIN are not pinned at full scale |
+| an id off the list (0x22) | the slot is dry, the wet block zero |
+
+`verify_strip` on the `tones` variant is still 0 failures with the head's adds (the phones'
+first sample is on time), and `verify_aux` was brought to the 64-word record.
+
+**Not shown, and why.** The reverb's wet: the server stays dry for its 256-block warm-up (one
+128-word clear a block, then 3 blocks of bus latency), longer than the fast gate's run;
+`verify_return --long` (about 350 frames) waits for it and has not been run. A track's term,
+as in §18. The runaway is shown only as "not pinned" for 150 frames of the tones. Nothing on a
+unit. The head now does about 24 instructions a sample before stock's tail (§11's deadline
+arithmetic); the port did not show the stale phones sample it showed for a whole-pass head, but
+the port's margin is the port's. The pass costs 86 a sample (1,375 a frame) for both buses at
+12 sources, before the return call.
+
+**Next (§17 stage 3):** RET A on core 1 (the delay) through the shared window; the pages and the
+Part's storage (stage 4).

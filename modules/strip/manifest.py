@@ -82,7 +82,7 @@ MODULE = Module(
                "non-stock part behave, and the record reaches core 0 (29 Sep 2026). `verify_aux`: the AUX A and "
                "AUX B passes (the tail's, docs/proposals/MIXER.md section 18) sum the two input pairs at the "
                "ColdFire's sends, 0 LSB, and change nothing else (29 Sep 2026; the tracks' terms are read, not run); "
-               "not flashed",
+               "not flashed. `verify_return`: RET B (29 Sep 2026), see MIXER.md section 19",
     doc="Two insert slots on the summed MAIN, inline after the mixdown (payload A, P:0x2d5 "
         "and P:0x35d), their effects and knobs sent from a ColdFire model every frame; "
         "a MASTER page in the MIXER window edits them.",
@@ -137,5 +137,5 @@ MODULE = Module(
         ),
     ),
     gates=(Gate("tools/verify/verify_strip.py"), Gate("tools/verify/verify_mixerpages.py"),
-           Gate("tools/verify/verify_stripstore.py"), Gate("tools/verify/verify_aux.py")),
+           Gate("tools/verify/verify_stripstore.py"), Gate("tools/verify/verify_aux.py"), Gate("tools/verify/verify_return.py")),
 )

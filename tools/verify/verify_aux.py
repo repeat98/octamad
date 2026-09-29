@@ -177,11 +177,12 @@ def port(built, project, frames, sym, span):
         words = ok = None
         if rec is not None and len(da[rec]) == len(db[rec]) > 0:
             idx = sorted({i for (_, wa), (_, wb) in zip(da[rec], db[rec]) for i, (x, y) in enumerate(zip(wa, wb)) if x != y})
-            ok = bool(idx) and min(idx) >= 21 and all(len(w) == 32 for _, w in da[rec] + db[rec])
+            ok = bool(idx) and min(idx) >= 21 and set(idx) <= set(range(21, 33)) | {63} \
+                and all(len(w) == 64 for _, w in da[rec] + db[rec])
             words = idx
         check(f"port: identity: of {len(da)} host-port block classes only the strip's record burst differs, "
-              "in its halfwords 21..31 (the sends and the checksum)", bool(ok),
-              f"differ {differ[:3]}, words {words}" if not ok else f"32-word blocks, words {words[0]}..{words[-1]}")
+              "in its halfwords 21..32 (the sends) and 63 (the checksum)", bool(ok),
+              f"differ {differ[:3]}, words {words}" if not ok else f"64-word blocks, words {words[0]}..{words[-1]}")
         # rest: zeros
         r = pk["rest"]
         check("port: rest: the sends and both AUX blocks are zero (boot zeroed them, no record asked)",

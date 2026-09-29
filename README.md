@@ -130,6 +130,8 @@ the local emulator.
 |---|---|---|---|
 | [**CF METER**](modules/cfmeter/README.md) | [sambanks](https://github.com/sambanks) | Probe: frame-interrupt duration and (with CF METER IDLE) idle time, printed as audio on T8's FX2. | port-gated: the readout chain and the interrupt timing under the port; the numbers need the unit |
 | [**CF METER IDLE**](modules/cfmeter-idle/README.md) | [sambanks](https://github.com/sambanks) | Probe: main's idle loop timed, for CF METER's idle-time slot. | `make check`: boots and loads a project under the port (28 Sep 2026); the idle number needs the unit |
+| [**DSP LOADER TRANSFER**](modules/dsp-loader-transfer/README.md) | [repeat98](https://github.com/repeat98) | Experimental two-core DMA mailbox and deferred UI error message; bounded staging without execution. | port-gated: Both-core DMA and bounded P staging; no effect activation or hardware qualification. |
+| [**DSP LOADER TRANSFER B**](modules/dsp-loader-transfer-b/README.md) | [repeat98](https://github.com/repeat98) | Core 1 mailbox receiver for DSP LOADER TRANSFER; bounded staging without execution. | port-gated: Both-core DMA and bounded P staging; no effect activation or hardware qualification. |
 
 <!-- modules:end -->
 

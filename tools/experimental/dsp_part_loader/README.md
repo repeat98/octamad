@@ -1,8 +1,9 @@
 # Part-scoped DSP loading: host-side foundation
 
 This is a separate experiment on `codex/dsp-part-loader`. It is not imported by
-any shipping build, does not modify an image, and is not part of the Analog BD
-PR. The earlier source-packet loader remains on `codex/analog-bd-dynamic-engines`.
+any shipping build and is not part of the Analog BD PR. The separate
+`dsp-loader-transfer` test remix exercises firmware DMA and a bounded P staging
+area; it does not switch or execute uploaded code. The earlier source-packet loader remains on `codex/analog-bd-dynamic-engines`.
 Do not merge that loader into the Analog BD PR or use it as a general FX ABI.
 
 ## Implemented
@@ -23,7 +24,7 @@ Do not merge that loader into the Analog BD PR or use it as a general FX ABI.
 - Admission distinguishes steady memory exhaustion, steady processing exhaustion,
   temporary transition memory/fragmentation and transition processing exhaustion.
   Refusal leaves the running Part intact. `Refused.modal` supplies proposed UI
-  text; no modal has been installed on the unit.
+  text; the isolated firmware transport probe has a UI-task modal, but no chooser admission hook yet.
 - Both affected cores must acknowledge preparation before a model commit. A
   cancelled or foreign plan cannot commit. Outgoing allocations remain reserved
   until explicit transition retirement; another transition is refused meanwhile.
@@ -128,3 +129,26 @@ voices after their state and tails settle, or sharing bus processing by design.
 Logs and generated JSON/audio evidence: `out/dsp-part-loader/`. No native
 ColdFire planner, live transfer, modal or hardware switch has been implemented
 or measured in this first slice.
+
+## Firmware transport probe
+
+`modules/dsp-loader-transfer/` appends transfers to the firmware frame-DMA
+state machine, on both cores. `make check REMIX=dsp-loader-transfer` includes
+its native controller and (with OT_PROJECT or DL_CARD) port gates. The port
+must acknowledge PROBE and STAGE on both cores, keep advancing frames, show
+a deferred UI message, and contain the exact staged words with the rest of
+the reserved table unchanged. A P dump is an emulator observation; the DSP
+does not yet perform independent readback verification before execution.
+No EXEC/COMMIT opcode exists. These tests do not prove seamless effect changes.
+
+## Stock candidates
+
+`python3 -m tools.experimental.dsp_part_loader.stock_catalog` extracts all 13
+stock DSP algorithms separately for A and B (6,158 P words per core), checks
+their native init/proc entries, and writes the generated candidates only under
+ignored `out/`. DELAY is marked ColdFire. These candidates are deliberately
+not admitted as relocatable v1 packages: their X/Y tables, instance buffers,
+shared helpers and native P placement need adapters. PLATE/DARK conservatively
+retain SPRING as a dependency; a future helper-level split can reduce that
+reservation once qualified. This prevents a new module from silently taking
+memory that a selected stock effect still uses.

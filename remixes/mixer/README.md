@@ -19,5 +19,4 @@ pool, all of it set on the MIXER window's pages and by MIDI CC and kept in the P
 
 Measured under the ColdFire port only: `verify_strip`, `verify_aux`, `verify_return`,
 `verify_mixerpages`, `verify_retstore` and `verify_mixcc` (MIXER.md sections 11–22). Not on a unit.
-Not shown: a track's audio into the sends (no track reaches the mixdown under the port), the reverb
-and delay as returns beyond "run and warm" unless `verify_return --long` says so, the cores' real timing.
+Not shown: a track's audio into the sends (no track reaches the mixdown under the port), the delay as a return beyond "taken and forwarded" (only OXIDE has run as core 1's effect), what either server sounds like as a return, the cores' real timing.

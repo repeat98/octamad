@@ -811,9 +811,13 @@ DC on the inputs and, for the reverb, the tones):
 `verify_strip` on the `tones` variant is still 0 failures with the head's adds (the phones'
 first sample is on time), and `verify_aux` was brought to the 64-word record.
 
-**Not shown, and why.** The reverb's wet: the server stays dry for its 256-block warm-up (one
-128-word clear a block, then 3 blocks of bus latency), longer than the fast gate's run;
-`verify_return --long` (about 350 frames) waits for it and has not been run. A track's term,
+**Reverb wet, measured later the same day.** The server stays dry for its warm-up (one 128-word
+clear a block, then the bus latency), longer than the fast gate's run; `verify_return --long`
+(350 frames, about 2 minutes) waits for it: after the warm-up RET B's wet block is not silence
+and is inside full scale (peak 3,626 on the tones), and the run's warm-up counter had passed 256. That shows the
+reverb runs as a return and returns something; not what it sounds like.
+
+**Not shown, and why.** A track's term,
 as in §18. The runaway is shown only as "not pinned" for 150 frames of the tones. Nothing on a
 unit. The head now does about 24 instructions a sample before stock's tail (§11's deadline
 arithmetic); the port did not show the stale phones sample it showed for a whole-pass head, but

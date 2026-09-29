@@ -135,6 +135,24 @@ MODULE = Module(
             payloads=frozenset({"A"}),
             asm="modules/strip/tail.asm",
         ),
+        DspSite(
+            label="retab_boot",
+            site=0x40,
+            words=2,                       # `move #>$8000,b`, replayed last by the body
+            stock_sha256="f801758605f2b681e59a7501b204ad6f708a1c3183e1ec6b9ae8f59549dda1ad",
+            kind="jsr",
+            payloads=frozenset({"B"}),
+            asm="modules/strip/retab_boot.asm",
+        ),
+        DspSite(
+            label="reta",
+            site=0x333,
+            words=2,                       # `move x:>$415,a`, replayed last by the body
+            stock_sha256="0c72a37c835c2fa2be521a4fcd81649c5ac98325b1bad0db05e32f52bbf8a57c",
+            kind="jsr",
+            payloads=frozenset({"B"}),
+            asm="modules/strip/reta.asm",
+        ),
     ),
     gates=(Gate("tools/verify/verify_strip.py"), Gate("tools/verify/verify_mixerpages.py"),
            Gate("tools/verify/verify_stripstore.py"), Gate("tools/verify/verify_aux.py"), Gate("tools/verify/verify_return.py")),

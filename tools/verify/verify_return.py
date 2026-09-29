@@ -19,6 +19,8 @@ remix (the strip beside the reverb server and SEND) on the user's project:
            with --long (~350 frames) the wet is not silence and is bounded
   runaway  the same, with the self-send and the levels at their maximum for
            the whole run: the last frames are not pinned at full scale
+  reta     RET A on core 1: the same OXIDE model on the AUX A core 0 published through the shared
+           window, its wet back through it, 0 LSB at every hop, and into MAIN
   pool     an id off the return's list (0x22) leaves the slot dry: its wet is zero
 
 What it cannot see: a track's audio; the cost on the unit; what the reverb
@@ -77,9 +79,15 @@ def run(name, built, project, frames, sym):
             + slot_poke(ret, 7, [0, 127, 127, 0, 64, 127, 0, 127, 127, 0, 0, 127]) + [(lvl, 127), (lvl + 1, 127)]
         offlist = b_in + slot_poke(ret, 0x22, [0] * 12) + [(lvl, LEVEL), (lvl + 1, CUE)]
         peek = (f"0:X:{WB:x},32;0:X:{WA:x},32;0:X:{MADD:x},32;0:X:{CADD:x},32;0:X:{va.AUX_B:x},32;"
-                f"0:X:{RETSLOT:x},2;0:X:{LEVELS:x},4;0:X:7f15,1")
+                f"0:X:{RETSLOT:x},2;0:X:{LEVELS:x},4;0:X:7f15,1;0:X:7ca0,32;"
+                f"0:X:37000,2;0:X:37010,16;0:X:37020,128;0:X:370a0,128;"
+                f"1:X:7ce0,2;1:X:7dc0,32;1:X:7de0,32;1:X:7f15,1")
+        # RET A: AUX A (bytes 0..11) takes IN AB and IN CD; the slot is the second of ret_model
+        a_in = [(aux + 8, 127), (aux + 9, 64)]
+        reta = a_in + slot_poke(ret + 16, 0x1f, [48, 80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) \
+            + [(lvl + 2, LEVEL), (lvl + 3, CUE)]
         variants = {"rest": ([], None), "oxide": (oxide, None), "reverb": (verb, "tones"),
-                    "runaway": (runaway, "tones"), "pool": (offlist, None)}
+                    "runaway": (runaway, "tones"), "pool": (offlist, None), "reta": (reta, None)}
         procs = {}
         for var, (pokes, audio) in variants.items():
             procs[var] = va.launch(work, built, project, frames, var, steps(pokes) if pokes else [],
@@ -88,6 +96,10 @@ def run(name, built, project, frames, sym):
         if not all(check(f"port: {v} run finished", codes[v] == 0) for v in codes):
             return
         pk = {v: va.peeks((work / v / "run.txt").read_text()) for v in codes}
+        import re
+        pk1 = {v: {int(a, 16): [int(x, 16) for x in ws.split()]
+                   for a, ws in re.findall(r"core 1 X:0x([0-9a-f]+): ((?:[0-9a-f]{6} ?)+)",
+                                           (work / v / "run.txt").read_text())} for v in codes}
         z = [0] * 32
         r = pk["rest"]
         check("port: rest: both wet blocks and both head blocks are zero, the slot is dry",
@@ -142,6 +154,39 @@ def run(name, built, project, frames, sym):
         pinned = [sum(1 for x in rt[s][-4000:] if abs(x) >= (1 << 23) - 2) for s in (0, 1, 2, 3)]
         check("port: runaway: the self-send and levels at their maximum for the run: the last 4,000 samples "
               "are not pinned at full scale on CUE or MAIN", max(pinned) < 2000, f"pinned counts {pinned}")
+        ra = pk["reta"]
+        seq = ra.get(0x37000, [0, 0])
+        slots_a = [[va.s24(w) for w in ra[0x37020][32 * k:32 * k + 32]] for k in range(4)]
+        slots_w = [[va.s24(w) for w in ra[0x370a0][32 * k:32 * k + 32]] for k in range(4)]
+        aux_a = [va.s24(w) for w in ra[0x7ca0]]
+        check("port: reta: core 0 publishes AUX A into the exchange: the slot it last published is its AUX A block "
+              "(a constant input, so every frame is the same), seqA advancing", slots_a[seq[0] & 3] == aux_a and seq[0] > 20,
+              f"seqA {seq[0]}")
+        c1 = pk1["reta"].get(0x7ce0)
+        check("port: reta: core 1 takes the id from the record core 0 forwarded and runs it (id 0x1f, proc set)",
+              bool(c1 and c1[0] == 0x1f and c1[1]), f"core 1 slot {c1}")
+        wet1 = [va.s24(w) for w in pk1["reta"][0x7dc0]]
+        found = None
+        for n in range(30, frames + 1):
+            w = []
+            for ch in (0, 1):
+                xs = [aux_a[2 * j + ch] for j in range(16)] * n
+                w.append(design.fixed(xs, 48, 80)[-16:])
+            w = [v for j in range(16) for v in (w[0][j], w[1][j])]
+            if w == wet1:
+                found = n
+                break
+        check("port: reta: core 1's wet is OXIDE's fixed() of the AUX A it was handed, 0 LSB, all sixteen pairs",
+              found is not None, f"N = {found}" if found else f"wet {wet1[:4]}")
+        check("port: reta: core 1 publishes its wet: seqW advancing and the last slot is that block",
+              seq[1] > 20 and slots_w[seq[1] & 3] == wet1, f"seqW {seq[1]}")
+        wa = [va.s24(w) for w in ra[0x7de0]]
+        check("port: reta: core 0's RET A block is one of the wet slots core 1 published (within four frames)",
+              wa in slots_w and any(wa), "")
+        gam = [va.s24(w) for w in ra[LEVELS]]
+        mm = [va.s24(w) for w in ra[MADD]]
+        check("port: reta: MAIN's add is RET A's wet at RET A's level, 0 LSB (RET B is dry)",
+              mm == [(w * gam[2]) >> 23 for w in wa], f"{mm[:2]} vs {[(w * gam[2]) >> 23 for w in wa[:2]]}")
         pl = pk["pool"]
         check("port: pool: an id off the return's list (0x22) leaves the slot dry, wet zero",
               pl.get(RETSLOT) == [0x22, 0] and pl.get(WB) == z, f"slot {pl.get(RETSLOT)}")
@@ -165,7 +210,7 @@ def main():
     if not vds.STOCK.exists():
         print("  [SKIP] verify_return: no stock image (make os)")
         return 0
-    name = (a.remix or ["returns"])[0]
+    name = (a.remix or ["returns2"])[0]
     if "MASTER STRIP" not in registry.remix(name).modules:
         print(f"  [--] verify_return: {name} carries no MASTER STRIP")
         return 0

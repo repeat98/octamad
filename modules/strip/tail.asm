@@ -176,7 +176,10 @@ tsum:
         move    #>$7f00,r5              ; its instance block (0x100 wide)
         move    #>$7,r3                 ; the return's list: OXIDE and the reverb server
         bsr     tslot
-        lua     (r0+$a),r0              ; RET A's slot (stage 3): not taken
+        move    #>$3701f,r4             ; RET A's slot: only parsed here, into the shared
+        move    #>$37010,r6             ; window (its id and record), for core 1's frame end
+        move    #>$ffffff,r3
+        bsr     tslot
         move    #>$7c98,r1              ; the returns' levels: two halfwords
         move    #$2,n0
         bsr     tgain
@@ -191,7 +194,9 @@ tsum:
         bsr     tcap
 tdone:
 ; ---- the AUX passes: this frame's sources, the record's sends ---------------
+        bsr     retain
         bsr     auxrun
+        bsr     retpub
         bsr     retrun
 ; ---- back as stock left them -------------------------------------------------
         move    x:(r7+$a),n7
@@ -260,6 +265,13 @@ tpgone:
         asl     #$8,a,a
         move    a1,x:(r1)+
 tpgtwo:
+        move    x:(r7+$19),a
+        tst     a
+        bpl     tnorm
+        move    x:(r7+$15),x0           ; parse only (r3 = -1): RET A runs on the other
+        move    x0,x:(r4)               ; core, which takes the id asked from here
+        rts
+tnorm:
         move    x:(r7+$15),a
         move    x:(r4),x0               ; the id the slot runs
         sub     x0,a
@@ -277,6 +289,11 @@ tpgtwo:
         sub     x0,a
         bne     tsame
 tlist:
+        move    x:(r7+$15),r1
+        move    x:(r1+$235),a           ; its proc
+        move    x:>$23e,x0              ; SEND's: what an id this image lacks aliases to
+        cmp     x0,a
+        beq     tsame                   ; not on this core: the slot stays dry
         move    r0,x:(r7+$16)           ; park what init may take
         move    r4,x:(r7+$17)
         move    x:(r7+$15),r1           ; the id, where the dispatcher has it
@@ -495,4 +512,58 @@ tcap:
         beq     tkeep
         move    x0,x:(r0)
 tkeep:
+        rts
+
+; ---- RET A, the other core's (MIXER.md section 20). The exchange, in core 0's half of the
+; shared window above the reverb's buffers and the bus scratch: X:0x37000 seqA, 0x37001 seqW,
+; 0x37010..0x3701e RET A's record (r6 layout), 0x3701f its id, four AUX A slots of 32 words at
+; 0x37020, four RET A wet slots at 0x370a0. One writer a word: core 0 writes AUX A and the
+; record, core 1 the wet; a writer fills slot n & 3 and then publishes n, a reader takes the
+; published slot, so the two never touch the same slot within a frame of skew.
+; retain: this frame's RET A wet, from the last slot core 1 published, into RET A's block
+; (X:0x7de0); an empty slot (id 0) is silence.
+retain:
+        move    #>$7de0,r1
+        move    x:>$3701f,a
+        and     #>$ffff,a
+        tst     a
+        bne     retai1
+        clr     a
+        do      #$20,retaz
+        move    a,x:(r1)+
+retaz:
+        rts
+retai1:
+        move    x:>$37001,a
+        and     #>$3,a
+        asl     #$5,a,a
+        move    a1,x0
+        move    #>$370a0,a
+        add     x0,a
+        move    a1,r0
+        do      #$20,retac
+        move    x:(r0)+,x0
+        move    x0,x:(r1)+
+retac:
+        rts
+
+; retpub: AUX A (X:0x7ca0), just summed, into slot n & 3 of the exchange, then n published.
+retpub:
+        move    x:>$37000,a
+        add     #>$1,a
+        and     #>$ffff,a
+        move    a1,x:>$7c1a             ; n
+        and     #>$3,a
+        asl     #$5,a,a
+        move    a1,x0
+        move    #>$37020,a
+        add     x0,a
+        move    a1,r1
+        move    #>$7ca0,r0
+        do      #$20,retpc
+        move    x:(r0)+,x0
+        move    x0,x:(r1)+
+retpc:
+        move    x:>$7c1a,a
+        move    a1,x:>$37000
         rts

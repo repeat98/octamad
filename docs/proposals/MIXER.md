@@ -822,3 +822,48 @@ the port's margin is the port's. The pass costs 86 a sample (1,375 a frame) for 
 
 **Next (§17 stage 3):** RET A on core 1 (the delay) through the shared window; the pages and the
 Part's storage (stage 4).
+
+## 20. Stage 3: RET A on core 1 through the shared window (29 Sep 2026)
+
+Built into `modules/strip`; scratch remix `returns2` (both servers: payload A 3,615 words used,
+445 free; payload B 2,007 used, 2,053 free).
+
+**The exchange.** Core 0's half of the shared window above the reverb's buffers (which end at
+0x357ff by their layout) and the bus scratch (0x36000..0x36157): X:0x37000 `seqA`, 0x37001
+`seqW`, 0x37010..0x3701e RET A's record (r6's layout), 0x3701f its id, four AUX A slots of 32
+words at 0x37020, four RET A wet slots at 0x370a0. One writer to each word: core 0 writes
+AUX A and the record, core 1 the wet. A writer fills slot n & 3 and then publishes n; a
+reader takes the published slot, so they never touch the same slot unless one is more than
+two frames ahead of the other. ✅ the shared window's free range is by the documented
+layout, not yet by a write census with the reverb warm (the census here ran with no server
+hosted: only stock's staging at 0x30000 and the bus scratch at 0x36000 wrote).
+
+**Core 0** (`tail.asm`): the record's RET A slot is parsed, not run (`tslot` with r3 = -1
+stores the id and the knobs into the exchange and stops); `retain` copies the last wet slot
+into RET A's block (X:0x7de0) before the AUX passes, or zeros it when the id is 0; `retpub`
+publishes AUX A after them. A slot whose id resolves to SEND's proc on this image (an effect
+the remix lacks) is dry, for RET B too (`tslot`): a client called hostless would register on
+the bus.
+
+**Core 1** (payload B, two new DSP sites of the strip): `retab_boot` (P:0x40, zeroes X:0x7c00..
+0x7fff) and `reta` (P:0x333, the frame end, the same code as A's P:0x53e): take the id, on a
+change allow it (the delay server, id 6, or OXIDE) and init it, copy the record from the
+exchange, run the effect on the last published AUX A (dry + wet effects have the dry taken
+back), publish the wet. Core 1's state is X:0x7ce0 (id, proc), 0x7cf0 (record), 0x7dc0 (the
+block), 0x7f00 (the instance block).
+
+**Measured under the port** (`verify_return`, `returns2`, RET A = OXIDE at IN 48 / OUT 80 on
+the constant input): core 0's AUX A block is the slot it last published; core 1 has id 0x1f and its
+proc from the record core 0 forwarded; core 1's wet is OXIDE's `fixed()` of that AUX A after N
+calls (N = 119 found by search), **0 LSB**, all 16 pairs; core 1 publishes it (the last slot is
+that block, `seqW` advancing); core 0's RET A block is one of the published wet slots; MAIN's add is that
+wet at RET A's level, 0 LSB. The `skew` variant repeats this with `--dsp-lazy 1700` (the cores
+batched differently): a fuzz of the hardware's timing, not the timing.
+
+**Not shown.** The delay server as RET A (only OXIDE has run as core 1's effect: the delay's own
+warm-up and role lock on a hostless call are the same open questions the reverb had); the
+exchange under the chip's real skew and arbitration; a write census of X:0x37000.. with the
+servers warm; track sources (§18); anything on a unit.
+
+**Next (stage 4):** the RETURN pages in the MIXER window, the Part's storage for the returns and
+the sends, MIDI CC.

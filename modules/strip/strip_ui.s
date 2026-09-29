@@ -67,7 +67,7 @@
         .equ    KRIGHT,   0x21
         .equ    KDOWN,    0x20
         .equ    KUP,      0x33
-        .equ    STRIPS,   2            | MIXER, MASTER
+        .equ    STRIPS,   4            | MIXER, MASTER, RETURN A, RETURN B
 | The slot's SETUP window: the calls the stock EFFECT 2 SETUP makes (its
 | opener 0x4005996c, draw 0x40037590, keys and knobs in its layer 0x400bc470)
         .equ    WINNEW,   0x4005829c   | (w, h, x, y, level, close) -> handle
@@ -188,13 +188,20 @@ mx_lr:  tst.l   WINH
         cmp.l   4(%sp),%d1
         beq.s   1f
         subq.l  #1,%d0                 | LEFT: MIXER is the first
-        bmi.s   9f
+        bmi.w   9f
         bra.s   2f
 1:      addq.l  #1,%d0                 | RIGHT: MASTER is the last, for now
         moveq   #STRIPS,%d1
         cmp.l   %d1,%d0
-        bge.s   9f
+        bge.w   9f
 2:      move.b  %d0,mx_strip
+        lea     ROWN,%a0
+        moveq   #0,%d1
+        move.b  (%a0,%d0.l),%d1
+        cmp.b   mx_slot,%d1            | the row the new strip does not have
+        bhi.s   21f
+        clr.b   mx_slot
+21:
 | the title, the knobs' layer, the page. The title routine draws the frame's
 | top two rows (the tab around the title) over what is there, so they go
 | back to dark first, as a new window has them.
@@ -235,17 +242,23 @@ mx_ud:  tst.l   WINH
         beq.w   gone
         tst.b   mx_strip
         beq.s   9f                     | MIXER has one page, for now
-        moveq   #0,%d0                 | UP: INS 1
+        moveq   #0,%d0
+        move.b  mx_slot,%d0
         moveq   #KDOWN,%d1
         cmp.l   4(%sp),%d1
         bne.s   1f
-        moveq   #1,%d0                 | DOWN: INS 2
-1:      moveq   #0,%d1
-        move.b  mx_slot,%d1
+        addq.l  #1,%d0                 | DOWN: the next row
+        lea     ROWN,%a0
+        moveq   #0,%d1
+        move.b  mx_strip,%d1
+        move.b  (%a0,%d1.l),%d1        | the strip's row count
         cmp.l   %d1,%d0
-        beq.s   9f
-        move.b  %d0,mx_slot
-        bsr.w   encoff                 | the knobs take the new slot's tails
+        bge.s   9f
+        bra.s   2f
+1:      subq.l  #1,%d0                 | UP: the one above
+        bmi.s   9f
+2:      move.b  %d0,mx_slot
+        bsr.w   encoff                 | the knobs take the new row's tails
         bsr.w   encon
         bra.w   mx_draw
 9:      rts
@@ -253,7 +266,42 @@ mx_ud:  tst.l   WINH
 | ---- LEVEL on MASTER: MAIN, the stock handler (it redraws, marks EDITED) --
 mx_lvl: tst.l   WINH
         beq.w   gone
+        moveq   #0,%d0
+        move.b  mx_strip,%d0
+        cmp.l   #2,%d0
+        bhs.s   1f
         jmp     MAINH
+1:      lea     -20(%sp),%sp           | a return's LEVEL: its cell's level, stepped as
+        movem.l %d2-%d4/%a2-%a3,(%sp)  | MAIN's knob is, held 0..127
+        moveq   #0,%d0
+        move.b  mx_strip,%d0
+        lea     LVLP,%a2
+        move.l  -8(%a2,%d0.l*4),%a2    | strips 2, 3: the level's byte
+        moveq   #6,%d2
+        move.l  %d2,-(%sp)
+        jsr     ETOUCH
+        addq.l  #4,%sp
+        moveq   #0,%d0
+        move.b  (%a2),%d0
+        move.l  %d0,-(%sp)             | (index, delta, value)
+        move.l  32(%sp),-(%sp)
+        move.l  %d2,-(%sp)
+        jsr     ESTEP
+        lea     12(%sp),%sp
+        tst.l   %d0
+        bge.s   2f
+        moveq   #0,%d0
+2:      cmp.l   #127,%d0
+        ble.s   3f
+        moveq   #127,%d0
+3:      move.b  %d0,(%a2)
+        bsr.w   keep                   | the Part keeps it
+        bsr.w   mx_draw
+        moveq   #1,%d0
+        move.l  %d0,EDITED
+        movem.l (%sp),%d2-%d4/%a2-%a3
+        lea     20(%sp),%sp
+        rts
 
 | ---- A-F on MASTER: (index, delta), the slot's page-1 knob <index> -------
 mx_enc: tst.l   WINH
@@ -288,7 +336,7 @@ mx_enc: tst.l   WINH
         ble.s   2f
         move.l  %d4,%d0
 2:      move.b  %d0,4(%a2,%d2.l)
-        jsr     strip_store             | the Part keeps it
+        bsr.w   keep                    | the Part keeps it
         bsr.w   mx_draw
         moveq   #1,%d0
         move.l  %d0,EDITED
@@ -296,13 +344,36 @@ eout:   movem.l (%sp),%d2-%d4/%a2-%a3
         lea     20(%sp),%sp
         rts
 
-| slot: a2 = the shown slot's model, a3 = its effect's descriptor P; Z set
-| when the slot is empty (clobbers d0/a0)
-slot:   moveq   #0,%d0
-        move.b  mx_slot,%d0
-        lsl.l   #4,%d0
-        lea     strip_model,%a2
-        add.l   %d0,%a2
+| rowptr: a0 = the shown row's entry in ROWS: {the model's cell, its descriptor (0: the
+| effect its id names)}, four rows a strip from MASTER on (clobbers d0/d1)
+rowptr: moveq   #0,%d0
+        move.b  mx_strip,%d0
+        subq.l  #1,%d0
+        lsl.l   #2,%d0
+        moveq   #0,%d1
+        move.b  mx_slot,%d1
+        add.l   %d1,%d0
+        lsl.l   #3,%d0
+        lea     ROWS,%a0
+        add.l   %d0,%a0
+        rts
+
+| keep: the Part keeps what the page edited: MASTER's slots as strip_store does, the
+| returns' cells as ret_store (main context, every register but d0/d1/a0/a1 kept)
+keep:   moveq   #0,%d0
+        move.b  mx_strip,%d0
+        cmp.l   #1,%d0
+        bne.s   1f
+        jmp     strip_store
+1:      jmp     ret_store
+
+| slot: a2 = the shown row's model, a3 = its descriptor P; Z set when the row is an
+| effect slot with no effect (clobbers d0/d1/a0)
+slot:   bsr.s   rowptr
+        move.l  (%a0),%a2
+        move.l  4(%a0),%a3
+        move.l  %a3,%d0
+        bne.s   1f                     | a sends or outputs row: never empty
         moveq   #0,%d0
         move.b  (%a2),%d0
         beq.s   1f
@@ -333,6 +404,19 @@ mx_yes: tst.l   WINH
         beq.w   9f
         tst.l   su_win
         bne.w   9f
+        bsr.w   rowptr
+        tst.l   4(%a0)
+        bne.w   9f                     | a sends or outputs row: no SETUP
+        moveq   #0,%d0
+        move.b  mx_strip,%d0
+        subq.l  #1,%d0
+        lsl.l   #3,%d0
+        lea     SL_LISTS,%a0
+        move.l  (%a0,%d0.l),%d1
+        move.l  %d1,su_idsp
+        move.l  4(%a0,%d0.l),%d1
+        move.l  %d1,su_nn
+        move.b  mx_strip,%d0           | (the title, below, wants the strip again)
         lea     -12(%sp),%sp
         movem.l %d2/%a2-%a3,(%sp)
         pea     su_close               | the window, as the stock opener makes its own,
@@ -358,13 +442,18 @@ mx_yes: tst.l   WINH
         pea     T_NONE
         moveq   #0,%d0
         move.b  mx_slot,%d0
-        lea     SU_TITLES,%a0
+        moveq   #0,%d1
+        move.b  mx_strip,%d1
+        cmp.l   #2,%d1
+        blo.s   41f
+        move.l  %d1,%d0                | the returns' SETUPs are titles 2 and 3
+41:     lea     SU_TITLES,%a0
         move.l  (%a0,%d0.l*4),-(%sp)
         move.l  su_win,-(%sp)
         jsr     TITLE
         lea     12(%sp),%sp
-        pea     SU_N                   | the list: every row shows
-        pea     SU_N
+        move.l  su_nn,-(%sp)           | the list: every row shows
+        move.l  su_nn,-(%sp)
         pea     su_ls
         jsr     LINIT
         lea     12(%sp),%sp
@@ -386,16 +475,13 @@ mx_yes: tst.l   WINH
 
 | spos: d0 = the slot's effect's row in the list, -1 if it is not on it;
 | a2 = the slot's model (clobbers d1/a0)
-spos:   moveq   #0,%d0
-        move.b  mx_slot,%d0
-        lsl.l   #4,%d0
-        lea     strip_model,%a2
-        add.l   %d0,%a2
+spos:   bsr.w   rowptr
+        move.l  (%a0),%a2
         moveq   #0,%d1
         move.b  (%a2),%d1
-        lea     SU_IDS,%a0
+        move.l  su_idsp,%a0
         moveq   #0,%d0
-1:      cmp.l   #SU_N,%d0
+1:      cmp.l   su_nn,%d0
         bge.s   2f
         cmp.b   (%a0,%d0.l),%d1
         beq.s   3f
@@ -407,11 +493,8 @@ spos:   moveq   #0,%d0
 
 | sdesc: a3 = the descriptor of the slot's effect, NONE's for none; a2 =
 | the slot's model; Z set when there is none (clobbers d0/a0)
-sdesc:  moveq   #0,%d0
-        move.b  mx_slot,%d0
-        lsl.l   #4,%d0
-        lea     strip_model,%a2
-        add.l   %d0,%a2
+sdesc:  bsr.w   rowptr
+        move.l  (%a0),%a2
         moveq   #0,%d0
         move.b  (%a2),%d0
         lea     DESC2,%a0
@@ -460,7 +543,7 @@ su_yes: tst.l   su_win
         lea     -16(%sp),%sp
         movem.l %d2-%d3/%a2-%a3,(%sp)
         move.l  su_ls+8,%d0            | the cursor
-        lea     SU_IDS,%a0
+        move.l  su_idsp,%a0
         moveq   #0,%d2
         move.b  (%a0,%d0.l),%d2        | d2 = its id
         bsr.w   sdesc
@@ -491,7 +574,7 @@ su_yes: tst.l   su_win
         pea     SU_KEYL
         jsr     LPUSH
         addq.l  #4,%sp
-        jsr     strip_store             | the Part keeps the new effect
+        bsr.w   keep                    | the Part keeps the new effect
         moveq   #1,%d0
         move.l  %d0,EDITED
         bsr.w   su_draw
@@ -545,7 +628,7 @@ su_enc: tst.l   su_win
         ble.s   3f
         move.l  %d4,%d0
 3:      move.b  %d0,10(%a2,%d2.l)
-        jsr     strip_store             | the Part keeps it
+        bsr.w   keep                    | the Part keeps it
         moveq   #1,%d0
         move.l  %d0,EDITED
         move.l  %d2,-(%sp)             | the knob lifts and shows its value, as
@@ -607,7 +690,7 @@ su_draw:
         bge.s   2f
         move.l  su_ls,%d0
         add.l   %d2,%d0
-        lea     SU_IDS,%a0
+        move.l  su_idsp,%a0
         moveq   #0,%d1
         move.b  (%a0,%d0.l),%d1
         lea     DESC2,%a0
@@ -885,7 +968,12 @@ master: lea     FILL,%a4               | the three stock boxes, cleared
         moveq   #1,%d4
         bsr.w   shape
         lea     T_MAIN,%a0
-        moveq   #0xd,%d0
+        moveq   #0,%d0
+        move.b  mx_strip,%d0
+        cmp.l   #2,%d0
+        blo.s   12f
+        lea     T_LVL,%a0
+12:     moveq   #0xd,%d0
         moveq   #0x2f,%d1
         bsr.w   ctext
         moveq   #4,%d0                 | MAIN's value where MIX's crossfade is
@@ -894,6 +982,19 @@ master: lea     FILL,%a4               | the three stock boxes, cleared
         moveq   #0,%d3
         move.b  MAINV,%d3
         lea     SIGNED,%a0
+        moveq   #0,%d0
+        move.b  mx_strip,%d0
+        cmp.l   #2,%d0
+        blo.s   11f
+        | a return: its level, a plain number
+        lea     LVLP,%a1
+        move.l  -8(%a1,%d0.l*4),%a1
+        moveq   #0,%d3
+        move.b  (%a1),%d3
+        sub.l   %a0,%a0
+11:     moveq   #4,%d0
+        moveq   #0x26,%d1
+        moveq   #6,%d2
         bsr.w   num
         lea     DOTTED,%a4
         moveq   #5,%d0
@@ -920,21 +1021,7 @@ master: lea     FILL,%a4               | the three stock boxes, cleared
         moveq   #0x1f,%d2
         moveq   #0x33,%d3
         bsr.w   shape
-        lea     T_VI,%a0
-        moveq   #0x2c,%d1
-        bsr.w   vchar
-        lea     T_VN,%a0
-        moveq   #0x26,%d1
-        bsr.w   vchar
-        lea     T_VS,%a0
-        moveq   #0x20,%d1
-        bsr.w   vchar
-        lea     T_V1,%a0
-        tst.b   mx_slot
-        beq.s   1f
-        lea     T_V2,%a0
-1:      moveq   #0x1a,%d1
-        bsr.w   vchar
+        bsr.w   sidelabel
         bsr.w   cells
         lea     DOTTED,%a4             | the rules last, over what a label cleared
         moveq   #1,%d4
@@ -956,6 +1043,43 @@ master: lea     FILL,%a4               | the three stock boxes, cleared
         moveq   #0x66,%d2
         moveq   #0x25,%d3
         bra.w   shape
+
+| sidelabel: the row's four letters down the side, dark, at rows 0x2c, 0x26, 0x20, 0x1a
+| as the stock draw writes OUT (clobbers d0/d1/a0/a1, d6)
+sidelabel:
+        bsr.w   rowptr
+        move.l  %a0,%d0
+        lea     ROWS,%a1
+        sub.l   %a1,%d0
+        lsr.l   #3,%d0                 | the row's index
+        lea     SIDE,%a0
+        lsl.l   #2,%d0
+        add.l   %d0,%a0                | its four letters
+        moveq   #0x2c,%d6
+1:      moveq   #0,%d0
+        move.b  (%a0)+,%d0
+        lsl.l   #8,%d0                 | the letter and its NULs, on the stack
+        lsl.l   #8,%d0
+        lsl.l   #8,%d0
+        move.l  %d0,-(%sp)
+        move.l  %sp,%d0
+        move.l  %a0,-(%sp)
+        move.l  %d0,-(%sp)
+        pea     T_X
+        pea     1
+        clr.l   -(%sp)
+        move.l  %d6,-(%sp)
+        pea     0x1c
+        move.l  %a5,-(%sp)
+        pea     FONT
+        jsr     TEXTF
+        lea     32(%sp),%sp
+        move.l  (%sp)+,%a0
+        addq.l  #4,%sp
+        subq.l  #6,%d6
+        cmp.l   #0x1a,%d6
+        bge.s   1b
+        rts
 
 | cells: the slot's page-1 knobs the effect draws, name over value
 cells:  bsr.w   slot
@@ -1046,7 +1170,7 @@ num:    move.l  %a5,-(%sp)
 
 | ---- data ------------------------------------------------------------------
         .balign 4
-TITLES: .long   T_MIXER, T_MASTER
+TITLES: .long   T_MIXER, T_MASTER, T_RETA, T_RETB
 | Input layers as the stock ones: {next, keys, encoders, 0, 0, -1, -1}; a
 | zero list leaves the layers under it alone.
 MX_KEYL:
@@ -1119,13 +1243,131 @@ SU_ENCS:
         .long   0, 0, 0, 0, 0
         .balign 4
 SU_TITLES:
-        .long   T_S1, T_S2
+        .long   T_S1, T_S2, T_S3, T_S4
 su_ls:  .long   0, 0, 0, 0, 0          | the list: top, row, cursor, rows, count
 su_win: .long   0                      | the SETUP window's handle, 0 = closed
 | The strip's list: NONE, then what tail.asm runs (OXIDE); a row is an id,
 | its name the descriptor's
         .equ    SU_N, 2
 SU_IDS: .byte   0x00, 0x1f, 0xff              | 0xff ends it: strip_xport checks a stored id against it
+| The returns' lists: NONE, OXIDE, and the server of the return's core (tail.asm, reta.asm)
+SL_A:   .byte   0x00, 0x1f, 0x06, 0xff
+SL_B:   .byte   0x00, 0x1f, 0x07, 0xff
+        .balign 4
+SL_LISTS:
+        .long   SU_IDS, 2, SL_A, 3, SL_B, 3
+su_idsp: .long  SU_IDS                 | the list the SETUP shows (mx_yes sets it)
+su_nn:   .long  2
+| The rows of a return's page: {the model's cell, the descriptor}: MASTER's two effect slots,
+| then, for RETURN A and RETURN B, the effect slot (its id names the descriptor), the sends
+| into it (T1..T6 in one row, the rest in the next: the row's cell is offset by six bytes),
+| and its output (level, CUE send). Four rows a strip, from MASTER on.
+        .balign 4
+ROWS:
+        .long   strip_model, 0, strip_model+16, 0, 0, 0, 0, 0
+        .long   ret_model+16, 0, aux_model, P_SND1, aux_model+6, P_SND2, retlvl_model+16, P_OUT
+        .long   ret_model, 0, aux_model+16, P_SND1, aux_model+16+6, P_SND2, retlvl_model, P_OUT
+ROWN:   .byte   0, 2, 4, 4
+SIDE:   .ascii  "INS1INS2        "
+        .ascii  "INS1SND1SND2OUT "
+        .ascii  "INS1SND1SND2OUT "
+        .balign 4
+LVLP:   .long   retlvl_model+16+4, retlvl_model+4   | RETURN A's level byte, RETURN B's
+| Descriptors for the rows that are not effects, as the page code reads one: names at 0x16,
+| minimums at 0x6a, counts at 0x9a, formatters at 0xca (0: a plain number), the enable
+| nibbles at 0x18e (bit 0 a knob drawn)
+P_SND1:
+        .space  0x16
+        .ascii  "T1"
+        .space  4
+        .ascii  "T2"
+        .space  4
+        .ascii  "T3"
+        .space  4
+        .ascii  "T4"
+        .space  4
+        .ascii  "T5"
+        .space  4
+        .ascii  "T6"
+        .space  4
+        .space  6
+        .space  6
+        .space  6
+        .space  6
+        .space  6
+        .space  6
+        .space  0x6a-0x5e
+        .rept   12
+        .long   0
+        .endr
+        .rept   12
+        .long   128
+        .endr
+        .rept   12
+        .long   0
+        .endr
+        .space  0x18e-0xfa
+        .long   0x111111
+P_SND2:
+        .space  0x16
+        .ascii  "T7"
+        .space  4
+        .ascii  "T8"
+        .space  4
+        .ascii  "INAB"
+        .space  2
+        .ascii  "INCD"
+        .space  2
+        .ascii  "RTNA"
+        .space  2
+        .ascii  "RTNB"
+        .space  2
+        .space  6
+        .space  6
+        .space  6
+        .space  6
+        .space  6
+        .space  6
+        .space  0x6a-0x5e
+        .rept   12
+        .long   0
+        .endr
+        .rept   12
+        .long   128
+        .endr
+        .rept   12
+        .long   0
+        .endr
+        .space  0x18e-0xfa
+        .long   0x111111
+P_OUT:
+        .space  0x16
+        .ascii  "LEVL"
+        .space  2
+        .ascii  "CUE"
+        .space  3
+        .space  6
+        .space  6
+        .space  6
+        .space  6
+        .space  6
+        .space  6
+        .space  6
+        .space  6
+        .space  6
+        .space  6
+        .space  0x6a-0x5e
+        .rept   12
+        .long   0
+        .endr
+        .rept   12
+        .long   128
+        .endr
+        .rept   12
+        .long   0
+        .endr
+        .space  0x18e-0xfa
+        .long   0x11
 | A stock icon, 17 x 13 as MIX's headphones: {w, h, 1, pixels, mask}, a u32
 | per column, the top row at bit 19, lit = 1. A speaker, dark on the lit tile:
 |   ......#......
@@ -1154,6 +1396,9 @@ SPK_MASK:
 CELLX:  .byte   0x2d, 0x44, 0x5b, 0x2d, 0x44, 0x5b
 CELLY:  .byte   0x2f, 0x2f, 0x2f, 0x1f, 0x1f, 0x1f
 T_MASTER: .asciz "MASTER"
+T_RETA: .asciz  "RETURN A"
+T_RETB: .asciz  "RETURN B"
+T_LVL:  .asciz  "LVL"
 T_MAIN: .asciz  "MAIN"
 T_S:    .asciz  "%s"
 T_X:    .asciz  "X"
@@ -1166,6 +1411,8 @@ T_V1:   .asciz  "1"
 T_V2:   .asciz  "2"
 T_S1:   .asciz  "INS 1 SETUP"
 T_S2:   .asciz  "INS 2 SETUP"
-mx_strip: .byte 0                      | 0 MIXER, 1 MASTER
-mx_slot:  .byte 0                      | MASTER's: 0 INS 1, 1 INS 2
+T_S3:   .asciz  "RET A SETUP"
+T_S4:   .asciz  "RET B SETUP"
+mx_strip: .byte 0                      | 0 MIXER, 1 MASTER, 2 RETURN A, 3 RETURN B
+mx_slot:  .byte 0                      | the strip's row: MASTER 0 INS 1, 1 INS 2; a return: 0 INS 1, 1 SND1, 2 SND2, 3 OUT
 mx_encon: .byte 0                      | the knobs' layer is registered

@@ -151,7 +151,7 @@ def port(built, project, frames, sym, span):
             extra = []
             if var == "sends":
                 base = sym["aux_model"]
-                extra = ["--step", f"{FRAME_SENDS}:poke:" + ";".join(f"{base + i:#x}={v}" for i, v in enumerate(SENDS))]
+                extra = ["--step", f"{FRAME_SENDS}:poke:" + ";".join(f"{base + 4 + i + (4 if i >= 12 else 0):#x}={v}" for i, v in enumerate(SENDS))]
             procs[var] = launch(work, built, project, frames, var, extra, span,
                                 f"0:X:{SENDS_AT:x},24;0:X:{AUX_A:x},64;0:X:202,1;0:X:437,1;0:X:8000,4096")
         codes = {v: p.wait() for v, p in procs.items()}

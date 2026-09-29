@@ -86,7 +86,7 @@
 
         .text
         .global strip_xport, strip_model, aux_model, ret_model, retlvl_model, strip_sent, strip_frames, strip_tx
-        .global strip_store, strip_default, strip_seen, strip_cand, strip_lock
+        .global strip_store, strip_default, strip_seen, strip_cand, strip_lock, ret_store
 
 strip_xport:
         tst.b   strip_sent
@@ -100,8 +100,8 @@ strip_xport:
         move.w  %d2,(%a1)+
         bsr.w   sx_slot                 | slot 1
         bsr.w   sx_slot                 | slot 2
-        lea     aux_model,%a0           | the sends: two 7-bit gains a halfword
-        moveq   #AUX_HW-1,%d3
+        lea     aux_model+4,%a0         | the sends: two 7-bit gains a halfword; AUX A's
+        moveq   #6-1,%d3                | cell (values at +4), then AUX B's
 4:      mvz.b   (%a0)+,%d0
         lsl.l   #8,%d0
         mvz.b   (%a0)+,%d1
@@ -111,12 +111,9 @@ strip_xport:
         move.w  %d0,(%a1)+
         subq.l  #1,%d3
         bpl.s   4b
-        lea     ret_model,%a0           | RET B's slot, then RET A's (stage 3)
-        bsr.w   sx_slot
-        bsr.w   sx_slot
-        lea     retlvl_model,%a0        | the returns' levels: two 7-bit values a halfword
-        moveq   #RET_HW-1,%d3
-5:      mvz.b   (%a0)+,%d0
+        lea     aux_model+16+4,%a0
+        moveq   #6-1,%d3
+7:      mvz.b   (%a0)+,%d0
         lsl.l   #8,%d0
         mvz.b   (%a0)+,%d1
         or.l    %d1,%d0
@@ -124,7 +121,26 @@ strip_xport:
         add.l   %d0,%d2
         move.w  %d0,(%a1)+
         subq.l  #1,%d3
-        bpl.s   5b
+        bpl.s   7b
+        lea     ret_model,%a0           | RET B's slot, then RET A's (stage 3)
+        bsr.w   sx_slot
+        bsr.w   sx_slot
+        lea     retlvl_model+4,%a0      | the returns' levels: RET B's cell, RET A's (values
+        mvz.b   (%a0)+,%d0              | at +4: level, CUE send), a halfword each
+        lsl.l   #8,%d0
+        mvz.b   (%a0),%d1
+        or.l    %d1,%d0
+        and.l   #0x7f7f,%d0
+        add.l   %d0,%d2
+        move.w  %d0,(%a1)+
+        lea     retlvl_model+16+4,%a0
+        mvz.b   (%a0)+,%d0
+        lsl.l   #8,%d0
+        mvz.b   (%a0),%d1
+        or.l    %d1,%d0
+        and.l   #0x7f7f,%d0
+        add.l   %d0,%d2
+        move.w  %d0,(%a1)+
         moveq   #TX_HW-2-2*SLOT_HW-AUX_HW-2*SLOT_HW-RET_HW-1,%d3
 6:      clr.w   (%a1)+                  | spare
         subq.l  #1,%d3
@@ -392,6 +408,10 @@ ssdone: clr.b   strip_lock
         lea     20(%sp),%sp
         rts
 
+| ret_store: the Part keeps the returns' cells and the sends (stage 4b: not yet)
+ret_store:
+        rts
+
         .balign 4
 strip_frames:   .long   0               | records sent
 strip_sent:     .byte   0               | our burst is in flight
@@ -409,9 +429,10 @@ strip_model:                            | two slots: id, 3 spare, 12 values
 strip_default:                          | what a Part nobody has written gives
         BOOT_MODEL
 ret_model:      .space  32              | RET B's slot then RET A's: id, 3 spare, 12 values (none)
-retlvl_model:   .byte   100, 0, 100, 0          | RET B: level, CUE send; RET A: the same (0..127)
-                .balign 2
-aux_model:      .space  AUX_HW*2        | the sends: AUX A's ten gains, AUX B's ten, 0..127
+retlvl_model:   .byte   0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0   | RET B's cell: level, CUE send at +4, +5
+                .byte   0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0   | RET A's
+aux_model:      .space  32              | two cells, values at +4: AUX A's twelve sends (T1..T8, IN AB, IN CD,
+                                        | RET A, RET B), AUX B's; 0..127
                                         | (0 = off; zero at boot, so an image with sends
                                         | at rest is stock's mix)
 strip_seen:     .space  32              | the window as adopted (stored form)

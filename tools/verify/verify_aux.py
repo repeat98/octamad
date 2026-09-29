@@ -12,14 +12,14 @@ channels (a DC WAV, so every sample of a frame is the same and a snapshot at
 the end of the run cannot fall between two frames):
 
   rest    aux_model untouched (zeros): nothing but stock's and the strip's
-  sends   aux_model poked at frame 30 with twenty distinct sends
+  sends   aux_model poked at frame 30 with twenty-four sends (twelve a bus; the two returns' terms zero)
 
   identity  every TX0 slot of both cores and every host-port block is
             byte-identical between the two runs: the sends change nothing
             but the two AUX blocks
   rest      X:0x7c80..0x7c93 (the sends) and both AUX blocks are all zero in
             the rest run: the boot zeroed them and a zero send adds nothing
-  sends     X:0x7c80.. holds (v/128)^2 as Q23 for the twenty sends, and the
+  sends     X:0x7c80.. holds (v/128)^2 as Q23 for the twenty-four sends, and the
             AUX A / AUX B blocks are, for each of the sixteen samples, the
             python sum over the ten sources at those gains -- the two input
             pairs read from the ring where the mixdown reads it (X:0x202 and
@@ -44,8 +44,8 @@ KEY = "MASTER STRIP"
 SENDS_AT, AUX_A, AUX_B = 0x7c80, 0x7ca0, 0x7cc0
 FRAME_SENDS = 30
 # aux_model's order: AUX A's ten sources (T1..T8, IN AB, IN CD), then AUX B's.
-SENDS = [10, 20, 30, 40, 50, 60, 70, 80, 127, 64,
-         5, 15, 25, 35, 45, 55, 65, 75, 100, 33]
+SENDS = [10, 20, 30, 40, 50, 60, 70, 80, 127, 64, 0, 0,
+         5, 15, 25, 35, 45, 55, 65, 75, 100, 33, 0, 0]
 # The DC on RX0 slots 0..3: IN AB L, R and IN CD L, R (24-bit).
 DC = [0x300000, -0x180000, 0x0a0000, -0x2c0000]
 
@@ -76,7 +76,7 @@ def s24(w):
 def static(built):
     p = vds.Payload(built, "A")
     tail = p.word(0x35e)                     # the strip's `jsr >tail` over P:0x35d's two words
-    d = vds.disasm(p.span(tail, tail + 400), tail)
+    d = vds.disasm(p.span(tail, tail + 640), tail)
     text = "\n".join(d)
     norm = re.sub(r"\s+", " ", text)
     check("static: the tail carries the sends' apply (mpy x0,y1,a, signed) and the pass "
@@ -106,6 +106,35 @@ def peeks(log):
             for a, ws in re.findall(r"core 0 X:0x([0-9a-f]+): ((?:[0-9a-f]{6} ?)+)", log)}
 
 
+def launch(work, built, project, frames, var, extra, span, peek, audio_in=None):
+    """One run of the built image on a copy of the project: the port's process."""
+    import verify_set as vs
+    import ot_project as otp
+    vdir = work / var
+    proj = vdir / "src"
+    shutil.copytree(pathlib.Path(project).expanduser(), proj,
+                    ignore=shutil.ignore_patterns("*.wav", "*.WAV", "*.ot"))
+    pw = proj / "project.work"
+    raw = pw.read_bytes()
+    for key in (b"DIR_AB", b"DIR_CD"):
+        raw, n = re.subn(rb"\r\n" + key + rb"=\d+", b"\r\n" + key + b"=127", raw)
+        if n != 1:
+            raise SystemExit(f"project.work has no {key.decode()} line")
+    pw.write_bytes(raw)
+    bank = int(re.search(rb"\r\nBANK=(\d+)\r\n", raw).group(1)) + 1
+    pat_part, _ = otp.bank_info(proj, bank)
+    part = vs.part_of(proj, bank, pat_part[0] + 1)
+    card = vdir / "card.img"
+    vs.stage(proj, part, "OCTABAM", "RIG", vdir / "tree", 64, bank, card)
+    cmd = [str(vds.EMU), "--image", str(work / "built.bin"), "--card", str(card),
+           "--set", "OCTABAM", "--project", "RIG", "--sequencer", "--internal-clock",
+           "--frames", str(frames), "--load-ms", "20000", "--dsp", "--main-level", "64",
+           "--audio-in", audio_in or str(work / "dc.wav"), "--poke-trig", "2",
+           "--audio-out", str(vdir / "run"), "--block-dump", str(vdir / "run.dump"),
+           "--dsp-stopwatch", f"0:{span[0]:x}:{span[1]:x}", "--dsp-peek", peek] + extra
+    return subprocess.Popen(cmd, cwd=ROOT, stdout=open(vdir / "run.txt", "w"), stderr=subprocess.STDOUT)
+
+
 def port(built, project, frames, sym, span):
     import verify_set as vs
     import ot_project as otp
@@ -119,34 +148,12 @@ def port(built, project, frames, sym, span):
         write_dc(work / "dc.wav")
         procs = {}
         for var in ("rest", "sends"):
-            vdir = work / var
-            proj = vdir / "src"
-            shutil.copytree(pathlib.Path(project).expanduser(), proj,
-                            ignore=shutil.ignore_patterns("*.wav", "*.WAV", "*.ot"))
-            pw = proj / "project.work"
-            raw = pw.read_bytes()
-            for key in (b"DIR_AB", b"DIR_CD"):
-                raw, n = re.subn(rb"\r\n" + key + rb"=\d+", b"\r\n" + key + b"=127", raw)
-                if n != 1:
-                    print(f"  [SKIP] port half: project.work has no {key.decode()} line")
-                    return
-            pw.write_bytes(raw)
-            bank = int(re.search(rb"\r\nBANK=(\d+)\r\n", raw).group(1)) + 1
-            pat_part, _ = otp.bank_info(proj, bank)
-            part = vs.part_of(proj, bank, pat_part[0] + 1)
-            card = vdir / "card.img"
-            vs.stage(proj, part, "OCTABAM", "RIG", vdir / "tree", 64, bank, card)
-            cmd = [str(vds.EMU), "--image", str(work / "built.bin"), "--card", str(card),
-                   "--set", "OCTABAM", "--project", "RIG", "--sequencer", "--internal-clock",
-                   "--frames", str(frames), "--load-ms", "20000", "--dsp", "--main-level", "64",
-                   "--audio-in", str(work / "dc.wav"), "--poke-trig", "2",
-                   "--audio-out", str(vdir / "run"), "--block-dump", str(vdir / "run.dump"),
-                   "--dsp-stopwatch", f"0:{span[0]:x}:{span[1]:x}",
-                   "--dsp-peek", f"0:X:{SENDS_AT:x},20;0:X:{AUX_A:x},64;0:X:202,1;0:X:437,1;0:X:8000,4096"]
+            extra = []
             if var == "sends":
                 base = sym["aux_model"]
-                cmd += ["--step", f"{FRAME_SENDS}:poke:" + ";".join(f"{base + i:#x}={v}" for i, v in enumerate(SENDS))]
-            procs[var] = subprocess.Popen(cmd, cwd=ROOT, stdout=open(vdir / "run.txt", "w"), stderr=subprocess.STDOUT)
+                extra = ["--step", f"{FRAME_SENDS}:poke:" + ";".join(f"{base + i:#x}={v}" for i, v in enumerate(SENDS))]
+            procs[var] = launch(work, built, project, frames, var, extra, span,
+                                f"0:X:{SENDS_AT:x},24;0:X:{AUX_A:x},64;0:X:202,1;0:X:437,1;0:X:8000,4096")
         codes = {v: p.wait() for v, p in procs.items()}
         if not all(check(f"port: {v} run finished", codes[v] == 0) for v in codes):
             return
@@ -178,11 +185,11 @@ def port(built, project, frames, sym, span):
         # rest: zeros
         r = pk["rest"]
         check("port: rest: the sends and both AUX blocks are zero (boot zeroed them, no record asked)",
-              r.get(SENDS_AT) == [0] * 20 and r.get(AUX_A) == [0] * 64, "")
+              r.get(SENDS_AT) == [0] * 24 and r.get(AUX_A) == [0] * 64, "")
         # sends
         s = pk["sends"]
         want = [gain(v) for v in SENDS]
-        check("port: sends: X:0x7c80.. are (v/128)^2 as Q23 for the twenty sends",
+        check("port: sends: X:0x7c80.. are (v/128)^2 as Q23 for the twenty-four sends",
               s.get(SENDS_AT) == want,
               "" if s.get(SENDS_AT) == want else f"got {[hex(x) for x in (s.get(SENDS_AT) or [])[:6]]}...")
         ring = s.get(0x8000)
@@ -199,7 +206,7 @@ def port(built, project, frames, sym, span):
                      ins is not None and all(s24(w) == ins[i % 4] for i, w in enumerate(ring[r2 - 0x8000:r2 - 0x8000 + 64])
                                              if r2 - 0x8000 + 64 <= len(ring)), ""):
             return
-        for name, at, sends in (("AUX A", AUX_A, want[:10]), ("AUX B", AUX_B, want[10:])):
+        for name, at, sends in (("AUX A", AUX_A, want[:12]), ("AUX B", AUX_B, want[12:])):
             blk = s.get(AUX_A)
             base = at - AUX_A
             left = lim(sum(g * x for g, x in zip(sends[8:], (ins[0], ins[2]))) >> 23)

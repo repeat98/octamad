@@ -67,11 +67,12 @@
         .equ    ISR_OUT,   0x40004bc8   | the chain's exit: movem d0-d1/a0-a1, rte
         .equ    UNCACHED,  0x08000000   | the DMA reads SDRAM; write past the cache
         .equ    MBOX_DEST, 0x7c80
-        .equ    TX_HW,     32
+        .equ    TX_HW,     64
         .equ    MAGIC,     0x5354
         .equ    SLOTS,     2
         .equ    SLOT_HW,   10           | halfwords a slot: id, 6 page 1, 3 page 2
-        .equ    AUX_HW,    TX_HW-2-SLOTS*SLOT_HW    | the sends: 10 halfwords, 20 gains
+        .equ    AUX_HW,    12           | the sends: 12 halfwords, 24 gains (2 buses x 12 sources)
+        .equ    RET_HW,    2            | the returns' levels: RET B, RET A: level, CUE send
         .equ    DBPTR,     0x46c82456   | long: the resident bank's DB (stock's UI code)
         .equ    PARTSEL,   0x100b14cf   | byte: the part the panel edits
         .equ    SRAM_PART, 0x100a4ece   | + part * PSTRIDE: the working parts' twin
@@ -84,7 +85,7 @@
         .equ    VERSION,   1
 
         .text
-        .global strip_xport, strip_model, aux_model, strip_sent, strip_frames, strip_tx
+        .global strip_xport, strip_model, aux_model, ret_model, retlvl_model, strip_sent, strip_frames, strip_tx
         .global strip_store, strip_default, strip_seen, strip_cand, strip_lock
 
 strip_xport:
@@ -97,8 +98,69 @@ strip_xport:
         move.l  #strip_tx+UNCACHED,%a1
         move.l  #MAGIC,%d2              | d2: the halfwords' running sum
         move.w  %d2,(%a1)+
-        moveq   #SLOTS-1,%d4
-1:      mvz.b   (%a0),%d0               | the slot's effect id
+        bsr.w   sx_slot                 | slot 1
+        bsr.w   sx_slot                 | slot 2
+        lea     aux_model,%a0           | the sends: two 7-bit gains a halfword
+        moveq   #AUX_HW-1,%d3
+4:      mvz.b   (%a0)+,%d0
+        lsl.l   #8,%d0
+        mvz.b   (%a0)+,%d1
+        or.l    %d1,%d0
+        and.l   #0x7f7f,%d0             | the DSP masks again; a clean sum here
+        add.l   %d0,%d2
+        move.w  %d0,(%a1)+
+        subq.l  #1,%d3
+        bpl.s   4b
+        lea     ret_model,%a0           | RET B's slot, then RET A's (stage 3)
+        bsr.w   sx_slot
+        bsr.w   sx_slot
+        lea     retlvl_model,%a0        | the returns' levels: two 7-bit values a halfword
+        moveq   #RET_HW-1,%d3
+5:      mvz.b   (%a0)+,%d0
+        lsl.l   #8,%d0
+        mvz.b   (%a0)+,%d1
+        or.l    %d1,%d0
+        and.l   #0x7f7f,%d0
+        add.l   %d0,%d2
+        move.w  %d0,(%a1)+
+        subq.l  #1,%d3
+        bpl.s   5b
+        moveq   #TX_HW-2-2*SLOT_HW-AUX_HW-2*SLOT_HW-RET_HW-1,%d3
+6:      clr.w   (%a1)+                  | spare
+        subq.l  #1,%d3
+        bpl.s   6b
+        neg.l   %d2
+        move.w  %d2,(%a1)               | the checksum
+| the burst, as stock state 1 sends core 0's per-track records
+        clr.b   0xfc0a400c              | core 0's host port
+        moveq   #16,%d0                 | NBYTES: a 16-byte beat, TX_HW/8 minor loops
+        move.l  %d0,0xfc045008
+        move.l  #strip_tx,%d0
+        move.l  %d0,0xfc045000          | SADDR
+        move.w  #0x81,%d0
+        move.w  %d0,0x20000000
+        move.w  #MBOX_DEST,%d0
+        move.w  %d0,0x2000001c          | the DSP destination
+        moveq   #TX_HW-1,%d0
+        move.w  %d0,0x2000001c          | its count - 1
+        move.w  #0x88,%d0
+        move.w  %d0,0x20000004          | host command 0x10: DMA0 in
+        move.w  #0x8000+TX_HW/8,%d0
+        move.w  %d0,0xfc045014          | CITER TX_HW/8, linked to itself
+        move.w  %d0,0xfc04501c          | BITER
+        clr.b   0xfc04401e              | SSRT: start channel 0
+        moveq   #1,%d0
+        move.b  %d0,strip_sent
+        addq.l  #1,strip_frames
+        movem.l (%sp),%d2-%d4
+        lea     12(%sp),%sp
+        jmp     ISR_OUT
+
+| sx_slot: pack one slot model at a0 (id, 3 spare, 12 values) into a1's halfwords
+| (id, six page-1 values v << 8, three page-2 pairs), d2 the running sum.
+| Clobbers d0, d1, d3; a0 and a1 advance past the slot.
+sx_slot:
+        mvz.b   (%a0),%d0               | the slot's effect id
         addq.l  #4,%a0                  | its values
         add.l   %d0,%d2
         move.w  %d0,(%a1)+
@@ -118,45 +180,7 @@ strip_xport:
         move.w  %d0,(%a1)+
         subq.l  #1,%d3
         bpl.s   3b
-        subq.l  #1,%d4
-        bpl.s   1b
-        lea     aux_model,%a0           | the sends: two 7-bit gains a halfword
-        moveq   #AUX_HW-1,%d3
-4:      mvz.b   (%a0)+,%d0
-        lsl.l   #8,%d0
-        mvz.b   (%a0)+,%d1
-        or.l    %d1,%d0
-        and.l   #0x7f7f,%d0             | the DSP masks again; a clean sum here
-        add.l   %d0,%d2
-        move.w  %d0,(%a1)+
-        subq.l  #1,%d3
-        bpl.s   4b
-        neg.l   %d2
-        move.w  %d2,(%a1)               | the checksum
-| the burst, as stock state 1 sends core 0's per-track records
-        clr.b   0xfc0a400c              | core 0's host port
-        moveq   #TX_HW/2,%d0            | NBYTES: 64 bytes over 4 minor loops
-        move.l  %d0,0xfc045008
-        move.l  #strip_tx,%d0
-        move.l  %d0,0xfc045000          | SADDR
-        move.w  #0x81,%d0
-        move.w  %d0,0x20000000
-        move.w  #MBOX_DEST,%d0
-        move.w  %d0,0x2000001c          | the DSP destination
-        moveq   #TX_HW-1,%d0
-        move.w  %d0,0x2000001c          | its count - 1
-        move.w  #0x88,%d0
-        move.w  %d0,0x20000004          | host command 0x10: DMA0 in
-        move.w  #0x8004,%d0
-        move.w  %d0,0xfc045014          | CITER 4, linked to itself
-        move.w  %d0,0xfc04501c          | BITER
-        clr.b   0xfc04401e              | SSRT: start channel 0
-        moveq   #1,%d0
-        move.b  %d0,strip_sent
-        addq.l  #1,strip_frames
-        movem.l (%sp),%d2-%d4
-        lea     12(%sp),%sp
-        jmp     ISR_OUT
+        rts
 
 | Stock state 3 writes its own NBYTES, chip select and SADDR: nothing of
 | ours carries over.
@@ -384,6 +408,9 @@ strip_model:                            | two slots: id, 3 spare, 12 values
         BOOT_MODEL
 strip_default:                          | what a Part nobody has written gives
         BOOT_MODEL
+ret_model:      .space  32              | RET B's slot then RET A's: id, 3 spare, 12 values (none)
+retlvl_model:   .byte   100, 0, 100, 0          | RET B: level, CUE send; RET A: the same (0..127)
+                .balign 2
 aux_model:      .space  AUX_HW*2        | the sends: AUX A's ten gains, AUX B's ten, 0..127
                                         | (0 = off; zero at boot, so an image with sends
                                         | at rest is stock's mix)

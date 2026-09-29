@@ -54,11 +54,25 @@ entry:
         lua     (r1+$2),r1              ; sample 0's MAIN L
         move    #$7,n1                  ; R, then the next sample's L
         move    #>$7c40,r0              ; D
+        move    #>$7e90,r4              ; the returns' wet at their levels: MAIN's add
+        move    #>$7eb0,r3              ; and CUE's (tail.asm's retmix)
+        move    x:>$203,r2              ; CUE L of sample 0
+        move    #$7,n2
         do      #$10,hgath
-        move    x:(r1)+,x0
-        move    x:(r1)+n1,x1
-        move    x0,x:(r0)+
-        move    x1,x:(r0)+
+        move    x:(r2),a                ; CUE L, R: the CUE send of the returns
+        move    x:(r3)+,x0
+        add     x0,a            x:(r3)+,x1
+        move    x:(r2+$1),b
+        add     x1,b            a,x:(r2)+
+        move    b,x:(r2)+n2
+        move    x:(r1),a                ; MAIN L, R plus the returns' wet, into the ring
+        move    x:(r4)+,x0              ; and D (the strip's inserts hear the returns)
+        add     x0,a            x:(r4)+,x1
+        move    x:(r1+$1),b
+        add     x1,b            a,x:(r1)+
+        move    b,x:(r1)+n1
+        move    a,x:(r0)+
+        move    b,x:(r0)+
 hgath:
 ; ---- the slots on sample 0, back into the ring --------------------------------
         move    #>$7c40,r0              ; D's sample 0

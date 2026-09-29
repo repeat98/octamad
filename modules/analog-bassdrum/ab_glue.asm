@@ -1,23 +1,25 @@
 ; ---------------------------------------------------------------------------
-; ab_glue -- the Analog BD's 909 at the per-track source stage, one copy per
-; payload (tools/build/ab_image.py assembles it with bd909.asm behind it,
+; ab_glue -- the Analog BD's 808/909 engines at the per-track source stage, one copy per
+; payload (tools/build/ab_image.py assembles it with both engines behind it,
 ; into the harvested SPRING REV's P region).
 ;
 ; The seam: the stock `move a,x:>$20e` just before the source (payload A
 ; P:0x39c, B P:0x1a2) is a jsr here. Every track's source record comes
-; through; a record ab_render wrote for a 909 carries a signature, and only
+; through; a record ab_render wrote for Analog BD carries a signature, and only
 ; then does the voice run. Anything else returns into the stock source
-; untouched: this path clobbers only r4, b and x0, which the stock source
+; untouched: the non-synth path clobbers only r4, b and x0, which the stock source
 ; loads before it reads (A P:0x39e.., B P:0x1a4..).
 ;
 ; The record, in DSP words (the ColdFire's 32-bit words as hi,lo 16-bit
 ; halves; control.c ab_render):
-;   w0 $ab09, w2 $0909   the signature (a FLEX record's w0 is its count's
-;                        high half, always 0)
+;   w0 $ab09, w2 $0909   the signature (stock w2 is the high half of a
+;                        bounded ring position, never $0909; REVIEW.md)
 ;   w3                   1 when this frame carries the track's trig
 ;   w8..w19              the twelve knob bytes, 0..127
 ;
-; A 909 track's voice block is X:VBASE + 2*x:$418 (x:$418 = 0/$20/$40/$60,
+; The synth path also clobbers a, x1, y0/y1, r0/r1/r5/r6, n1/n7,
+; m0/m1/m4/m5/m6 and condition codes; it continues after the stock source.
+; An Analog BD track's voice block is X:VBASE + 2*x:$418 (x:$418 = 0/$20/$40/$60,
 ; the track within this core): the engine's state, then its knob block at
 ; +$30. The voice renders into X:0, where the stock source would have put
 ; the track's samples, and the stock code continues after the source (A
@@ -38,7 +40,7 @@ zg01:
         cmp     x0,b
         beq     zg03
 zg02:
-        rts                             ; not a 909 record: the stock source
+        rts                             ; not an Analog BD record: the stock source
 zg03:
         move    x:>$20b,a               ; keep the next track's FLEX ring base
         add     #>$80,a

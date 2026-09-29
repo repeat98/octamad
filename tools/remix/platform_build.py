@@ -75,6 +75,32 @@ def link_runtime(units, work: pathlib.Path, defsyms: dict, base: int, includes=N
     return raw.read_bytes(), _nm(elf, work)
 
 
+def preboot_layout(layout, entries):
+    """Declare cached-address extents and reject overlap with the runtime/stage."""
+    if not entries:
+        return []
+    if not all(k in layout for k in ('base', 'runtime_end', 'stage', 'stage_end', 'ceiling')):
+        raise ValueError('pre-boot payloads require a declared platform arena layout')
+    occupied = [('runtime', layout['base'], layout['runtime_end']),
+                ('runtime stage', layout['stage'], layout['stage_end'])]
+    result = []
+    for entry in entries:
+        for role, length in (('dst', entry['rawlen']), ('stage', len(entry['blob']))):
+            start = entry[role]
+            if 0x48000000 <= start < 0x50000000:
+                start -= UNCACHED
+            end = start + length
+            name = entry['name'] + ' ' + role
+            if length <= 0 or not layout['base'] <= start < end <= layout['ceiling']:
+                raise ValueError(f'pre-boot {name} lies outside the platform arena')
+            for other, lo, hi in occupied:
+                if start < hi and lo < end:
+                    raise ValueError(f'pre-boot {name} overlaps {other}: {start:#x}..{end:#x}')
+            occupied.append((name, start, end))
+            result.append(dict(name=name, start=start, end=end))
+    return result
+
+
 def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None, preboot=(), includes=None):
     """units: [(module key, Linked)] with dram=True, in link order.
     payloads: [dict(name, blob, stage, dst, rawlen, rhash, backup)] for
@@ -118,6 +144,11 @@ def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None, prebo
         (work / "runtime.raw").write_bytes(raw)
         layout.update(base=base, runtime_end=base + len(raw), stage=stage,
                       stage_end=stage_end, ceiling=ceiling, size=size)
+    if preboot:
+        try:
+            layout['preboot'] = preboot_layout(layout, preboot)
+        except ValueError as exc:
+            sys.exit(f'platform build: {exc}')
     (work / LAYOUT).write_text(json.dumps(layout, indent=2) + "\n")
     # the table and the blobs, as assembler input
     inc = [f"        .long {len(entries)}"]

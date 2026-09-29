@@ -1,6 +1,8 @@
 # Current Analog BD load measurements
 
-Measured 28 September 2026 on the DSP 808/909 audition image. **The local tests pass; hardware headroom is not established.** Retain the two-instance limit. These are executed instructions, not hardware cycles, wall-clock percentages, or a proof that every combination is safe.
+Measured 28 September 2026 on the DSP 808/909 audition image. Historical two-voice measurements follow below. The two-instance ceiling
+was removed on 29 September; see the eight-track results below. Hardware
+headroom is not established. These are executed instructions, not hardware cycles, wall-clock percentages, or a proof that every combination is safe.
 
 Audition image SHA256 (before the track-shortcut UI fix): `14785240b3a522e5f16487db8f03af04b5cbec4c27e75f7f3019c9cec19a3788`.
 
@@ -33,7 +35,7 @@ The builder now copies that routine from the user's pristine image into the last
 | Mini Verb (comparison only; not composable in this remix) | 310.4 |
 | DSP 909, including desk/LPF | 322.1 |
 
-The 808 is cheaper than SPRING; the 909 is slightly more expensive than Mini Verb. Neither voice has a full inactive bypass: silent 909 blocks still execute about 320 instructions/sample. Admission limits therefore cannot assume that silence releases DSP capacity.
+The 808 is cheaper than SPRING; the 909 is slightly more expensive than Mini Verb. Neither voice has a full inactive bypass: silent 909 blocks still execute about 320 instructions/sample. Capacity estimates therefore cannot assume that silence releases DSP capacity.
 
 The existing DSP gates now enforce **code-growth ceilings** of 3504 instructions/block for 808 and 5168 for 909. These are measured regression limits, **not hardware budgets**. A failure calls for a new full-chain benchmark, rather than silently increasing the limit.
 
@@ -102,3 +104,48 @@ python3 tools/harness/benchmark_analog_bd.py --project out/analog-bassdrum/ui-fi
 ```
 
 The full-chain harness builds a local instrumented meter against `out/emu` libraries. It retains every stopwatch pair, bypassing the ordinary diagnostic's 4096-entry cap, and writes counts only after execution. No firmware or checked-in emulator behavior changes. Sources, build commands, hashes, raw counts, generated projects, audio evidence and per-case results for the final run remain under `out/analog-bassdrum/optimization/load-fixed/`; earlier evidence stays under `out/analog-bassdrum/load-benchmark/`. Full-chain runs require an explicit `--image` pointing to a frozen build; never copy the mutable build output while a gate suite is running. No user audio, firmware or generated binary belongs in the PR.
+
+## Eight-track review revision, 29 September 2026
+
+Four independent state slots per engine already existed on each core, so
+lifting admission adds no DSP state allocation or dynamic loading. The
+stock-supported ASL and DO forms preserve all exact-render hashes. The
+combined code now occupies 992 P words, plus the 35-word preserved helper.
+The stock multi-bit shift reduces the current 808 peak to 217.9375
+instructions/sample; the 909 remains 322.125.
+
+The 900-frame tests below assign all eight tracks, retrigger every step,
+and require stereo post-FX audio plus each track's own control/trig record.
+Each core is metered separately; the values cover its whole four-track loop.
+The artifact measured here is SHA256
+`427c218ed647ac8dcb0ef1a0b99a78685d4aa68c1e86085feb29a09edeb45520`.
+It predates the pool-style browser and the equivalent 808 DO-form change.
+
+| Layout | Core | Peak instructions/sample | Result |
+|---|---:|---:|---|
+| dark-808eight-core0 | 0 | 3242.06 | stereo audio + controls pass |
+| dark-808eight-core1 | 1 | 3230.25 | stereo audio + controls pass |
+| dark-909eight-core0 | 0 | 3660.06 | stereo audio + controls pass |
+| dark-909eight-core1 | 1 | 3653.50 | stereo audio + controls pass |
+| dark-mixedeight-core0 | 0 | 3448.38 | stereo audio + controls pass |
+| dark-mixedeight-core1 | 1 | 3443.94 | stereo audio + controls pass |
+| eq-808eight-core0 | 0 | 3914.38 | stereo audio + controls pass |
+| eq-808eight-core1 | 1 | 3915.69 | stereo audio + controls pass |
+| eq-mixedeight-core0 | 0 | 4100.25 | stereo audio + controls pass |
+| eq-mixedeight-core1 | 1 | 4101.56 | stereo audio + controls pass |
+| eq-909eight | both | incomplete processing; not a usable load price | **FAIL: silent output** |
+
+Eight 909s plus sixteen DJ EQ instances fail under the local model; do not
+use the partial-loop count as a safe peak. Eight 808s and mixed models pass
+that layout, and all three model layouts pass FILTER + DARK. This is a
+measured operating envelope, not a guarantee of chip headroom. The explicit
+benchmark keeps the failing scenarios visible and returns failure for them.
+Dynamic code loading would increase the engine library's possible size,
+not reduce active synthesis or effect processing cost.
+
+As a diagnostic only, raising `--dsp-ips` from the port's normal 4160 to
+5200 makes the same eight-909/double-DJ-EQ fixture produce audio on all eight
+tracks. Its complete four-track-loop peak then measures 4325.1875
+instructions/sample, already above the normal budget before surrounding IO.
+The normal-budget failure remains the acceptance result; the raised-budget
+run isolates processing capacity and is not a performance workaround.

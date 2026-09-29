@@ -678,3 +678,40 @@ servers, so those four cannot be kept in the FX2 chooser anyway.
 core 1: a hostless call there is the same shape at payload B's own frame end, not
 examined), no retirement of the SEND bus (§4). It is the step that frees T5's FX2 and
 puts a reverb on its own strip; the 12 × 4 mixer of §3 stays the destination.
+
+## 17. What is asked of the returns, and the stages (29 Sep 2026)
+
+Jannik, 29 Sep 2026: "one master channel with the inserts and two stereo return channels that
+we can send T1-T8 to and / or also route A/B C/D to. also those return channels should be able
+to send stuff to themself (internally and over the cue out for feedback fx chains)". That is §1
+and §3 as written, so §16's smaller first step (a hostless reverb on today's SEND bus) is
+dropped: the SEND bus takes its input from the FX2 slot of a track, which has no inputs and no
+self-send. The stages:
+
+1. **AUX A and AUX B in the mixdown.** The copy of the stock mixdown (`MIXDOWN COPY`, §10)
+   grows two passes over the same ten sources (T1-T8 and the two input pairs), each with its
+   own gains, writing two stereo blocks (AUX A, AUX B). The gains come from a model on the
+   ColdFire (as the strip's, §12), smoothed there so the DSP holds one value per frame.
+   ❓ Cost, from the stock mixdown's shape (two passes of 10 sources × 2 channels, about 52
+   instructions a sample for both): +50 to +100 instructions a sample; ❓ ~60 words. Gate: all
+   sends at 0 leaves the image bit-identical to stock (the identity `verify_dspsite` already
+   proves for the copy); sends set, each AUX block equals the python sum of its sources at
+   its gains, 0 LSB.
+2. **RET B on core 0 (the reverb).** Called after the frame's last effect (§16), its input the
+   AUX B block, its wet added to MAIN at the next head, its **self-send** (RET B into AUX B) a
+   gain with a soft clip and a cap under 1 (§6 trap 2), and its **cue send** a gain into the
+   CUE bus, which is the hardware loop (out the cue jack, through a pedal, back into IN C/D).
+   Gate: the runaway test at the maximum self-send.
+3. **RET A on core 1 (the delay).** AUX A crosses to core 1 and the wet crosses back through
+   the shared window, both by one-writer/one-reader rotating blocks; the first place a
+   cross-core race can come back (§4), so its gate is `verify-twocore` with the cores skewed.
+   Same self-send and cue send as RET B.
+4. **Sends and returns on the panel and in the Part.** Where a track's two sends are set (§7
+   decision 1), the RETURN A / RETURN B pages (§7 decision 5), the Parts' storage (§15's window,
+   designer shapes T4-T6 are free of the strip's T7/T8) and MIDI CC.
+
+**What it costs in stock effects (measured, §16).** Core 0's program words: the strip, the reverb
+server and SEND already want 3,145 of the 2,724-word donor pool, and stages 1-2 add about 100
+more. The pool grows by taking stock effects off both menus. CHORUS, FLANGER and COMPRESSOR
+together are 798 words next to the reverbs' run; that is the working assumption for the test
+image, and the remix says so. ❓ Not built; the exact list is a remix line, not a code change.

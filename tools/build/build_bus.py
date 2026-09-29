@@ -3007,7 +3007,13 @@ hostquit:
         # Private X and source-stage placement are qualified with stock FX.
         if any(_m.dsp is not None for _m in remix_modules().values()
                if _m.key in REMIX.modules):
-            sys.exit("ANALOG BD's DSP source currently composes with stock effects only")
+            if os.environ.get("AB_ALLOW_DSP") != "1":
+                sys.exit("ANALOG BD's DSP source currently composes with stock effects only "
+                         "(AB_ALLOW_DSP=1 opts in for an insert that keeps all its state in its "
+                         "own r7 block -- unqualified, for listening)")
+            print("  *** AB_ALLOW_DSP=1: ANALOG BD beside a DSP module, UNQUALIFIED: "
+                  + ", ".join(_m.key for _m in remix_modules().values()
+                              if _m.key in REMIX.modules and _m.dsp is not None))
         _pres, _apokes, _alog = ab_image.integrate(img, IMG.read_bytes())
         print("\n=== Analog BD: DSP 808/909, both payloads, pre-boot loader ===")
         for _l in _alog:

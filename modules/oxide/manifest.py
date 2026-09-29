@@ -16,7 +16,7 @@ design.fixed() at 0 LSB by tools/verify/verify_oxide.py.
 import importlib.util as _iu
 import pathlib as _pl
 
-from remix.schema import (BusRole, DspSection, Formatter, Harness, Kind,
+from remix.schema import (BusRole, DspSection, Formatter, Gate, Harness, Kind,
                           MenuEntry, Module, Param, YBase)
 
 _spec = _iu.spec_from_file_location("oxide_design", _pl.Path(__file__).with_name("design.py"))
@@ -56,5 +56,6 @@ MODULE = Module(
         r7_latch_slot=None,
         gate_label=None,
     ),
+    gates=(Gate("tools/verify/verify_oxide.py", remix_arg=False),),
     harness=Harness(layout_char="8", is_server=False, bus_client=False),
 )

@@ -495,7 +495,13 @@ def main():
     ap.add_argument("remix", nargs="*")
     ap.add_argument("--project", default=os.environ.get("OT_PROJECT", ""))
     ap.add_argument("--frames", type=int, default=300)
+    ap.add_argument("--variants", default=os.environ.get("STRIP_VARIANTS", ""),
+                    help="comma list of the port half's variants (tones, record, dirty, click); default all")
     a = ap.parse_args()
+    if a.variants:
+        global VARIANTS
+        keep = set(a.variants.split(","))
+        VARIANTS = tuple(v for v in VARIANTS if v[0] in keep)
     if not vds.STOCK.exists():
         print("  [SKIP] verify_strip: no stock image (make os)")
         return 0

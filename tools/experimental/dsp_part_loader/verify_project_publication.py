@@ -27,6 +27,7 @@ def main():
     image=OUT/'image.bin';shutil.copyfile(ROOT/'out/mainos_bus.bin',image)
     (OUT/'events.txt').write_text('1000 quit\n')
     sizes={'dl_residency_words':8,'dl_residency_commits':4,'dl_residency_failures':4,
+           'dl_project_admitted':4,'dl_project_completed':4,'dl_project_refused':4,
            'dl_selection_requested':4,'dl_errors':4,'phase':4,'dl_pool_base':8}
     spans=';'.join(f'{syms[n]:#x},{size}={OUT}/{n}.bin' for n,size in sizes.items())
     spans+=f';0x80000ec4,16={OUT}/ids.bin'
@@ -42,6 +43,7 @@ def main():
     assert report['dl_residency_words']==[932,282],report
     assert report['dl_residency_failures']==[0] and report['dl_errors']==[0],report
     assert report['dl_selection_requested']==[0] and report['phase']==[0],report
+    assert report['dl_project_admitted']==[1] and report['dl_project_completed']==[1] and report['dl_project_refused']==[0],report
     ids=(OUT/'ids.bin').read_bytes();assert ids==bytes([12,0,0,0,28,0,0,0]+[0]*8)
     text=(OUT/'port.log').read_text();assert 'LOAD PROJECT posted: yes' in text and 'ended on quit' in text
     data=packages()

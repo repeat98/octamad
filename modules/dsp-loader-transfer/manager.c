@@ -5,6 +5,7 @@
 #include "allocator.h"
 #include "selection.h"
 #include "transfer.h"
+#include "publication.h"
 struct code { const uint32_t *words; const uint16_t *relocations;
               uint16_t count,init,proc,relocation_count; };
 extern const struct dl_package dl_catalog[32];
@@ -51,6 +52,12 @@ static unsigned needed(unsigned index,unsigned mode) {
 static void advance(void) {
     if(!phase) return;
     if(phase==1) {
+        /* Pinned-only boot/project sets need no DSP transaction. In particular,
+         * do not make stock loading depend on a clock before any code upload. */
+        unsigned probe=0;
+        for(unsigned i=0;i<16;++i)
+            if(desired[i]<32 && !dl_catalog[desired[i]].resident) probe=1;
+        if(!probe && !waiting) cursor=2;
         if(waiting) {
             int s=dl_job_status(cursor);
             if(!s) return;
@@ -79,7 +86,17 @@ static void advance(void) {
     }
     if(phase==5) { /* Prepared, waiting for the original stock setter. */
         if(cancelling) { phase=7; cursor=0; }
-        else return;
+        else {
+#ifndef DL_NATIVE_TEST
+            if(automatic==2) {
+                const volatile uint8_t *live=(const volatile uint8_t *)0x80000ec4u;
+                unsigned equal=1;
+                for(unsigned i=0;i<16;++i) if(live[i]!=desired[i]) equal=0;
+                if(equal) { dl_selection_commit(current);return; }
+            }
+#endif
+            return;
+        }
     }
     if(waiting) {
         unsigned c=cursor/32;
@@ -125,6 +142,12 @@ static void advance(void) {
 }
 int dl_selection_prepare(const struct dl_selection *s,uint32_t token) {
     if(!dl_residency_enabled) return DL_SELECT_READY;
+#ifndef DL_NATIVE_TEST
+    dl_publication_finish();
+#endif
+    /* Drain completed/pinned-only bookkeeping without waiting for a DSP job.
+     * A real outstanding transfer still returns busy and retains its owner. */
+    advance();advance();
     if(phase) return DL_SELECT_UNAVAILABLE;
     for(unsigned i=0;i<8;++i) if(s->target_source[i]>4) return DL_SELECT_UNAVAILABLE;
     begin(s->target,token,0); advance(); return result;
@@ -143,6 +166,7 @@ void dl_residency_tick(void) {
     if(!dl_residency_enabled) return;
     advance();
 #ifndef DL_NATIVE_TEST
+    dl_publication_tick();
     if(phase) return;
     /* Observe the actual live set, including automatic pattern/project paths.
      * Static originals remain valid while preparation runs or if it refuses.
@@ -157,3 +181,41 @@ void dl_residency_tick(void) {
     begin(observed,auto_serial,1);
 #endif
 }
+
+/* Publication guard owns this token through the first use of its target. */
+int dl_publication_prepare(const uint8_t ids[16],const uint8_t sources[8],uint32_t token) {
+    if(phase) return DL_SELECT_UNAVAILABLE;
+    for(unsigned i=0;i<8;++i) if(sources[i]>4) return DL_SELECT_UNAVAILABLE;
+    begin(ids,token,0);advance();return result;
+}
+int dl_publication_poll(uint32_t token) { return dl_selection_poll(token); }
+void dl_publication_arm(uint32_t token) {
+    if(current==token && phase==5 && result==DL_SELECT_READY) automatic=2;
+}
+int dl_publication_ready(const uint8_t ids[16]) {
+    if(!dl_residency_enabled) return 1;
+    unsigned managed=0;
+    for(unsigned i=0;i<16;++i) {
+        unsigned p=ids[i];
+        if(p>=32 || !dl_catalog[p].qualified || !(dl_catalog[p].slots & (i<8 ? 1:2))) return 0;
+        if(!dl_catalog[p].resident) managed=1;
+    }
+    /* Pinned-only targets cannot race arena retirement, including boot/setup
+     * calls before the runtime has initialized its first managed allocation. */
+    if(!managed) return 1;
+    if(!initialized || (phase!=0 && phase!=5)) return 0;
+    if(phase==5) {
+        if(result!=DL_SELECT_READY || cancelling) return 0;
+        for(unsigned i=0;i<16;++i) if(ids[i]!=desired[i]) return 0;
+    }
+    for(unsigned i=0;i<16;++i) {
+        unsigned p=ids[i],c=(i&7)<4 ? 1:0;
+        if(p>=32 || !dl_catalog[p].qualified || !(dl_catalog[p].slots & (i<8 ? 1:2))) return 0;
+        if(dl_catalog[p].resident) continue;
+        if(allocator.live[c][p].present) continue;
+        if(phase==5 && result==DL_SELECT_READY && allocator.target[c][p].present) continue;
+        return 0;
+    }
+    return 1;
+}
+int dl_publication_idle(void) { return phase==0; }

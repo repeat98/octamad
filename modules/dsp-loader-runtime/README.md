@@ -27,18 +27,27 @@ The other stock algorithms in this remix remain pinned. The DSP receiver and
 system helpers always remain resident.
 
 FX1/FX2 and manual Part selection use the existing before-write guards and info
-modals. An observer of the firmware's actual live FX IDs also follows automatic
-application paths. No new chooser or controls are introduced.
+modals. Queued sequencer changes and stopped pattern requests now prepare before
+publication. LOAD PROJECT is deferred before its command is posted: read-only
+metadata admission and verified uploads run on the UI task. The engine command
+entry rejects a load without that admission. No new chooser or controls are added.
 
 ## Critical current boundary
 
-**Static originals are still resident as fallback code.** Automatic changes can
-reach those originals before the observer finishes loading their relocated
-copies. This preserves the original scheduling and sound, but means this runtime
-does **not yet reclaim the original algorithm spans** or admit an arbitrarily
-large catalogue. In particular, automatic admission refusal leaves the static
-implementation available; it cannot roll back a project that already loaded.
-Do not remove those originals on the strength of the observer tests.
+**Static originals are still resident.** These guards cover the qualified routes,
+not every firmware mutation. The post-publication observer remains for uncovered
+paths: chain restart/stop, Part copy/reload/reset, background bank reload and new
+project creation still require separate before-write guards and qualification.
+No original algorithm span has been reclaimed. Do not remove it on the strength
+of the pattern/project tests. See `PUBLICATION.md` for exact seams and limitations.
+
+A queued target that is not ready at its deadline leaves the old pattern running;
+the UI requeues it after preparation. Capacity refusal leaves the old pattern and
+Part selected. Stopped requests are similarly deferred. Project admission rejects
+missing/ambiguous metadata and a STATE.PART that disagrees with the pattern link.
+It uses a private uncached file buffer; it does not change the saved project.
+If the stock loader fails after starting, both code sets stay reserved until a
+restart. Recovery from a partially loaded project is not implemented.
 
 Rebinding an identical algorithm preserves its stock r7 state and needs no
 crossfade or extra algorithm instance. Processing is already charged to the
@@ -81,9 +90,10 @@ Queued-pattern evidence: `OT_PROJECT=<fixture> python3 -m tools.experimental.dsp
 change to the running sequencer. Both the pattern and Part must actually change.
 The eight stereo chains and main capture matched static execution exactly over
 8,192 frames, with no residency/transport errors. This exercises the normal
-queued pattern path; static fallback still handles the interval before upload.
+queued pattern path; the new guard prepares before publication and defers the
+change if preparation misses its deadline.
 
-Verification run on 29 September 2026:
+Verification before the publication guards (29 September 2026):
 
 - `OT_PROJECT=out/analog-bassdrum/ui-fixture DL_CARD=out/analog-bassdrum/ui-gate/card.img make check REMIX=dsp-loader-runtime`: passed all runnable shared/remix checks and the four initial image gates (runtime audio, real allocation/dispatch, saved-project loading, continuous Part-apply audio).
 - `OT_PROJECT=out/analog-bassdrum/ui-fixture .venv/bin/python3 -m tools.experimental.dsp_part_loader.verify_live_audio --pattern`: passed the queued-pattern comparison. The same entry point is now registered as the fifth image gate through `verify_pattern_audio.py`.
@@ -96,3 +106,15 @@ Logs: `out/dsp-part-loader/runtime-full-check.log` and
 `out/dsp-part-loader/pattern-audio-check.log`, plus
 `out/dsp-part-loader/transfer-regression-check.log`. Generated firmware and stock-derived
 packages remain local, ignored build output.
+
+## Publication-guard verification (29 September 2026)
+
+- `OT_PROJECT=out/analog-bassdrum/ui-fixture DL_CARD=out/analog-bassdrum/ui-gate/card.img make check REMIX=dsp-loader-runtime`: passed, seven image gates, no skipped gate. Log: `out/dsp-part-loader/publication-full-check.log`.
+- `OT_PROJECT=out/analog-bassdrum/ui-fixture .venv/bin/python3 -m tools.experimental.dsp_part_loader.verify_publication_guards`: passed again with allocator-failure counters added. Both full-capacity cases record exactly one real residency failure, zero transport errors and unchanged state. Log: `out/dsp-part-loader/publication-capacity-proof.log`.
+- Six native C test binaries and generated assembly check passed. The 72 DSP render comparisons and eight-track/main audio comparisons remain exact. Superseded stopped requests do not replay.
+
+Normal queued/stopped requests and LOAD PROJECT now prepare before publication.
+This is a partial route closure, **not permission to reclaim the originals**:
+chain restart, Part copy/reload/reset, background bank reload, new-project paths
+and pending stopped-Part retirement are listed in [PUBLICATION.md](PUBLICATION.md).
+Nothing from this experiment was pushed to the Analog BD PR.

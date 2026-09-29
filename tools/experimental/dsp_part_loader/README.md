@@ -62,7 +62,7 @@ Run it serially with other builds in this worktree; it restores the prior image.
 ## Target transition contract
 
 The firmware backend does not yet satisfy the full pre-publication contract on
-automatic paths; its current static fallback is explicit below.
+all automatic/Part mutation paths; its remaining static fallback is explicit below.
 
 1. Validate the requested Part, package identities, slot support and resource
    evidence. Account for any dependencies before allocating.
@@ -102,9 +102,9 @@ strategy guarantees arbitrary instantaneous switches at a full DSP budget.
 - Extend the implemented bounded P transport to the remaining ABI resources,
   with coordinated activation for different algorithms. Verified per-core
   relocation does not prove an atomic cross-core hardware switch.
-- Extend the existing ColdFire FX/manual-Part guards to all automatic
-  pre-publication paths, including project load and Part copy/reload. The live
-  ID observer follows those changes but does not guard their publication.
+- Extend the FX/manual-Part, queued/stopped pattern and project-load guards to
+  chain restart, Part copy/reload/reset and background bank reload. The observer
+  remains a fallback for those uncovered paths; see the publication route audit.
 - Measure dry/main audio during switching, retained tails, repeated edits and
   failed transfers under full audio load; qualify on hardware.
 - Extend the ABI with per-instance delay-buffer sizes/alignment and lifecycle
@@ -139,7 +139,7 @@ Logs and generated JSON/audio evidence: `out/dsp-part-loader/`. This initial fou
 and selection-guard additions below have since been measured; the native
 allocator and runtime additions are described below. Seamless relocation has
 emulator evidence; reclaiming original code still requires pre-publication
-guards on automatic paths.
+guards on the remaining automatic and Part mutation paths.
 
 ## Firmware transport probe
 
@@ -204,13 +204,16 @@ Other stock effects remain resident. This runtime does not allocate delay lines,
 shared X/Y storage, or new source-engine state. The earlier Python planner's
 broader resource model must not be confused with this narrower firmware backend.
 
-Existing FX/manual Part guards now use real capacity results. An observer also
-loads the actual live FX set after automatic Part application and project load.
-**This observer runs after publication: static originals remain required.** It
-cannot reject or roll back an already-published project, and this experiment
-therefore does not yet save the originals' memory or allow arbitrary catalogue
-size. Removing those originals requires qualified preparation before every
-publication path, including queued patterns, reload/copy and project replacement.
+Existing FX/manual Part guards use real capacity results. Automatic queued and
+stopped pattern requests now prepare before publication, and LOAD PROJECT is
+admitted before its command is posted. Capacity refusal preserves the current
+pattern/project on those routes. See
+[`PUBLICATION.md`](../../../modules/dsp-loader-runtime/PUBLICATION.md) for the seams.
+
+**Static originals remain required for uncovered routes:** chain restart/stop,
+Part copy/reload/reset, background bank reload and new project creation. The
+observer still follows those routes after publication. This experiment does not
+yet reclaim their original spans or permit an arbitrary catalogue size.
 
 Rebinding identical code preserves r7 state and the existing processing schedule.
 It needs no extra old/new algorithm instance, and unloading unused code alone
@@ -246,4 +249,13 @@ Queued-pattern evidence: `OT_PROJECT=<fixture> python3 -m tools.experimental.dsp
 change to the running sequencer. Both the pattern and Part must actually change.
 The eight stereo chains and main capture matched static execution exactly over
 8,192 frames, with no residency/transport errors. This exercises the normal
-queued pattern path; static fallback still handles the interval before upload.
+queued pattern path; the new guard prepares before publication and defers the
+change if preparation misses its deadline.
+
+Publication-guard follow-up: the full runtime check now passes all seven image
+gates, including actual memory-full project/pattern refusal and superseded
+stopped requests. The extra refusal run pins allocator failures as well as
+unchanged state; logs are `publication-full-check.log` and
+`publication-capacity-proof.log` under `out/dsp-part-loader/`. See the runtime
+module's [route audit](../../../modules/dsp-loader-runtime/PUBLICATION.md) for the
+remaining barriers to reclaiming original code.

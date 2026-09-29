@@ -8,7 +8,7 @@ HERE=Path(__file__).resolve().parent
 FLAGS=['-mcpu=5407','-msoft-float','-O2','-ffreestanding','-fno-builtin','-fno-common',
        '-fno-jump-tables','-fno-asynchronous-unwind-tables','-fno-ident',
        '-fomit-frame-pointer','-fno-zero-initialized-in-bss','-Wall','-Wextra','-Werror']
-for name in ('transfer','selection','selection_probe','allocator','manager'):
+for name in ('transfer','selection','selection_probe','allocator','manager','preflight','publication'):
     with tempfile.TemporaryDirectory() as tmp:
         dest=Path(tmp)/(name+'.s')
         subprocess.run(['m68k-elf-gcc',*FLAGS,'-S',str(HERE/(name+'.c')),'-o',str(dest)],check=True)

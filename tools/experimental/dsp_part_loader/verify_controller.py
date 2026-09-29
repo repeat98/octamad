@@ -33,5 +33,12 @@ def main():
                         'tools/experimental/dsp_part_loader/test_manager.c',
                         '-o',str(binary)],cwd=ROOT,check=True)
         subprocess.run([str(binary)],check=True)
+        for name in ('preflight','publication'):
+            subprocess.run(['cc','-std=c99','-Wall','-Wextra','-Werror','-DDL_NATIVE_TEST',
+                            '-Imodules/dsp-loader-transfer',
+                            f'modules/dsp-loader-transfer/{name}.c',
+                            f'tools/experimental/dsp_part_loader/test_{name}.c',
+                            '-o',str(binary)],cwd=ROOT,check=True)
+            subprocess.run([str(binary)],check=True)
     print('PASS: native transfer, selection guards, allocator and residency backend; acknowledgements, capacity, sharing, cancellation and retirement')
 if __name__=='__main__': main()

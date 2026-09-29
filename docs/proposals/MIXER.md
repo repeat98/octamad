@@ -867,3 +867,47 @@ servers warm; track sources (§18); anything on a unit.
 
 **Next (stage 4):** the RETURN pages in the MIXER window, the Part's storage for the returns and
 the sends, MIDI CC.
+
+## 21. Stage 4: the RETURN pages and the Part's cells (29 Sep 2026)
+
+**The pages** (`strip_ui.s`). The MIXER window's strips are now MIXER, MASTER, RETURN A,
+RETURN B (LEFT / RIGHT; the title band's arrows follow). MASTER's rows are its two insert
+slots; a return has four (UP / DOWN): **INS 1** the effect slot (A–F its page-1 knobs; YES
+opens its SETUP, the list being NONE, OXIDE and the server of the return's core: the delay on
+RETURN A, the reverb on RETURN B), **SND1** the sends into the return from T1..T6, **SND2**
+from T7, T8, IN AB, IN CD, RET A and RET B (so the self-send and the cross-send are the last
+two), **OUT** the return's level and CUE send (A, B). LEVEL is the return's level. A row is
+drawn by the code MASTER's slots use: each row of `ROWS` is a model cell and a descriptor,
+and the sends and outputs rows have descriptors of their own (names, 0..127, plain numbers), so
+the drawing, the knob layer and the steppers are the effect slots'. The models are in the strip's
+cell layout (byte 0, three spare, twelve values): `ret_model` (RET B's slot, RET A's),
+`aux_model` (AUX A's twelve sends, AUX B's), `retlvl_model` (RET B's level and CUE send,
+RET A's), contiguous.
+
+**The Part's cells** (`strip_xport.s`). Five 16-byte cells at bank + 0x90492 (Part offset
+0x1712, the audio LFO designer's shapes T2..T6, beside the strip's T7 and T8): RET B's slot,
+RET A's, AUX A's sends, AUX B's, the levels; each stored as the strip's slots are (id, tag 0x53,
+sum, version 1, twelve values). `ret_sync` (in the ISR beside `strip_sync`) adopts the shown
+Part's window after two frames of stillness, all five cells valid (a slot's id on the returns'
+list 0, 0x1f, 6, 7) or the defaults; `ret_store` (each edit on a return) writes the models
+back into the window, the part's SRAM twin and the stock editors' dirty marks. The window is
+claimed beside the strip's (the ledger refuses midi-scenes, whose twin covers these bytes).
+
+**Measured under the port.** `verify_mixerpages` (100 checks, 0 failures): MASTER now shows an
+arrow at each end; RETURN A and RETURN B draw their titles; RIGHT from RETURN B stays; A +10
+and F +20 on SND1 step T1 and T6 into AUX A's cell and nothing else; on SND2 T7 and RET A's
+send; on OUT A −20, B +30 and LEVEL −10 step level and CUE send; RETURN B's SND1 steps AUX
+B's cell; the SETUP's list ends at the delay server (6) on RETURN A and the reverb server (7)
+on RETURN B; YES on a sends row opens nothing. `verify_retstore` (33 checks, 0 failures):
+fresh models are the defaults; an edit reaches the window, its twin and `ret_seen` in stored
+form with the edited words set; choosing the delay server stores id 6; a valid window poked
+in while the unit runs is the models with the spare bytes 0 and no write-back; a stale
+checksum and an id off the list are refused; a reload to zeros gives the defaults; part 1's
+window shows when the panel's part is 1 and an edit lands there only, with part 1's dirty bit;
+a non-stock part keeps the models to itself; with the DSP a loaded record reaches core 0
+(the twenty-four gains, the levels, RET B's slot) and RET A's id and record reach the exchange.
+
+**Not shown.** The pages' pixels against a reference (only the title band, the arrows and the
+models; the boxes' drawing is MASTER's code with other data and was not compared pixel for
+pixel); MIDI CC for these controls (not built); a Part Save or Reload through the panel; the
+Octakit's kit windows; anything on a unit.

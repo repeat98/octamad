@@ -82,7 +82,7 @@ MODULE = Module(
                "non-stock part behave, and the record reaches core 0 (29 Sep 2026). `verify_aux`: the AUX A and "
                "AUX B passes (the tail's, docs/proposals/MIXER.md section 18) sum the two input pairs at the "
                "ColdFire's sends, 0 LSB, and change nothing else (29 Sep 2026; the tracks' terms are read, not run); "
-               "not flashed. `verify_return`: RET B (29 Sep 2026), see MIXER.md section 19",
+               "not flashed. `verify_return`: RET B, and RET A on core 1 through the shared window, an effect chosen from the pool on each, 0 LSB at every hop (29 Sep 2026, MIXER.md sections 19-20). `verify_mixerpages`: the RETURN A and RETURN B pages (rows: effect, sends T1-T6, sends T7..RET B, output) step the models and choose each return's effect. `verify_retstore`: the returns, the sends and the levels are kept in the Part (five cells at bank + 0x90492), as the strip's slots are",
     doc="Two insert slots on the summed MAIN, inline after the mixdown (payload A, P:0x2d5 "
         "and P:0x35d), their effects and knobs sent from a ColdFire model every frame; "
         "a MASTER page in the MIXER window edits them.",
@@ -156,5 +156,5 @@ MODULE = Module(
         ),
     ),
     gates=(Gate("tools/verify/verify_strip.py"), Gate("tools/verify/verify_mixerpages.py"),
-           Gate("tools/verify/verify_stripstore.py"), Gate("tools/verify/verify_aux.py"), Gate("tools/verify/verify_return.py")),
+           Gate("tools/verify/verify_stripstore.py"), Gate("tools/verify/verify_aux.py"), Gate("tools/verify/verify_return.py"), Gate("tools/verify/verify_retstore.py")),
 )

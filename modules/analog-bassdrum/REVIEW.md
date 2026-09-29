@@ -79,3 +79,34 @@ It reports successful parameter tweaking without audible glitches, not an
 eight-voice/every-effect qualification. The new full-height engine browser
 and eight-track admission require fresh hardware testing. CPU.md records the
 local eight-voice successes and the all-909/double-DJ-EQ failure explicitly.
+
+## Final local validation
+
+The final engine browser uses the same header chevrons as STATIC/FLEX.
+The native ABI gate checks the chooser's stock and Analog BD title branches;
+the panel gate checks LEFT to the machine column, FLEX/AB horizontal
+navigation, YES selection, NO cancellation, and the reopened model highlight.
+Octemu and the final panel gate used identical MAIN OS bytes, SHA256
+`3ea2f9a2b86a6dd5796abd8aaca292a8324c09effa418ee346ca7adc7c89e414`.
+
+- `make check-shared` over the ten-remix cover: 13 module gates passed.
+- `OT_PROJECT=<standard fixture> make check-remix REMIX=analog-bassdrum`:
+  passed on the final browser build, including real MAIN output and all four
+  image module gates. The separate adversarial-fixture AB panel/audio gates
+  also pass. Using the deliberately silent THRU fixture for the general
+  `verify_set` instead fails its T1 chain-audio assertion in bank 4; it is not
+  suitable as an unmodified general audio fixture.
+- `make accept` over the same cover: one passed, four failed, five blocked.
+  Analog BD's functional/cycle checks pass; its generic pressure stages are
+  blocked because that FX pricer does not price source engines. CF METER,
+  EUCLID and MINIVERB lack pressure profiles. Tape Echo's assembly comparison
+  is blocked by the author's unrecorded GCC version.
+- `usb-io-main-ab` and `usb-io-main-cue-abcd` fail USB counter-overrun checks;
+  `bottleservice` misses the expected USB MIDI event; `mods` reports zero
+  measured pitch in all seven REPITCH cases despite correct speed/increment
+  resolution. Those remix images are byte-identical to upstream. These are
+  recorded failures, not evidence of a green repository-wide acceptance run.
+
+The full reach plan finished with five of six top-level gates passing; only
+its aggregate acceptance command failed. No hardware qualification is inferred
+from these local runs.

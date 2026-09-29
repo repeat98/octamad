@@ -52,6 +52,11 @@ flowchart LR
 - **SEND** at DEL 0 and REV 0 is the same as no effect. Every level knob
   is auto-gained so eight senders drive an engine as hard as one.
   Module: [`send`](../../modules/send/README.md).
+- Tracks 1 and 5 have been tested as THRU tracks with no trigs of their
+  own. Sounds programmed on track 1 alongside the delay pop and click
+  (reported 29 Sep 2026, cause open,
+  [FAILURE_MODES.md](../../docs/remixer/FAILURE_MODES.md)); track 5 with
+  trigs has not been tested.
 - A new project is born wired this way ([`rig-hosts`](../../modules/rig-hosts/README.md));
   the engines are hidden from the FX2 chooser and locked to their tracks.
   An older project keeps its stored ids until you run the `host` command
@@ -66,8 +71,14 @@ three pass audio through unchanged.
 | station | in place of | modes | page 1 | page 2 |
 |---|---|---|---|---|
 | **SPECTRUM** | FILTER | LADR (Moog ladder) · SEM (Oberheim SVF, SHPE sweeps LP → BP → HP) · ISO · VOWL | FREQ · RES · ENV · LDP · LSP · WDTH | MODE · SHPE |
-| **CHARACTER** | LO-FI | SAT: TAPE · TUBE · INFL | DRV · FOLD · WDTH · COMP · TONE · MIX | SAT |
+| **CHARACTER** | LO-FI | SAT: TAPE · TUBE · INFL | DRV · FOLD · WDTH · COMP · TONE · MIX | SAT · KEY · KLVL |
 | **MODULATION** | CHORUS | JUNO · DIM · FLNG · COMB · PHSR | RATE · DPTH · DLY · FDBK · LOFI · MIX | MODE · TONE · WDTH |
+
+CHARACTER's KEY sets what drives its compressor: SELF (the track's own
+input) or T1 (T1's level, published by the delay host). KLVL scales T1's
+level, 64 = unity. A Character with KEY = T1 on tracks 2–7 ducks that track
+when T1 plays; T1 reaches the master unducked. On track 8 KEY is ignored:
+the master receives T1 itself.
 
 Modules: [`spectrum`](../../modules/spectrum/README.md),
 [`character`](../../modules/character/README.md),

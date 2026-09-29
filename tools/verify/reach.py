@@ -7,7 +7,7 @@ carry it, the smallest of those; the floor for tool and build changes is
 the one cover remix carrying the most modules; a build change runs refhash
 but not `make identity` (every remix built twice); no `make accept` (the
 stress fixture and the pressure stages); two shards; every command at
-background priority on macOS (`taskpolicy -b`), so the machine stays usable.
+nice 10 on the performance cores, so the machine stays usable.
 FULL (`make reach FULL=1`, `--full`) is everything below, at full speed, and
 only ever a manual choice.
 
@@ -122,10 +122,11 @@ BUILD_ROOTS = ("tools/build/build_bus.py", "tools/build/cycle_count.py")
 ACCEPTANCE = ("tools/verify/acceptance.py", "tools/verify/module_gates.py",
               "tools/harness/stress_project.py", "tools/harness/pressure.py")
 CLASSIFIER = ("tools/verify/reach.py",)
-# QUICK runs every command at background priority on macOS (taskpolicy -b:
-# background QoS, scheduled on the efficiency cores) so the machine stays
-# usable; FULL runs at full speed.
-BACKGROUND = "taskpolicy -b" if sys.platform == "darwin" and shutil.which("taskpolicy") else ""
+# QUICK runs every command at nice 10: the performance cores, below the
+# desktop; with two shards the run takes part of the machine, not all of it.
+# (Background QoS, taskpolicy -b, moved it onto the efficiency cores and was
+# several times slower: 28-29 Sep 2026.) FULL runs at nice 0.
+BACKGROUND = "nice -n 10" if shutil.which("nice") else ""
 # Makefile targets by what a change to them reaches.
 MAKE_CHECK = {"bus", "cycles", "verify", "verify-shared", "verify-remix", "check", "check-shared", "check-remix",
               "need-remix", "os", "recon"}
@@ -512,11 +513,11 @@ def route_makefile(ctx):
     # flag default) or how a gate runs: identity names the moved images,
     # the floor runs the gates.
     if other:
-        gates += [CMD["identity"]] + ctx.every() + [CMD["ci"]]
+        gates += ([] if ctx.quick else [CMD["identity"]]) + ctx.every() + [CMD["ci"]]
         notes.append("variables or defines changed: " + ", ".join(other) + f": identity + {ctx.floor_note()}")
     check = [t for t in targets if t in MAKE_CHECK]
     if check:
-        gates += [CMD["identity"]] + ctx.every() + [CMD["ci"]]
+        gates += ([] if ctx.quick else [CMD["identity"]]) + ctx.every() + [CMD["ci"]]
         notes.append("the check graph: " + ", ".join(check) + f": identity + {ctx.floor_note()}")
     runner = [t for t in targets if t in MAKE_RUNNER]
     if runner:
@@ -827,7 +828,7 @@ def main(argv=None):
     if any(k == "identity" for k, _, _ in items):
         print(f"  then: make check REMIX=<r> for each remix image_identity names (--run does this; the floor is {ctx.floor_note()})")
     print(f"\n{'QUICK' if quick else 'FULL'}: " + ("the carrying remixes (user-facing first), one floor remix, no identity, "
-          "no accept, two shards, background priority; FULL=1 for the lot" if quick else "every gate the change reaches"))
+          "no accept, two shards, nice 10; FULL=1 for the lot" if quick else "every gate the change reaches"))
     if any(k == "accept" for k, _, _ in items) and not stress:
         print("\nSTRESS_SOURCE is unset: point it at a local project (never committed) for the accept line"
               " (it then runs the accepted remixes' checks itself).")
@@ -851,7 +852,7 @@ def main(argv=None):
         print(f"reach: running {cmd}", flush=True)
         t0 = time.monotonic()
         if quick and BACKGROUND:
-            cmd = f"{BACKGROUND} {cmd}"      # macOS: background QoS, the efficiency cores; the desktop stays usable
+            cmd = f"{BACKGROUND} {cmd}"      # nice 10: the performance cores, below the desktop
         r = subprocess.run(cmd, shell=True, cwd=ROOT)
         results.append((command, "ok" if r.returncode == 0 else f"FAILED ({r.returncode})", time.monotonic() - t0))
         if r.returncode:

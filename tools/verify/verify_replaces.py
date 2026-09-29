@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """No stock effect is hijacked by accident.
 
-    python3 tools/verify/verify_replaces.py [remix ...]     (default: every remix)
+    python3 tools/verify/verify_replaces.py [remix ...]     (default: every remix, each built)
+    python3 tools/verify/verify_replaces.py --static         (the registry only: make verify-shared)
+    python3 tools/verify/verify_replaces.py --image REMIX    (the image on disk, out/mainos_bus.bin: make verify-remix)
+
+Since 29 Sep 2026 `make check` runs the static half once in the shared half
+and the image half per remix on the image that half has already built; it
+built every remix in the shared half until then (402 s on a cold memo).
 
 THE FAILURE THIS EXISTS FOR. The DSP dispatch tables are indexed by the raw
 effect id and SHARED BY BOTH MENUS, so a module carrying a stock effect's id
@@ -204,10 +210,23 @@ def main():
         sys.exit(f"missing {PRISTINE} -- run 'make setup'")
     pristine = PRISTINE.read_bytes()
     fails: list[str] = []
-    static_checks(fails)
-    names = sys.argv[1:] or [n for n in registry.remix_names()
-                             if not n.startswith("_")]
+    args = sys.argv[1:]
     out = pathlib.Path("out/mainos_bus.bin")
+    if args[:1] == ["--static"]:
+        static_checks(fails)
+        return report(fails)
+    if args[:1] == ["--image"] and len(args) == 2:
+        # the image the per-remix half built (make bus REMIX=...), checked as it is
+        if not out.exists():
+            sys.exit(f"verify_replaces: {out} is missing (make bus REMIX={args[1]})")
+        before = len(fails)
+        check_image(args[1], out.read_bytes(), pristine, fails)
+        if len(fails) == before:
+            print(f"  [PASS] {args[1]}: every stock id is stock's, or declared")
+        return report(fails)
+    static_checks(fails)
+    names = args or [n for n in registry.remix_names()
+                     if not n.startswith("_")]
     # ⚠️ EVERY BUILD HERE OVERWRITES THE SHIPPING ARTIFACT, and the checks
     # that run after this one read it. verify_burn already had to say so in
     # the Makefile; do it here instead, so the tool cleans up after itself
@@ -219,6 +238,10 @@ def main():
     finally:
         if saved is not None:
             out.write_bytes(saved)
+    return report(fails)
+
+
+def report(fails):
     print()
     for f in fails:
         print(f"  [FAIL] {f}")

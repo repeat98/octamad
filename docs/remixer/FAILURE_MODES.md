@@ -3,6 +3,25 @@
 Symptom → cause (measured, inferred or open) → fix. Add an entry the moment
 a mode is seen on hardware.
 
+## Pops and clicks from T1 with BusDelay when T1 plays its own trigs 🔴 reported (29 Sep 2026), cause open
+
+**Symptom.** Reported on Discord by Arcdmd_, 29 Sep 2026: sounds programmed
+on T1 (the delay host) alongside the delay bus pop and click. Image, unit
+model, T1's machine and trig pattern not stated.
+
+**Record.** The rig is tested with T1 and T5 as THRU tracks with no trigs
+of their own. The one earlier hardware test with trigs on T1 (21 Sep 2026,
+a trig on every step) gave clicks and no wash; the wash
+entries below cover T2/T3 and did not pursue the T1 clicks. A trig splits
+the host's block into two dispatcher calls; the delay's glides run on the
+first call only since 21 Sep 2026 (`modules/busdelay/README.md`).
+
+**To find out.** The reporter's image, machine type and trig pattern;
+whether the clicks land on T1's trigs; whether they follow the delay
+(FX2 = SEND on T1 with the same trigs) or the machine (a THRU host with a
+trig every step clicks from the THRU's re-open alone); the same test on
+T5 with BusVerb.
+
 ## Every FX1/FX2 page-2 knob turn halts under Octakit with SCENES P2 (rig-kits, bottleservice) ✅ measured under the port (28 Sep 2026), fixed the same day; the twelve-byte build was carried by image 88 and the halt not reported from the unit
 
 **Symptom.** With SCENES P2 and Octakit in the image (SCENES P2 KITS

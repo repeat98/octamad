@@ -135,7 +135,8 @@
 ;                       stepped per sample), TIME (per block)
 ;   r7+$76              SEND, this host's own send level (per block)
 ;   r7+$77/$78          TONE filter state, line L / R (persistent)
-;   r7+$79              free
+;   r7+$79              T1's key peak |mono in| this block, zeroed at frame
+;                       offset 0, published to y:$990 (Character's KEY)
 ;   r7+$7a              dR, line R's raw tap (per sample; REVERSE skips the
 ;                       read and the damping keeps reading the last one)
 ;   r7+$7b/$7c          fL/fR, the damped taps == this sample's wet (GRAIN
@@ -1338,6 +1339,15 @@ gvrdone:
 ; from x:>$208 / x:>$419 before every proc call (payload B P:0x29c..0x2f8);
 ; m6 is not, and stays untouched.
 
+; ---- T1's key level (29 Sep 2026): the peak |mono in| of this block, for
+; Character's KEY. Zeroed on the block's first call (frame offset 0), held
+; in raw $79 through the loop, published at y:$990 after it.
+        move    x:(r7+$1e),a            ; this call's frame offset (raw $67)
+        tst     a
+        bne     dkeyrun
+        clr     b
+        move    b,x:(r7+$30)            ; the key peak (raw $79)
+dkeyrun:
         move    #$1,n0                  ; the frame stride (a byte lands
                                         ; LOW in an address register)
         move    x:(r7+$1a),a
@@ -1371,6 +1381,12 @@ gvrdone:
         add     x0,a
         asr     #$1,a,a
         move    a,x0                    ; own dry mono
+        abs     a                       ; |mono|: the key peak
+        move    a,y1                    ; (y1 is reloaded below)
+        move    x:(r7+$30),b
+        cmp     y1,b                    ; nothing but moves before the Tcc
+        tlt     y1,b
+        move    b,x:(r7+$30)
 ; REV: the dry x the ramped REV level into the reverb's accumulator
         move    x:(r7-$1e),a            ; REV, ramped per sample (raw $2b)
         move    x:(r7-$1d),y1           ; + this block's step ($2c)
@@ -1981,6 +1997,15 @@ dlyend:
         move    n4,a
         move    a,x:(r7-$23)            ; the ramp, where the next call's
                                         ; per-block section rewrites it
+; ---- publish T1's key level: the peak and a counter Character reads to
+; tell a live host from a stale word (one writer, stored every call)
+        move    x:(r7+$30),a
+        move    a,y:>$990               ; the peak |mono in| so far this block
+        move    y:>$991,x0              ; (boot garbage may have bit 23 set)
+        move    #>$7fff,a
+        and     x0,a                    ; masked into a clean positive a
+        add     #>$1,a
+        move    a,y:>$991               ; the call counter
 
 ; ---- save both phases, restore the M registers ----------------------------
         move    r1,a

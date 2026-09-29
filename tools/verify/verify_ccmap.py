@@ -256,9 +256,12 @@ def main():
     pa, la, ma, _ = send1(2, CHAR, 68, 99)
     l = uc.mem_read(la, 1)[0]; good = (l == 2); ok &= good
     print(f"  clamp: Character SAT (count 3) value 99 -> live={l} (want 2)  {'ok' if good else 'FAIL'}")
-    pa, la, ma, _ = send1(2, CHAR, 69, 120)
+    pa, la, ma, _ = send1(2, CHAR, 70, 120)
     l = uc.mem_read(la, 1)[0]; good = (l == 120); ok &= good
-    print(f"  knob: Character TONE (count 128) value 120 -> live={l} (want 120)  {'ok' if good else 'FAIL'}")
+    print(f"  knob: Character KLVL (slot 8, count 128) value 120 -> live={l} (want 120)  {'ok' if good else 'FAIL'}")
+    pa, la, ma, _ = send1(2, CHAR, 69, 99)
+    l = uc.mem_read(la, 1)[0]; good = (l == 1); ok &= good
+    print(f"  clamp: Character KEY (slot 7, count 2) value 99 -> live={l} (want 1)  {'ok' if good else 'FAIL'}")
     # FX1 = NONE (id 0): nothing written anywhere
     pa, la, ma, _ = send1(5, 0x00, 69, 77)
     vals = [uc.mem_read(a, 1)[0] for a in (pa, la, ma)]

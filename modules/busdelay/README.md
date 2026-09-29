@@ -85,6 +85,13 @@ TIME moved from p1 to p11 the same day, and the tape wow that sat on p11
 (20 Sep 2026, in the freeze's slot) went: at WOW 0 it added exactly 0 to
 the lag, so every render at WOW 0 is unchanged (verify-bus). The freeze
 hold is gone.
+T1's key level (29 Sep 2026): every call publishes the peak |mono in| of
+the block so far to `y:$990` (zeroed on the block's first call, held in raw
+`$79`) and increments a counter at `y:$991`. Character reads them when its
+KEY is T1. The host's own output is bit-identical with the publish
+(`verify_charkey`, and a CLEAN / GRAIN / REVERSE render against the build
+before it); cost 24 words, 6 cycles per sample by the pricer (1,001 ->
+1,007).
 In REVERSE LineL alone is the 32K mono ring (the R line is not read or
 written; XTRM = 16,384 samples = 371 ms, the mode's default), PING is forced
 off and the output is mono to both channels.

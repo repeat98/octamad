@@ -6,7 +6,7 @@ row.
 
 | page 1 | DRV · FOLD · WDTH · COMP · TONE · MIX |
 |---|---|
-| page 2 | SAT (TAPE TUBE INFL) · — · — · — · — · — |
+| page 2 | SAT (TAPE TUBE INFL) · KEY (SELF T1) · KLVL · — · — · — |
 
 Chain, fixed: fold → saturate → tilt → compress → width → mix.
 
@@ -34,6 +34,15 @@ Chain, fixed: fold → saturate → tilt → compress → width → mix.
 - **COMP** — JClones AC1's console channel law: GLUE (slow, soft-kneed) on
   the master by position, COMP (fast) on every other track. One feedforward
   detector on the mono key, the gain applied to both channels.
+- **KEY / KLVL** (29 Sep 2026) — the compressor's key. SELF: the track's
+  own mono input, per sample (the law above, unchanged). T1: the BusDelay
+  host's peak |mono in| of T1 per block (`y:$990`, the bus scratch),
+  × KLVL/64 (64 = unity), held across the block into the same attack /
+  release smoother. The host also counts its calls at `y:$991`; a count
+  that has not moved for 4 blocks reads as silence (no delay host in the
+  remix, or boot garbage). On the master (T8) KEY is ignored: T8 receives
+  T1 in its input, so a T1 key there would duck T1 too. A KEY byte other
+  than 1 reads as SELF.
 - **WDTH** — mid/side: 64 untouched, 0 mono, 127 double sides.
 - Page-1 slot 4 is TONE again (20 Sep 2026). It was RET, the bus return
   level, from 13 to 20 Sep 2026: on T8 by dispatch position the last live
@@ -43,10 +52,24 @@ Chain, fixed: fold → saturate → tilt → compress → width → mix.
   on its own host. WDTH is page-1 slot 2 (TXTR's until 22 Sep 2026).
 
 Defaults are a bit-exact passthrough (DRV 0, FOLD 0, TONE 64, COMP 0, MIX
-127, WDTH 64): a part that stored LO-FI runs this. A part's stored
+127, WDTH 64; KEY SELF, KLVL 64): a part that stored LO-FI runs this. A part's stored
 bytes are stock LO-FI's until `ot_project.py stamp-defaults` writes ours.
 
 ## Measured
+
+- KEY (29 Sep 2026), `tools/verify/verify_charkey.py` (both cores, the
+  delay host on T1): a burst at 0.25 over a 0.05 tone ducks T3 (core 1) and
+  T6 (core 0) by 9.2 dB at KEY = T1, COMP 127, KLVL 64, lock-step and under
+  skews 1 / 37 / 333 / −250; SELF ducks 8.7 dB on the same burst. With the
+  host silent or absent, KEY = T1 holds 0.00 dB. SELF is bit-identical with
+  the host fed or silent; T8 at KEY = T1 is bit-identical with SELF; the
+  host's output is bit-identical with and without Characters reading it.
+  `make verify-ident MOD=character` against the build before it: 9 of 9
+  settings bit-identical with KEY = SELF (the matrix's `max` case sets
+  KEY = T1 and differs by design). Latency across cores: not measured
+  under the port.
+- Cost with KEY: 938 words on each payload (881 before), 244 cycles per
+  sample by the pricer (241 before).
 
 - `tools/verify/verify_character.py`: defaults bit-exact; MIX=0 bit-exact
   with every stage driven; every SAT character unity small-signal at DRV=0
@@ -57,7 +80,7 @@ bytes are stock LO-FI's until `ot_project.py stamp-defaults` writes ours.
   release 63 ms (K = 4); GLUE on the master 0.5 / 500 ms (K = 3). The
   threshold/ratio numbers that stood here (thr 0.03, invR 0.1, 8/100 ms)
   were the retired law's.
-- Cost: 888 words on each payload (903 after the DRV drive, 790 before it;
+- Cost history (current above): 888 words on each payload (903 after the DRV drive, 790 before it;
   671 before the pointer rewrite; 975 with TXTR; 1,138 / 1,195 with the
   return, 20 Sep 2026); pricer per mode (`cycle_count.py --modes`, words):
   TAPE 325, TUBE 321, INFL 245 (354 / 339 / 268 after the DRV drive, 23

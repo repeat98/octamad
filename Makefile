@@ -225,7 +225,7 @@ verify-shared: ## The gates that do not depend on the remix: ledger selftest, sl
 	@test -n "$(REMIXES)" || { echo "REMIXES is unset: make $@ REMIXES=\"<name> ...\"   (make modules lists them)"; exit 2; }
 	python3 tools/remix/selftest.py
 	python3 tools/verify/verify_slots.py
-	python3 tools/verify/verify_replaces.py
+	python3 tools/verify/verify_replaces.py --static
 	python3 tools/verify/verify_docs.py
 	python3 tools/build/label_fmt.py
 	@# The knob click census: every continuous knob of the rig fixture's DSP
@@ -262,6 +262,9 @@ verify-remix: ## The selected remix's own gates: dirty state, init regs, DRAM bo
 	@# Restore the selected image before inspecting its chooser tables.
 	$(MAKE) bus REMIX=$(REMIX)
 	REMIX=$(REMIX) python3 tools/verify/verify_menu.py
+	@# No stock effect id taken over without `replaces`, on this image (the
+	@# registry half ran in verify-shared).
+	python3 tools/verify/verify_replaces.py --image $(REMIX)
 	@# A real project on the built image under the ColdFire port (ids, page-2
 	@# delivery, chain audio, the main out); SKIPs without OT_PROJECT (above).
 	python3 tools/verify/verify_set.py $(REMIX)
@@ -373,7 +376,7 @@ BASE ?= origin/main
 identity: ## Which remixes' images this branch moved: every remix built from BASE (a kept worktree under out/identity/base) and from this tree, compared byte for byte
 	python3 tools/verify/image_identity.py --base $(BASE)
 .PHONY: reach
-reach: ## The gates this branch's changes reach (the diff against BASE=origin/main), QUICK by default (the carrying remixes, no identity or accept, 2 shards, background priority); FULL=1 every gate at full speed; RUN=1 runs them, KEEP=1 every one then a table, JOBS=n the per-remix work over n worktrees
+reach: ## The gates this branch's changes reach (the diff against BASE=origin/main), QUICK by default (the carrying remixes, no identity or accept, 2 shards, nice 10); FULL=1 every gate at full speed; RUN=1 runs them, KEEP=1 every one then a table, JOBS=n the per-remix work over n worktrees
 	python3 tools/verify/reach.py --base $(BASE) $(if $(FULL),--full,) $(if $(RUN),--run,) $(if $(KEEP),--keep-going,) $(if $(JOBS),--jobs $(JOBS),) $(REACHARGS)
 
 .PHONY: modules

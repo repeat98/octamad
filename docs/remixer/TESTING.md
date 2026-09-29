@@ -52,7 +52,7 @@ on which remix is selected, so a run over several remixes does it once:
 |---|---|
 | `tools/remix/selftest.py` | the ledger refuses every collision it claims to (FX2 id, cave, hook, detour, poke, runtime write, private Y word, FX2 buffer region, DSP hook site), every shipped remix is clean, the placer fills non-contiguous runs in both payloads |
 | `verify_slots` | no dead store in BusVerb's per-instance state block |
-| `verify_replaces` | no stock effect's id is taken over unless the module declares `replaces`; builds every remix |
+| `verify_replaces --static` | a declared replacement names a real stock effect and carries its id (the registry only) |
 | `verify_docs` | the README module table and the remix index match the manifests and selections (`make docs`); every remix has a README |
 | `tools/build/label_fmt.py` | the select formatter caves re-derive from their sources (with `m68k-elf-as` on PATH) |
 | `verify_knob_clicks` | the knob census: every continuous knob of the fixture remix's DSP modules moved mid-render, the block-rate step in dBFS; a garbage start stays quiet |
@@ -69,6 +69,7 @@ on which remix is selected, so a run over several remixes does it once:
 | `verify_labels`, `verify_modenames`, `verify_hidden` | the firmware's own formatter code prints each select's words; the MODE formatter renames its neighbours; a hidden engine is placed, dispatched, off the chooser and draws nothing | `.venv` |
 | `module_gates.py --stage isolated --remix-only` | the manifest gates declared `remix_arg=True` | per gate |
 | `verify_menu` | the FX1/FX2 choosers and every cloned descriptor against the chooser logic decompiled from the firmware: row order, formatter vs value count, name-field lengths, link bits | |
+| `verify_replaces --image` | on this image, every stock effect id is stock's or declared by `replaces`, on both menus (until 29 Sep 2026 the shared half built all 35 remixes for this: 41 s warm, 402 s on a cold build memo) | |
 | `verify_set` | a real project on the image under the port: the load completes, live ids equal the part's, page-2 lanes reach the DSP record, every track with audio has chain output, CCs over MIDI IN move the right bytes, CC FEEDBACK's wire and cache, the load rewrote no project file, the firmware's log is clean | port, `.venv`, project |
 | `verify_usb` | the image enumerates under the port with the descriptors its USB modules declare; the streams run at their cadence; mass storage still answers | port |
 | `module_gates.py --stage image` | the manifest gates that read the finished image | per gate |
@@ -203,8 +204,9 @@ machine: a module change checks the remixes users flash that carry it
 (`remixes/`), or the smallest test remix when only test remixes do; the
 floor for tool and build changes is the one cover remix carrying the most
 modules; a build change runs refhash but not `make identity`; no
-`make accept`; two shards; on macOS every command at background priority
-(`taskpolicy -b`, the efficiency cores). `FULL=1` is everything below at
+`make accept`; two shards; every command at nice 10 (the performance cores,
+below the desktop; measured on the M3: a CPU task 2.8 s at nice 0 and at
+nice 10, 19.9 s under background QoS, `taskpolicy -b`). `FULL=1` is everything below at
 full speed. What QUICK gives up: the pressure stages (the dearest layouts
 priced and rendered, which catch a module that overruns beside others),
 identity's image comparison, and the test remixes and other cover remixes

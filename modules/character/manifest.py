@@ -13,10 +13,12 @@ fold -> saturate -> tilt -> compress -> width.
   * TONE -- a tilt after the saturator, drawn -64..+63; 0 flat, bit-exact;
   * COMP -- JClones AC1's console channel law: GLUE (slow) on the master
     by position, COMP (fast) elsewhere; the detector's key is the station's
-    own input;
+    own input, or with KEY = T1 the BusDelay host's level of T1 x KLVL/64
+    (never on the master, which receives T1 itself);
   * WDTH -- mid/side width, drawn -64..+63: -64 mono, +63 2x side.
 
-Page 1: DRV FOLD WDTH COMP TONE MIX; page 2: SAT (22 Sep 2026: TXTR removed,
+Page 1: DRV FOLD WDTH COMP TONE MIX; page 2: SAT KEY KLVL (29 Sep 2026:
+KEY and KLVL; 22 Sep 2026: TXTR removed,
 WDTH in its slot; 20 Sep 2026: TONE back on page 1 in the return's slot)."""
 
 from remix.schema import (Gate, Category, Proof, BusRole, Claims, DspSection, Formatter, Harness,
@@ -86,7 +88,12 @@ MODULE = Module(
         Param(b"SAT", 0, 3, active=True, formatter=_STEP,
               labels=("TAPE", "TUBE", "INFL"),
               doc="character: TAPE (TapeHead), TUBE (DaTube, asymmetric), INFL (OInflator). JClones, MIT"),
-        _BLANK, _BLANK, _BLANK, _BLANK, _BLANK,
+        Param(b"KEY", 0, 2, active=True, formatter=_STEP,
+              labels=("SELF", "T1"),
+              doc="the compressor's key: SELF = this track's input, T1 = T1's level (ignored on the master)"),
+        Param(b"KLVL", 64, 128, active=True, formatter=_PLAIN,
+              doc="how hard T1 drives the compressor with KEY = T1: 64 = unity, 127 = x2"),
+        _BLANK, _BLANK, _BLANK,
     ),
     # SAT names itself by its value (tools/build/mode_names.with_selfname).
     # No knob changes meaning by mode.
@@ -107,7 +114,11 @@ MODULE = Module(
     # 3,120). The FX2 chooser hides the row; verify_character proves the
     # dry pass.
     claims=Claims(fx1_only=True),
-    harness=Harness(layout_char="2", is_server=False, bus_client=False),
-    gates=(Gate('tools/verify/verify_character.py', remix_arg=False),),
+    # bus_client: KEY reads two words of the bus scratch (y:$990/$991), so
+    # the build moves its `$9xx` literals to the shared window under XBUS.
+    # It writes nothing there and never registers.
+    harness=Harness(layout_char="2", is_server=False, bus_client=True),
+    gates=(Gate('tools/verify/verify_character.py', remix_arg=False),
+           Gate('tools/verify/verify_charkey.py', remix_arg=False)),
     dear={'DRV': 127, 'FOLD': 127, 'COMP': 127, 'MIX': 127, 'WDTH': 127, 'SAT': 0},
 )

@@ -36,7 +36,13 @@
 ;                        the wet it writes into the chain buffer by it
 ;   Y:0x983..0x98a      REV send COUNT, one per REV buffer, as 0x9c7 is for
 ;                        the aux: SEND's REV registers here while nonzero
-;   Y:0x98b..0x9c0      free
+;   Y:0x98b..0x98f      free
+;   Y:0x990             T1's KEY level: BusDelay host's peak |mono in| of
+;                        the block so far, stored every call; Character
+;                        reads it when its KEY is T1
+;   Y:0x991             BusDelay host's call counter (0..$8000): Character
+;                        treats the level as 0 once it stops moving
+;   Y:0x992..0x9c0      free
 ;   Y:0x9c1             DELAY SERVER role owner (lock)
 ;   Y:0x9c2             REVERB SERVER role owner (lock)
 ;   Y:0x9c3             DELAY LIVE stamp for the REVERB (clear-on-read): the

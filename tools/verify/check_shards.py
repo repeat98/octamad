@@ -188,7 +188,8 @@ def remix_jobs(remix_name, shard):
         cmd[0] = cmd[0] if g.venv else PY
         cmd[1] = str(g.script)
         jobs.append(job(f"gate:{pathlib.Path(g.script).stem}", [cmd], f"{V}/module_gates.py"))
-    jobs.append(job("menu", [[py, f"{V}/verify_menu.py"]], f"{V}/verify_menu.py"))
+    jobs.append(job("menu", [[py, f"{V}/verify_menu.py"], [py, f"{V}/verify_replaces.py", "--image", remix_name]],
+                    f"{V}/verify_menu.py", f"{V}/verify_replaces.py"))
     jobs.append(job("set", [[py, f"{V}/verify_set.py", remix_name]], f"{V}/verify_set.py"))
     # The image-stage module gates (TEMPO BUS boots the card verify_set
     # stages) as their own job: verify_set --stage-only stages the same

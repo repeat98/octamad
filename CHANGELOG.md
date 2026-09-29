@@ -7,10 +7,15 @@ flashed image was built from.
 
 ## Unreleased (main after image 43)
 
+- The shared half stops building every remix (29 Sep 2026): `verify_replaces`
+  checks the registry in the shared half (`--static`, under a second) and
+  each remix's own image in its per-remix half (`--image`, after `make bus`).
+  It had built all 35 remixes on every shared run: 41 s with a warm build
+  memo, 402 s cold.
 - `make reach` is QUICK by default (29 Sep 2026): the remixes users flash
   that carry the change, one floor remix for tool and build changes, no
-  identity, no `make accept`, two shards, background priority on macOS
-  (`taskpolicy -b`). `FULL=1` is the previous behaviour, a manual choice
+  identity, no `make accept`, two shards, nice 10 (background QoS was tried
+  first and ran on the efficiency cores, several times slower). `FULL=1` is the previous behaviour, a manual choice
   that nothing requires. A USB MIDI change:
   26 commands full, 2 quick.
 

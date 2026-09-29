@@ -398,3 +398,12 @@ class QuickTests(unittest.TestCase):
         c = ctx()
         self.assertEqual(c.carriers(["bamsep26", "usb"]), ["bamsep26", "usb"])
         self.assertIn("identity", [k for k, _ in c.build_change()])
+
+    def test_a_makefile_check_target_skips_identity_when_quick(self):
+        head = MAKE_BASE.replace("\tpython3 tools/verify/verify_menu.py", "\tpython3 tools/verify/verify_menu.py --x")
+        c = ctx(make_head=head)
+        c.quick = True
+        kinds = [k for _, g, _ in reach.classify(["Makefile"], c) for k, _ in g]
+        self.assertNotIn("identity", kinds)
+        c.quick = False
+        self.assertIn("identity", [k for _, g, _ in reach.classify(["Makefile"], c) for k, _ in g])

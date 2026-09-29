@@ -3,7 +3,8 @@
 ;
 ; Insert contract: frames in place at
 ; x:(r0)/x:(r0+n0), knobs from r6, state in this instance's r7 block. The
-; station never touches the bus.
+; station writes nothing to the bus; with KEY on T1 it reads two words of
+; its scratch (y:$990/$991, BusDelay host's level and counter).
 ;
 ; ---- the chain, fixed order ----------------------------------------------
 ;   f     = fold(x * gain) / gain                       FOLD (held level)
@@ -21,7 +22,8 @@
 ; makeup 1/(1 - 0.3375*COMP/128). GLUE: 0.5 / 500 ms, K = 3. COMP: 0.5 /
 ; 63 ms, K = 4 (release coefficient $bd0 = 3024/2^23 per sample, tau = 62.9
 ; ms). COMP 0 skips the stage, bit-exact. The key is the mono input, read
-; from the frame (untouched until the write-back).
+; from the frame (untouched until the write-back), or with KEY = T1 (page-2
+; slot 7; never on the master) T1's peak |mono in| x KLVL/64, per block.
 ;
 ; ---- r7 slots -------------------------------------------------------------
 ; per block, read into the rings before the loop:
@@ -44,8 +46,9 @@
 ;   $19 wet L, $1a wet R (r4 -> $19, n4 = 1)
 ;   $60..$6f the main ring (r5, m5 = 15), in the order the sample reads
 ;     them: gq trim/2, the SAT word (-1 = DRV 0 skips, else $29), k (the
-;     tilt's 0.157), t/2, $26 $2d $2e $22, -1.0, $28 $27, two spares, $2b $20.
-;     COMP off steps over its six words and the spares (n5 = 8, else 2)
+;     tilt's 0.157), t/2, $26, the KEY word $17, $2d $2e $22, -1.0, $28 $27,
+;     a spare, $2b $20. COMP off steps over its seven words and the spare
+;     (n5 = 8, else 1)
 ;   $70..$7f the SAT ring (r6, m6 = 15 in every mode -- the chip has only
 ;     ever run power-of-two modulos), both channels, each between G/8 and
 ;     the output scale: TAPE (0.7 on L only) k2 k1 k3mag d8 trim, TUBE
@@ -59,7 +62,9 @@
 ;   knobs, $55 1 once the ring's run values started at their targets (both
 ;   zeroed at init); $56..$5b (r4 + $3d) the per-sample steps of gq trim t,
 ;   a makeup m (per block), whose run values are their main-ring words
-; free: $15..$17, $2c, $34..$36, $3c/$3d, $46/$47, $49..$4b, $5c..$5f
+;   $15 T1's counter last seen, $16 blocks since it moved (both zeroed at
+;     init), $17 the KEY word (per block: -1 SELF, else T1's level)
+; free: $2c, $34..$36, $3c/$3d, $46/$47, $49..$4b, $5c..$5f
 ;
 ; ---- the master, by position ---------------------------------------------
 ; On the master (dispatch position 3 on payload A, track 8) COMP runs the
@@ -115,6 +120,8 @@ init:
         move    a,x:(r7+$25)            ; (verify_dirtystate)
         move    a,x:(r7+$54)            ; the glides start at the knobs,
         move    a,x:(r7+$55)            ; the ramps at their targets
+        move    a,x:(r7+$15)            ; KEY's counter last seen and the
+        move    a,x:(r7+$16)            ; blocks since it moved
         rts
 
 proc:
@@ -283,6 +290,53 @@ ch_master:
         move    #>$1,x0
         move    x0,x:(r7+$25)           ; the master: GLUE
 ch_pos3:
+; ---- KEY (29 Sep 2026): page-2 slot 7 (r6+$c bits 8-15) 1 = T1, the
+; BusDelay host's level at y:$990, x KLVL/64 (slot 8, r6+$d's knob field);
+; anything else, and the master always, keys on its own input. $17 is the
+; ring's KEY word: -1 = SELF, else the level the loop holds for the block.
+; A T1 counter (y:$991) that has not moved for 4 blocks reads as silence:
+; no host, or boot garbage. $15 the counter last seen, $16 blocks since it
+; moved (held at 8).
+        move    x:(r7+$16),b
+        add     #>$1,b
+        move    #>$8,x1
+        cmp     x1,b
+        tgt     x1,b
+        move    y:>$991,a
+        move    x:(r7+$15),x0
+        move    a,x:(r7+$15)
+        cmp     x0,a                    ; nothing but moves before the Tcc
+        move    #0,x1
+        tne     x1,b                    ; moved: 0
+        move    b,x:(r7+$16)
+        move    x:(r6+$c),a             ; KEY, the companion byte
+        and     #>$00ff00,a
+        cmp     #>$000100,a
+        bne     ch_kself
+        move    x:(r7+$25),a
+        tst     a
+        bne     ch_kself                ; the master keys on its own input
+        move    x:(r7+$16),a
+        cmp     #>$4,a
+        bge     ch_kzero                ; stale: silence
+        move    y:>$990,x0              ; T1's peak |mono in|
+        move    x:(r6+$d),a             ; KLVL, the knob field
+        and     #>$7f0000,a
+        move    a,y1                    ; KLVL/128
+        mpy     x0,y1,a
+        asl     a                       ; x KLVL/64: 64 = unity
+        move    #0,x1
+        tst     a                       ; nothing but moves before the Tcc
+        tmi     x1,a                    ; a garbage level floors at 0
+        move    a,x1                    ; the limiting move
+        bra     ch_kset
+ch_kzero:
+        move    #0,x1
+        bra     ch_kset
+ch_kself:
+        move    #>$ffffff,x1
+ch_kset:
+        move    x1,x:(r7+$17)
         move    x:(r7+$4e),a             ; d = DRV/128
         move    a,x1                    ; (x1 = DRV/128 for TapeHead's words below)
         move    a,x0
@@ -425,12 +479,14 @@ ch_live:
         bsr     ch_rset
         move    #$0f,m5                 ; sixteen words, one turn per sample
         move    x:(r7+$26),a            ; COMP; off: the sample steps over its
-        move    a,x:(r3)+               ; six words and the two spares (n5 = 8,
-        move    #>$2,b                  ; else 2: the spares)
+        move    a,x:(r3)+               ; seven words and the spare (n5 = 8,
+        move    #>$1,b                  ; else 1: the spare)
         move    #>$8,x0
         tst     a
         teq     x0,b
         move    b1,n5
+        move    x:(r7+$17),x0           ; KEY: -1 = SELF, else T1's level
+        move    x0,x:(r3)+
         move    x:(r7+$2d),x0           ; attack
         move    x0,x:(r3)+
         move    x:(r7+$2e),x0           ; release
@@ -443,8 +499,7 @@ ch_live:
         bsr     ch_rset
         move    x:(r7+$27),y1           ; makeup/4
         bsr     ch_rset
-        move    (r3)+                   ; the two spares
-        move    (r3)+
+        move    (r3)+                   ; the spare
         move    x:(r7+$2b),x0           ; side gain / 2
         move    x0,x:(r3)+
         move    x:(r7+$20),y1           ; m
@@ -606,14 +661,14 @@ ch_rdone:
         move    x:(r5),a
         add     x0,a    x:(r3)+,x0
         move    a,x:(r5)+               ; t/2
-        lua     (r5+$5),r5              ; past COMP, attack, release, K, -1
+        lua     (r5+$6),r5              ; past COMP, KEY, attack, release, K, -1
         move    x:(r5),a
         add     x0,a    x:(r3)+,x0
         move    a,x:(r5)+               ; the dip's a
         move    x:(r5),a
         add     x0,a    x:(r3)+,x0
         move    a,x:(r5)+               ; makeup/4
-        lua     (r5+$3),r5              ; past the spares and the side gain
+        lua     (r5+$2),r5              ; past the spare and the side gain
         move    x:(r5),a
         add     x0,a    x:(r0),x0       ; L in, for the fold
         move    a,x:(r5)+               ; m, and r5 is back at the ring's head
@@ -799,14 +854,18 @@ ch_nosat:
 ; a dip around Lv = 1 -- then x *= gr * makeup on both channels. Lv is
 ; carried halved (Lv/2, so Lv up to 2 fits a word; the dip is over by 1.5).
 ; r3 -> level_s after the tilt's two states. The key is the mono input,
-; still untouched in the frame (the write-back is the last stage).
+; still untouched in the frame (the write-back is the last stage), or with
+; KEY on T1 the ring's KEY word, held for the block.
         tst     b           a,x:(r4)-
         beq     ch_capd                 ; COMP 0: the stage is skipped
         move    x:(r0),a
-        add     x1,a
-        asr     a           x:(r3),b    ; key = mono in ; level_s
-        abs     a
+        add     x1,a        x:(r5)+,b   ; L + R ; the KEY word
+        asr     a                       ; mono in
+        abs     a           b,x1        ; |mono| ; the KEY word
+        tst     b                       ; nothing but moves before the Tcc
+        tpl     x1,a                    ; T1: its level
         move    a,x0                    ; level
+        move    x:(r3),b                ; level_s
         tfr     x0,a        x:(r5)+,x1  ; attack
         sub     b,a         x:(r5)+,b   ; d = level - level_s ; release
         tst     a           a,x0        ; nothing between this and the Tcc

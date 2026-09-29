@@ -160,7 +160,7 @@ claim something works because it assembled.
 **`make reach`** reads the branch's diff against `origin/main` and prints
 the gates it reaches, in order; `RUN=1` runs them. By default it runs the
 QUICK tier (the remixes users flash that carry the change, no identity, no
-`make accept`, two shards, background priority); `FULL=1` runs every gate
+`make accept`, two shards, nice 10); `FULL=1` runs every gate
 at full speed, when you choose to (`docs/remixer/TESTING.md` §6 says what
 quick gives up). It refuses a tree that
 is not rebased onto the base. A change to a module reaches every remix

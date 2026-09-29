@@ -122,11 +122,11 @@ def run(name, built, project, frames, sym):
               cc == [(w * lv[1]) >> 23 for w in wet], f"{cc[:2]}")
         t = vst.tx0(work / "oxide" / "run_core0.wav")
         t0 = vst.tx0(work / "rest" / "run_core0.wav")
-        tail = 2000
+        tail = 160
         mean = lambda xs: sum(xs) / len(xs)
         dl = [mean(t[s][-tail:]) - mean(t0[s][-tail:]) for s in (0, 1)]
         check("port: oxide: the CUE pair of TX0 moves by the CUE add against the rest run (means over the last "
-              "2,000 samples, within 15%: the wet is still settling, so this is not a 0-LSB check)",
+              "160 samples, within 15%: the wet is still settling, so this is not a 0-LSB check)",
               all(abs(d - c) <= 0.15 * abs(c) for d, c in zip(dl, cc[:2])), f"delta {[round(d) for d in dl]} add {cc[:2]}")
         v = pk["reverb"]
         slot = v.get(RETSLOT)

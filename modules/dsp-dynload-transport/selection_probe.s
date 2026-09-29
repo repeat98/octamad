@@ -11,8 +11,8 @@ dl_selection_prepare:
 	move.l 16(%sp),%d3
 	move.l %d3,%a0
 	move.l %d3,%a1
-	lea (44,%a0),%a0
-	lea (60,%a1),%a1
+	lea (48,%a0),%a0
+	lea (64,%a1),%a1
 .L5:
 	mvz.b (%a0),%d1
 	mov3q.l #1,%d0
@@ -27,8 +27,8 @@ dl_selection_prepare:
 	cmp.l %a0,%a1
 	jne .L5
 	move.l %d3,%a0
-	add.l #76,%d3
-	lea (68,%a0),%a0
+	add.l #80,%d3
+	lea (72,%a0),%a0
 .L6:
 	mvz.b (%a0),%d0
 	addq.l #1,%a0

@@ -40,7 +40,8 @@ def main():
     regions={'active':(0x80000002,3),'running':(0x800065bd,2),'ids':(0x80000ec4,16),
              'bank':(0x400e21e0,635712),'name':(0x100f8378,64)}
     counters=('dl_project_admitted','dl_project_refused','dl_project_completed',
-              'dl_publication_prepared','dl_publication_refused','dl_residency_failures','dl_errors')
+              'dl_publication_prepared','dl_publication_refused','dl_residency_failures','dl_errors',
+              'dl_unguarded')
     def spans(d,label):
         return ';'.join(f'{a:#x},{n}={d}/{label}-{key}.bin' for key,(a,n) in regions.items())
     cmd=[str(ROOT/'out/emu/ot_emu'),'--image',str(image),'--card',str(card),'--set','OCTABAM',
@@ -78,6 +79,7 @@ def main():
         assert (d/'before-ids.bin').read_bytes()==bytes(16),'initial fixture must actually load'
         result={n:int.from_bytes((d/f'{n}.bin').read_bytes(),'big') for n in counters}
         assert result['dl_errors']==0,result
+        if name!='stopped-static': assert result['dl_unguarded']==0,(name,result)
         assert result['dl_residency_failures']==int(name in ('stopped-full','project-full')),result
         if name=='stopped-ready':
             assert (d/'final-active.bin').read_bytes()==bytes((0,1,1))

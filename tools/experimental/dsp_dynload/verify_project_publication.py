@@ -28,7 +28,7 @@ def main():
     (OUT/'events.txt').write_text('1000 quit\n')
     sizes={'dl_residency_words':8,'dl_residency_commits':4,'dl_residency_failures':4,
            'dl_project_admitted':4,'dl_project_completed':4,'dl_project_refused':4,
-           'dl_selection_requested':4,'dl_errors':4,'phase':4,'dl_pool_base':8}
+           'dl_selection_requested':4,'dl_errors':4,'phase':4,'dl_pool_base':8,'dl_unguarded':4}
     spans=';'.join(f'{syms[n]:#x},{size}={OUT}/{n}.bin' for n,size in sizes.items())
     spans+=f';0x80000ec4,16={OUT}/ids.bin'
     cmd=[str(ROOT/'out/emu/ot_emu'),'--image',str(image),'--card',str(card),'--set','OCTABAM',
@@ -42,6 +42,8 @@ def main():
     (OUT/'report.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2))
     assert report['dl_residency_words']==[932,282],report
     assert report['dl_residency_failures']==[0] and report['dl_errors']==[0],report
+    # Loading publishes before its commit: the acknowledged target must count as bound.
+    assert report['dl_unguarded']==[0],report
     assert report['dl_selection_requested']==[0] and report['phase']==[0],report
     assert report['dl_project_admitted']==[1] and report['dl_project_completed']==[1] and report['dl_project_refused']==[0],report
     ids=(OUT/'ids.bin').read_bytes();assert ids==bytes([12,0,0,0,28,0,0,0]+[0]*8)

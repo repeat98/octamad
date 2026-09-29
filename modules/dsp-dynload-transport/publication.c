@@ -60,18 +60,22 @@ unsigned dl_pattern_boundary(void) {
  * a mailbox and replay only after an acknowledged preparation. The writer may
  * be a sequencer callback; it never allocates or reads files. */
 #ifndef DL_NATIVE_TEST
-static volatile uint32_t immediate_version=0,immediate_args[5]={0};
+static volatile uint32_t immediate_version=0,immediate_args[5]={0},immediate_kind=0,immediate_next=0;
 static volatile uint32_t immediate_seen=0,immediate_passthrough=0;
-static uint32_t immediate_token=0,immediate_saved[5]={0};
+static uint32_t immediate_token=0,immediate_saved[5]={0},immediate_saved_kind=0,immediate_saved_next=0;
+volatile uint32_t dl_chain_deferred=0,dl_chain_restarted=0,dl_chain_dropped=0;
+volatile uint32_t dl_publication_superseded=0;
+static uint32_t next_pair(void) { return (uint32_t)BYTE(0x800065bfu)<<8|BYTE(0x800065c0u); }
 static volatile unsigned immediate_pending=0;
 static unsigned project_active(void);
 extern void dl_pattern_post_body(unsigned,unsigned,unsigned,int,unsigned);
-static void immediate_request(const uint32_t *args,unsigned passthrough) {
+/* Kind 0 replays a pattern request; kind 1 replays a chain restart. */
+static void immediate_request(const uint32_t *args,unsigned passthrough,unsigned kind) {
     uint16_t sr;
     __asm__ volatile("move.w %%sr,%0\n\tmove.w #0x2700,%%sr" : "=d"(sr) : : "memory","cc");
     ++immediate_version;
     for(unsigned i=0;i<5;++i)immediate_args[i]=args[i];
-    immediate_passthrough=passthrough;
+    immediate_passthrough=passthrough;immediate_kind=kind;immediate_next=next_pair();
     ++immediate_version;
     __asm__ volatile("move.w %0,%%sr" : : "d"(sr) : "memory","cc");
 }
@@ -85,25 +89,80 @@ unsigned dl_pattern_request_guard(const uint32_t *args) {
     if(pass) {
         /* A newer already-resident/queued request supersedes a deferred one;
          * otherwise that old request would unexpectedly replay later. */
-        if(immediate_pending || immediate_version!=immediate_seen) immediate_request(args,1);
+        if(immediate_pending || immediate_version!=immediate_seen) immediate_request(args,1,0);
         return 1;
     }
     if(project_active()) { fail(DL_SELECT_UNAVAILABLE);return 0; }
-    immediate_request(args,0);return 0;
+    immediate_request(args,0,0);return 0;
+}
+/* STOP on a playing chain stores chain[0] as the running pattern (0x400a11c6)
+ * BEFORE it requests that pattern, so the request guard is too late for it.
+ * Admit the whole restart at 0x400a11ba instead. Refusal stops on the current
+ * pattern with the chain untouched; the UI task replays the restart once its
+ * Part is prepared. Runs wherever STOP runs; never allocates or waits. */
+unsigned dl_chain_stop_guard(void) {
+    extern volatile uint32_t dl_residency_enabled;
+    uint8_t target[16],src[8];
+    uint32_t args[5]={(uint32_t)(int8_t)BYTE(0x800065bdu),(uint32_t)(int8_t)BYTE(0x80006555u),
+                      0,0xffffffffu,0};
+    if(!dl_residency_enabled) return 1;
+    unsigned known=capture(args[0],args[1],target,src);
+    if(known && dl_publication_ready(target)) return 1;
+    ++dl_chain_deferred;
+    if(!known || project_active()) { fail(DL_SELECT_UNAVAILABLE);return 0; }
+    immediate_request(args,0,1);return 0;
+}
+/* The deferred restart is still the latest intent only while the sequencer
+ * stays stopped on the same chain. */
+static unsigned chain_current(void) {
+    return *(volatile uint32_t *)0x800065b8u==0 && *(volatile uint32_t *)0x80006546u &&
+           (uint32_t)(int8_t)BYTE(0x800065bdu)==immediate_saved[0] &&
+           (uint32_t)(int8_t)BYTE(0x80006555u)==immediate_saved[1];
+}
+/* Stock 0x400a11ba-0x400a1292, the STOP handler's chain branch without the
+ * stop tail that already ran: each statement is one stock store or call. */
+static void chain_restart(void) {
+    volatile uint32_t *const at=(volatile uint32_t *)0x8000654au;
+    *at=0;
+    uint32_t first=*(volatile uint32_t *)0x80006552u;
+    BYTE(0x800065beu)=(uint8_t)first;
+    ((void (*)(int,int))0x400a1030u)((int8_t)BYTE(0x800065bdu),(int8_t)first);
+    uint32_t next=*at+1;*at=next;
+    BYTE(0x800065c0u)=BYTE(0x80006555u+next*4);
+    *(volatile uint32_t *)0x80006630u=0;
+    uint32_t o=(uint32_t)(int8_t)BYTE(0x800065c0u)*36568u+(uint32_t)(int8_t)BYTE(0x800065bdu)*635712u;
+    *(volatile int32_t *)0x80006634u=BYTE(0x400eb035u+o) ? *(volatile int16_t *)(uintptr_t)(0x400eb030u+o)
+                                                         : (int8_t)BYTE(0x400eb033u+o);
+    if((int32_t)next>=*(volatile int32_t *)0x8000654eu) *at=0;
+    BYTE(0x400d8165u)=BYTE(0x800065beu);
+    ((void (*)(uint32_t,uint32_t))0x40000c3cu)(0x460d17aeu,0x400d8164u);
 }
 static unsigned immediate_tick(void) {
     uint32_t version=immediate_version;
     if(version&1u)return 1;
     if(version!=immediate_seen) {
         if(immediate_pending)dl_selection_cancel(immediate_token);
+        /* A replayed request's token may be armed and already published;
+         * never let a later capture failure cancel it. */
+        immediate_token=0;
         if(pending) { dl_selection_cancel(token);pending=0;missed=0; }
         for(unsigned i=0;i<5;++i)immediate_saved[i]=immediate_args[i];
+        immediate_saved_kind=immediate_kind;immediate_saved_next=immediate_next;
         unsigned pass=immediate_passthrough;
         if(version!=immediate_version)return 1;
         immediate_seen=version;immediate_pending=pass ? 0:1;
         if(pass)return 1;
     }
     if(!immediate_pending)return 0;
+    if(immediate_saved_kind && !chain_current()) {
+        dl_selection_cancel(immediate_token);immediate_pending=0;++dl_chain_dropped;return 1;
+    }
+    /* A deferral reorders the request after whatever happened meanwhile. A
+     * queued pair changed since then (a chain add, a queued change after PLAY)
+     * is newer intent: replaying the old request would overwrite it. */
+    if(!immediate_saved_kind && next_pair()!=immediate_saved_next) {
+        dl_selection_cancel(immediate_token);immediate_pending=0;++dl_publication_superseded;return 1;
+    }
     uint8_t target[16],src[8];
     if(!capture(immediate_saved[0],immediate_saved[1],target,src)) {
         dl_selection_cancel(immediate_token);immediate_pending=0;fail(DL_SELECT_UNAVAILABLE);return 1;
@@ -130,9 +189,12 @@ static unsigned immediate_tick(void) {
     }
     if(version!=immediate_version)return 1;
     dl_publication_arm(immediate_token);++dl_publication_prepared;
+    /* Clear first: a chain restart re-enters the request guard, which must
+     * see no pending request to supersede. */
+    immediate_pending=0;
+    if(immediate_saved_kind) { ++dl_chain_restarted;chain_restart();return 1; }
     dl_pattern_post_body(immediate_saved[0],immediate_saved[1],immediate_saved[2],
                          (int)immediate_saved[3],immediate_saved[4]);
-    immediate_pending=0;
     return 1;
 }
 #endif

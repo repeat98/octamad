@@ -36,7 +36,8 @@ def main():
     def poke(vs): return ';'.join(f'{a+i:#x}={b}' for a,v,n in vs for i,b in enumerate(v.to_bytes(n,'big')))
     names={'dl_residency_commits':4,'dl_residency_rollbacks':4,'dl_residency_failures':4,
            'dl_residency_words':8,'dl_pool_base':8,'dl_selection_completed':4,
-           'dl_selection_refused':4,'dl_selection_cancelled':4,'dl_errors':4,'dl_frames':4,'phase':4,'result':4}
+           'dl_selection_refused':4,'dl_selection_cancelled':4,'dl_errors':4,'dl_frames':4,'phase':4,'result':4,
+           'dl_unguarded':4}
     cases=[('eq-t1',0,12,False),('eq-t5',4,12,False),('character-t1',0,28,False),
            ('cancel-eq',0,12,True),('memory-full',0,0,False),('manual-part',0,0,False),
            ('automatic-apply',0,0,False)]
@@ -79,6 +80,9 @@ def main():
         report.append(r)
         assert r['dl_errors']==[0],r
         assert r['phase']==[0],r
+        # Positive control for the tripwire: automatic-apply publishes around
+        # every guard, so the static originals run it until the observer loads.
+        assert (r['dl_unguarded'][0]>0)==(name=='automatic-apply'),(name,r['dl_unguarded'])
         if name=='memory-full':
             assert r['dl_selection_refused']==[1] and (d/'part.bin').read_bytes()==b'\0',r
         elif cancel:

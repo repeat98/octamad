@@ -23,6 +23,8 @@ static int result=0;
 volatile uint32_t dl_residency_enabled=1; /* Test/control bypass; static originals required. */
 volatile uint32_t dl_residency_commits=0,dl_residency_rollbacks=0,dl_residency_failures=0;
 volatile uint32_t dl_residency_words[2]={0};
+/* Distinct live sets seen running a managed id without bound relocated code. */
+volatile uint32_t dl_unguarded=0;
 /* Guard preparation/monitoring runs on the UI task. ISR owns only transport. */
 static void bytes(void *d,const void *s,unsigned n) {
     volatile uint8_t *to=d; const uint8_t *from=s;
@@ -162,11 +164,42 @@ void dl_selection_commit(uint32_t token) {
     if(dl_allocator_commit(&allocator,current)!=1) { report(DL_SELECT_UNAVAILABLE); return; }
     phase=6; cursor=0; ++dl_residency_commits; counts();
 }
+#ifndef DL_NATIVE_TEST
+/* Every managed id in the live set runs bound relocated code: a committed
+ * placement that is not being retired, or an acknowledged target of a ready
+ * transaction (a guarded route publishes before its commit). */
+static unsigned bound(const volatile uint8_t *ids) {
+    for(unsigned i=0;i<16;++i) {
+        unsigned p=ids[i],c=(i&7)<4 ? 1:0;
+        if(p>=32 || dl_catalog[p].resident) continue;
+        if(allocator.live[c][p].present && (phase!=6 || allocator.target[c][p].present)) continue;
+        if(phase==5 && result==DL_SELECT_READY && !cancelling && allocator.target[c][p].present) continue;
+        return 0;
+    }
+    return 1;
+}
+static uint8_t unsafe[16]={0};
+static unsigned unsafe_valid=0;
+/* Tripwire, every UI tick: a live set with unbound managed code reached the
+ * DSP through a route no guard covers, and the static originals ran it. Zero
+ * on every route is the condition for reclaiming them. A set that appears and
+ * goes again between two ticks is not seen. */
+static void tripwire(void) {
+    const volatile uint8_t *ids=(const volatile uint8_t *)0x80000ec4u;
+    if(bound(ids)) { unsafe_valid=0; return; }
+    unsigned same=unsafe_valid;
+    for(unsigned i=0;i<16;++i) if(ids[i]!=unsafe[i]) same=0;
+    if(same) return;
+    for(unsigned i=0;i<16;++i) unsafe[i]=ids[i];
+    unsafe_valid=1; ++dl_unguarded;
+}
+#endif
 void dl_residency_tick(void) {
     if(!dl_residency_enabled) return;
     advance();
 #ifndef DL_NATIVE_TEST
     dl_publication_tick();
+    tripwire();
     if(phase) return;
     /* Observe the actual live set, including automatic pattern/project paths.
      * Static originals remain valid while preparation runs or if it refuses.
@@ -203,7 +236,7 @@ int dl_publication_ready(const uint8_t ids[16]) {
     /* Pinned-only targets cannot race arena retirement, including boot/setup
      * calls before the runtime has initialized its first managed allocation. */
     if(!managed) return 1;
-    if(!initialized || (phase!=0 && phase!=5)) return 0;
+    if(!initialized || (phase!=0 && phase!=5 && phase!=6)) return 0;
     if(phase==5) {
         if(result!=DL_SELECT_READY || cancelling) return 0;
         for(unsigned i=0;i<16;++i) if(ids[i]!=desired[i]) return 0;
@@ -212,6 +245,9 @@ int dl_publication_ready(const uint8_t ids[16]) {
         unsigned p=ids[i],c=(i&7)<4 ? 1:0;
         if(p>=32 || !dl_catalog[p].qualified || !(dl_catalog[p].slots & (i<8 ? 1:2))) return 0;
         if(dl_catalog[p].resident) continue;
+        /* Committed and retiring its outgoing placements: the committed set
+         * stays bound, so publishing it is safe before retirement ends. */
+        if(phase==6) { if(allocator.target[c][p].present) continue; return 0; }
         if(allocator.live[c][p].present) continue;
         if(phase==5 && result==DL_SELECT_READY && allocator.target[c][p].present) continue;
         return 0;

@@ -35,9 +35,11 @@ entry rejects a load without that admission. No new chooser or controls are adde
 ## Critical current boundary
 
 **Static originals are still resident.** These guards cover the qualified routes,
-not every firmware mutation. The post-publication observer remains for uncovered
-paths: chain restart/stop, Part copy/reload/reset, background bank reload and new
-project creation still require separate before-write guards and qualification.
+not every firmware mutation. The chain restart on STOP and PASTE/RELOAD/RESET
+of the active Part are now guarded too. The post-publication observer remains
+for uncovered paths: the per-track writers of the live FX arrays, background
+bank reload and the project paths still need before-write guards, and the
+`dl_unguarded` tripwire counts any live set that reaches the DSP unprepared.
 No original algorithm span has been reclaimed. Do not remove it on the strength
 of the pattern/project tests. See `PUBLICATION.md` for exact seams and limitations.
 
@@ -91,7 +93,10 @@ change to the running sequencer. Both the pattern and Part must actually change.
 The eight stereo chains and main capture matched static execution exactly over
 8,192 frames, with no residency/transport errors. This exercises the normal
 queued pattern path; the new guard prepares before publication and defers the
-change if preparation misses its deadline.
+change if preparation misses its deadline. **Retracted as FX evidence (29 Sep
+2026):** the Part index changes but the live FX arrays do not (measured with a
+write-watch and a DSP PC watch; [PUBLICATION.md](PUBLICATION.md)), so both runs kept the
+first Part's FX and this is not an FX-change test.
 
 Verification before the publication guards (29 September 2026):
 
@@ -117,4 +122,25 @@ Normal queued/stopped requests and LOAD PROJECT now prepare before publication.
 This is a partial route closure, **not permission to reclaim the originals**:
 chain restart, Part copy/reload/reset, background bank reload, new-project paths
 and pending stopped-Part retirement are listed in [PUBLICATION.md](PUBLICATION.md).
+
+## Chain restart, Part edits and tripwire (29 September 2026)
+
+- `verify_chain_stop`: a real chain under the sequencer; STOP with the first
+  Part cold is deferred and replayed with final running/next/chain/position/
+  Part/live state identical to static placement; over capacity it is refused
+  with nothing changed; prefetched it runs stock unchanged; a double STOP
+  supersedes the deferred restart. `dl_unguarded` 0 in every dynamic case.
+- `verify_part_edits`: PASTE (replayed from its snapshot), refused PASTE,
+  RELOAD, RESET onto the defaults the guard predicted, and a data-only inactive
+  RELOAD, each against static placement.
+- The tripwire trips on `verify_runtime`'s deliberate guard bypass and reads 0
+  on every guarded case, the project load and the stopped-request gates.
+- Found on the way: a stopped request deferred during the load's retirement
+  replayed after PLAY as a queued change and overwrote a chain's next pattern.
+  Fixed twice over (the committed set is ready while retiring; a request whose
+  queued pair changed meanwhile is dropped as superseded).
+- Measured: in the port a queued Part change does not re-apply FX at all
+  unless a track's source byte is 4, and the live arrays have per-track writers
+  no guard covers. Both are in [PUBLICATION.md](PUBLICATION.md), with the
+  recommendation to dispatch unbound ids to a bypass stub before reclaiming.
 Nothing from this experiment was pushed to the Analog BD PR.

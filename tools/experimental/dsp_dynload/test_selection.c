@@ -8,9 +8,10 @@ static struct dl_selection context;
 static int prepare_result=DL_SELECT_READY, poll_result=DL_SELECT_WAIT;
 static unsigned calls,applied,cancelled,committed;
 static uint32_t latest;
+static uintptr_t replayed_from;
 volatile uint32_t dl_modal_pending;
-unsigned dl_selection_capture(unsigned slot,unsigned row,struct dl_selection *out) {
-    *out=context; out->slot=slot; if(slot==2) out->row=row; return 1;
+unsigned dl_selection_capture(unsigned slot,unsigned row,uintptr_t source,struct dl_selection *out) {
+    *out=context; out->slot=slot; out->source=source; if(slot>=2) out->row=row; return 1;
 }
 int dl_selection_prepare(const struct dl_selection *request,uint32_t t) {
     assert(t && t!=latest); latest=t; ++calls;
@@ -21,8 +22,10 @@ int dl_selection_prepare(const struct dl_selection *request,uint32_t t) {
 int dl_selection_poll(uint32_t t) { assert(t==latest); return poll_result; }
 void dl_selection_commit(uint32_t t) { assert(t==latest); ++committed; }
 void dl_selection_cancel(uint32_t t) { assert(t==latest); ++cancelled; }
-void dl_selection_apply(unsigned slot,unsigned row) {
-    assert((slot==2 ? dl_selection_part_guard(row) : dl_selection_guard(slot))==1); ++applied;
+void dl_selection_apply(unsigned slot,unsigned row,uintptr_t source) {
+    assert((slot>2 ? dl_selection_part_edit_guard(slot,row,source) :
+            slot==2 ? dl_selection_part_guard(row) : dl_selection_guard(slot))==1); ++applied;
+    replayed_from=source;
     memcpy(context.before,context.target,16);
     if(slot==2) context.part=row;
     dl_selection_applied();
@@ -67,5 +70,23 @@ int main(void) {
     dl_selection_tick(); assert(context.part==1 && applied==2);
     assert(dl_selection_part_guard(2)==0);
     ++context.pattern; dl_selection_tick(); assert(context.part==1 && applied==2);
+    /* PASTE/RELOAD/RESET: only the active Part's live set needs preparing. */
+    static uint8_t image[6322];
+    n=calls; memcpy(context.target,context.before,16); context.target[3]=28;
+    assert(dl_selection_part_edit_guard(DL_PART_RELOAD,0,0)==1 && calls==n); /* inactive */
+    memcpy(context.target,context.before,16);
+    assert(dl_selection_part_edit_guard(DL_PART_RESET,1,0)==1 && calls==n); /* no change */
+    context.target[3]=28; prepare_result=DL_SELECT_MEMORY;
+    assert(dl_selection_part_edit_guard(DL_PART_RELOAD,1,0)==0 && dl_modal_pending==2);
+    prepare_result=DL_SELECT_READY;
+    assert(dl_selection_part_edit_guard(DL_PART_RESET,1,0)==1); dl_selection_applied();
+    prepare_result=DL_SELECT_WAIT; poll_result=DL_SELECT_WAIT; n=calls;
+    assert(dl_selection_part_edit_guard(DL_PART_PASTE,1,(uintptr_t)image)==2 && calls==n+1);
+    assert(dl_selection_part_edit_guard(DL_PART_PASTE,1,(uintptr_t)image)==2 && calls==n+1);
+    dl_selection_tick(); assert(applied==2);
+    poll_result=DL_SELECT_READY; dl_selection_tick();
+    /* Replayed from the guard's own copy: the caller consumed the clipboard. */
+    assert(applied==3 && context.before[3]==28 && replayed_from && replayed_from!=(uintptr_t)image);
+    assert(dl_selection_part_edit_guard(6,1,0)==0);
     return 0;
 }

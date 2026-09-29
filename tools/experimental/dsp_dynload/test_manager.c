@@ -48,7 +48,8 @@ int main(void) {
     assert(probes==2 && uploads==2 && binds==2 && dl_residency_words[0]==0 && dl_residency_words[1]==0);
     assert(dl_publication_ready(s.target));
     uint8_t wrong[16]={0};wrong[0]=28;assert(!dl_publication_ready(wrong));
-    dl_selection_commit(1);assert(!dl_publication_ready(s.target));settle();
+    /* Committed and retiring the outgoing set: the committed set stays bound. */
+    dl_selection_commit(1);assert(dl_publication_ready(s.target));settle();
     assert(dl_publication_ready(s.target));
     assert(dl_residency_words[0]==282 && dl_residency_words[1]==282 && dl_residency_commits==2);
     s.target[0]=28;s.target[1]=16;
@@ -65,6 +66,8 @@ int main(void) {
     memset(s.target,0,16);
     assert(dl_selection_prepare(&s,5)==DL_SELECT_WAIT);ready(5);
     fail_unbind=1;dl_selection_commit(5);
+    uint8_t outgoing[16]={28,12,12,12,12,12,12,12};
+    assert(!dl_publication_ready(outgoing)); /* retiring code is never published */
     dl_residency_tick();dl_residency_tick();
     assert(dl_residency_words[1]==1214 && dl_residency_words[0]==282);
     memset(wrong,0,16);wrong[8]=28;assert(!dl_publication_ready(wrong)); /* Wrong FX slot. */ /* failure cannot free live code */

@@ -102,9 +102,10 @@ strategy guarantees arbitrary instantaneous switches at a full DSP budget.
 - Extend the implemented bounded P transport to the remaining ABI resources,
   with coordinated activation for different algorithms. Verified per-core
   relocation does not prove an atomic cross-core hardware switch.
-- Extend the FX/manual-Part, queued/stopped pattern and project-load guards to
-  chain restart, Part copy/reload/reset and background bank reload. The observer
-  remains a fallback for those uncovered paths; see the publication route audit.
+- Guard the per-track writers of the live FX arrays, background bank reload
+  and the project paths (chain restart and PASTE/RELOAD/RESET are guarded since
+  29 Sep 2026). The observer remains a fallback and the `dl_unguarded` tripwire
+  counts what reaches the DSP unprepared; see the publication route audit.
 - Measure dry/main audio during switching, retained tails, repeated edits and
   failed transfers under full audio load; qualify on hardware.
 - Extend the ABI with per-instance delay-buffer sizes/alignment and lifecycle
@@ -210,9 +211,9 @@ admitted before its command is posted. Capacity refusal preserves the current
 pattern/project on those routes. See
 [`PUBLICATION.md`](../../../modules/dsp-dynload/PUBLICATION.md) for the seams.
 
-**Static originals remain required for uncovered routes:** chain restart/stop,
-Part copy/reload/reset, background bank reload and new project creation. The
-observer still follows those routes after publication. This experiment does not
+**Static originals remain required for uncovered routes:** the per-track
+writers of the live FX arrays, background bank reload and the project paths.
+The observer still follows those routes after publication. This experiment does not
 yet reclaim their original spans or permit an arbitrary catalogue size.
 
 Rebinding identical code preserves r7 state and the existing processing schedule.
@@ -250,7 +251,10 @@ change to the running sequencer. Both the pattern and Part must actually change.
 The eight stereo chains and main capture matched static execution exactly over
 8,192 frames, with no residency/transport errors. This exercises the normal
 queued pattern path; the new guard prepares before publication and defers the
-change if preparation misses its deadline.
+change if preparation misses its deadline. **Retracted as FX evidence (29 Sep
+2026):** the Part index changes but the live FX arrays do not (measured with a
+write-watch and a DSP PC watch; [PUBLICATION.md](../../../modules/dsp-dynload/PUBLICATION.md)),
+so both runs kept the first Part's FX and this is not an FX-change test.
 
 Publication-guard follow-up: the full runtime check now passes all seven image
 gates, including actual memory-full project/pattern refusal and superseded

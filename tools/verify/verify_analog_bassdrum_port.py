@@ -9,6 +9,7 @@ import ot_project as otp
 import blockdump as bd
 import recloop as rl
 import ab_source_probe
+from ab_fixture import prepare
 from analog_bassdrum import DEFAULTS, wav
 SAMPLE808=os.environ.get("AB_SAMPLE808")=="1"
 REVERSE=os.environ.get("AB_REVERSE")=="1"
@@ -20,9 +21,7 @@ def main():
     if not project:
         print('[SKIP] Analog Bassdrum port: set OT_PROJECT to a project fixture');return
     OUT.mkdir(parents=True,exist_ok=True)
-    fixture=OUT/'project'
-    if fixture.exists():shutil.rmtree(fixture)
-    shutil.copytree(project,fixture)
+    fixture=prepare(project,OUT/'project')
     for bank in fixture.glob('bank*.work'):
         def mutate(d):
             for pi in range(8):
@@ -54,7 +53,7 @@ def main():
     spans=';'.join(f'{symbols[name]:#x},4={OUT}/{name}.bin' for name in ('ab_render_calls','ab_hits'))
     spans+=f';0x40170f60,6322={OUT}/part.bin'
     emu=ab_source_probe.build(OUT/'probe',core,cont,knobbase)
-    cmd=[str(emu),'--image',str(image),'--card',str(card),'--set','OCTABAM','--project','RIG','--load-ms','20000','--sequencer','--internal-clock','--bank','1','--frames','450','--dsp','--main-level','64','--audio-out',str(basewav),'--block-dump',str(dump),'--mem-dump',spans]
+    cmd=[str(emu),'--image',str(image),'--card',str(card),'--set','OCTABAM','--project','RIG','--load-ms','20000','--sequencer','--internal-clock','--bank','0','--frames','450','--dsp','--main-level','64','--audio-out',str(basewav),'--block-dump',str(dump),'--mem-dump',spans]
     cmd+=['--dsp-pcwatch',f'{core}:{cont:x}']
     with open(OUT/'port.log','w') as log:
         log.write(' '.join(cmd)+'\n');log.flush()
@@ -110,8 +109,15 @@ def main():
         assert part[0x22+t]==1 and part[60+30*t:63+30*t]==b'AB\x01'
         assert part[0x1da+30*t+6]==model
     path=pathlib.Path(str(basewav)+'_core0.wav')
+    marker=re.search(r'core0\.wav, .*?transport start at frame (\d+)',log)
+    assert marker, 'missing transport audio marker'
     with wave.open(str(path),'rb') as f:
-        data=f.readframes(f.getnframes())
-    assert any(data),'main output is silent'
+        channels=f.getnchannels();assert f.getsampwidth()==3 and channels>=4
+        f.setpos(int(marker.group(1))+50*16)
+        data=f.readframes(400*16)
+    for channel in (2,3): # measured core-0 MAIN L/R, not CUE or boot transients
+        samples=[int.from_bytes(data[i:i+3],'little',signed=True)
+                 for i in range(channel*3,len(data),channels*3)]
+        assert samples and max(map(abs,samples))>100, ('main output is silent',channel)
     print(f'PASS: both cores, {hits} triggers, stored model selection and main output')
 if __name__=='__main__':main()

@@ -143,6 +143,11 @@ def main():
         for models,suffix in [({},'stock'),({0:1,1:1},'909pair')]:cases.append((tag+'-'+suffix,models,fx1,fx2,1))
     cases += [('eq-stock-core0',{},'DJ EQ','DJ EQ',0),('eq-909pair-core0',{4:1,5:1},'DJ EQ','DJ EQ',0),('dark-808pair',{0:0,1:0},'FILTER','DARK REV',1),('dark-mixedpair',{0:0,1:1},'FILTER','DARK REV',1),('dark-split-core0',{0:0,4:1},'FILTER','DARK REV',0),('dark-split-core1',{0:0,4:1},'FILTER','DARK REV',1)]
     cases += [('eq-stock-flex',{},'DJ EQ','DJ EQ',1),('eq-909pair-flex',{0:1,1:1},'DJ EQ','DJ EQ',1),('dark-909pair-flex',{0:1,1:1},'FILTER','DARK REV',1)]
+    for tag, fx1, fx2 in [('dark','FILTER','DARK REV'),('eq','DJ EQ','DJ EQ')]:
+        for model, label in [(0,'808eight'),(1,'909eight'),(None,'mixedeight')]:
+            models={t:(t%2 if model is None else model) for t in range(8)}
+            for core in (0,1):
+                cases.append((f'{tag}-{label}-core{core}',models,fx1,fx2,core))
     if a.case:cases=[c for c in cases if c[0] in a.case]
     rows=[]
     with concurrent.futures.ThreadPoolExecutor(max_workers=a.jobs) as pool:

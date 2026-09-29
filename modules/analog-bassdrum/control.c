@@ -11,7 +11,6 @@
 #define PART_STRIDE 0x18b2u
 #define SIG 60u
 #define DESC_SIZE 0x1cau
-static AbVoice voices[8] = {{0}};
 static uint8_t desc[2][DESC_SIZE] = {{0}};
 uint32_t ab_desc_p = 0;
 uint32_t ab_render_calls = 0, ab_hits = 0;
@@ -19,17 +18,10 @@ static unsigned signed_track(const volatile uint8_t *part, unsigned t) {
     const volatile uint8_t *s=part+SIG+30*t;
     return t<8 && part[0x22+t]==1 && s[0]=='A' && s[1]=='B' && s[2]==1;
 }
-/* Development CPU admission: two voices. All tracks are addressable;
- * more than two simultaneous DSP voices have not been timing-qualified. */
+/* Each core owns four independent voice slots, addressed by track. */
 unsigned ab_admit_track(const volatile uint8_t *part, unsigned track) {
-    unsigned count=0;
-    for(unsigned t=0;t<8;++t) if(t!=track && signed_track(part,t)) ++count;
-    return track<8 && count<2;
-}
-static unsigned admitted_voice(const volatile uint8_t *part, unsigned track) {
-    unsigned count=0;
-    for(unsigned t=0;t<track;++t) if(signed_track(part,t)) ++count;
-    return count<2;
+    (void)part;
+    return track<8;
 }
 static volatile uint8_t *part_base(void) {
     return (volatile uint8_t *)(uintptr_t)(U32(BANK)+PART_OFF+(U8(PART_IDX)&3)*PART_STRIDE);
@@ -129,13 +121,10 @@ int ab_validate_part(uint8_t *part) {
  */
 int ab_render(unsigned track,unsigned ping,unsigned start,unsigned end) {
     if(track>=8 || !signed_track(part_base(),track)) {
-        if(track<8) ab_reset(&voices[track]);
         return ((int (*)(unsigned,unsigned,unsigned,unsigned))0x40004008u)(track,ping,start,end);
     }
-    unsigned admitted=admitted_voice(part_base(),track);
     ++ab_render_calls;
     volatile uint32_t *cursor=(volatile uint32_t *)(uintptr_t)U32(0x80001c80u);
-    volatile uint32_t *rs=(volatile uint32_t *)(uintptr_t)U32(0x800062a4u);
     volatile uint16_t *fp=(volatile uint16_t *)(uintptr_t)U32(0x800062a8u);
     uint8_t p[12];
     for(unsigned k=0;k<12;++k) {
@@ -147,7 +136,7 @@ int ab_render(unsigned track,unsigned ping,unsigned start,unsigned end) {
      * boundary. Once the second segment exists, replace the start with a
      * control record: two signature halves, trig flag, then twelve knobs.
      * The transport sends each long as high/low 16-bit DSP words. */
-    if(admitted) {
+    {
         unsigned n=end>start && end<=16 ? end-start:0;
         for(unsigned i=0;i<4+2*n;++i) cursor[i]=0;
         if(end==16) {
@@ -162,22 +151,96 @@ int ab_render(unsigned track,unsigned ping,unsigned start,unsigned end) {
             if(trig) ++ab_hits;
         }
         U32(0x80001c80u)=(uint32_t)(uintptr_t)(cursor+4+2*n);
-        ab_reset(&voices[track]);
         return 0;
     }
-    AbVoice *v=&voices[track];
-    if(!v->noise || !admitted) ab_reset(v);
-    if(admitted && end==16 && (U8(0x46104d0cu+track)&16)) {
-        ab_trigger(v,p); ++ab_hits;
+}
+
+/* Sample-pool sized engine browser: stock list navigation and window chrome.
+ * Pin the destination at open, so a track/Part change cannot edit another voice.
+ * Entries retain the stored MODEL ids; adding a label alone never adds DSP code.
+ */
+static uint32_t engine_bank = 0;
+static unsigned engine_part = 0, engine_track = 0;
+void ab_engine_select(unsigned model) {
+    unsigned track=engine_track, part=engine_part;
+    if(model>1 || U32(BANK)!=engine_bank || (U8(PART_IDX)&3)!=part ||
+       U8(0x100b14ccu)!=track || !ab_selected_source()) return;
+    unsigned offset=0x1da+6+30*track;
+    part_base()[offset]=(uint8_t)model;
+    U8(0x100a4eceu+PART_STRIDE*part+offset)=(uint8_t)model;
+    U8(0x80000830u+72*track)=(uint8_t)model;
+    /* Same dirty flags and bank notification as the stock SRC SETUP editor. */
+    U8(engine_bank+0x95048u)|=(uint8_t)(1u<<part);
+    U8(0x100b145eu)|=(uint8_t)(1u<<part);
+    U32(engine_bank+0x9b332u)=1;
+    U32(0x100f8598u)=1;
+    ((void (*)(void))0x40027e00u)();
+    ab_ui_tick();
+    ((void (*)(void))0x4004d948u)();
+}
+static void engine_808(void) { ab_engine_select(0); }
+static void engine_909(void) { ab_engine_select(1); }
+static const char *const engine_labels[]={"001 808", "002 909"};
+unsigned ab_engine_draw(void) {
+    uint32_t window=U32(0x460e5e30u);
+    if(!window || U32(0x460e5e2cu)!=(uint32_t)(uintptr_t)engine_labels) return 0;
+    void *surface=(void *)(uintptr_t)(window+0x24);
+    ((void (*)(void *))0x4003567cu)(surface);
+    int height=(int)U32(window+0x28);
+    for(unsigned row=0;row<sizeof(engine_labels)/sizeof(engine_labels[0]);++row) {
+        int y=height-23-7*(int)row;
+        ((void (*)(uint32_t,void *,int,int,int,const char *))0x40012bd8u)
+            (0x400ba876u,surface,5,y,-1,engine_labels[row]);
+        if(row==U32(0x460e5e40u))
+            ((void (*)(void *,int,int,int,int,int))0x40012254u)
+                (surface,3,y-1,(int)U32(window+0x24)-5,y+5,-1);
     }
-    unsigned n=end>start && end<=16 ? end-start:0;
-    unsigned pos=rs[8]&63;
-    cursor[0]=n; cursor[1]=pos; cursor[2]=0x04000000u; cursor[3]=pos<<26;
-    for(unsigned i=0;i<n;++i) {
-        uint32_t sample=(uint32_t)ab_sample(v,p)<<8;
-        cursor[4+2*i]=sample; cursor[5+2*i]=sample;
+    U32(0x46c7c72cu)=1;
+    return 1;
+}
+void ab_engine_open(void) {
+    static void (*const handlers[])(void)={engine_808, engine_909};
+    if(!ab_selected_source() || U32(0x460e5e30u)) return;
+    engine_bank=U32(BANK);
+    engine_part=U8(PART_IDX)&3;
+    engine_track=U8(0x100b14ccu);
+    unsigned model=part_base()[0x1da+6+30*engine_track]!=0;
+    /* Use the stock sample pool's 110 x 64 window at x=-1, y=0.
+     * The stock list controller supplies arrows, LEVEL, YES and NO; only
+     * its row content and drawing differ from the ordinary sample browser.
+     */
+    ((void (*)(uint32_t,unsigned,unsigned))0x4007ec60u)
+        (0x460e5e38u,6,sizeof(engine_labels)/sizeof(engine_labels[0]));
+    ((void (*)(uint32_t,unsigned))0x4007edb0u)(0x460e5e38u,model);
+    U32(0x460e5e28u)=(uint32_t)(uintptr_t)handlers;
+    U32(0x460e5e2cu)=(uint32_t)(uintptr_t)engine_labels;
+    U32(0x460e5e34u)=0;
+    uint32_t window=((uint32_t (*)(int,int,int,int,int,uint32_t))0x4005829cu)
+        (110,64,-1,0,1,0x4006d754u);
+    U32(0x460e5e30u)=window;
+    if(!window) return;
+    ((void (*)(uint32_t,const char *,unsigned))0x400570b8u)(window,"\xab MACHINE:ANALOG BD",0);
+    ((void (*)(uint32_t))0x40031494u)(0x400ce0c4u);
+    ab_engine_draw();
+}
+
+/* Horizontal navigation mirrors STATIC/FLEX: LEFT returns to the machine
+ * column, RIGHT on the signed Analog BD row returns to its engine pool.
+ * Other generic lists keep their original no-op LEFT binding. */
+extern void ab_stock_pool_open(void);
+void ab_engine_left(void) {
+    if(!U32(0x460e5e30u) ||
+       U32(0x460e5e2cu)!=(uint32_t)(uintptr_t)engine_labels) return;
+    ((void (*)(void))0x4006d754u)();
+    ab_stock_pool_open();
+    ((void (*)(void))0x4007893cu)();
+}
+void ab_engine_right(unsigned key,unsigned value) {
+    if(U32(0x460e70e0u) && !U32(0x460e739au) &&
+       U32(0x460e738eu)==5 && ab_selected_source()) {
+        ((void (*)(void))0x400789e4u)();
+        ab_engine_open();
+        return;
     }
-    rs[8]=(pos+n)&63; rs[0]=rs[8]<<26; rs[1]=0; rs[9]=0x04000000u;
-    U32(0x80001c80u)=(uint32_t)(uintptr_t)(cursor+4+2*n);
-    return 0;
+    ((void (*)(unsigned,unsigned))0x4007909cu)(key,value);
 }

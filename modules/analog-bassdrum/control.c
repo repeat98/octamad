@@ -43,9 +43,6 @@ static void text(uint8_t *p,const char *s,unsigned n) {
     unsigned i=0; for (;i+1<n && s[i];++i) p[i]=(uint8_t)s[i];
     for (;i<n;++i) p[i]=0;
 }
-void ab_model_fmt(char *out,int value) {
-    out[0]=value ? '9':'8'; out[1]='0'; out[2]=out[0]; out[3]=0;
-}
 void ab_lpf_fmt(char *out,int value) {
     if(!value) { text((uint8_t*)out,"OFF",4); return; }
     if(value==64) { text((uint8_t*)out,"ORIG",5); return; }
@@ -58,8 +55,8 @@ static uint32_t page_for(unsigned model) {
     if (!ab_desc_p) {
         const volatile uint8_t *src=(const volatile uint8_t *)0x400d3176u;
         static const char *const names[2][12]={
-            {"PITCH","DECAY","TONE","ATK","SWEEP","SAT","MODEL","ACCNT","LPF","LOW","HIGH","---"},
-            {"PITCH","DECAY","TUNE","ATK","TDEP","SAT","MODEL","ACCNT","LPF","LOW","HIGH","---"}
+            {"PITCH","DECAY","TONE","ATK","SWEEP","SAT","","ACCNT","LPF","LOW","HIGH","---"},
+            {"PITCH","DECAY","TUNE","ATK","TDEP","SAT","","ACCNT","LPF","LOW","HIGH","---"}
         };
         for(unsigned m=0;m<2;++m) {
             uint8_t *d=desc[m];
@@ -69,12 +66,12 @@ static uint32_t page_for(unsigned model) {
                 text(d+0x4e + 6*i,names[m][i],6);
                 d[0x96+i]=ab_defaults[i];
                 put32(d+0xa2+4*i,0);
-                put32(d+0xd2+4*i,i==6?2:128);
-                put32(d+0x102+4*i,i==6?(uint32_t)(uintptr_t)ab_model_fmt:(i==8 ? (uint32_t)(uintptr_t)ab_lpf_fmt:0));
-                put32(d+0x132+4*i,i==6 ? 0x400477d4u : 0);
+                put32(d+0xd2+4*i,i==6?0:128);
+                put32(d+0x102+4*i,i==8 ? (uint32_t)(uintptr_t)ab_lpf_fmt:0);
+                put32(d+0x132+4*i,0);
                 put32(d+0x162+4*i,0);
             }
-            put32(d+0x1c2,0x111); put32(d+0x1c6,0x11111111u);
+            put32(d+0x1c2,0x111); put32(d+0x1c6,0x10111111u);
         }
         ab_desc_p=(uint32_t)(uintptr_t)(desc[0]+0x38);
     }

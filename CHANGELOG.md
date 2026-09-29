@@ -11,6 +11,13 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
 
 ## Unreleased
 
+- Analog BD: engine selection now lives only in the pool-style browser; the
+  former SRC SETUP MODEL control and its encoder editing path are removed.
+  The 808 receives a fixed post-desk output trim so default hit energy matches
+  the 909 within 0.03 dB over 500 ms. The 909 and both engines' internal states
+  are unchanged; the 808 trim adds three DSP instructions per sample.
+
+
 Remixes
 - bottleservice takes the computer's stereo output onto inputs C/D (USB AUDIO IN CD + USB CROSSBAR); USB AUDIO OUT MASTER polls every 250 µs (28 Sep).
 - Twelve `usb-io-<out>-<in>` test remixes and `usb-out-main`; USB remixes named by direction (`usb-full` → `usb-out-tracks`, `usb-lean` → `usb-out-tracks-main-cue`, `usb-master` → `usb-out-master`, `usb-mc` → `usb-out-main-cue`) (28 Sep).

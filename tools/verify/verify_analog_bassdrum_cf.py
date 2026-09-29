@@ -13,7 +13,7 @@ import sys
 from unicorn import Uc, UC_ARCH_M68K, UC_MODE_BIG_ENDIAN, UC_HOOK_CODE
 from unicorn.m68k_const import (UC_CPU_M68K_CFV4E, UC_M68K_REG_A7,
                                UC_M68K_REG_D0, UC_M68K_REG_D1, UC_M68K_REG_D2, UC_M68K_REG_D6, UC_M68K_REG_A0,
-                               UC_M68K_REG_A1, UC_M68K_REG_A2, UC_M68K_REG_PC, UC_M68K_REG_SR)
+                               UC_M68K_REG_A1, UC_M68K_REG_A2, UC_M68K_REG_A3, UC_M68K_REG_PC, UC_M68K_REG_SR)
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tools/harness'))
@@ -146,6 +146,21 @@ def main():
             assert uc.reg_read(UC_M68K_REG_A7)==stack
     uc.hook_del(hook)
     print('PASS pool header: stock chevrons for STATIC/FLEX and signed Analog BD; other rows unchanged')
+    uc.mem_map(0x4003a000,0x1000)
+    def stop_editor(_uc,address,_size,_data):
+        if address in (0x4003a536,0x4003a624): _uc.emu_stop()
+    hook=uc.hook_add(UC_HOOK_CODE,stop_editor)
+    for machine in (0,1,2,3,4,5):
+        for knob in range(6):
+            uc.reg_write(UC_M68K_REG_D2,machine)
+            uc.reg_write(UC_M68K_REG_A3,knob)
+            uc.reg_write(UC_M68K_REG_A7,stack)
+            uc.emu_start(symbols['ab_setup_edit6'],stop,count=1000)
+            assert uc.reg_read(UC_M68K_REG_PC)==(0x4003a624 if machine==5 and knob==0 else 0x4003a536)
+            assert uc.reg_read(UC_M68K_REG_A7)==stack
+    uc.hook_del(hook)
+    print('PASS hidden model editor: Analog BD encoder A ignored; other knobs/machines retain stock path')
+
 
     uc.mem_write(livepart+0x22,b'\x01')
     uc.mem_write(livepart+60,b'AB\x01')

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Choose Analog Bassdrum and edit MODEL using actual stock panel events."""
+"""Choose Analog Bassdrum and select its engine using actual stock panel events."""
 import json,os,pathlib,shutil,subprocess,sys
 ROOT=pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'tools/harness'))
@@ -21,7 +21,7 @@ def main():
     spans=f'0x40170f60,6322={OUT}/part.bin;{sym["desc"]:#x},916={OUT}/desc.bin;0x400d5f4c,4={OUT}/page.bin;0x460e70e0,4={OUT}/pool.bin;0x400bb7d0,4={OUT}/setup.bin;0x460e5e30,28={OUT}/list.bin;0x100a4ece,6322={OUT}/shadow.bin;0x80000830,1={OUT}/live.bin;0x460e738e,16={OUT}/navigation.bin'
     cmd=[os.environ.get('AB_EMU',str(ROOT/'out/emu/ot_emu')),'--image',str(image),'--card',str(card),'--set','OCTABAM','--project','RIG','--load-ms','20000','--dsp','--mem-dump',spans]
     cmd += ["--lcd", str(OUT/"lcd.bin")]
-    # T1 -> SRC SETUP -> bottom row -> YES; SETUP stays open for MODEL.
+    # T1 -> SRC SETUP -> bottom row -> YES; the former MODEL encoder is inert.
     script=key(0x10)+[(.6,'key 0x2d down'),(.3,'key 0x22 down'),(.3,'key 0x22 up'),(.3,'key 0x2d up')]
     for _ in range(6):script+=key(0x20,.25,.25)
     script+=key(0x31)
@@ -30,13 +30,20 @@ def main():
     script+=key(0x32)+[(.6,'key 0x10 down'),(.06,'key 0x10 up'),
                       (.15,'key 0x10 down'),(.06,'key 0x10 up')]
     # Navigate to the machine column and back, as with STATIC/FLEX.
-    left_script=script+key(0x34)+[(.8,'quit')]
+    # A disabled draw bit alone does not stop the stock editor. Select 909,
+    # turn the old MODEL encoder backwards, and ensure it stays selected.
+    left_script=script+key(0x20)+key(0x31)
+    left_script += [(.6,'key 0x2d down'),(.3,'key 0x22 down'),(.3,'key 0x22 up'),(.3,'key 0x2d up'),(.8,'enc 0 -16')]
+    left_script += key(0x32)+[(.6,'key 0x10 down'),(.06,'key 0x10 up'),(.15,'key 0x10 down'),(.06,'key 0x10 up')]+key(0x34)+[(.8,'quit')]
     script+=key(0x34)
     # Visit FLEX's real sample column, then return to Analog BD's engine column.
     for _ in range(4): script+=key(0x33,.25,.25)
     script+=key(0x21)+key(0x34)
     for _ in range(4): script+=key(0x20,.25,.25)
     script+=key(0x21)
+    # Select 909 through the pool, then return and select 808.
+    script+=key(0x20)+key(0x31)
+    script+=[(.6,'key 0x10 down'),(.06,'key 0x10 up'),(.15,'key 0x10 down'),(.06,'key 0x10 up')]
     # Select 808 from the list, then reopen: the highlight must follow the stored model.
     script+=key(0x33)+key(0x31)
     script+=[(.6,'key 0x10 down'),(.06,'key 0x10 up'),(.15,'key 0x10 down'),(.06,'key 0x10 up'),(.8,'quit')]
@@ -54,6 +61,7 @@ def main():
     assert int.from_bytes((OUT/'pool.bin').read_bytes(),'big')!=0, 'LEFT did not open machine chooser'
     assert int.from_bytes((OUT/'list.bin').read_bytes()[:4],'big')==0, 'LEFT left engine list open'
     nav=(OUT/'navigation.bin').read_bytes()
+    assert (OUT/'part.bin').read_bytes()[0x1da+6]==1, 'hidden MODEL encoder changed engine'
     assert int.from_bytes(nav[:4],'big')==5, 'LEFT did not highlight Analog BD'
     assert int.from_bytes(nav[12:16],'big')==0, 'LEFT did not select machine column'
     shutil.copy2(OUT/'lcd.bin',OUT/'left-lcd.bin')
@@ -80,20 +88,21 @@ def main():
     assert 64 < part[0x1da+8] < 127, ('LPF encoder',part[0x1da+8])
     assert part[0x1da+6]==0,('MODEL',part[0x1da+6])
     assert list(part[48:54])==[64,80,80,64,64,0],list(part[48:54])
-    assert desc[0x4e+6*6:0x4e+6*6+6]==b'MODEL\x00'
-    assert int.from_bytes(desc[0xd2+4*6:0xd2+4*7],'big')==2
+    assert desc[0x4e+6*6:0x4e+6*6+6]==bytes(6)
+    assert int.from_bytes(desc[0xd2+4*6:0xd2+4*7],'big')==0
     assert int.from_bytes((OUT/'page.bin').read_bytes(),'big')==sym['desc']+0x38, 'MODEL page did not change'
     for model in (0,1):
         d=desc[model*458:(model+1)*458]
         assert d[0x4e+2*6:0x4e+2*6+6]==(b'TONE\0\0' if model==0 else b'TUNE\0\0')
         assert d[0x4e+8*6:0x4e+8*6+6]==b'LPF\0\0\0'
         assert int.from_bytes(d[0x1c2:0x1c6],'big')==0x111
+        assert int.from_bytes(d[0x1c6:0x1ca],'big')==0x10111111
         assert d[0x96+8]==127
         assert d[0x4e+5*6:0x4e+6*6] == b'SAT\0\0\0'
         assert d[0x96+9:0x96+11] == bytes([64,64])
-        assert int.from_bytes(d[0x132+4*6:0x136+4*6],"big")==0x400477d4
+        assert int.from_bytes(d[0x132+4*6:0x136+4*6],"big")==0
         assert int.from_bytes(d[0x162+4*6:0x166+4*6],"big")==0
         if model:
             assert d[0x4e+9*6:0x4e+11*6] == b'LOW\0\0\0HIGH\0\0'
-    print('PASS chooser: Analog Bassdrum, defaults, MODEL=909 and LPF edit through stock encoders; LEFT returns to machine chooser, FLEX/AB horizontal navigation, engine pool selects 808, cancels a 909 browse and reopens on 808')
+    print('PASS chooser: Analog Bassdrum, defaults, hidden MODEL encoder is inert and LPF remains editable; LEFT returns to machine chooser, FLEX/AB horizontal navigation, engine pool selects 808, cancels a 909 browse and reopens on 808')
 if __name__=='__main__':main()

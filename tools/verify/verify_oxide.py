@@ -78,6 +78,20 @@ gate("the ring documented in oxide.asm is design.RING", order == design.RING,
      " ".join(order))
 gate("no coefficient left as an immediate", "COEF" not in ASM.read_text())
 
+# ---- 1b. the M registers leave linear ---------------------------------------
+# proc may wrap m3 for the coefficient ring but must put it back before its
+# last rts: the next effect on the core inherits it (dsp_host calls proc alone
+# and cannot see this; Character restores its rings the same way).
+print("address modes:")
+body = [l.split(";")[0].strip() for l in ASM.read_text().splitlines()]
+body = [l for l in body if l]
+writes = [(i, l) for i, l in enumerate(body) if re.match(r"move\s+#.*,m[0-7]$", l)]
+last = {}
+for i, l in writes:
+    last[l.split(",")[-1]] = l
+bad = [f"{r}: {l}" for r, l in last.items() if not re.search(r"#>?\$f{6}\b", l)]
+gate("every M register a proc writes ends linear ($ffffff)", not bad, "; ".join(bad) or ", ".join(sorted(last)))
+
 # ---- 2. assemble alone, disassemble, compare --------------------------------
 print("round trip:")
 src_lines = []

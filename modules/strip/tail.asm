@@ -166,7 +166,10 @@ tsum:
         move    #>$7c30,r6
         move    #>$7e00,r5
         bsr     tslot
+        bsr     tgain                   ; r0 is at halfword 21: the AUX sends
 tdone:
+; ---- the AUX passes: this frame's sources, the record's sends ---------------
+        bsr     auxrun
 ; ---- back as stock left them -------------------------------------------------
         move    x:(r7+$a),n7
         move    x:(r7+$9),n3
@@ -258,4 +261,103 @@ tpgtwo:
         move    r2,x:(r4+$1)            ; the slot runs it from the next frame
         move    x:(r7+$16),r0
 tsame:
+        rts
+
+; ---- the AUX sends from the record: r0 at halfword 21, ten halfwords, two
+; gains each, (a << 8) | b, each 0..127 and squared to the stock level law
+; (v/128)^2 as a Q23 fraction, 0..127 -> 0..0x7e04 << 9. Into X:0x7c80..0x7c93.
+; mpy x0,y1 is a signed form (CLAUDE.md); both operands are positive here.
+tgain:
+        move    #>$7c80,r1
+        do      #$a,tgloop
+        move    x:(r0),a
+        and     #>$7f00,a               ; a << 8
+        asl     #$8,a,a                 ; a << 16
+        move    a1,x0
+        move    a1,y1
+        mpy     x0,y1,a
+        move    a1,x:(r1)+
+        move    x:(r0)+,a
+        and     #>$7f,a
+        asl     #$10,a,a                ; b << 16
+        move    a1,x0
+        move    a1,y1
+        mpy     x0,y1,a
+        move    a1,x:(r1)+
+tgloop:
+        rts
+
+; ---- the AUX passes (MIXER.md section 18). Two more buses over the ten
+; sources the stock mixdown read this frame, at the sends the record gave:
+; sample j of AUX A = sum over the eight tracks (x:$204's block, 32 words
+; each, L/R interleaved, L at +2j) and the two input pairs (the ring the
+; mixdown chose, four words a sample: AB L/R, CD L/R) of g_k * source_k, a
+; 56-bit sum stored limited. r7 is the strip's block, and again on return.
+auxrun:
+        move    x:>$202,b               ; the input ring, as the mixdown chooses it
+        move    #>$140,x1               ; (P:0x23f..0x24e)
+        move    #>$240,x0
+        move    x:>$437,a
+        tst     a
+        beq     auxr1
+        sub     x1,b
+auxr1:
+        cmp     #>$8100,b
+        bge     auxr2
+        add     x0,b
+auxr2:
+        move    b,x:(r7+$18)            ; its start
+        move    #>$1f,n0                ; R, then the next track's L
+        move    #>$7c80,r5              ; AUX A's sends
+        move    #>$7ca0,r3              ; AUX A
+        move    x:>$204,r1              ; the tracks' block
+        move    x:(r7+$18),r2
+        bsr     auxbus
+        move    #>$7c8a,r5              ; AUX B's sends
+        move    #>$7cc0,r3
+        move    x:>$204,r1
+        move    x:(r7+$18),r2
+        bsr     auxbus
+        rts
+
+; r1 the tracks' block, r2 the input ring, r3 the output, r5 the ten sends.
+auxbus:
+        do      #$10,auxlp
+        move    r1,r0
+        move    r5,r6
+        move    x:(r0)+,x0              ; T1 L
+        move    x:(r6)+,y0
+        mpy     y0,x0,a         x:(r0)+n0,x0
+        mpy     y0,x0,b         x:(r0)+,x0
+        move    x:(r6)+,y0              ; T2
+        mac     y0,x0,a         x:(r0)+n0,x0
+        mac     y0,x0,b         x:(r0)+,x0
+        move    x:(r6)+,y0              ; T3
+        mac     y0,x0,a         x:(r0)+n0,x0
+        mac     y0,x0,b         x:(r0)+,x0
+        move    x:(r6)+,y0              ; T4
+        mac     y0,x0,a         x:(r0)+n0,x0
+        mac     y0,x0,b         x:(r0)+,x0
+        move    x:(r6)+,y0              ; T5
+        mac     y0,x0,a         x:(r0)+n0,x0
+        mac     y0,x0,b         x:(r0)+,x0
+        move    x:(r6)+,y0              ; T6
+        mac     y0,x0,a         x:(r0)+n0,x0
+        mac     y0,x0,b         x:(r0)+,x0
+        move    x:(r6)+,y0              ; T7
+        mac     y0,x0,a         x:(r0)+n0,x0
+        mac     y0,x0,b         x:(r0)+,x0
+        move    x:(r6)+,y0              ; T8, then the input ring
+        mac     y0,x0,a         x:(r0)+n0,x0
+        mac     y0,x0,b         x:(r2)+,x0
+        move    x:(r6)+,y0              ; IN AB
+        mac     y0,x0,a         x:(r2)+,x0
+        mac     y0,x0,b         x:(r2)+,x0
+        move    x:(r6)+,y0              ; IN CD
+        mac     y0,x0,a         x:(r2)+,x0
+        mac     y0,x0,b
+        lua     (r1+$2),r1              ; the next sample
+        move    a,x:(r3)+
+        move    b,x:(r3)+
+auxlp:
         rts

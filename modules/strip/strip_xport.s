@@ -26,7 +26,9 @@
 |   [8..10]   its page-2 values in pairs, (v6 << 8) | v7, (v8 << 8) | v9,
 |             (v10 << 8) | v11
 |   [11..20]  slot 2, the same
-|   [21..30]  zero
+|   [21..30]  the AUX sends, two 7-bit gains a halfword, (g0 << 8) | g1 in
+|             aux_model's order: AUX A's ten sources (T1..T8, IN AB, IN CD),
+|             then AUX B's (docs/proposals/MIXER.md section 18)
 |   [31]      the checksum: the 32 halfwords sum to 0 mod 2^16
 | so every halfword h is the r6 record word (h << 8): page 1 at r6 + 0..5,
 | page 2 at r6 + $c..$e, as the stock dispatcher hands a track's knobs to its
@@ -69,6 +71,7 @@
         .equ    MAGIC,     0x5354
         .equ    SLOTS,     2
         .equ    SLOT_HW,   10           | halfwords a slot: id, 6 page 1, 3 page 2
+        .equ    AUX_HW,    TX_HW-2-SLOTS*SLOT_HW    | the sends: 10 halfwords, 20 gains
         .equ    DBPTR,     0x46c82456   | long: the resident bank's DB (stock's UI code)
         .equ    PARTSEL,   0x100b14cf   | byte: the part the panel edits
         .equ    SRAM_PART, 0x100a4ece   | + part * PSTRIDE: the working parts' twin
@@ -81,7 +84,7 @@
         .equ    VERSION,   1
 
         .text
-        .global strip_xport, strip_model, strip_sent, strip_frames, strip_tx
+        .global strip_xport, strip_model, aux_model, strip_sent, strip_frames, strip_tx
         .global strip_store, strip_default, strip_seen, strip_cand, strip_lock
 
 strip_xport:
@@ -117,8 +120,15 @@ strip_xport:
         bpl.s   3b
         subq.l  #1,%d4
         bpl.s   1b
-        moveq   #TX_HW-2-SLOTS*SLOT_HW-1,%d3
-4:      clr.w   (%a1)+
+        lea     aux_model,%a0           | the sends: two 7-bit gains a halfword
+        moveq   #AUX_HW-1,%d3
+4:      mvz.b   (%a0)+,%d0
+        lsl.l   #8,%d0
+        mvz.b   (%a0)+,%d1
+        or.l    %d1,%d0
+        and.l   #0x7f7f,%d0             | the DSP masks again; a clean sum here
+        add.l   %d0,%d2
+        move.w  %d0,(%a1)+
         subq.l  #1,%d3
         bpl.s   4b
         neg.l   %d2
@@ -374,6 +384,9 @@ strip_model:                            | two slots: id, 3 spare, 12 values
         BOOT_MODEL
 strip_default:                          | what a Part nobody has written gives
         BOOT_MODEL
+aux_model:      .space  AUX_HW*2        | the sends: AUX A's ten gains, AUX B's ten, 0..127
+                                        | (0 = off; zero at boot, so an image with sends
+                                        | at rest is stock's mix)
 strip_seen:     .space  32              | the window as adopted (stored form)
 strip_cand:     .space  32              | the window as last looked at
 strip_lock:     .byte   0               | strip_store is writing: the ISR keeps out

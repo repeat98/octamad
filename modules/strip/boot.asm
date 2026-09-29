@@ -36,6 +36,10 @@
 ;   $40..$5f  D: MAIN's 16 pairs, L/R adjacent; the head gathers them dry and
 ;             the slots run on them in place
 ;   $60..$7f  C: what the click added to MAIN, samples 1..15 (tail.asm)
+;   $80..$93  the AUX sends: ten gains for AUX A (T1..T8, IN AB, IN CD), ten
+;             for AUX B, each (v/128)^2 as a Q23 fraction (tail.asm's tgain)
+;   $a0..$bf  AUX A: sixteen L/R pairs, the tracks' layout (tail.asm's auxbus)
+;   $c0..$df  AUX B
 ; and each slot's instance block (its r7), 256-aligned as the dispatcher's:
 ;   X:0x7d00..0x7d83  slot 1
 ;   X:0x7e00..0x7e83  slot 2
@@ -50,6 +54,11 @@ entry:
         do      #$40,bzero
         move    a,x:(r0)+
 bzero:
+        move    #>$7c80,r0              ; the AUX sends and blocks (tail.asm's pass)
+        clr     a
+        do      #$60,bzaux
+        move    a,x:(r0)+
+bzaux:
         move    #>$1f,x0                ; slot 1 runs OXIDE
         move    x0,x:>$7c10
         move    x:>$254,x0              ; PROC_TABLE[0x1f]

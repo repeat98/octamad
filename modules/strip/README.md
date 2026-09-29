@@ -101,6 +101,15 @@ SETUP the id and page 2 (and page 1's defaults with a new id); each value must a
 inside its parameter's count (the DSP only masks to 0..127, and a select read past its
 count is the trap in `AGENTS.md`), which both clamps hold.
 
+## The AUX passes
+
+Stage 1 of the returns (`docs/proposals/MIXER.md` section 18): the tail sums the ten
+sources the mixdown read (T1..T8, IN AB, IN CD) into two stereo blocks, AUX A at
+X:0x7ca0 and AUX B at X:0x7cc0, at twenty sends (`aux_model`, 0..127, in the record's
+spare halfwords). At rest every send is 0. Nothing reads the blocks yet. `verify_aux`
+holds the arithmetic at 0 LSB on the input pairs and the rest of the image unchanged;
+a track's term is read, not run (no track reaches the mixdown under the port).
+
 ## Not yet
 
 - A Part nobody has written gives OXIDE on slot 1 (the test remix's boot state); a shipping

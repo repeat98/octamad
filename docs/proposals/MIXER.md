@@ -715,3 +715,55 @@ server and SEND already want 3,145 of the 2,724-word donor pool, and stages 1-2 
 more. The pool grows by taking stock effects off both menus. CHORUS, FLANGER and COMPRESSOR
 together are 798 words next to the reverbs' run; that is the working assumption for the test
 image, and the remix says so. ❓ Not built; the exact list is a remix line, not a code change.
+
+## 18. Stage 1: the AUX passes, measured (29 Sep 2026)
+
+Built into `modules/strip`: the strip's `tail` (P:0x35d, after the cue mix) runs two more
+buses over the ten sources the mixdown read, and `strip_xport.s` carries their sends.
+It is not the mixdown copy's third and fourth output (§17 stage 1 as written): the
+head/tail split (§11) showed that anything added before the cue mix holds back sample 0 of
+the click and the phones, and the strip already owns P:0x2d5 and P:0x35d, so the passes are a
+second loop after the first and its records.
+
+**The sends.** `aux_model`, twenty bytes, 0..127: AUX A's ten sources (T1..T8, IN AB, IN CD),
+then AUX B's. It rides the strip's burst in the ten spare halfwords 21..30, two 7-bit gains a
+halfword; the checksum covers them. The DSP takes them when the record is valid, masks
+each to 0..127 and writes (v/128)² as a Q23 fraction to X:0x7c80..0x7c93 (`tgain`, the
+stock level law; `mpy x0,y1` is a signed encoding, and every operand is positive). Boot zeroes
+them, so a send nobody set is 0 and adds nothing. One value a frame, no smoothing yet
+(a step of 1/128 in level is the smallest; the ColdFire model smooths when a control drives it).
+
+**The pass.** `auxrun` finds the input ring as the mixdown does (P:0x23f..0x24e), then
+`auxbus` twice: for each of sixteen samples, a and b accumulate g·L and g·R over the eight
+tracks (x:$204's block, 32 words each, L/R interleaved, L at +2j, the stock stride `n0 = $1f`)
+and the two input pairs (four words a sample), three instructions a source (the gain from X
+into y0, then one `mac` a channel with the next sample's load in the parallel move), stored
+limited into AUX A at X:0x7ca0 and AUX B at X:0x7cc0, sixteen L/R pairs each. Gains sit in X
+because no free Y is known; a Y table would make it 2 instructions a source (§16's estimate
+of +50 a sample), not done. Registers: the tail's discipline, everything it saved put back;
+m0..m6 are stock's (linear).
+
+**Measured under the port** (`tools/verify/verify_aux.py`, the user's project, 120 frames, a DC
+WAV on the four input channels so a snapshot cannot fall between frames; `strip` built, run
+twice, sends at rest against sends poked at frame 30):
+
+| | result |
+|---|---|
+| TX0, every slot of core 0 | byte-identical between the runs (525,618 frames) |
+| host-port blocks | 28 classes; only the strip's own record burst differs, in halfwords 21..31 (the sends and the checksum) |
+| rest run | X:0x7c80..0x7c93 and both AUX blocks all zero |
+| sends run | X:0x7c80.. = (v/128)² for the twenty sends; AUX A and AUX B, all sixteen samples, L and R apart, equal `floor(Σ g·x / 2²³)` of the two input pairs at their gains, **0 LSB** (the ring read where the mixdown reads it, X:0x8100 here, holding the DC) |
+| `--dsp-stopwatch` over `auxrun` | 1,178 instructions a frame, 74 a sample, both buses (the port's count, not cycles) |
+
+**Not shown.** A track's term: under the port no track reaches the mixdown (§11), so the eight
+track sources are zero in every run and only the shape of their step (the same three
+instructions as the stock mixdown's, on the same pointer scheme) is read, not run. A send
+whose value or position is wrong on a track would pass. What would show it: an audible
+track on the port, or a poke into the track block, neither built. Also not shown: MASTER TRACK
+(the passes read the raw blocks, not T8's sum); the burn on the unit (74 instructions a
+sample is on top of the strip's ~268); the input ring being stable between the mixdown and
+the tail on the chip (the port's DMA is the port's); a Part or panel that sets the sends
+(stage 4, §17): today `aux_model` is poked.
+
+**Next (§17 stage 2):** RET B, the reverb, reads AUX B at X:0x7cc0 from a hostless call
+after the frame's last effect (§16), with the words in §16's ledger against it.

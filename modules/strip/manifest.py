@@ -46,6 +46,13 @@ below makes the ledger refuse midi-scenes, whose freeze twin covers the
 bytes; SCENES P2's pool (0x90522) is beside them, not on them.
 docs/proposals/MIXER.md section 15 says what was measured and what it costs.
 
+The same tail also runs the AUX passes (MIXER.md section 18): two more buses over
+the ten sources the mixdown read (T1..T8, IN AB, IN CD), at twenty sends the
+ColdFire's aux_model gives in the record's spare halfwords, summed into two
+stereo blocks at X:0x7ca0 (AUX A) and X:0x7cc0 (AUX B). Nothing reads them yet
+(the returns are stages 2 and 3); at rest every send is 0 and the image is
+what it was.
+
 The replaced words are pinned by hash, read from the user's own image at
 build time; the manifest holds no Elektron byte.
 """
@@ -72,7 +79,10 @@ MODULE = Module(
                "same turns, and its choice reaches core 0 (29 Sep 2026). `verify_stripstore`: the Part keeps "
                "the strip: a window poked while the unit runs is adopted, a bad one gives the default, "
                "an edit lands in the window, its SRAM twin and the stock dirty marks, part 1 and a "
-               "non-stock part behave, and the record reaches core 0 (29 Sep 2026); not flashed",
+               "non-stock part behave, and the record reaches core 0 (29 Sep 2026). `verify_aux`: the AUX A and "
+               "AUX B passes (the tail's, docs/proposals/MIXER.md section 18) sum the two input pairs at the "
+               "ColdFire's sends, 0 LSB, and change nothing else (29 Sep 2026; the tracks' terms are read, not run); "
+               "not flashed",
     doc="Two insert slots on the summed MAIN, inline after the mixdown (payload A, P:0x2d5 "
         "and P:0x35d), their effects and knobs sent from a ColdFire model every frame; "
         "a MASTER page in the MIXER window edits them.",
@@ -127,5 +137,5 @@ MODULE = Module(
         ),
     ),
     gates=(Gate("tools/verify/verify_strip.py"), Gate("tools/verify/verify_mixerpages.py"),
-           Gate("tools/verify/verify_stripstore.py")),
+           Gate("tools/verify/verify_stripstore.py"), Gate("tools/verify/verify_aux.py")),
 )

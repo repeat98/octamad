@@ -125,11 +125,14 @@ and pending stopped-Part retirement are listed in [PUBLICATION.md](PUBLICATION.m
 
 ## Chain restart, Part edits and tripwire (29 September 2026)
 
-- `verify_chain_stop`: a real chain under the sequencer; STOP with the first
-  Part cold is deferred and replayed with final running/next/chain/position/
-  Part/live state identical to static placement; over capacity it is refused
-  with nothing changed; prefetched it runs stock unchanged; a double STOP
-  supersedes the deferred restart. `dl_unguarded` 0 in every dynamic case.
+- `verify_chain_stop`: a real chain under the sequencer. STOP restarts the
+  chain's first pattern (pattern 0, Part 1): live, it is not delayed; edited
+  to something cold it is deferred and replayed with final running/next/chain/
+  position/Part state identical to static placement; over capacity it is refused
+  with nothing changed; prepared ahead it passes on the spot; a double STOP
+  supersedes the deferred restart. `dl_unguarded` 0 in every dynamic case. The
+  fixture never changes the live FX arrays, so this is the guard's protocol,
+  not an FX change under it.
 - `verify_part_edits`: PASTE (replayed from its snapshot), refused PASTE,
   RELOAD, RESET onto the defaults the guard predicted, and a data-only inactive
   RELOAD, each against static placement.

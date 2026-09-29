@@ -32,7 +32,7 @@ int dl_upload_start(unsigned c,const struct dl_upload *u) {
 }
 int dl_command_start(unsigned c,unsigned op,unsigned id,unsigned init,unsigned proc) {
     if(c>1 || jobs[c].state || id>=32 ||
-       (op!=DL_PROBE && op!=DL_BIND && op!=DL_UNBIND)) return 0;
+       (op!=DL_PROBE && op!=DL_BIND && op!=DL_UNBIND && op!=DL_BYPASS)) return 0;
     if(op==DL_BIND && (init<DL_CODE_START || proc<DL_CODE_START ||
                        init>=DL_RUNTIME_WORDS || proc>=DL_RUNTIME_WORDS)) return 0;
     jobs[c].opcode=op; jobs[c].id=id; jobs[c].init=init; jobs[c].proc=proc;
@@ -82,7 +82,7 @@ static void packet(unsigned c, unsigned opcode) {
                 t[8+2*i]=(uint16_t)(value>>8); t[9+2*i]=(uint16_t)(value&255);
                 j->expected=(j->expected+value)&0xffffffu;
             }
-        } else if(opcode==DL_BIND || opcode==DL_UNBIND) {
+        } else if(opcode==DL_BIND || opcode==DL_UNBIND || opcode==DL_BYPASS) {
             t[4]=j->id; t[5]=j->init; t[7]=j->proc;
         }
     }

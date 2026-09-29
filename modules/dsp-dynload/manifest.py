@@ -36,6 +36,7 @@ MODULE=replace(base,name='dsp-dynload',key='DSP DYNLOAD',
         Gate('tools/experimental/dsp_dynload/verify_pattern_refusal.py',remix_arg=False,stage='image'),
         Gate('tools/experimental/dsp_dynload/verify_chain_stop.py',remix_arg=False,stage='image'),
         Gate('tools/experimental/dsp_dynload/verify_part_edits.py',remix_arg=False,stage='image'),
+        Gate('tools/experimental/dsp_dynload/verify_bypass.py',remix_arg=False,stage='image'),
         Gate('tools/experimental/dsp_dynload/verify_project_publication.py',remix_arg=False,stage='image'),
         Gate('tools/experimental/dsp_dynload/verify_live_audio.py',remix_arg=False,stage='image'),
         Gate('tools/experimental/dsp_dynload/verify_pattern_audio.py',remix_arg=False,stage='image')))

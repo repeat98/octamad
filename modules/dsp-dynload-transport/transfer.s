@@ -106,7 +106,7 @@ packet:
 	cmp.l %d6,%d1
 	jeq .L26
 	subq.l #4,%d6
-	mov3q.l #1,%d1
+	mov3q.l #2,%d1
 	cmp.l %d6,%d1
 	jcs .L5
 	move.w 22(%a1),8(%a0)
@@ -318,46 +318,51 @@ dl_upload_start:
 	.globl	dl_command_start
 	.type	dl_command_start, @function
 dl_command_start:
+	move.l %d2,-(%sp)
 	mov3q.l #1,%d0
-	cmp.l 4(%sp),%d0
+	cmp.l 8(%sp),%d0
 	jcs .L63
-	move.l 4(%sp),%d0
+	move.l 8(%sp),%d0
 	moveq #30,%d1
 	lea jobs,%a0
 	muls.l %d1,%d0
 	tst.w 28(%a0,%d0.l)
 	jne .L63
-	moveq #31,%d1
-	cmp.l 12(%sp),%d1
+	moveq #31,%d2
+	cmp.l 16(%sp),%d2
 	jcs .L63
 	mov3q.l #1,%d1
-	cmp.l 8(%sp),%d1
+	cmp.l 12(%sp),%d1
 	jeq .L64
-	mov3q.l #4,%d1
-	cmp.l 8(%sp),%d1
+	mov3q.l #4,%d2
+	cmp.l 12(%sp),%d2
 	jeq .L65
-	mov3q.l #5,%d1
-	cmp.l 8(%sp),%d1
-	jeq .L64
+	move.l 12(%sp),%d1
+	mov3q.l #1,%d2
+	subq.l #5,%d1
+	cmp.l %d1,%d2
+	jcc .L64
 .L63:
+	move.l (%sp)+,%d2
 	clr.l %d0
 	rts
 .L65:
-	move.l 16(%sp),%d1
+	move.l 20(%sp),%d1
 	add.l #-64,%d1
 	cmp.l #1343,%d1
 	jhi .L63
-	move.l 20(%sp),%d1
+	move.l 24(%sp),%d1
 	add.l #-64,%d1
 	cmp.l #1343,%d1
 	jhi .L63
 .L64:
 	add.l %d0,%a0
-	move.w 10(%sp),20(%a0)
-	move.w 14(%sp),22(%a0)
-	move.w 18(%sp),24(%a0)
-	move.w 22(%sp),26(%a0)
+	move.w 14(%sp),20(%a0)
+	move.w 18(%sp),22(%a0)
+	move.w 22(%sp),24(%a0)
+	move.w 26(%sp),26(%a0)
 	moveq #1,%d0
+	move.l (%sp)+,%d2
 	move.w %d0,28(%a0)
 	mov3q.l #1,%d0
 	rts

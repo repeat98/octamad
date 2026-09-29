@@ -5,6 +5,13 @@ Stock's STOP handler stores the chain's first pattern as the running pattern
 restart first. A real sequencer plays a real chain (the stock chain-add
 routine builds it); static placement on the same firmware is the oracle.
 Owned fixture copies only.
+
+Scope: with every track's source byte below 4 the restart never rewrites the
+live FX arrays (PUBLICATION.md, "a queued Part change does not re-apply FX"),
+so `ids` is Character throughout, in the static twins too. This gate covers the
+guard's protocol -- delay, replay, refusal, a prepared set passing -- and the
+sequencer state it must not publish early. It does not show an FX change under
+the guard; the tripwire cannot fire here.
 """
 from pathlib import Path
 import json,os,re,shutil,subprocess,sys
@@ -17,10 +24,22 @@ OUT=ROOT/'out/dsp-dynload/chain-stop'
 # leaves the queued prefetch ~400 frames (4 steps gave it ~30, and it missed).
 CHAIN,STOP,FRAMES=40,1250,1600
 PART0=0x40170f60                   # bank 1, working Part 1: the chain's first Part
-# name: (chain after pattern 1, residency on, STOP presses, first Part made memory-full)
-CASES={'static':((1,2),0,1,0),'deferred':((1,2),1,1,0),'refused':((1,2),1,1,1),
-       'static-pair':((1,),0,1,0),'prefetched':((1,),1,1,0),
-       'static-double':((1,2),0,2,0),'double-stop':((1,2),1,2,0)}
+# The chain-add routine builds [playing pattern, *added], so the chain's first
+# pattern is pattern 0: Part 1, Character, which the load left live. STOP restarts
+# it. name: (chain after pattern 1, residency on, STOP presses, Part 1 edit).
+# 'swap' makes Part 1 EQ on T1 at STOP (not live: the restart must be prepared
+# first), 'full' makes it over capacity (refused), 'early' does the swap in time
+# for the manager to prepare it as the queued next pattern before STOP.
+EARLY=1000
+EDITS={'swap':(STOP,(12,)),'full':(STOP,(12,16,28)),'early':(EARLY,(12,))}
+CASES={'static':((1,2),0,1,None),'live':((1,2),1,1,None),
+       'static-swap':((1,2),0,1,'swap'),'deferred':((1,2),1,1,'swap'),'refused':((1,2),1,1,'full'),
+       'static-pair':((1,),0,1,None),'live-pair':((1,),1,1,None),
+       'static-early':((1,),0,1,'early'),'prefetched':((1,),1,1,'early'),
+       'static-double':((1,2),0,2,'swap'),'double-stop':((1,2),1,2,'swap')}
+ORACLE={'live':'static','deferred':'static-swap','live-pair':'static-pair','prefetched':'static-early',
+        'double-stop':'static-double'}
+STATE=(('phase',4),('desired',16))     # the manager's own view at STOP
 REGIONS={'running':(0x800065bd,6),'chain':(0x80006546,0x4c),'positions':(0x80006628,0x14),
          'active':(0x80000002,3),'ids':(0x80000ec4,16)}
 COUNTERS=('dl_chain_deferred','dl_chain_restarted','dl_chain_dropped','dl_unguarded',
@@ -58,15 +77,19 @@ def main():
     syms={p[2]:int(p[0],16) for p in (l.split() for l in subprocess.check_output(
         ['m68k-elf-nm',str(ROOT/'out/platform/runtime/runtime.elf')],text=True).splitlines()) if len(p)==3}
     image=OUT/'image.bin';shutil.copyfile(ROOT/'out/mainos_bus.bin',image)
-    def spans(d,label): return ';'.join(f'{a:#x},{n}={d}/{label}-{k}.bin' for k,(a,n) in REGIONS.items())
+    def spans(d,label):
+        return ';'.join([f'{a:#x},{n}={d}/{label}-{k}.bin' for k,(a,n) in REGIONS.items()]+
+                        [f'{syms[k]:#x},{n}={d}/{label}-{k}.bin' for k,n in STATE])
     cmd=[str(ROOT/'out/emu/ot_emu'),'--image',str(image),'--card',str(card),'--set','OCTABAM',
          '--project','RIG','--load-ms','20000','--frame','--dsp']
-    for name,(chain,enabled,presses,full) in CASES.items():
+    for name,(chain,enabled,presses,edit) in CASES.items():
         d=OUT/name;d.mkdir(exist_ok=True)
         args=[str(d/'port.log'),'--sequencer','--internal-clock','--frames',str(FRAMES),
               '--step',f'-:poke:{syms["dl_residency_enabled"]+3:#x}={enabled}']
         for pat in chain: args+=['--step',f'{CHAIN}:call:0x4009c634,{pat}']
-        if full: args+=['--step',f'{STOP}:poke:'+';'.join(f'{PART0+i:#x}={v}' for i,v in enumerate((12,16,28)))]
+        if edit:
+            frame,ids=EDITS[edit]
+            args+=['--step',f'{frame}:poke:'+';'.join(f'{PART0+i:#x}={v}' for i,v in enumerate(ids))]
         args+=['--step',f'{STOP}:dump:'+spans(d,'before')]
         args+=['--step',f'{STOP}:call:0x400a10c8']*presses
         args+=['--step',f'{STOP}:dump:'+spans(d,'immediate'),
@@ -82,7 +105,8 @@ def main():
         assert m,(name,'dispatch dump absent')
         return [int(w,16) for w in m[1].split()]
     report={}
-    for name,(chain,enabled,presses,full) in CASES.items():
+    def word(name,label,key,at=0): return int.from_bytes(region(name,label,key)[at:at+4],'big')
+    for name,(chain,enabled,presses,edit) in CASES.items():
         r={n:int.from_bytes((OUT/name/f'{n}.bin').read_bytes(),'big') for n in COUNTERS}
         report[name]=r
         before=region(name,'before','running')
@@ -92,7 +116,7 @@ def main():
         assert r['dl_errors']==0,(name,r)
         if not enabled: continue
         assert r['dl_unguarded']==0,(name,r,'a live set reached the DSP unprepared')
-        oracle={'deferred':'static','prefetched':'static-pair','double-stop':'static-double'}.get(name)
+        oracle=ORACLE.get(name)
         if name=='refused':
             for key in REGIONS:
                 assert region(name,'final',key)==region(name,'before',key),(name,key,'refused restart published')
@@ -102,20 +126,32 @@ def main():
             continue
         for key in REGIONS:
             assert region(name,'final',key)==region(oracle,'final',key),(name,key,'final state differs from static')
-        if name=='deferred':
-            # Nothing of the restart is published until its Part is prepared.
+        # STOP's own effect at the instant of the press, against static placement.
+        immediate=lambda: [key for key in REGIONS
+                           if region(name,'immediate',key)!=region(oracle,'immediate',key)]
+        if name in ('live','live-pair'):
+            # The first pattern's Part (Character) is live and stays live: the
+            # restart is not delayed by whatever else the manager is preparing.
+            assert word(name,'before','ids')>>24==28,(name,'Character is not live at STOP')
+            assert not immediate(),(name,immediate(),'STOP was delayed')
+            assert (r['dl_chain_deferred'],r['dl_chain_restarted'])==(0,0),(name,r)
+        elif name=='deferred':
+            # EQ is not live: nothing of the restart is published until it is.
+            assert word(name,'before','ids')>>24==28,(name,'Character is not live at STOP')
             for key in ('running','chain','active','ids'):
                 assert region(name,'immediate',key)==region(name,'before',key),(name,key,'early publication')
             assert (r['dl_chain_deferred'],r['dl_chain_restarted'],r['dl_chain_dropped'])==(1,1,0),(name,r)
-            # The load already relocated Character in every run (the static
-            # twins disable residency only after it), so check the arena itself.
+            # The replayed restart applied EQ, from the arena, not from stock.
             base=int.from_bytes((OUT/name/'dl_pool_base.bin').read_bytes()[4:],'big')
-            assert base+64<=dispatch(name)[28]<base+1408,(name,'Character not bound to relocated code')
+            assert base+64<=dispatch(name)[12]<base+1408,(name,'EQ not bound to relocated code')
         elif name=='prefetched':
-            # The first pattern was already prepared as the queued next pattern.
-            for key in REGIONS:
-                assert region(name,'immediate',key)==region(oracle,'immediate',key),(name,key)
-            assert r['dl_chain_deferred']==0,(name,r)
+            # The manager holds exactly the first pattern's set, prepared as the
+            # queued next pattern, so STOP publishes it on the spot.
+            assert word(name,'before','phase')==5 and region(name,'before','desired')[:2]==bytes((12,0)),\
+                (name,region(name,'before','phase').hex(),region(name,'before','desired').hex(),'not prefetched')
+            assert word(name,'before','ids')>>24==28,(name,'Character is not live at STOP')
+            assert not immediate(),(name,immediate(),'a prepared restart was delayed')
+            assert (r['dl_chain_deferred'],r['dl_chain_restarted'])==(0,0),(name,r)
         else:
             # A second STOP clears the chain and requests its first pattern: the
             # newer request supersedes the deferred restart, which never replays.

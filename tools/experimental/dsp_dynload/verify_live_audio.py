@@ -67,12 +67,22 @@ def main(pattern=False,refuse=False):
         ['m68k-elf-nm',str(ROOT/'out/platform/runtime/runtime.elf')],text=True).splitlines()) if len(p)==3}
     image=OUT/'image.bin';shutil.copyfile(ROOT/'out/mainos_bus.bin',image)
     cmd=[str(ROOT/'out/emu/ot_emu'),'--image',str(image),'--card',str(card),'--set','OCTABAM',
-         '--project','RIG','--load-ms','20000','--frame','--dsp','--audio-in','tones']
+         '--project','RIG','--load-ms','20000','--frame','--dsp','--audio-in','tones',
+         # A warm frame engine before the transport start. Without it the start
+         # races the frame timer at instruction granularity: a dynamic run whose
+         # manager does extra work early began one frame after its static twin
+         # (measured 29 Sep 2026: the tone reached the DSP one block later, 16
+         # samples of onset differed, the capture ended one block early).
+         '--audio-in-from-boot','--pre-roll','8']
     counters=('dl_residency_commits','dl_residency_failures','dl_errors','dl_residency_words','dl_publication_prepared','dl_publication_deferred','dl_publication_refused')
     for mode in ('static','dynamic'):
         d=OUT/mode;d.mkdir(exist_ok=True)
         args=[str(d/'port.log'),'--sequencer','--internal-clock','--frames',str(frames),'--main-level','64',
               '--step',f'-:poke:{syms["dl_residency_enabled"]+3:#x}={int(mode=="dynamic")}',
+              # The automatic applies go around every guard on purpose: this
+              # qualifies the observer over the originals, so unbound ids must
+              # restore them. verify_bypass measures the dry-stub behaviour.
+              '--step',f'-:poke:{syms["dl_bypass_unbound"]+3:#x}={int(pattern)}',
               '--block-dump',str(d/'blocks.bin'),'--audio-out',str(d/'audio'),
               '--mem-dump',';'.join(f'{syms[n]:#x},{8 if n=="dl_residency_words" else 4}={d}/{n}.bin' for n in counters)]
         if pattern:

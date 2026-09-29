@@ -21,6 +21,11 @@ static unsigned initialized=0,phase=0,cursor=0,waiting=0,automatic=0,cancelling=
 static uint32_t current=0;
 static int result=0;
 volatile uint32_t dl_residency_enabled=1; /* Test/control bypass; static originals required. */
+/* 1 (default): an unbound managed id dispatches to the receiver's dry stub,
+ * never to its original entry, as it must once the originals are reclaimed.
+ * 0 restores originals: only the unguarded-apply audio oracle needs that. */
+volatile uint32_t dl_bypass_unbound=1;
+static uint32_t stubbed[2]={0,0}; /* per core: ids whose dispatch is the stub */
 volatile uint32_t dl_residency_commits=0,dl_residency_rollbacks=0,dl_residency_failures=0;
 volatile uint32_t dl_residency_words[2]={0};
 /* Distinct live sets seen running a managed id without bound relocated code. */
@@ -49,6 +54,12 @@ static void counts(void) {
 static unsigned needed(unsigned index,unsigned mode) {
     unsigned c=index/32,p=index%32;
     if(mode==6) return allocator.live[c][p].present && !allocator.target[c][p].present;
+    /* Arm: every managed id this transaction neither keeps nor loads goes to
+     * the stub, once its core has answered a probe. Pinned-only boot sets
+     * probe nothing, so a run that never loads managed code keeps originals. */
+    if(mode==4) return dl_bypass_unbound && dl_pool_base[c] && !dl_catalog[p].resident &&
+                       dl_codes[c][p].count && !allocator.target[c][p].present &&
+                       !allocator.live[c][p].present && !((stubbed[c]>>p)&1u);
     return allocator.target[c][p].present && !allocator.live[c][p].present;
 }
 static void advance(void) {
@@ -113,6 +124,12 @@ static void advance(void) {
                 return;
             }
             cancelling=1;
+        } else {
+            unsigned bit=1u<<(cursor%32);
+            if(phase==3) stubbed[c]&=~bit;
+            else if(phase==4 || phase==6 || phase==7) {
+                if(phase==4 || dl_bypass_unbound) stubbed[c]|=bit; else stubbed[c]&=~bit;
+            }
         }
         ++cursor;
     }
@@ -126,14 +143,15 @@ static void advance(void) {
         if(mode==2) {
             struct dl_upload u={code->words,code->relocations,code->count,code->relocation_count,offset};
             waiting=dl_upload_start(c,&u);
-        } else waiting=dl_command_start(c,mode==3 ? DL_BIND:DL_UNBIND,p,
-                                         offset+code->init,offset+code->proc);
+        } else waiting=dl_command_start(c,mode==3 ? DL_BIND : mode==4 || dl_bypass_unbound ? DL_BYPASS:DL_UNBIND,
+                                         p,offset+code->init,offset+code->proc);
         if(!waiting) { report(DL_SELECT_UNAVAILABLE); cancelling=1; }
         return;
     }
     cursor=0;
     if(mode==2) { phase=3; return; }
-    if(mode==3) {
+    if(mode==3) { phase=4; return; }
+    if(mode==4) {
         for(unsigned c=0;c<2;++c) if(allocator.required & (1u<<c)) dl_allocator_ack(&allocator,current,c);
         phase=5; result=DL_SELECT_READY;
         if(automatic) {
@@ -225,6 +243,11 @@ int dl_publication_poll(uint32_t token) { return dl_selection_poll(token); }
 void dl_publication_arm(uint32_t token) {
     if(current==token && phase==5 && result==DL_SELECT_READY) automatic=2;
 }
+/* The open transaction keeps p on core c: its desired set uses it there. */
+static unsigned kept(unsigned c,unsigned p) {
+    for(unsigned i=0;i<16;++i) if(((i&7)<4 ? 1u:0u)==c && desired[i]==p) return 1;
+    return 0;
+}
 int dl_publication_ready(const uint8_t ids[16]) {
     if(!dl_residency_enabled) return 1;
     unsigned managed=0;
@@ -236,20 +259,18 @@ int dl_publication_ready(const uint8_t ids[16]) {
     /* Pinned-only targets cannot race arena retirement, including boot/setup
      * calls before the runtime has initialized its first managed allocation. */
     if(!managed) return 1;
-    if(!initialized || (phase!=0 && phase!=5 && phase!=6)) return 0;
-    if(phase==5) {
-        if(result!=DL_SELECT_READY || cancelling) return 0;
-        for(unsigned i=0;i<16;++i) if(ids[i]!=desired[i]) return 0;
-    }
+    if(!initialized) return 0;
+    /* Prepared for exactly this set: its acknowledged targets count. */
+    unsigned same=phase==5 && result==DL_SELECT_READY && !cancelling;
+    for(unsigned i=0;i<16;++i) if(ids[i]!=desired[i]) same=0;
     for(unsigned i=0;i<16;++i) {
         unsigned p=ids[i],c=(i&7)<4 ? 1:0;
-        if(p>=32 || !dl_catalog[p].qualified || !(dl_catalog[p].slots & (i<8 ? 1:2))) return 0;
         if(dl_catalog[p].resident) continue;
-        /* Committed and retiring its outgoing placements: the committed set
-         * stays bound, so publishing it is safe before retirement ends. */
-        if(phase==6) { if(allocator.target[c][p].present) continue; return 0; }
-        if(allocator.live[c][p].present) continue;
-        if(phase==5 && result==DL_SELECT_READY && allocator.target[c][p].present) continue;
+        /* Bound now, and safe unless the open transaction retires it: phases
+         * 5 and 7 retire nothing, 1-4 and 6 keep only what they desire (an
+         * observer transaction commits and retires without a setter). */
+        if(allocator.live[c][p].present && (phase==0 || phase==5 || phase==7 || kept(c,p))) continue;
+        if(same && allocator.target[c][p].present) continue;
         return 0;
     }
     return 1;

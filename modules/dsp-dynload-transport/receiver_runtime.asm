@@ -1,5 +1,8 @@
 ; Runtime extension: verified P uploads, then bind/unbind an existing FX id.
 ; First 64 table words retain the original init/proc pointers (32 ids).
+; BYPASS (6) points an id at dlstubinit/dlstubproc, a word-for-word copy of
+; stock's null stub (P:0x7c8 A, P:0x588 B): an unbound managed id runs dry,
+; never its original entry, which is what reclaiming the originals needs.
 ; Remaining 1344 words are the bounded code arena. No live compaction.
 ; Both frame hooks run before any effect on this core. Entry changes preserve
 ; the stock per-instance state; they do not call init or change the Part.
@@ -32,6 +35,8 @@ checksumdone:
         cmp     #>4,a
         beq     binding
         cmp     #>5,a
+        beq     binding
+        cmp     #>6,a
         beq     binding
         bra     badsaved
 upload:
@@ -118,6 +123,8 @@ binding:
         and     #>$ffff,a
         cmp     #>5,a
         beq     restoreentry
+        cmp     #>6,a
+        beq     stubentry
         ; Check both offsets before touching either dispatch entry.
         move    x:(r0+5),a
         and     #>$ffff,a
@@ -167,6 +174,24 @@ restoreentry:
         move    a,r3
         move    p:(r3),x0
         move    x0,x:(r1+32)
+        bra     accepted
+stubentry:
+        move    p:(r3),x0
+        move    x0,a
+        tst     a
+        bne     stubsaved
+        move    x:(r1),x0
+        move    x0,p:(r3)
+        move    r3,a
+        add     #>1,a
+        move    a,r3
+        move    x:(r1+32),x0
+        move    x0,p:(r3)
+stubsaved:
+        move    #>dlstubinit,x0
+        move    x0,x:(r1)
+        move    #>dlstubproc,x0
+        move    x0,x:(r1+32)
 accepted:
         bsr     tablebase
         move    a1,x:>$2366
@@ -201,4 +226,17 @@ finish:
         rts
 tablebase:
         move    #>$fab1e0,a
+        rts
+; Stock's null stub, word for word: init returns, process copies the
+; interleaved stereo block onto itself (the dispatcher's in-place contract).
+dlstubinit:
+        rts
+dlstubproc:
+        move    r0,r1
+        do      n7,dlstubdone
+        move    x:(r0)+,a
+        move    x:(r0)+,b
+        move    a,x:(r1)+
+        move    b,x:(r1)+
+dlstubdone:
         rts

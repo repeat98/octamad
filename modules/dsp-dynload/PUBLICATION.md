@@ -92,11 +92,35 @@ engine case that runs the bank loader `0x400905d4`, which requests and applies)
 and the project paths at `0x40025770`/`0x40025848` also remain open, as does the
 lifetime of an armed transaction whose publication never comes.
 
-Recommendation (inferred, not built): before reclaiming the originals, make an
-unbound managed id dispatch to a bypass stub instead of its original entry.
-Then a route nobody guarded costs one dry slot for the few frames the observer
-needs, instead of a jump into reclaimed memory, and reclaiming stops depending
-on a perfect census.
+## Dry bypass for unbound ids (29 Sep 2026)
+
+Built on the recommendation above. The receiver's BYPASS operation (6) saves an
+id's original entries once, like BIND, and points it at `dlstubinit`/
+`dlstubproc`, a word-for-word copy of stock's null stub (`P:0x7c8` in A,
+`P:0x588` in B). With `dl_bypass_unbound` = 1 (default) retiring or cancelled
+code goes to the stub instead of its original entry, and every transaction arms
+the managed ids it neither keeps nor loads, once the DSP has answered a probe.
+Arming therefore starts at the first transaction that loads managed code; a run
+that never loads any keeps the originals (the static-placement oracles rely on
+that). So a route nobody guarded costs a dry slot until the observer loads the
+code, instead of a jump into reclaimed memory, and the tripwire counts it.
+`verify_live_audio`'s unguarded mode sets the flag to 0: it qualifies the
+observer over the originals.
+
+Measured in the port (`verify_bypass`): after a managed load every unused
+managed id on both cores points at one stub whose words equal stock's null
+stub (loop end relocated with it); retired Character points at the stub; an
+over-capacity Part published around every guard (refused, so EQ and PHASER stay
+unbound on T1/T2) is sample-identical on all eight stereo chains and the main
+output to the same Part with FX NONE. With the flag at 0 a retired id gets its
+saved original entry back. That case exists because the first version of the
+receiver fell from UNBIND into the stub code, so the unguarded-apply audio
+oracle heard a retired EQ go dry (237 samples on T1-T4, a decaying transient
+at the swap): no other gate looked at UNBIND's result, and the audio oracle
+found it only because it plays through the swap. Not measured: the stub on hardware (the
+stock stub it copies runs there for 19 ids), and a boot-time arm, which
+reclaiming needs because an id published before any managed load would still
+reach its original.
 
 ## Reproducible gates
 
@@ -110,14 +134,23 @@ on a perfect census.
   stopped-pattern admission and real pattern/project capacity refusal. Snapshots
   include the complete bank, live IDs, running/active selectors and project name.
 - `OT_PROJECT=<owned fixture> python3 -m tools.experimental.dsp_dynload.verify_chain_stop`:
-  a real sequencer plays a real chain (stock chain-add routine); STOP with the
-  first Part cold (deferred, replayed, final state identical to static
-  placement), over capacity (refused, nothing changes), prefetched (stock path),
-  and a double STOP (the second request supersedes the deferred restart).
+  a real sequencer plays a real chain (stock chain-add routine). The chain-add
+  routine builds `[playing pattern, *added]`, so STOP restarts pattern 0, whose
+  Part is live: that restart is not delayed (`live`, `live-pair`; the manager is
+  busy with another set). With Part 1 edited to something cold: deferred and
+  replayed (`deferred`), over capacity (`refused`, nothing changes), prepared
+  ahead as the queued next pattern (`prefetched`, passes on the spot), and a
+  double STOP (the second request supersedes the deferred restart); each
+  against static placement. The fixture never changes the live FX arrays (above),
+  so this covers the guard's protocol, not an FX change under it.
 - `OT_PROJECT=<owned fixture> python3 -m tools.experimental.dsp_dynload.verify_part_edits`:
   PASTE (source overwritten after the call: the replay uses the snapshot),
   refused PASTE, RELOAD of a saved copy, RESET onto the predicted defaults, and
   an inactive RELOAD that opens no transaction; each against static placement.
+- `OT_PROJECT=<owned fixture> python3 -m tools.experimental.dsp_dynload.verify_bypass`:
+  armed and retired ids on the dry stub, the stub equal to stock's null stub,
+  a retired id with the bypass off getting its saved original entry back, and a
+  stubbed slot sample-identical to FX NONE.
 - `OT_PROJECT=<owned fixture> python3 -m tools.experimental.dsp_dynload.verify_pattern_audio`:
   real MIDI queued change and all eight stereo chains/main against static audio.
   The Part index changes; the FX do not (above), so this is not an FX-change test.

@@ -15,7 +15,7 @@ volatile uint32_t dl_pool_base[2]={0,0},dl_modal_pending;
 extern volatile uint32_t dl_residency_words[2],dl_residency_commits,dl_residency_rollbacks;
 extern void dl_residency_tick(void);
 static int status[2]={-2,-2};
-static unsigned uploads,binds,unbinds,fail_unbind,probes;
+static unsigned uploads,binds,unbinds,fail_unbind,probes,stubs,restores;
 int dl_upload_start(unsigned c,const struct dl_upload *u) {
     assert(status[c]==-2 && u->offset>=64 && u->offset+u->count<=1408);
     ++uploads; status[c]=1; return 1;
@@ -25,7 +25,9 @@ int dl_command_start(unsigned c,unsigned op,unsigned id,unsigned init,unsigned p
     status[c]=1;
     if(op==DL_PROBE) { ++probes;dl_pool_base[c]=c ? 0xdc0:0x1000; }
     if(op==DL_BIND) ++binds;
-    if(op==DL_UNBIND) { ++unbinds; if(fail_unbind) { --fail_unbind;status[c]=-1; } }
+    if(op==DL_UNBIND) ++restores;
+    if(op==DL_BYPASS) ++stubs;
+    if(op==DL_UNBIND || op==DL_BYPASS) { ++unbinds; if(fail_unbind) { --fail_unbind;status[c]=-1; } }
     return 1;
 }
 int dl_job_status(unsigned c) { return status[c]; }
@@ -46,6 +48,8 @@ int main(void) {
     for(unsigned i=0;i<8;++i) s.target[i]=12;
     assert(dl_selection_prepare(&s,1)==DL_SELECT_WAIT);ready(1);
     assert(probes==2 && uploads==2 && binds==2 && dl_residency_words[0]==0 && dl_residency_words[1]==0);
+    /* Armed: 16 and 28, unused by this target, dispatch to the stub on both cores. */
+    assert(stubs==4);
     assert(dl_publication_ready(s.target));
     uint8_t wrong[16]={0};wrong[0]=28;assert(!dl_publication_ready(wrong));
     /* Committed and retiring the outgoing set: the committed set stays bound. */
@@ -56,7 +60,10 @@ int main(void) {
     assert(dl_selection_prepare(&s,2)==DL_SELECT_MEMORY); /* genuine 1421 > 1344 */
     assert(uploads==2 && binds==2 && dl_residency_words[1]==282);
     s.target[1]=12;
-    assert(dl_selection_prepare(&s,3)==DL_SELECT_WAIT);ready(3);
+    assert(dl_selection_prepare(&s,3)==DL_SELECT_WAIT);
+    uint8_t eq[16]={12,12,12,12,12,12,12,12};
+    assert(dl_publication_ready(eq)); /* live, and kept by the open transaction */
+    ready(3);
     dl_selection_cancel(3);assert(!dl_publication_ready(s.target));settle();
     assert(dl_residency_rollbacks==1 && dl_residency_words[1]==282);
     assert(dl_selection_prepare(&s,4)==DL_SELECT_WAIT);ready(4);
@@ -64,7 +71,9 @@ int main(void) {
     assert(dl_residency_words[1]==1214 && dl_residency_words[0]==282);
     memset(wrong,0,16);wrong[8]=28;assert(!dl_publication_ready(wrong)); /* Wrong FX slot. */
     memset(s.target,0,16);
-    assert(dl_selection_prepare(&s,5)==DL_SELECT_WAIT);ready(5);
+    assert(dl_selection_prepare(&s,5)==DL_SELECT_WAIT);
+    assert(!dl_publication_ready(eq)); /* live, but this transaction retires it */
+    ready(5);
     fail_unbind=1;dl_selection_commit(5);
     uint8_t outgoing[16]={28,12,12,12,12,12,12,12};
     assert(!dl_publication_ready(outgoing)); /* retiring code is never published */
@@ -73,5 +82,6 @@ int main(void) {
     memset(wrong,0,16);wrong[8]=28;assert(!dl_publication_ready(wrong)); /* Wrong FX slot. */ /* failure cannot free live code */
     settle();
     assert(dl_residency_words[0]==0 && dl_residency_words[1]==0 && unbinds>=5);
+    assert(restores==0); /* retiring never restores an original entry */
     return 0;
 }

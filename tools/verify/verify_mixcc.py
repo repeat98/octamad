@@ -15,8 +15,10 @@ runs the stock handler's own code, its displaced prologue replayed.
   cc        ten CCs (one per group and the ends) at frames 20..29: the models hold exactly
             those values and nothing else, the window is their stored form, its twin the
             same, the edited words 1, the ISR's look not held off
-  notmine   CC 96, 100, 108, 111 and the stock CC 40 and 7: the models are the defaults,
-            the window and twin zero, no dirty mark from them
+  notmine   CC 96, 100, 108, 111: the models are the defaults, the window and twin zero,
+            no dirty mark
+  stock     the stock CC 40 and 7: the models and windows untouched (stock marks the Part
+            itself)
   off       AUDIO CC IN poked to 0: CC 74 is ignored
   dsp       with the DSP: the CCs reach core 0 as the gains and the levels
 What it cannot see: the stock handler's own effect for the CCs it takes (only that the
@@ -40,7 +42,8 @@ fails = 0
 
 # (cc, value): AUX A T1 and RET B, AUX B T1 and IN CD, its RET A and RET B, then the levels
 TAKEN = [(74, 33), (85, 44), (86, 55), (95, 66), (102, 77), (103, 88), (104, 90), (105, 11), (106, 22), (107, 33)]
-NOTMINE = [(96, 50), (100, 60), (108, 70), (111, 80), (40, 90), (7, 100)]
+NOTMINE = [(96, 50), (100, 60), (108, 70), (111, 80)]
+STOCK = [(40, 90), (7, 100)]
 
 
 def check(label, ok, detail=""):
@@ -91,14 +94,15 @@ def port(name, built, project, sym):
         midi(work / "cc.mid", TAKEN)
         midi(work / "notmine.mid", NOTMINE)
         midi(work / "off.mid", [(74, 50)])
+        midi(work / "stock.mid", STOCK)
         args = []
-        for c, extra in (("cc", ""), ("notmine", ""), ("off", f" --poke {CCIN:#x}=0")):
+        for c, extra in (("cc", ""), ("notmine", ""), ("stock", ""), ("off", f" --poke {CCIN:#x}=0")):
             args += ["--scenario", f"{work / c}.log --sequencer --internal-clock --frames 90 --midi {work / c}.mid"
                      f" --mem-dump {dumps(work, c, sym)}{extra}"]
         shutil.copy2(card, work / "card_built.img")
         runs = [subprocess.Popen(
             [str(vds.EMU), "--image", str(work / "built.bin"), "--card", str(work / "card_built.img"),
-             "--set", "OCTABAM", "--project", "RIG", "--load-ms", "90000", "--scenario-jobs", "3"] + args,
+             "--set", "OCTABAM", "--project", "RIG", "--load-ms", "90000", "--scenario-jobs", "4"] + args,
             cwd=ROOT, stdout=open(work / "built.txt", "w"), stderr=subprocess.STDOUT)]
         shutil.copy2(card, work / "card_dsp.img")
         runs.append(subprocess.Popen(
@@ -110,7 +114,7 @@ def port(name, built, project, sym):
         codes = [p.wait() for p in runs]
         check("port: every load ran", all(c == 0 for c in codes), f"exit codes {codes}")
         R = {}
-        for c in ("cc", "notmine", "off", "dsp"):
+        for c in ("cc", "notmine", "stock", "off", "dsp"):
             log = (work / f"{c}.log").read_text() if (work / f"{c}.log").exists() else ""
             r = {"log": log}
             for k in ("ret", "aux", "lvl", "seen", "lock", "w0", "w1", "t0", "t1", "d_bank", "d_sram",
@@ -134,9 +138,14 @@ def checks(R):
           r["e_bank"] == [0, 0, 0, 1] and r["e_sram"] == [0, 0, 0, 1] and r["w1"] == [0] * 80
           and r["t1"] == [0] * 80 and r["lock"] == [0], f"{r['e_bank']} {r['e_sram']}")
     r = base_d
-    check("notmine: CC 96, 100, 108, 111 and the stock 40 and 7 change no model, write no window, mark nothing",
+    check("notmine: CC 96, 100, 108, 111 (data entry, NRPN, and numbers no one takes) change no model, write no "
+          "window, mark nothing",
           r["ret"] == [0] * 32 and r["aux"] == [0] * 32 and r["lvl"] == vrs.BOOT[2] and r["w0"] == [0] * 80
           and r["t0"] == [0] * 80 and r["e_bank"] == [0] * 4 and r["e_sram"] == [0] * 4, f"aux {r['aux'][:8]}")
+    r = R["stock"]
+    check("stock: the stock CC 40 and 7 (which the stock handler takes) leave the mixer's models and windows alone",
+          r["ret"] == [0] * 32 and r["aux"] == [0] * 32 and r["lvl"] == vrs.BOOT[2] and r["w0"] == [0] * 80
+          and r["t0"] == [0] * 80, f"aux {r['aux'][:8]} lvl {r['lvl'][:6]}")
     r = R["off"]
     check("off: with AUDIO CC IN off, CC 74 is ignored", r["aux"] == [0] * 32 and r["w0"] == [0] * 80, f"aux {r['aux'][:8]}")
     r = R["dsp"]

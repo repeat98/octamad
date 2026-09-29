@@ -76,7 +76,8 @@ to the handler's `rts`.
 | range | count | holder |
 |---|---|---|
 | 62–73 | 12 | this module |
-| 74–111 | 38 | free |
+| 74–95, 102–107 | 28 | MASTER STRIP (the mixer's sends and returns' levels, `modules/strip`: a detour on the stock handler's entry, after this cave's blocks) |
+| 96–101, 108–111 | 10 | free (96–101 are data entry / NRPN) |
 | 0–6, 9–15 | 14 | free |
 
 Octakit's handler reads 7, 46, 47 and 55–58, all stock numbers.

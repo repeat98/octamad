@@ -911,3 +911,29 @@ a non-stock part keeps the models to itself; with the DSP a loaded record reache
 models; the boxes' drawing is MASTER's code with other data and was not compared pixel for
 pixel); MIDI CC for these controls (not built); a Part Save or Reload through the panel; the
 Octakit's kit windows; anything on a unit.
+
+## 22. MIDI CC for the mixer (29 Sep 2026)
+
+`strip_xport.s` detours the **stock CC handler's entry** (0x4000e79c: the dispatch's entry for
+status 0xB, and where CC MAP's and Octakit's chains end, so no remix's chain has to know about
+it): a CC the mixer takes writes its value (masked to 0..127) into a model and `ret_store_cc`
+keeps it (the Part's window, its SRAM twin, the stock editors' marks; no refresh call, as CC MAP's
+page-2 stores); anything else runs the stock handler, its displaced prologue (`linkw`,
+`moveml`) replayed. Any channel; only while AUDIO CC IN is on, as the stock handler's own writes.
+
+| CC | what |
+|---|---|
+| 74..85 | AUX A's sends: T1..T8, IN AB, IN CD, RET A, RET B |
+| 86..95 | AUX B's sends: T1..T8, IN AB, IN CD |
+| 102, 103 | AUX B's sends from RET A, RET B |
+| 104..107 | RET B's level, its CUE send, RET A's level, its CUE send |
+
+96..101 (data entry, NRPN) and 108..111 are not taken; CC MAP's 62..73 come first in a remix
+that has it. A controller that sends 74 (brightness) or 102..107 by itself moves these.
+
+**Measured under the port** (`verify_mixcc`, 0 failures): ten CCs (one per group and the ends)
+land in the models and nowhere else, the window is their stored form with its twin and the edited
+words; CC 96, 100, 108, 111 leave no trace; the stock CC 40 and 7 leave the mixer's models alone; with
+AUDIO CC IN poked to 0 CC 74 is ignored; with the DSP the values reach core 0 as the gains and levels.
+**Not shown:** the stock handler's own result for the CCs it takes; a real controller's channel;
+CC feedback (the mixer's values are not sent out).

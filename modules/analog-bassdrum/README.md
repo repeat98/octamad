@@ -3,7 +3,8 @@
 One native Octatrack track machine with a stepped **MODEL: 808 / 909**
 selector in SRC SETUP. Both original fixed-point synthesis engines run on
 the DSP, upstream of stock AMP and both track FX slots. No recordings are
-embedded. This is a development build, not yet qualified on hardware.
+embedded. Earlier image ANALOGBD1 was auditioned on an MK1; the current
+engine browser and eight-track changes still need hardware qualification.
 
 | Model / page | A | B | C | D | E | F |
 |---|---|---|---|---|---|---|
@@ -37,10 +38,14 @@ Selecting a model keeps the existing knobs rather than loading a preset.
 
 The chooser and Part storage follow the measured Machinedrum registration
 seams. Parts store FLEX plus `AB\x01` in unused NEIGHBOR page bytes. All eight
-tracks can store independent patches; development admission remains **two
-instances per Part**. Stock Part save/copy/reload carries the twelve bytes.
+tracks can store and run independent patches; the two-instance admission
+ceiling has been removed. Stock Part save/copy/reload carries the twelve bytes.
 The model selector uses the stock stepped-control widget. Double-tapping an
-Analog BD track opens SRC SETUP; ordinary tracks keep the stock sample picker.
+Analog BD track opens a sample-pool-style engine browser with 808 and 909
+rows. UP/DOWN or LEVEL browses, YES selects, and NO cancels. LEFT returns
+to the machine chooser; RIGHT on ANALOG BD opens the engine pool. Both
+headers use the stock sample-pool chevrons to show the direction. Ordinary
+tracks keep the stock sample picker.
 
 ColdFire sends control records through the existing source transport; DSP
 glue recognizes the signature and renders either engine into the stock
@@ -70,7 +75,29 @@ OT_PROJECT=<stock-project> AB_SAMPLE808=1 python3 tools/verify/verify_analog_bas
 
 Repeat the port checks with `AB_REVERSE=1` for the opposite core assignment.
 WAVs, firmware and reference analysis remain under `out/`, never in commits.
-The retained C engine and its gates are legacy development references;
-they no longer synthesize admitted voices in the image. [CPU.md](CPU.md),
+The retired ColdFire synthesis, its coefficient tables and audio gates
+have been removed. ColdFire retains only control transport and UI helpers. [CPU.md](CPU.md),
 [SCHEMATIC.md](SCHEMATIC.md) and [REFERENCE.md](REFERENCE.md) retain the earlier
 ColdFire research, not the current DSP algorithm specification.
+
+## Hardware report and compatibility
+
+mathgonzlez reported on 28 September 2026 that ANALOGBD1 worked on an MK1:
+all parameters worked, with no glitches or unexpected sounds while tweaking.
+They also noted labels close to the edge of the parameter area. The tested
+flash file SHA256 is
+`3672634dedb8ce0138d7cf4216bd051a47afac6601dcd2a3c1830def24f39704`.
+This report does not specify a save/reload test, eight voices, or every effect
+combination; it predates this review revision.
+
+Loading an AB project in pristine 1.40C succeeds under the port, but stock
+sees FLEX and clamps the setup controls to FLEX ranges. In the measured
+fixture, ACCNT/LPF/LOW/HIGH become 1/1/1/3; the AB signature remains. Saving
+that project on stock can therefore overwrite the synth settings. Keep a
+separate project copy for stock or remixes without ANALOG BD. No claim of
+transparent backward compatibility is made.
+
+Eight voices are selectable, but effects still share each core's budget.
+All eight 808s, all eight 909s and mixed models passed FILTER + DARK locally.
+Eight 909s with DJ EQ in both slots failed with silent output. See [CPU.md](CPU.md)
+for the measured envelope; eight voices does not guarantee every FX combination.

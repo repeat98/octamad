@@ -45,8 +45,7 @@ zv01:
         move x0,x:(r5+@KLPF@)
 ; SWEEP 64 is the recorded excursion; zero removes it.
         move x:(r6+$4),a
-        rep #$10
-        asl a
+        asl #$10,a,a
         move a,x0
         move x:(r5+@BEND@),y0
         mpy y0,x0,a
@@ -71,7 +70,7 @@ zv03:
 zv04:
         tst a
         beq zv05
-        do a1,zv07
+        do a,zv07
 ; Phase and exponentially settling pitch.
         move x:(r5+@EP@),x0
         move x:(r5+@BEND@),y0

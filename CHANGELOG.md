@@ -775,6 +775,17 @@ on a T2 THRU host and bled into the bus with every SEND at 0; 47 (branch
 `probe47`, a marker tone on a wiped stamp) sounded on every block of plain
 play, the measurement behind image 48.
 
+## Analog BD1 — MK1 audition reported 28 Sep 2026
+
+- `OCTATRACK_ANALOGBD1.bin`, SHA256
+  `3672634dedb8ce0138d7cf4216bd051a47afac6601dcd2a3c1830def24f39704`.
+  mathgonzlez reported that every parameter worked and tweaking caused no
+  glitches or unexpected sounds; parameter labels were close to the area edge.
+- This is the earlier standalone Analog BD image. The later engine browser,
+  horizontal navigation and eight-track admission were not in this report.
+  Save/reload, eight simultaneous voices and every FX combination remain
+  outside its reported coverage. See `modules/analog-bassdrum/README.md`.
+
 ## Image 43 — 21 Sep 2026 (`OCTABAM43`, bamsep26 at b3f6471)
 
 On the unit: the sample-host wash gone (T3 STATIC, a trig every step,

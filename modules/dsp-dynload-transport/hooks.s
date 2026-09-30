@@ -109,6 +109,20 @@ dl_tick:
         jsr 0x4005213c
         jsr 0x4007e940
         jmp 0x40052228
+
+        .global dl_tick2
+| The same UI tick one stock call later (0x40052228, `jsr 0x400316a0`), for a
+| remix where ANALOG BD's hook owns 0x4005221e: that hook returns here, so
+| both run every tick. dl_ui then follows the two stock calls instead of
+| preceding them.
+dl_tick2:
+        lea -60(%sp),%sp
+        movem.l %d0-%d7/%a0-%a6,(%sp)
+        jsr dl_ui
+        movem.l (%sp),%d0-%d7/%a0-%a6
+        lea 60(%sp),%sp
+        jsr 0x400316a0
+        jmp 0x4005222e
         .data
         .balign 4
 dl_phase: .long 0

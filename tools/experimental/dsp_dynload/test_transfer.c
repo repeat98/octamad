@@ -48,7 +48,7 @@ int main(void) {
     assert(dl_accepted[0]==65537 && dl_accepted[1]==65537 && dl_errors==4);
     /* Real job protocol: chunking, both relocation directions and readback. */
     assert(dl_command_start(0,DL_PROBE,0,0,0)); dl_frame();
-    ack(0,0,0); dl_rx[0][6]=0x1000; dl_rx[0][7]=DL_RUNTIME_WORDS;
+    ack(0,0,0); dl_rx[0][6]=0x1000; dl_rx[0][7]=1408;
     dl_frame(); assert(dl_pool_base[0]==0x1000 && dl_job_status(0)==1); dl_job_release(0);
     uint32_t words[25]; for(unsigned i=0;i<25;++i) words[i]=i+1;
     uint16_t reloc[2]={1,0x8018};

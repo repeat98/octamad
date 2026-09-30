@@ -3,7 +3,8 @@
 ; BYPASS (6) points an id at dlstubinit/dlstubproc, a word-for-word copy of
 ; stock's null stub (P:0x7c8 A, P:0x588 B): an unbound managed id runs dry,
 ; never its original entry, which is what reclaiming the originals needs.
-; Remaining 1344 words are the bounded code arena. No live compaction.
+; The rest of the table is the bounded code arena; the table's size is the
+; build's DLWORDS define, reported to the ColdFire. No live compaction.
 ; Both frame hooks run before any effect on this core. Entry changes preserve
 ; the stock per-instance state; they do not call init or change the Part.
 frame:
@@ -52,7 +53,7 @@ upload:
         cmp     #>64,a
         blt     badsaved
         add     x1,a
-        cmp     #>1408,a
+        cmp     #>@DLWORDS@,a
         bgt     badsaved
         sub     x1,a
         move    a1,x0
@@ -130,13 +131,13 @@ binding:
         and     #>$ffff,a
         cmp     #>64,a
         blt     badsaved
-        cmp     #>1408,a
+        cmp     #>@DLWORDS@,a
         bge     badsaved
         move    x:(r0+7),a
         and     #>$ffff,a
         cmp     #>64,a
         blt     badsaved
-        cmp     #>1408,a
+        cmp     #>@DLWORDS@,a
         bge     badsaved
         move    p:(r3),x0
         move    x0,a
@@ -196,7 +197,7 @@ accepted:
         bsr     tablebase
         move    a1,x:>$2366
         move    a1,x:>$4366
-        move    #>1408,a
+        move    #>@DLWORDS@,a
         move    a1,x:>$2367
         move    a1,x:>$4367
         move    x:(r0+63),r3

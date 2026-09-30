@@ -85,10 +85,16 @@ static void advance(void) {
             /* Algorithms still execute the original stock scheduling path.
              * No additional overlapping instances are created by rebinding;
              * existing DSP processing is reserved outside this P-only pool. */
-            dl_allocator_init(&allocator,dl_catalog,DL_RUNTIME_WORDS-DL_CODE_START,
-                              DL_RUNTIME_WORDS-DL_CODE_START,0,0);
+            dl_allocator_init(&allocator,dl_catalog,0,0,0,0);
             initialized=1;
         }
+        /* Each core's arena is its receiver's reported table less the saved
+         * entries, known once that core answered a probe. A pinned-only set
+         * probes nothing and places nothing, so capacity starts at 0 and is
+         * set, once, by the first probe: never shrunk under live code. */
+        for(unsigned c=0;c<2;++c)
+            if(!allocator.capacity[c] && dl_pool_words[c]>DL_CODE_START)
+                allocator.capacity[c]=(uint16_t)(dl_pool_words[c]-DL_CODE_START);
         int r=dl_allocator_prepare(&allocator,desired,current);
         if(r<0) {
             report(r==DL_ALLOC_MEMORY || r==DL_ALLOC_TRANSITION ? DL_SELECT_MEMORY :

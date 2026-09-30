@@ -234,20 +234,23 @@ dl_upload_start:
 	move.l (%a0),22(%sp)
 	tst.l 22(%sp)
 	jeq .L30
-	move.w 8(%a0),%d0
-	move.w %d0,26(%sp)
+	move.w 8(%a0),%d2
+	move.w %d2,26(%sp)
 	jeq .L30
-	move.w 12(%a0),%d2
-	mvz.w %d2,%d0
-	move.w %d2,32(%sp)
+	move.w 12(%a0),%a0
+	mvz.w %a0,%d2
+	move.w %a0,32(%sp)
+	move.l %d2,%a0
 	moveq #63,%d2
-	cmp.l %d0,%d2
+	cmp.l %a0,%d2
 	jcc .L30
 	mvz.w 26(%sp),%d2
+	lea dl_pool_words,%a2
 	move.l %d2,14(%sp)
-	add.l %d2,%d0
-	cmp.l #1408,%d0
-	jgt .L30
+	add.l %d2,%a0
+	cmp.l (%a2,%d0.l*4),%a0
+	jhi .L30
+	move.l 48(%sp),%a0
 	move.w 10(%a0),%d0
 	move.w %d0,34(%sp)
 	jeq .L33
@@ -259,8 +262,8 @@ dl_upload_start:
 .L34:
 	addq.l #4,%a0
 	addq.l #1,%d0
-	move.l #16777215,%d2
-	cmp.l -4(%a0),%d2
+	move.l #16777215,%a2
+	cmp.l -4(%a0),%a2
 	jcs .L30
 	cmp.l 14(%sp),%d0
 	jne .L34
@@ -319,44 +322,48 @@ dl_upload_start:
 	.type	dl_command_start, @function
 dl_command_start:
 	move.l %d2,-(%sp)
-	mov3q.l #1,%d0
-	cmp.l 8(%sp),%d0
-	jcs .L63
 	move.l 8(%sp),%d0
+	mov3q.l #1,%d1
+	cmp.l %d0,%d1
+	jcs .L63
 	moveq #30,%d1
+	muls.l %d0,%d1
 	lea jobs,%a0
-	muls.l %d1,%d0
-	tst.w 28(%a0,%d0.l)
+	tst.w 28(%a0,%d1.l)
 	jne .L63
 	moveq #31,%d2
 	cmp.l 16(%sp),%d2
 	jcs .L63
-	mov3q.l #1,%d1
-	cmp.l 12(%sp),%d1
+	mov3q.l #1,%d2
+	cmp.l 12(%sp),%d2
 	jeq .L64
 	mov3q.l #4,%d2
 	cmp.l 12(%sp),%d2
 	jeq .L65
-	move.l 12(%sp),%d1
+	move.l 12(%sp),%d0
 	mov3q.l #1,%d2
-	subq.l #5,%d1
-	cmp.l %d1,%d2
+	subq.l #5,%d0
+	cmp.l %d0,%d2
 	jcc .L64
 .L63:
 	move.l (%sp)+,%d2
 	clr.l %d0
 	rts
 .L65:
-	move.l 20(%sp),%d1
-	add.l #-64,%d1
-	cmp.l #1343,%d1
-	jhi .L63
-	move.l 24(%sp),%d1
-	add.l #-64,%d1
-	cmp.l #1343,%d1
-	jhi .L63
+	moveq #63,%d2
+	cmp.l 20(%sp),%d2
+	jcc .L63
+	cmp.l 24(%sp),%d2
+	jcc .L63
+	move.l 20(%sp),%d2
+	lea dl_pool_words,%a1
+	cmp.l (%a1,%d0.l*4),%d2
+	jcc .L63
+	move.l 24(%sp),%d2
+	cmp.l (%a1,%d0.l*4),%d2
+	jcc .L63
 .L64:
-	add.l %d0,%a0
+	add.l %d1,%a0
 	move.w 14(%sp),20(%a0)
 	move.w 18(%sp),22(%a0)
 	move.w 22(%sp),24(%a0)
@@ -656,12 +663,24 @@ dl_frame:
 	addq.l #1,(%a5,%d1.l*4)
 	tst.w 12(%a0)
 	jeq .L94
-	mvz.w 12(%a0),%d3
-	cmp.l #8191,%d3
-	jhi .L94
 	mvz.w 14(%a0),%d3
-	cmp.l #1408,%d3
-	jeq .L98
+	move.l %d3,24(%sp)
+	moveq #64,%d3
+	cmp.l 24(%sp),%d3
+	jcc .L94
+	move.w 12(%a0),%a5
+	mvz.w 14(%a0),%d3
+	move.l %d3,28(%sp)
+	mvz.w %a5,%d3
+	add.l 28(%sp),%d3
+	cmp.l #8192,%d3
+	jgt .L94
+	mvz.w 14(%a0),%d3
+	lea dl_pool_words,%a5
+	move.l %d3,(%a5,%d1.l*4)
+	mvz.w 12(%a0),%d3
+	lea dl_pool_base,%a5
+	move.l %d3,(%a5,%d1.l*4)
 .L94:
 	mvz.w 28(%a4,%d2.l),%d3
 	move.l %d3,24(%sp)
@@ -710,11 +729,6 @@ dl_frame:
 	cmp.l %a4,%d3
 	jne .L97
 	jra .L156
-.L98:
-	mvz.w 12(%a0),%d3
-	lea dl_pool_base,%a5
-	move.l %d3,(%a5,%d1.l*4)
-	jra .L94
 .L159:
 	move.w 10(%a2),%a5
 	mvz.w (%a2),%d3
@@ -800,6 +814,12 @@ dl_ui:
 	.size	jobs, 60
 jobs:
 	.zero	60
+	.globl	dl_pool_words
+	.align	2
+	.type	dl_pool_words, @object
+	.size	dl_pool_words, 8
+dl_pool_words:
+	.zero	8
 	.globl	dl_pool_base
 	.align	2
 	.type	dl_pool_base, @object

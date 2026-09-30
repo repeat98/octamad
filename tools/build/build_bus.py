@@ -165,6 +165,10 @@ _SEL = [_MODS[k] for k in CARRIED]
 _CLONED = [m for m in _SEL if not m.is_stock]
 CLONED_ORDER = [m.key for m in _CLONED]
 STOCK_ROWS = [m.key for m in _SEL if m.is_stock]
+# schema.Module.dynamic_stock: a selected loader serves every stock DSP effect
+# on demand, so the whole effect block is harvested while the rows stay.
+DYNAMIC = [k for k in REMIX.modules if _MODS[k].dynamic_stock]
+AB_TOP = {}                      # payload -> P address Analog BD is placed at
 
 DESC_DONORS = {m.key: m.menu.donor_desc for m in _CLONED}
 NEW_IDS = {m.key: m.menu.fx2_id for m in _SEL}
@@ -1736,7 +1740,10 @@ def main():
                  else "")
               + (f"; names KEPT (NAMED: the host page draws all twelve): "
                  f"{', '.join(_n)}" if _n else ""))
-    if STOCK_ROWS:
+    if STOCK_ROWS and DYNAMIC:
+        print(f"  stock rows kept: {', '.join(STOCK_ROWS)} -- descriptors "
+              f"untouched; DSP code loaded on demand by {DYNAMIC[0]}")
+    elif STOCK_ROWS:
         print(f"  stock rows kept: {', '.join(STOCK_ROWS)} -- descriptors, "
               f"code and dispatch untouched on both cores")
     # ⚠️ WORDING FROZEN for the SEND arm: the build report is API (refhash
@@ -2117,7 +2124,8 @@ mkgo:""",
         # ⚠️ IN ADDRESS ORDER. DEV's CHORUS sits BELOW the reverbs, and the
         # report lists the donors in this order -- appending it put CHORUS
         # last and changed every DEV case's report hash (refhash caught it).
-        _derived = stock_mod.region_of(stock_mod.harvested(_listed))
+        _derived = stock_mod.region_of(
+            frozenset(stock_mod.p_spans("A")) if DYNAMIC else stock_mod.harvested(_listed))
         _dev_chorus = DEV and "CHORUS" not in _derived
         _harvest = sorted(
             set(_derived)
@@ -2208,6 +2216,29 @@ mkgo:""",
                 i += n
             if i != len(words):
                 sys.exit(f"payload {tag}: placement ran past the region")
+
+        if DYNAMIC:
+            # The whole effect block is one run. Its start takes the shared
+            # stock routines the loadable effects call -- the same function
+            # generates the loader's catalog, so their addresses agree by
+            # construction; its top takes Analog BD, placed last.
+            from experimental.dsp_dynload.runtime_catalog import dynamic_layout
+            from experimental.dsp_dynload.stock_catalog import build as _stock_rows
+            if len(runs) != 1 or runs[0]["base"] != min(a for a, _n in _sp.values()):
+                sys.exit(f"payload {tag}: dynamic stock needs the whole effect block as one run")
+            _dh, _dcopies, _dnext, _drec = dynamic_layout(_stock_rows(), 0 if tag == "A" else 1,
+                                                          runs[0]["base"])
+            for _da, _dw in _dcopies:
+                place(_dw, _da)
+            print(f"  DYNAMIC       P:0x{runs[0]['base']:05x}..0x{_dnext:05x} "
+                  f"({_dnext - runs[0]['base']:4d} words)  shared stock routines "
+                  f"({', '.join(f'P:0x{a:05x}+{len(w)}' for a, w in _dcopies)}); "
+                  f"every stock DSP effect loads on demand ({', '.join(DYNAMIC)})")
+            runs[0]["cursor"] = _dnext
+            if "ANALOG BD" in REMIX.modules:
+                import ab_image
+                runs[0]["words"] -= ab_image.RESERVE
+                AB_TOP[tag] = runs[0]["base"] + runs[0]["words"]
 
         # SEND first, DELAY SERVER last so the trailing free words belong to
         # the algorithm still to be designed.
@@ -2428,6 +2459,14 @@ mkgo:""",
                                     _src_k)
                     print(f"  XBUS: {_k} -- {_n9} scratch refs moved to 0x{XBUS_BASE:x}, "
                           f"a client that never housekeeps")
+                # schema.DspSection.defines: build-time integers for `@NAME@`.
+                for _dn, _dv in (_mk.dsp.defines if _mk is not None and _mk.dsp else ()):
+                    if f"@{_dn}@" not in _src_k:
+                        sys.exit(f"{_k}: define {_dn} has no @{_dn}@ in its source")
+                    _src_k = _src_k.replace(f"@{_dn}@", str(int(_dv)))
+                if re.search(r"@[A-Z][A-Z0-9_]*@", _src_k):
+                    sys.exit(f"{_k}: an @NAME@ marker survives in its source: "
+                             f"{re.search(r'@[A-Z][A-Z0-9_]*@', _src_k).group(0)}")
                 _texts[_k] = _src_k
 
         def _ybase(m, src):
@@ -2908,6 +2947,10 @@ hostquit:
         # stock any more and must not be reported as kept.)
         kept = [d for d, (a, _n) in _hv.items()
                 if not _written(a) and d not in _replaced]
+        if DYNAMIC:
+            # Every stock effect's code is gone from its native address, placed
+            # there or not: the loader binds it into its arena on demand.
+            kept = []
         # A harvested reader of the curve bank whose code the stream never
         # reached would keep its stock dispatch and read our tables as its
         # curves. Its code is untouched, its data is not: null it, and say so.
@@ -2922,7 +2965,11 @@ hostquit:
             eid = _MODS[donor].menu.fx2_id
             wrw_p(pp["xtab"] + eid * 3, pp["nul_i"])
             wrw_p(pp["xtab"] + (32 + eid) * 3, pp["nul_p"])
-        if not kept:
+        if DYNAMIC:
+            print(f"  stock ids ({'/'.join(_short[k] for k in _hv)}) "
+                  f"-> null stub P:0x{pp['nul_i']:05x}/0x{pp['nul_p']:05x} until "
+                  f"{DYNAMIC[0]} binds each into its arena; rows kept")
+        elif not kept:
             # ⚠️ WORDING FROZEN for the default harvest: the build report is
             # API (refhash hashes it, and verify_* parse it). Every shipping
             # layout packs past all three, so this is the line every existing
@@ -2962,7 +3009,7 @@ hostquit:
         # moment it knows the cursor, and the remixer's one-key fix can
         # only remove what the build named.
         _over = [(_name, _hv[_name][0] - base_a) for _name in STOCK_ROWS
-                 if _name in _hv and _name not in kept]
+                 if _name in _hv and _name not in kept and not DYNAMIC]
         if _over:
             _list = ", ".join(f"{n} (starts at {a})" for n, a in _over)
             sys.exit(f"payload {tag}: {_list} "
@@ -2971,7 +3018,9 @@ hostquit:
                      f"{'them' if len(_over) > 1 else 'it'} (region used "
                      f"{cursor - base_a} words) -- remove the row"
                      f"{'s' if len(_over) > 1 else ''} or free the words")
-        if DEV:
+        if DYNAMIC:
+            pass
+        elif DEV:
             print(f"  *** CHORUS (id 0x12) TAKEN as a fourth donor -- FX1 loses "
                   f"its chorus. DEV builds are never flashed. ***")
         else:
@@ -3001,14 +3050,17 @@ hostquit:
     if "ANALOG BD" in REMIX.modules:
         import ab_image
         from remix import platform_build
-        if "SPRING REV" in REMIX.modules or "MACHINEDRUM" in REMIX.modules:
+        if ("SPRING REV" in REMIX.modules and not DYNAMIC) or "MACHINEDRUM" in REMIX.modules:
             sys.exit("ANALOG BD owns SPRING REV's code and both DSP uploads; "
                      "remove SPRING REV / MACHINEDRUM from this remix")
-        # Private X and source-stage placement are qualified with stock FX.
+        # Private X and source-stage placement are qualified with stock FX,
+        # which is also what the dynamic stock loader serves: it is the one
+        # other DSP section admitted (its X mailbox is checked in ab_image).
         if any(_m.dsp is not None for _m in remix_modules().values()
-               if _m.key in REMIX.modules):
+               if _m.key in REMIX.modules and not _m.dynamic_stock):
             sys.exit("ANALOG BD's DSP source currently composes with stock effects only")
-        _pres, _apokes, _alog = ab_image.integrate(img, IMG.read_bytes())
+        _pres, _apokes, _alog = ab_image.integrate(img, IMG.read_bytes(),
+                                                   org=AB_TOP if DYNAMIC else None)
         print("\n=== Analog BD: DSP 808/909, both payloads, pre-boot loader ===")
         for _l in _alog:
             print(_l)

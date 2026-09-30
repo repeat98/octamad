@@ -57,6 +57,12 @@ SHARED_WORDS = 35
 SHARED_OFFSET = 0x334
 SHARED_SHA256 = "c411c03ac315959374f7f16b8cc3558f65dbcd60dcdaa912ff0a39dcea53752a"
 SHARED_CALLS = {"A": (0x17b3, 0x1998, 0x19c2), "B": (0x1573, 0x1758, 0x1782)}
+# With the DSP dynamic loader's stock variant every stock effect is loaded on
+# demand, the whole effect block is harvested, and the build reserves this much
+# at its top for Analog BD (build_bus.AB_TOP): the same ceiling SPRING's region
+# gave it. The loader's X reply words must stay outside the private X below.
+RESERVE = SPRING_WORDS - SHARED_WORDS
+LOADER_X = (0x2360, 0x2368), (0x4360, 0x4368)
 TABLES = 0x2840                 # X: the tables, then the voice blocks
 VOICE_STRIDE = 0x40             # 2 * x:$418 (0/$20/$40/$60)
 KNOBS = 0x30                    # the knob block inside a voice block
@@ -122,9 +128,13 @@ def assemble(org, cont, lay, vbase, tag):
     return words, syms
 
 
-def integrate(img, stock_img):
+def integrate(img, stock_img, org=None):
     """Patch both payloads in `img` (bytearray); return ([pre-boot dicts], [pokes], log).
-    `stock_img` is the pristine image: SPRING's words are checked against it."""
+    `stock_img` is the pristine image: SPRING's words are checked against it.
+    `org` ({payload: P address}) places the engines there instead, for the
+    dynamic stock build: no stock reverb stays resident, so the shared reverb
+    helper is neither copied nor retargeted (the loader keeps its own copy),
+    and the reserved words must still be stock (nothing else placed there)."""
     from remix import runtime_build, platform_build
     lay, vbase = layout()
     xwords = x_image(lay, vbase)
@@ -132,42 +142,55 @@ def integrate(img, stock_img):
     for tag, c in PAY.items():
         recs, term = ab_records.records(img, *c["payload"])
         srecs, _ = ab_records.records(stock_img, *c["payload"])
-        words, syms = assemble(c["spring"], c["cont"], lay, vbase, tag)
+        at = org[tag] if org else c["spring"]
+        words, syms = assemble(at, c["cont"], lay, vbase, tag)
+        if org:
+            if len(words) > RESERVE:
+                die(f"payload {tag}: glue + engine are {len(words)} words; the reserve is {RESERVE}")
+            for lo, hi in LOADER_X:
+                if lo < X_TOP and TABLES < hi:
+                    die(f"payload {tag}: the loader's X words {lo:05x}..{hi:05x} overlap the private X")
         helper_old = c["spring"] + SHARED_OFFSET
         helper_new = c["spring"] + SPRING_WORDS - SHARED_WORDS
-        helper = [ab_records.rd(stock_img, ab_records.word_at(srecs, 0, helper_old + i))
-                  for i in range(SHARED_WORDS)]
-        normalized = helper.copy()
-        normalized[6] -= helper_old
-        digest = hashlib.sha256(b"".join(w.to_bytes(3, "big") for w in normalized)).hexdigest()
-        if digest != SHARED_SHA256:
-            die(f"payload {tag}: shared stock reverb routine drifted")
-        helper[6] += helper_new - helper_old
-        for i, word in enumerate(helper):
-            addr = helper_new + i
-            off = ab_records.word_at(recs, 0, addr)
-            if ab_records.rd(img, off) != ab_records.rd(stock_img, ab_records.word_at(srecs, 0, addr)):
-                die(f"payload {tag}: shared reverb destination P:{addr:05x} is not stock")
-            ab_records.wr(img, off, word)
-        for call in SHARED_CALLS[tag]:
-            ab_records.patch(img, recs, 0, call, (0x0bf080, helper_old),
-                           (0x0bf080, helper_new), f"{tag} preserve shared reverb call", log)
-        log.append(f"  analog bd {tag}: shared reverb {SHARED_WORDS} words "
-                   f"P:{helper_old:05x} -> P:{helper_new:05x}; 3 stock calls retargeted")
-        # 1. the code over SPRING's words, which must still be stock
+        if org:
+            log.append(f"  analog bd {tag}: no stock reverb is resident; the shared "
+                       f"reverb routine is the dynamic loader's copy")
+        else:
+            helper = [ab_records.rd(stock_img, ab_records.word_at(srecs, 0, helper_old + i))
+                      for i in range(SHARED_WORDS)]
+            normalized = helper.copy()
+            normalized[6] -= helper_old
+            digest = hashlib.sha256(b"".join(w.to_bytes(3, "big") for w in normalized)).hexdigest()
+            if digest != SHARED_SHA256:
+                die(f"payload {tag}: shared stock reverb routine drifted")
+            helper[6] += helper_new - helper_old
+            for i, word in enumerate(helper):
+                addr = helper_new + i
+                off = ab_records.word_at(recs, 0, addr)
+                if ab_records.rd(img, off) != ab_records.rd(stock_img, ab_records.word_at(srecs, 0, addr)):
+                    die(f"payload {tag}: shared reverb destination P:{addr:05x} is not stock")
+                ab_records.wr(img, off, word)
+            for call in SHARED_CALLS[tag]:
+                ab_records.patch(img, recs, 0, call, (0x0bf080, helper_old),
+                               (0x0bf080, helper_new), f"{tag} preserve shared reverb call", log)
+            log.append(f"  analog bd {tag}: shared reverb {SHARED_WORDS} words "
+                       f"P:{helper_old:05x} -> P:{helper_new:05x}; 3 stock calls retargeted")
+        # 1. the code over its donor words, which must still be stock
         for i, w in enumerate(words):
-            off = ab_records.word_at(recs, 0, c["spring"] + i)
-            soff = ab_records.word_at(srecs, 0, c["spring"] + i)
+            off = ab_records.word_at(recs, 0, at + i)
+            soff = ab_records.word_at(srecs, 0, at + i)
             if ab_records.rd(img, off) != ab_records.rd(stock_img, soff):
-                die(f"payload {tag}: P:{c['spring'] + i:05x} is no longer SPRING REV's stock word; "
-                    f"something else was placed in its region")
+                die(f"payload {tag}: P:{at + i:05x} is no longer a stock word; "
+                    f"something else was placed in Analog BD's region")
             ab_records.wr(img, off, w)
-        # 2. SPRING's dispatch -> the null stub
+        # 2. SPRING's dispatch -> the null stub (the dynamic build stubbed it already)
         for table, stub in ((0x215, c["null"][0]), (0x235, c["null"][1])):
             off = ab_records.word_at(recs, 1, table + SPRING_ID)
             got = ab_records.rd(img, off)
             if not (c["spring"] <= got < c["spring"] + SPRING_WORDS or got == stub):
                 die(f"payload {tag}: X:{table + SPRING_ID:05x} holds {got:06x}, not SPRING's entry")
+            if org and got != stub:
+                die(f"payload {tag}: dynamic build left SPRING's dispatch at {got:06x}, not the stub")
             ab_records.wr(img, off, stub)
         # 3. the seam
         ab_records.patch(img, recs, 0, c["seam"], (0x567000, 0x00020E), (0x0BF080, syms["zg01"]),
@@ -186,8 +209,10 @@ def integrate(img, stock_img):
                          rhash=platform_build.roll(raw)))
         pokes.append((c["pointer"], c["payload"][0].to_bytes(4, "big"), (dst + UNCACHED).to_bytes(4, "big"),
                       f"DSP boot: payload {tag}'s upload reads the Analog BD's"))
-        log.append(f"  analog bd {tag}: glue + 808/909 {len(words)} words at P:{c['spring']:05x} "
-                   f"(SPRING REV's region, {SPRING_WORDS}); id 0x{SPRING_ID:02x} -> null stub "
+        log.append(f"  analog bd {tag}: glue + 808/909 {len(words)} words at P:{at:05x} "
+                   + (f"(the effect block's top, reserve {RESERVE}); " if org else
+                      f"(SPRING REV's region, {SPRING_WORDS}); ")
+                   + f"id 0x{SPRING_ID:02x} -> null stub "
                    f"{c['null'][0]:05x}/{c['null'][1]:05x}; X:{TABLES:05x}..{TABLES + len(xwords) - 1:05x} "
                    f"tables + voices (voice 0 at {vbase:05x}); upload {len(raw):,} B, packed {len(packed):,}")
         (OUT / f"upload_{tag}.bin").write_bytes(raw)

@@ -333,6 +333,10 @@ class DspSection:
     # its limits). ⚠️ So a module with a table may read P for NOTHING
     # ELSE: every `p:(` in its code is the table.
     ptable: tuple[int, ...] = ()
+    # Build-time integers for `@NAME@` markers in the source, as (NAME, value):
+    # each marker must occur, and none may survive the substitution. Written
+    # in decimal (dsp_asm takes decimal immediates).
+    defines: tuple[tuple[str, int], ...] = ()
     # Entries into this section from STOCK code (schema.DspHook). A section
     # with hooks and no MenuEntry is placed on `payloads` only and takes no
     # dispatch entry; one with a menu may carry hooks as well.
@@ -882,6 +886,13 @@ class Module:
     # DSP work outside the FX pricer (for example a CF-registered source).
     # An explicit gap must block pressure qualification, never report N/A.
     pressure_blocker: str = ""
+    # A module that loads every stock DSP effect's code on demand (the DSP
+    # dynamic loader's stock variant). With one selected, the build harvests
+    # the whole effect block while keeping every listed stock row, points each
+    # stock effect's dispatch at the null stub until the loader binds it, and
+    # writes the shared stock routines the effects call at the block's start
+    # (tools/experimental/dsp_dynload/runtime_catalog.SHARED).
+    dynamic_stock: bool = False
 
     def __post_init__(self):
         if self.params and len(self.params) != 12:

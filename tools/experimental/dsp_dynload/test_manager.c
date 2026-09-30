@@ -11,7 +11,7 @@ static const uint32_t words[932]={0};
 const struct code dl_codes[2][32]={
     {[12]={words,0,282,0,5,0},[16]={words,0,207,0,17,0},[28]={words,0,932,51,80,0}},
     {[12]={words,0,282,0,5,0},[16]={words,0,207,0,17,0},[28]={words,0,932,51,80,0}}};
-volatile uint32_t dl_pool_base[2]={0,0},dl_modal_pending;
+volatile uint32_t dl_pool_base[2]={0,0},dl_pool_words[2]={0,0},dl_modal_pending;
 extern volatile uint32_t dl_residency_words[2],dl_residency_commits,dl_residency_rollbacks;
 extern void dl_residency_tick(void);
 static int status[2]={-2,-2};
@@ -23,7 +23,7 @@ int dl_upload_start(unsigned c,const struct dl_upload *u) {
 int dl_command_start(unsigned c,unsigned op,unsigned id,unsigned init,unsigned proc) {
     assert(c<2 && status[c]==-2 && id<32); (void)init;(void)proc;
     status[c]=1;
-    if(op==DL_PROBE) { ++probes;dl_pool_base[c]=c ? 0xdc0:0x1000; }
+    if(op==DL_PROBE) { ++probes;dl_pool_words[c]=1408;dl_pool_base[c]=c ? 0xdc0:0x1000; }
     if(op==DL_BIND) ++binds;
     if(op==DL_UNBIND) ++restores;
     if(op==DL_BYPASS) ++stubs;

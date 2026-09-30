@@ -159,14 +159,15 @@ def packages(character=True):
             relocations=[r.offset for r in p.relocations],init=p.init,proc=p.proc)
     return result
 
-def include(modules):
-    data=packages('CHARACTER' in modules)
+def _catalog(data,qualified,slots):
+    """The runtime's dl_catalog/dl_codes: `data` {(core, id): package},
+    `qualified` the ids the runtime may publish, `slots(id, has_package)` the
+    slot mask (1 FX1, 2 FX2)."""
     lines=['.section .rodata','.balign 4','.global dl_catalog','dl_catalog:']
-    resident={0,4,5,8,12,13,16,17,18,19,24,28}
     for p in range(32):
-        pkg=data.get((0,p)); exists=p in resident
+        pkg=data.get((0,p))
         lines += [f'.word {len(pkg["words"]) if pkg else 0},1', '.long 0',
-                  f'.byte {1 if p==28 and pkg else 3},{0 if pkg else 1},{int(exists)},0']
+                  f'.byte {slots(p,bool(pkg))},{0 if pkg else 1},{int(p in qualified)},0']
     lines+=['.balign 4','.global dl_codes','dl_codes:']
     for c in range(2):
         for p in range(32):
@@ -180,3 +181,30 @@ def include(modules):
         for i in range(0,len(v['words']),8): lines+=['.long '+','.join(hex(x) for x in v['words'][i:i+8])]
         lines+=[label+'_reloc:','.word '+','.join(str(x) for x in v['relocations'])]
     return '\n'.join(lines)+'\n'
+
+def include(modules):
+    data=packages('CHARACTER' in modules)
+    return _catalog(data,{0,4,5,8,12,13,16,17,18,19,24,28},lambda p,pkg: 1 if p==28 and pkg else 3)
+
+def dynamic_packages():
+    """Every stock DSP effect as a package, per core, against the shared copies
+    at that core's effect-block start (the build writes them there)."""
+    rows=stock_build(); result={}
+    for core in (0,1):
+        start=min(r['p_base'] for r in rows if r['core']==core and r['p_words'])
+        helpers,_copies,_next,reclaimed=dynamic_layout(rows,core,start)
+        for r in rows:
+            if r['core']==core and r['p_words']:
+                result[core,r['fx_id']]=dynamic_package(r,reclaimed,helpers)
+    return result
+
+def include_dynamic(modules):
+    """The catalog for DSP DYNLOAD STOCK: every stock DSP effect loads on
+    demand; NONE (0) and the ColdFire DELAY (8) stay resident. Slots follow
+    stock's FX1 list: the reverbs are FX2 only."""
+    import sys
+    sys.path.insert(0,str(ROOT/'tools')); import toolpath  # noqa: F401
+    from remix import stock
+    data=dynamic_packages(); fx1=set(stock.fx1_ids())
+    qualified={0,8}|{p for _c,p in data}
+    return _catalog(data,qualified,lambda p,pkg: 3 if p in fx1 else 2)

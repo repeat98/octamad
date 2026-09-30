@@ -9,7 +9,7 @@ volatile uint32_t dl_frames=0, dl_accepted[2]={0}, dl_rejected[2]={0}, dl_errors
 volatile uint32_t dl_request_probe=0, dl_request_stage=0, dl_modal_pending=0, dl_modal_shown=0;
 static uint16_t sequence[2]={0}, pending[2]={0}, age[2]={0};
 static uint32_t requests=0, stages=0;
-volatile uint32_t dl_pool_base[2]={0,0};
+volatile uint32_t dl_pool_base[2]={0,0}, dl_pool_words[2]={0,0};
 struct job {
     struct dl_upload upload;
     uint32_t expected;
@@ -20,7 +20,7 @@ static struct job jobs[2]={0};
 static void publish(void) { __asm__ volatile("" ::: "memory"); }
 int dl_upload_start(unsigned c,const struct dl_upload *u) {
     if(c>1 || jobs[c].state || !dl_pool_base[c] || !u || !u->words || !u->count ||
-       u->offset<DL_CODE_START || u->offset+u->count>DL_RUNTIME_WORDS ||
+       u->offset<DL_CODE_START || u->offset+u->count>dl_pool_words[c] ||
        (u->relocation_count && !u->relocations)) return 0;
     for(unsigned i=0;i<u->count;++i) if(u->words[i]>0xffffffu) return 0;
     for(unsigned i=0;i<u->relocation_count;++i)
@@ -34,7 +34,7 @@ int dl_command_start(unsigned c,unsigned op,unsigned id,unsigned init,unsigned p
     if(c>1 || jobs[c].state || id>=32 ||
        (op!=DL_PROBE && op!=DL_BIND && op!=DL_UNBIND && op!=DL_BYPASS)) return 0;
     if(op==DL_BIND && (init<DL_CODE_START || proc<DL_CODE_START ||
-                       init>=DL_RUNTIME_WORDS || proc>=DL_RUNTIME_WORDS)) return 0;
+                       init>=dl_pool_words[c] || proc>=dl_pool_words[c])) return 0;
     jobs[c].opcode=op; jobs[c].id=id; jobs[c].init=init; jobs[c].proc=proc;
     publish(); jobs[c].state=1; return 1;
 }
@@ -101,7 +101,9 @@ unsigned dl_frame(void) {
                     valid=valid && (((uint32_t)r[5]<<16)|r[4])==jobs[c].expected;
                 if(valid) {
                     ++dl_accepted[c];
-                    if(r[6] && r[6]<0x2000 && r[7]==DL_RUNTIME_WORDS) dl_pool_base[c]=r[6];
+                    if(r[6] && r[7]>DL_CODE_START && r[6]+r[7]<=DL_POOL_LIMIT) {
+                        dl_pool_words[c]=r[7]; dl_pool_base[c]=r[6];
+                    }
                 } else { ++dl_rejected[c]; ++dl_errors; dl_modal_pending=1; }
                 if(jobs[c].state==2) {
                     if(!valid) jobs[c].state=4;

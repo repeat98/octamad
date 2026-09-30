@@ -8,7 +8,7 @@ MODULE=replace(base,name='dsp-dynload',key='DSP DYNLOAD',
     doc='Experimental firmware P residency manager, verified uploads and stock dispatch binding.',
     proof_note='Emulator qualification only; static fallback code remains resident.',
     dsp=DspSection(asm='modules/dsp-dynload-transport/receiver_runtime.asm',priority=0,
-        ptable=(0,)*1408,payloads=frozenset({'A'}),
+        ptable=(0,)*1408,defines=(('DLWORDS',1408),),payloads=frozenset({'A'}),
         hooks=(DspHook(0x8e,(0x667000,0x207),'frame','runtime P transfer and dispatch binding'),)),
     linked=base.linked[:-1]+(
         Linked('dlallocator','modules/dsp-dynload-transport/allocator.s',dram=True),

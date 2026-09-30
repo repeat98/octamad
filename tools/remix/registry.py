@@ -13,6 +13,7 @@ no clone, no words; the build writes only their chooser row.
 
 from __future__ import annotations
 
+import os
 import pathlib
 import dataclasses
 import sys
@@ -247,7 +248,36 @@ def remix(name: str | None):
                  and known[k].claims is not None and known[k].claims.fx1_only)
     if auto:
         r = dataclasses.replace(r, hidden=r.hidden + auto)
-    return r
+    return with_platform(r, known)
+
+
+# The stock loader, both cores (schema.Remix.static_stock). A remix that
+# already carries a DSP loader of its own keeps it.
+PLATFORM_DSP = ("DSP DYNLOAD STOCK", "DSP DYNLOAD STOCK B")
+
+
+def with_platform(r, known=None):
+    """The remix as it is built: the stock loader added unless the remix
+    (or OCTABAM_STATIC_STOCK=1) keeps the stock code built in."""
+    known = known or modules()
+    if (r.static_stock or os.environ.get("OCTABAM_STATIC_STOCK") == "1"
+            or any(k.startswith("DSP DYNLOAD") for k in r.modules)
+            or not all(k in known for k in PLATFORM_DSP)):
+        return r
+    # A module that owns a site the loader hooks (USB AUDIO IN's frame
+    # transfer state, Octakit's pattern setter) keeps the stock code built
+    # in until the two compose; the build prints why (PLATFORM_SKIPPED).
+    from remix import ledger
+    mine = set(ledger.check([known[k] for k in r.modules]))
+    new = [p for p in ledger.check([known[k] for k in r.modules + PLATFORM_DSP])
+           if p not in mine]
+    if new:
+        PLATFORM_SKIPPED[r.name] = new
+        return r
+    return dataclasses.replace(r, modules=r.modules + PLATFORM_DSP)
+
+
+PLATFORM_SKIPPED: dict[str, list[str]] = {}
 
 
 def remix_names() -> list[str]:

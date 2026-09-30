@@ -146,8 +146,11 @@ class State:
         if not name:
             return
         r = registry.remix(name)
-        self.sel = set(r.modules)
-        self.order = list(r.modules)
+        # The stock loader is added to every remix by the registry
+        # (registry.with_platform), not chosen: it is not a row to save back.
+        mods = [k for k in r.modules if k not in registry.PLATFORM_DSP]
+        self.sel = set(mods)
+        self.order = mods
         # `fx1=()` means "stock's, unchanged" -- so the pane shows stock's
         # ten rather than an empty list, and saving it back writes `()` again.
         self.fx1 = list(r.fx1) or list(stock_fx1_default())

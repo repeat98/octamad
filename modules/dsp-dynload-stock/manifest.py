@@ -14,16 +14,19 @@ import runpy
 from remix.schema import Detour,DspHook,DspSection,Gate,Linked
 from experimental.dsp_dynload.runtime_catalog import include_dynamic
 H=bytes.fromhex
-# Table words: 64 saved dispatch entries + the arena. The effect block is
-# 6,158 words per core: 414 shared routines, 321 receiver, 1,028 reserved for
-# Analog BD, the rest this table (the build refuses an overrun).
-TABLE=4384
+# Table words: 64 saved dispatch entries + the arena. The build sizes it
+# (schema.DspSection.arena): the effect block is 6,158 words per core, less
+# 414 shared routines, the receiver and whatever the remix's own modules
+# take; the rest is this table. The least it accepts holds the saved entries
+# and the largest stock effect (DARK REV, 1,067 words), so every stock effect
+# can always load on its own.
+ARENA_MIN=64+1067
 base=runpy.run_path(str(Path(__file__).parent.parent/'dsp-dynload/manifest.py'))['MODULE']
 MODULE=replace(base,name='dsp-dynload-stock',key='DSP DYNLOAD STOCK',
     doc='DSP dynamic loading of every stock DSP effect: no stock effect code is built in.',
     proof_note='Port qualification in progress; a first hardware test pending.',
     dsp=DspSection(asm='modules/dsp-dynload-transport/receiver_runtime.asm',priority=0,
-        ptable=(0,)*TABLE,defines=(('DLWORDS',TABLE),),payloads=frozenset({'A'}),
+        arena='DLWORDS',arena_min=ARENA_MIN,payloads=frozenset({'A'}),
         hooks=(DspHook(0x8e,(0x667000,0x207),'frame','runtime P transfer and dispatch binding'),)),
     linked=tuple(replace(l,include=include_dynamic) if l.label=='dlcatalog' else l for l in base.linked),
     detours=tuple(d for d in base.detours if d.site!=0x4005221e)+(

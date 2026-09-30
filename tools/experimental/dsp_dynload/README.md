@@ -303,3 +303,22 @@ of the second private FX2 block. So:
 
 **Status: the map is unmeasured.** `modules/pmap-probe` is the one-flash hardware probe (882 Hz on
 MAIN = pass per core). The dynamic buffer allocator is designed, not built: it waits on the probe.
+
+## Stock effects load on demand in every image (30 Sep 2026)
+
+`registry.with_platform` adds DSP DYNLOAD STOCK (+B) to every remix, so no
+image carries the stock effect code: the effect block per core is the 414
+shared stock routines, the remix's own modules, the receiver (349 words),
+and an arena the build sizes to fill the rest (`DspSection.arena`; the
+least it accepts is 64 saved entries + DARK REV, 1,131 words). Arena sizes
+measured from the builds: 5,395 words with no DSP modules, 5,390 tapeecho,
+5,186 pmap-probe, 5,000 euclid, 4,938 miniverb, 4,367 with Analog BD, 2,946 /
+3,660 on `bus` (both servers).
+
+Kept stock code built in (`Remix.static_stock`, or `OCTABAM_STATIC_STOCK=1`
+for every remix): a remix that already carries a DSP loader, and one whose
+modules claim a site the loader hooks -- USB AUDIO IN's frame transfer
+state 7 (0x40004bc0) and Octakit's recipe writes at 0x400a0570 / 0x400526e4.
+The build prints the collision. Composing those two is open work.
+
+refhash changes by design for every configuration that takes the loader.

@@ -337,6 +337,14 @@ class DspSection:
     # each marker must occur, and none may survive the substitution. Written
     # in decimal (dsp_asm takes decimal immediates).
     defines: tuple[tuple[str, int], ...] = ()
+    # AN ARENA: the ptable is not declared but sized by the build to fill
+    # the rest of the module's run once every other module is placed (the
+    # module goes last), and `@<arena>@` in the source becomes its length.
+    # The stock loader's code arena (30 Sep 2026): every word the remix's
+    # own modules leave in the effect block is room for stock effects.
+    # `arena_min` is the least length the build accepts.
+    arena: str = ""
+    arena_min: int = 0
     # Entries into this section from STOCK code (schema.DspHook). A section
     # with hooks and no MenuEntry is placed on `payloads` only and takes no
     # dispatch entry; one with a menu may carry hooks as well.
@@ -1283,6 +1291,14 @@ class Remix:
     # Sam, 22 Sep 2026: the bus hosts on T1 and T5 as planned, every other
     # FX2 a SEND; a known working combination over a free one.
     locked: tuple[str, ...] = ()
+    # THE STOCK EFFECTS LOAD ON DEMAND IN EVERY IMAGE (30 Sep 2026): the
+    # registry adds the stock loader (registry.PLATFORM_DSP) to every remix,
+    # so the stock effect code leaves the image and the whole effect block
+    # is the remix's modules plus an arena the stock effects are uploaded
+    # into when a Part selects them. True keeps the stock code built in (a
+    # remix whose modules cannot compose with the loader); so does
+    # OCTABAM_STATIC_STOCK=1 for every remix, for a before/after.
+    static_stock: bool = False
 
     @property
     def blanked(self) -> tuple[str, ...]:

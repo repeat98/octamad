@@ -124,6 +124,9 @@ NONE_ID = 0x00                  # a fresh part's FX2 id -- aliased to SEND below
 # itself against (scripts/refhash.sh); there is no default. A module with no menu entry (a ColdFire patch) takes no chooser row,
 # so ORDER is the menu modules alone, in the remix's declared order.
 REMIX = remix_registry.remix(os.environ.get("REMIX"))
+if REMIX.name in remix_registry.PLATFORM_SKIPPED:
+    print(f"  stock DSP code built in (not loaded on demand): "
+          + "; ".join(remix_registry.PLATFORM_SKIPPED[REMIX.name]))
 ORDER = [k for k in REMIX.modules
          if remix_modules()[k].menu is not None]
 # A HIDDEN module (schema.Remix.hidden) is placed, dispatched and cloned but
@@ -2464,7 +2467,12 @@ mkgo:""",
                     if f"@{_dn}@" not in _src_k:
                         sys.exit(f"{_k}: define {_dn} has no @{_dn}@ in its source")
                     _src_k = _src_k.replace(f"@{_dn}@", str(int(_dv)))
-                if re.search(r"@[A-Z][A-Z0-9_]*@", _src_k):
+                # schema.DspSection.arena: its `@NAME@` is the arena's
+                # length, known only when the module is placed (last).
+                _an = _mk.dsp.arena if _mk is not None and _mk.dsp else ""
+                if _an and f"@{_an}@" not in _src_k:
+                    sys.exit(f"{_k}: arena {_an} has no @{_an}@ in its source")
+                if re.search(r"@[A-Z][A-Z0-9_]*@", _src_k.replace(f"@{_an}@", "") if _an else _src_k):
                     sys.exit(f"{_k}: an @NAME@ marker survives in its source: "
                              f"{re.search(r'@[A-Z][A-Z0-9_]*@', _src_k).group(0)}")
                 _texts[_k] = _src_k
@@ -2535,7 +2543,7 @@ hostquit:
         plan = tuple(
             (m.key, _prep(_ybase(m, _texts[m.key]), m.key, m.dsp.r7_latch_slot))
             for m in sorted((remix_modules()[k] for k in CARRIED + HOOKED
-                             if k in _texts), key=lambda m: m.dsp.priority))
+                             if k in _texts), key=lambda m: (bool(m.dsp.arena), m.dsp.priority)))
         if _x:
             _g = [n for n, t in plan if "never housekeeps" in t]
             print(f"  payload {tag}: housekeeping "
@@ -2663,6 +2671,23 @@ hostquit:
                 sys.exit(f"payload {tag}: {name} has multiple $facade "
                          f"LFOTAB literals -- expected exactly one")
             _ptab = list(remix_modules()[name].dsp.ptable) if name in remix_modules() else []
+            _arena = remix_modules()[name].dsp.arena if name in remix_modules() else ""
+            if _arena:
+                # Placed last, it takes the rest of the first run that holds
+                # its code and the least arena; the code length does not
+                # depend on the literal (long immediates), checked below.
+                _amin = remix_modules()[name].dsp.arena_min
+                for _r in runs:
+                    _c, _end = _r["cursor"], _r["base"] + _r["words"]
+                    _probe = src.replace(f"@{_arena}@", "0").replace(PTABLE_MARK, f"${_c:x}")
+                    _n = _end - _c - len(assemble_syms(_probe, _c, label=name)[0])
+                    if _n >= max(_amin, 1):
+                        break
+                else:
+                    sys.exit(f"payload {tag}: {name}'s arena has no room: the remix's "
+                             f"modules leave less than {_amin} words in any run")
+                _ptab = [0] * _n
+                src = src.replace(f"@{_arena}@", str(_n))
             if PTABLE_MARK in src and (not _ptab or src.count(PTABLE_MARK) > 1):
                 sys.exit(f"payload {tag}: {name}: a DspSection.ptable and exactly one "
                          f"{PTABLE_MARK} literal in the source go together "

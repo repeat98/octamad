@@ -35,21 +35,65 @@ counts:
 	rts
 	.size	counts, .-counts
 	.align	2
+	.type	slot_bound, @function
+slot_bound:
+	move.l %d2,-(%sp)
+	move.l 12(%sp),%d0
+	mov3q.l #6,%d1
+	move.l 8(%sp),%d2
+	muls.l %d1,%d0
+	mvz.w #192,%d1
+	muls.l %d1,%d2
+	move.l phase,%d1
+	move.l %d2,%a0
+	add.l %d0,%a0
+	add.l #allocator,%a0
+	tst.b 28(%a0)
+	jeq .L11
+	subq.l #6,%d1
+	tst.l %d1
+	jeq .L14
+	move.l (%sp)+,%d2
+	mov3q.l #1,%d0
+	rts
+.L11:
+	subq.l #5,%d1
+	tst.l %d1
+	jeq .L18
+.L13:
+	move.l (%sp)+,%d2
+	clr.l %d0
+	rts
+.L18:
+	mov3q.l #1,%d1
+	cmp.l result.l,%d1
+	jne .L13
+	tst.l cancelling
+	jne .L13
+.L14:
+	tst.b 412(%a0)
+	sne %d0
+	move.l (%sp)+,%d2
+	mvs.b %d0,%d0
+	neg.l %d0
+	rts
+	.size	slot_bound, .-slot_bound
+	.align	2
 	.globl	dl_selection_cancel
 	.type	dl_selection_cancel, @function
 dl_selection_cancel:
 	move.l 4(%sp),%d0
 	cmp.l current.l,%d0
-	jeq .L20
-.L10:
+	jeq .L29
+.L19:
 	rts
-.L20:
+.L29:
 	move.l phase,%d0
 	tst.l %d0
-	jeq .L10
+	jeq .L19
 	subq.l #6,%d0
 	tst.l %d0
-	jeq .L10
+	jeq .L19
 	mov3q.l #1,cancelling
 	rts
 	.size	dl_selection_cancel, .-dl_selection_cancel
@@ -59,31 +103,31 @@ dl_selection_cancel:
 dl_selection_commit:
 	move.l current,%d0
 	cmp.l 4(%sp),%d0
-	jne .L21
+	jne .L30
 	mov3q.l #5,%d1
 	cmp.l phase.l,%d1
-	jeq .L26
-.L21:
+	jeq .L35
+.L30:
 	rts
-.L26:
+.L35:
 	mov3q.l #1,%d1
 	cmp.l result.l,%d1
-	jne .L21
+	jne .L30
 	move.l %d0,-(%sp)
 	pea allocator
 	jsr dl_allocator_commit
 	addq.l #8,%sp
 	subq.l #1,%d0
 	tst.l %d0
-	jeq .L23
+	jeq .L32
 	moveq #-3,%d0
 	move.l %d0,result
 	addq.l #1,dl_residency_failures
 	tst.l automatic
-	jeq .L21
+	jeq .L30
 	mov3q.l #1,dl_modal_pending
 	rts
-.L23:
+.L32:
 	mov3q.l #6,phase
 	clr.l cursor
 	addq.l #1,dl_residency_commits
@@ -96,39 +140,39 @@ advance:
 	movem.l #1276,(%sp)
 	move.l phase,%d4
 	tst.l %d4
-	jeq .L27
+	jeq .L36
 	mov3q.l #1,%d0
 	cmp.l %d4,%d0
-	jeq .L202
+	jeq .L211
 	subq.l #5,%d4
 	tst.l %d4
-	jeq .L203
+	jeq .L212
 	tst.l waiting
-	jne .L58
-.L209:
+	jne .L67
+.L218:
 	move.l cancelling,%a0
 	move.l phase,%a1
 	tst.l %a0
-	jne .L72
-.L64:
+	jne .L81
+.L73:
 	move.l cursor,%d0
 	moveq #63,%d5
 	cmp.l %d0,%d5
-	jcs .L73
-.L67:
+	jcs .L82
+.L76:
 	moveq #31,%d3
 	mov3q.l #6,%d4
 	move.l %d0,%d2
 	lsr.l #5,%d2
 	and.l %d0,%d3
 	cmp.l %a1,%d4
-	jeq .L112
+	jeq .L121
 	clr.b %d5
 	move.l #allocator,%d6
 	mov3q.l #4,%d4
 	cmp.l %a1,%d4
-	jeq .L86
-.L79:
+	jeq .L95
+.L88:
 	mov3q.l #6,%d4
 	muls.l %d3,%d4
 	move.l %d4,-20(%fp)
@@ -138,20 +182,20 @@ advance:
 	add.l %d4,%a0
 	add.l %d6,%a0
 	tst.b 412(%a0)
-	jeq .L95
+	jeq .L104
 	tst.b 28(%a0)
-	jne .L96
+	jne .L105
 	tst.b %d5
-	jeq .L97
+	jeq .L106
 	move.l %d1,cursor
-.L97:
+.L106:
 	move.l -20(%fp),%a0
 	add.l %d4,%a0
 	add.l #allocator+408,%a0
 	move.w (%a0),%d0
 	mov3q.l #2,%d5
 	cmp.l %a1,%d5
-	jne .L204
+	jne .L213
 	move.l %d2,%d1
 	add.l #64,%d0
 	lsl.l #5,%d1
@@ -170,86 +214,86 @@ advance:
 	jsr dl_upload_start
 	addq.l #8,%sp
 	move.l %d0,waiting
-.L98:
+.L107:
 	tst.l %d0
-	jne .L27
+	jne .L36
 	moveq #-3,%d5
 	move.l %d5,result
 	addq.l #1,dl_residency_failures
 	tst.l automatic
-	jeq .L100
+	jeq .L109
 	mov3q.l #1,dl_modal_pending
-.L100:
+.L109:
 	mov3q.l #1,cancelling
-.L27:
+.L36:
 	movem.l -60(%fp),#1276
 	unlk %fp
 	rts
-.L202:
+.L211:
 	lea desired,%a0
 	clr.l %d3
 	lea desired+16,%a1
-.L31:
+.L40:
 	mvz.b (%a0)+,%d0
 	moveq #12,%d2
 	moveq #31,%d5
 	muls.l %d0,%d2
 	cmp.l %d0,%d5
-	jcs .L30
+	jcs .L39
 	lea dl_catalog,%a2
 	tst.b 9(%a2,%d2.l)
 	seq %d0
 	mvs.b %d0,%d0
 	neg.l %d0
 	or.l %d0,%d3
-.L30:
+.L39:
 	cmp.l %a1,%a0
-	jne .L31
+	jne .L40
 	move.l waiting,%d0
 	tst.l %d3
-	jeq .L205
+	jeq .L214
 	tst.l %d0
-	jne .L33
+	jne .L42
 	move.l cursor,%d0
-.L39:
+.L48:
 	mov3q.l #1,%d5
 	cmp.l %d0,%d5
-	jcs .L34
+	jcs .L43
 	lea dl_pool_base,%a0
 	tst.l (%a0,%d0.l*4)
-	jeq .L206
+	jeq .L215
 	subq.l #1,%d0
 	tst.l %d0
-	jeq .L40
+	jeq .L49
 	tst.l dl_pool_base+4
-	jeq .L140
-.L40:
+	jeq .L149
+.L49:
 	mov3q.l #2,cursor
-.L34:
+.L43:
 	tst.l cancelling
-	jne .L38
+	jne .L47
 	tst.l initialized
-	jeq .L207
+	jeq .L216
 	tst.w allocator+4.l
-	jne .L45
-.L215:
+	jne .L54
+.L224:
 	lea dl_pool_words,%a0
 	moveq #64,%d7
 	cmp.l (%a0),%d7
-	jcc .L45
+	jcc .L54
 	move.l (%a0),%d0
 	add.l #-64,%d0
 	move.w %d0,allocator+4
-.L45:
+.L54:
 	tst.w allocator+6.l
-	jne .L46
+	jne .L55
 	moveq #64,%d0
 	cmp.l dl_pool_words+4.l,%d0
-	jcc .L46
+	jcc .L55
 	move.l dl_pool_words+4,%d0
 	add.l #-64,%d0
 	move.w %d0,allocator+6
-.L46:
+.L55:
 	move.l current,-(%sp)
 	pea desired
 	pea allocator
@@ -258,21 +302,21 @@ advance:
 	lea (12,%sp),%sp
 	move.l -28(%fp),%d1
 	tst.l %d0
-	jlt .L208
+	jlt .L217
 	mov3q.l #2,phase
 	clr.l cursor
 	tst.l waiting
-	jeq .L209
-.L58:
+	jeq .L218
+.L67:
 	move.l cursor,%d2
 	lsr.l #5,%d2
-.L55:
+.L64:
 	move.l %d2,-(%sp)
 	move.l %d1,-28(%fp)
 	jsr dl_job_status
 	addq.l #4,%sp
 	tst.l %d0
-	jeq .L27
+	jeq .L36
 	move.l %d2,-(%sp)
 	move.l %d0,-24(%fp)
 	jsr dl_job_release
@@ -281,7 +325,7 @@ advance:
 	move.l phase,%a1
 	move.l -28(%fp),%d1
 	tst.l -24(%fp)
-	jlt .L210
+	jlt .L219
 	move.l cursor,%d0
 	moveq #31,%d4
 	mov3q.l #1,%d3
@@ -289,81 +333,81 @@ advance:
 	lsl.l %d4,%d3
 	mov3q.l #3,%d4
 	cmp.l %a1,%d4
-	jeq .L211
+	jeq .L220
 	mov3q.l #4,%d5
 	cmp.l %a1,%d5
-	jeq .L65
+	jeq .L74
 	lea (-6,%a1),%a0
 	mov3q.l #1,%d7
 	cmp.l %a0,%d7
-	jcc .L66
+	jcc .L75
 	move.l %d0,%a0
 	addq.l #1,%a0
 	move.l %a0,cursor
 	tst.l cancelling
-	jne .L62
+	jne .L71
 	move.l %a0,%d0
 	moveq #63,%d2
 	cmp.l %a0,%d2
-	jcc .L67
+	jcc .L76
 	clr.l cursor
 	mov3q.l #2,%d4
 	cmp.l %a1,%d4
-	jeq .L68
-.L69:
+	jeq .L77
+.L78:
 	mov3q.l #4,%d1
 	cmp.l %a1,%d1
-	jeq .L212
+	jeq .L221
 	mov3q.l #6,%d5
 	cmp.l %a1,%d5
-	jeq .L213
+	jeq .L222
 	mov3q.l #7,%d7
 	cmp.l %a1,%d7
-	jne .L27
+	jne .L36
 	move.l current,-(%sp)
 	pea allocator
 	jsr dl_allocator_cancel
 	clr.l phase
 	addq.l #1,dl_residency_rollbacks
-.L197:
+.L206:
 	addq.l #8,%sp
 	movem.l -60(%fp),#1276
 	unlk %fp
 	jra counts
-.L203:
+.L212:
 	tst.l cancelling
-	jeq .L54
+	jeq .L63
 	mov3q.l #7,phase
 	clr.l cursor
 	tst.l waiting
-	jne .L214
+	jne .L223
 	clr.l %d0
 	mov3q.l #7,%a1
-	jra .L67
-.L87:
+	jra .L76
+.L96:
 	move.l %d0,%d1
 	moveq #63,%d5
 	addq.l #1,%d1
 	cmp.l %d0,%d5
-	jeq .L73
+	jeq .L82
 	moveq #31,%d3
 	and.l %d1,%d3
 	moveq #1,%d5
 	move.l %d1,%d2
 	lsr.l #5,%d2
 	move.l %d1,%d0
-.L86:
+.L95:
 	tst.l dl_bypass_unbound
-	jeq .L87
+	jeq .L96
 	lea dl_pool_base,%a0
 	tst.l (%a0,%d2.l*4)
-	jeq .L88
+	jeq .L97
 	moveq #12,%d4
 	muls.l %d3,%d4
 	move.l %d4,%a0
 	add.l #dl_catalog+9,%a0
 	tst.b (%a0)
-	jne .L89
+	jne .L98
 	move.l %d2,%d4
 	lsl.l #5,%d4
 	lea dl_codes,%a0
@@ -371,7 +415,7 @@ advance:
 	add.l %d3,%d7
 	lsl.l #4,%d7
 	tst.w 8(%a0,%d7.l)
-	jeq .L90
+	jeq .L99
 	mvz.w #192,%d7
 	muls.l %d2,%d7
 	move.l %d7,-20(%fp)
@@ -382,19 +426,19 @@ advance:
 	add.l #allocator,%a2
 	move.l %a2,-32(%fp)
 	tst.b 412(%a2)
-	jne .L91
+	jne .L100
 	tst.b 28(%a2)
-	jne .L92
+	jne .L101
 	lea stubbed,%a2
 	move.l (%a2,%d2.l*4),%d7
 	btst %d3,%d7
-	jne .L93
+	jne .L102
 	move.l -32(%fp),%a2
 	move.w 408(%a2),%d0
 	tst.b %d5
-	jeq .L85
+	jeq .L94
 	move.l %d1,cursor
-.L85:
+.L94:
 	add.l %d3,%d4
 	lsl.l #4,%d4
 	mvz.w %d0,%d0
@@ -406,12 +450,12 @@ advance:
 	add.l %d0,%d1
 	add.l %d4,%d0
 	cmp.l %a1,%d7
-	jeq .L113
+	jeq .L122
 	mov3q.l #4,%d4
 	cmp.l %a1,%d4
-	jeq .L115
+	jeq .L124
 	tst.l dl_bypass_unbound
-	jne .L115
+	jne .L124
 	move.l %d1,-(%sp)
 	move.l %d0,-(%sp)
 	move.l %d3,-(%sp)
@@ -421,17 +465,17 @@ advance:
 	jsr dl_command_start
 	lea (20,%sp),%sp
 	move.l %d0,waiting
-	jra .L98
-.L205:
+	jra .L107
+.L214:
 	tst.l %d0
-	jeq .L40
-.L33:
+	jeq .L49
+.L42:
 	move.l cursor,-(%sp)
 	move.l %d1,-28(%fp)
 	jsr dl_job_status
 	addq.l #4,%sp
 	tst.l %d0
-	jeq .L27
+	jeq .L36
 	move.l cursor,-(%sp)
 	move.l %d0,-24(%fp)
 	jsr dl_job_release
@@ -439,25 +483,25 @@ advance:
 	addq.l #4,%sp
 	move.l -28(%fp),%d1
 	tst.l -24(%fp)
-	jlt .L36
+	jlt .L45
 	move.l cursor,%d0
 	lea dl_pool_base,%a0
 	tst.l (%a0,%d0.l*4)
-	jeq .L36
+	jeq .L45
 	addq.l #1,%d0
 	move.l %d0,cursor
-	jra .L39
-.L72:
+	jra .L48
+.L81:
 	mov3q.l #7,%d7
 	cmp.l %a1,%d7
-	jeq .L74
-.L62:
+	jeq .L83
+.L71:
 	mov3q.l #7,phase
 	mov3q.l #7,%a1
 	clr.l cursor
 	clr.l %d0
-	jra .L67
-.L140:
+	jra .L76
+.L149:
 	clr.l -(%sp)
 	clr.l -(%sp)
 	clr.l -(%sp)
@@ -467,82 +511,82 @@ advance:
 	jsr dl_command_start
 	lea (20,%sp),%sp
 	move.l %d0,waiting
-.L218:
+.L227:
 	movem.l -60(%fp),#1276
 	unlk %fp
 	rts
-.L95:
+.L104:
 	move.l %d0,%d1
 	moveq #63,%d5
 	addq.l #1,%d1
 	cmp.l %d0,%d5
-	jne .L194
-.L73:
+	jne .L203
+.L82:
 	clr.l cursor
 	mov3q.l #2,%d7
 	cmp.l %a1,%d7
-	jeq .L68
+	jeq .L77
 	mov3q.l #3,%d0
 	cmp.l %a1,%d0
-	jne .L69
+	jne .L78
 	movem.l -60(%fp),#1276
 	mov3q.l #4,phase
 	unlk %fp
 	rts
-.L88:
+.L97:
 	move.l %d0,%d1
 	moveq #63,%d7
 	addq.l #1,%d1
 	cmp.l %d0,%d7
-	jeq .L73
-.L194:
+	jeq .L82
+.L203:
 	moveq #31,%d3
 	and.l %d1,%d3
 	moveq #1,%d5
 	move.l %d1,%d2
 	lsr.l #5,%d2
 	move.l %d1,%d0
-.L216:
+.L225:
 	mov3q.l #4,%d4
 	cmp.l %a1,%d4
-	jne .L79
-	jra .L86
-.L96:
+	jne .L88
+	jra .L95
+.L105:
 	move.l %d0,%d1
 	moveq #63,%d5
 	addq.l #1,%d1
 	cmp.l %d0,%d5
-	jeq .L73
+	jeq .L82
 	moveq #31,%d3
 	move.l %d1,%d2
 	move.l %d1,%d0
 	and.l %d1,%d3
 	moveq #1,%d5
 	lsr.l #5,%d2
-	jra .L79
-.L49:
+	jra .L88
+.L58:
 	mov3q.l #-1,result
 	addq.l #1,dl_residency_failures
 	tst.l %d1
-	jeq .L38
+	jeq .L47
 	mov3q.l #2,%d4
 	move.l %d4,dl_modal_pending
-.L38:
+.L47:
 	clr.l phase
-.L219:
+.L228:
 	movem.l -60(%fp),#1276
 	unlk %fp
 	rts
-.L54:
+.L63:
 	mov3q.l #2,%d7
 	cmp.l automatic.l,%d7
-	jne .L27
+	jne .L36
 	lea desired,%a0
 	mov3q.l #1,%d1
 	move.l #-2147479868,%a1
 	move.l #desired+16,%d3
 	sub.l %a0,%a1
-.L57:
+.L66:
 	move.b (%a1,%a0.l),%d0
 	move.b (%a0)+,%d2
 	eor.l %d2,%d0
@@ -552,29 +596,29 @@ advance:
 	neg.l %d0
 	and.l %d0,%d1
 	cmp.l %d3,%a0
-	jne .L57
+	jne .L66
 	tst.l %d1
-	jeq .L27
+	jeq .L36
 	move.l current,-(%sp)
 	jsr dl_selection_commit
 	movem.l -60(%fp),#1276
 	addq.l #4,%sp
 	unlk %fp
 	rts
-.L89:
+.L98:
 	move.l %d0,%d1
 	moveq #63,%d7
 	addq.l #1,%d1
 	cmp.l %d0,%d7
-	jeq .L73
+	jeq .L82
 	moveq #31,%d3
 	move.l %d1,%d2
 	move.l %d1,%d0
 	and.l %d1,%d3
 	moveq #1,%d5
 	lsr.l #5,%d2
-	jra .L86
-.L207:
+	jra .L95
+.L216:
 	clr.l -(%sp)
 	clr.l -(%sp)
 	clr.l -(%sp)
@@ -587,58 +631,58 @@ advance:
 	lea (24,%sp),%sp
 	move.l -28(%fp),%d1
 	tst.w allocator+4.l
-	jne .L45
-	jra .L215
-.L90:
+	jne .L54
+	jra .L224
+.L99:
 	move.l %d0,%d1
 	moveq #63,%d2
 	addq.l #1,%d1
 	cmp.l %d0,%d2
-	jeq .L73
+	jeq .L82
 	moveq #31,%d3
 	move.l %d1,%d2
 	move.l %d1,%d0
 	and.l %d1,%d3
 	moveq #1,%d5
 	lsr.l #5,%d2
-	jra .L216
-.L211:
+	jra .L225
+.L220:
 	lea stubbed,%a0
 	not.l %d3
 	addq.l #1,%d0
 	and.l %d3,(%a0,%d2.l*4)
 	move.l %d0,cursor
 	tst.l cancelling
-	jne .L62
+	jne .L71
 	move.l cursor,%d0
 	moveq #63,%d5
 	cmp.l %d0,%d5
-	jcc .L67
-	jra .L73
-.L74:
+	jcc .L76
+	jra .L82
+.L83:
 	move.l cursor,%d0
 	moveq #63,%d2
 	cmp.l %d0,%d2
-	jcc .L67
+	jcc .L76
 	move.l current,-(%sp)
 	clr.l cursor
 	pea allocator
 	jsr dl_allocator_cancel
 	clr.l phase
 	addq.l #1,dl_residency_rollbacks
-	jra .L197
-.L212:
+	jra .L206
+.L221:
 	move.b allocator+825,%d0
 	btst #0,%d0
-	jne .L217
+	jne .L226
 	mov3q.l #1,%d2
 	btst #1,%d0
-	jne .L105
-.L104:
+	jne .L114
+.L113:
 	mov3q.l #5,phase
 	mov3q.l #1,result
 	tst.l automatic
-	jeq .L27
+	jeq .L36
 	move.l current,-(%sp)
 	pea allocator
 	jsr dl_allocator_commit
@@ -648,9 +692,9 @@ advance:
 	addq.l #1,dl_residency_commits
 	unlk %fp
 	jra counts
-.L217:
+.L226:
 	clr.l %d2
-.L105:
+.L114:
 	move.l %d2,-(%sp)
 	move.l current,-(%sp)
 	pea allocator
@@ -658,18 +702,18 @@ advance:
 	lea (12,%sp),%sp
 	subq.l #1,%d2
 	tst.l %d2
-	jeq .L104
+	jeq .L113
 	move.b allocator+825,%d0
 	mov3q.l #1,%d2
 	btst #1,%d0
-	jeq .L104
-	jra .L105
-.L68:
+	jeq .L113
+	jra .L114
+.L77:
 	movem.l -60(%fp),#1276
 	mov3q.l #3,phase
 	unlk %fp
 	rts
-.L115:
+.L124:
 	move.l %d1,-(%sp)
 	move.l %d0,-(%sp)
 	move.l %d3,-(%sp)
@@ -679,8 +723,8 @@ advance:
 	jsr dl_command_start
 	lea (20,%sp),%sp
 	move.l %d0,waiting
-	jra .L98
-.L113:
+	jra .L107
+.L122:
 	move.l %d1,-(%sp)
 	move.l %d0,-(%sp)
 	move.l %d3,-(%sp)
@@ -690,11 +734,11 @@ advance:
 	jsr dl_command_start
 	lea (20,%sp),%sp
 	move.l %d0,waiting
-	jra .L98
-.L214:
+	jra .L107
+.L223:
 	clr.l %d2
-	jra .L55
-.L206:
+	jra .L64
+.L215:
 	clr.l -(%sp)
 	clr.l -(%sp)
 	clr.l -(%sp)
@@ -704,29 +748,29 @@ advance:
 	jsr dl_command_start
 	lea (20,%sp),%sp
 	move.l %d0,waiting
-	jra .L218
-.L208:
+	jra .L227
+.L217:
 	move.l automatic,%d1
 	moveq #-2,%d2
 	cmp.l %d0,%d2
-	jeq .L48
+	jeq .L57
 	mov3q.l #-1,%d5
 	cmp.l %d0,%d5
-	jeq .L49
+	jeq .L58
 	addq.l #5,%d0
 	tst.l %d0
-	jeq .L49
+	jeq .L58
 	moveq #-3,%d0
 	move.l %d0,result
 	addq.l #1,dl_residency_failures
 	tst.l %d1
-	jeq .L38
+	jeq .L47
 	move.l %d4,dl_modal_pending
-	jra .L38
-.L112:
+	jra .L47
+.L121:
 	clr.b %d6
 	move.l #allocator,%d5
-.L75:
+.L84:
 	mvz.w #192,%d4
 	mov3q.l #6,%d7
 	muls.l %d3,%d7
@@ -735,45 +779,45 @@ advance:
 	add.l %d4,%a0
 	add.l %d5,%a0
 	tst.b 28(%a0)
-	jeq .L82
+	jeq .L91
 	tst.b 412(%a0)
-	jne .L83
+	jne .L92
 	move.l %d2,%d4
 	move.w 408(%a0),%d0
 	lsl.l #5,%d4
 	tst.b %d6
-	jeq .L196
+	jeq .L205
 	move.l %d1,cursor
-.L196:
+.L205:
 	lea dl_codes,%a0
-	jra .L85
-.L82:
+	jra .L94
+.L91:
 	move.l %d0,%d1
 	moveq #63,%d7
 	addq.l #1,%d1
 	cmp.l %d0,%d7
-	jeq .L73
+	jeq .L82
 	moveq #31,%d3
 	move.l %d1,%d2
 	move.l %d1,%d0
 	and.l %d1,%d3
 	moveq #1,%d6
 	lsr.l #5,%d2
-	jra .L75
-.L83:
+	jra .L84
+.L92:
 	move.l %d0,%d1
 	moveq #63,%d2
 	addq.l #1,%d1
 	cmp.l %d0,%d2
-	jeq .L73
+	jeq .L82
 	moveq #31,%d3
 	move.l %d1,%d2
 	move.l %d1,%d0
 	and.l %d1,%d3
 	moveq #1,%d6
 	lsr.l #5,%d2
-	jra .L75
-.L213:
+	jra .L84
+.L222:
 	move.l current,-(%sp)
 	pea allocator
 	jsr dl_allocator_retire
@@ -782,106 +826,106 @@ advance:
 	addq.l #8,%sp
 	unlk %fp
 	jra counts
-.L210:
+.L219:
 	moveq #-3,%d0
 	move.l %d0,result
 	addq.l #1,dl_residency_failures
 	tst.l automatic
-	jeq .L61
+	jeq .L70
 	mov3q.l #1,dl_modal_pending
-.L61:
+.L70:
 	subq.l #6,%a1
 	mov3q.l #1,%d2
 	cmp.l %a1,%d2
-	jcc .L27
+	jcc .L36
 	mov3q.l #1,cancelling
 	mov3q.l #7,phase
 	mov3q.l #7,%a1
 	clr.l cursor
 	clr.l %d0
-	jra .L67
-.L65:
+	jra .L76
+.L74:
 	lea stubbed,%a0
 	addq.l #1,%d0
 	or.l %d3,(%a0,%d2.l*4)
 	move.l cancelling,%a0
 	move.l %d0,cursor
-.L220:
+.L229:
 	tst.l %a0
-	jeq .L64
-	jra .L72
-.L36:
+	jeq .L73
+	jra .L81
+.L45:
 	moveq #-3,%d0
 	move.l %d0,result
 	addq.l #1,dl_residency_failures
 	tst.l automatic
-	jeq .L38
+	jeq .L47
 	mov3q.l #1,dl_modal_pending
 	clr.l phase
-	jra .L219
-.L91:
+	jra .L228
+.L100:
 	move.l %d0,%d1
 	moveq #63,%d2
 	addq.l #1,%d1
 	cmp.l %d0,%d2
-	jeq .L73
+	jeq .L82
 	moveq #31,%d3
 	move.l %d1,%d2
 	move.l %d1,%d0
 	and.l %d1,%d3
 	moveq #1,%d5
 	lsr.l #5,%d2
-	jra .L86
-.L66:
+	jra .L95
+.L75:
 	tst.l dl_bypass_unbound
-	jne .L65
+	jne .L74
 	lea stubbed,%a0
 	not.l %d3
 	and.l %d3,(%a0,%d2.l*4)
 	addq.l #1,%d0
 	move.l cancelling,%a0
 	move.l %d0,cursor
-	jra .L220
-.L92:
+	jra .L229
+.L101:
 	move.l %d0,%d1
 	moveq #63,%d4
 	addq.l #1,%d1
 	cmp.l %d0,%d4
-	jeq .L73
+	jeq .L82
 	moveq #31,%d3
 	move.l %d1,%d2
 	move.l %d1,%d0
 	and.l %d1,%d3
 	moveq #1,%d5
 	lsr.l #5,%d2
-	jra .L216
-.L48:
+	jra .L225
+.L57:
 	moveq #-2,%d2
 	move.l %d2,result
 	addq.l #1,dl_residency_failures
 	tst.l %d1
-	jeq .L38
+	jeq .L47
 	mov3q.l #3,%d4
 	move.l %d4,dl_modal_pending
-	jra .L38
-.L93:
+	jra .L47
+.L102:
 	move.l %d0,%d1
 	moveq #63,%d4
 	addq.l #1,%d1
 	cmp.l %d0,%d4
-	jeq .L73
+	jeq .L82
 	moveq #31,%d3
 	move.l %d1,%d2
 	move.l %d1,%d0
 	and.l %d1,%d3
 	moveq #1,%d5
 	lsr.l #5,%d2
-	jra .L86
-.L204:
+	jra .L95
+.L213:
 	move.l %d2,%d4
 	lsl.l #5,%d4
 	lea dl_codes,%a0
-	jra .L85
+	jra .L94
 	.size	advance, .-advance
 	.align	2
 	.globl	dl_selection_prepare
@@ -889,35 +933,35 @@ advance:
 dl_selection_prepare:
 	move.l %d2,-(%sp)
 	tst.l dl_residency_enabled
-	jne .L232
+	jne .L241
 	move.l (%sp)+,%d2
 	mov3q.l #1,%d0
 	rts
-.L232:
+.L241:
 	jsr dl_publication_finish
 	jsr advance
 	jsr advance
 	tst.l phase
-	jne .L224
+	jne .L233
 	move.l 8(%sp),%a0
 	move.l 8(%sp),%d1
 	add.l #80,%d1
 	lea (72,%a0),%a0
-.L225:
+.L234:
 	mvz.b (%a0),%d0
 	addq.l #1,%a0
 	mov3q.l #4,%d2
 	cmp.l %d0,%d2
-	jcs .L224
+	jcs .L233
 	cmp.l %a0,%d1
-	jne .L225
+	jne .L234
 	move.l 8(%sp),%a1
 	lea desired,%a0
 	lea (48,%a1),%a1
-.L226:
+.L235:
 	move.b (%a1)+,(%a0)+
 	cmp.l #desired+16,%a0
-	jne .L226
+	jne .L235
 	lea (12,%sp),%a0
 	move.l (%a0),current
 	clr.l automatic
@@ -930,7 +974,7 @@ dl_selection_prepare:
 	move.l (%sp)+,%d2
 	move.l result,%d0
 	rts
-.L224:
+.L233:
 	move.l (%sp)+,%d2
 	moveq #-3,%d0
 	rts
@@ -941,11 +985,11 @@ dl_selection_prepare:
 dl_selection_poll:
 	move.l 4(%sp),%d0
 	cmp.l current.l,%d0
-	jne .L235
+	jne .L244
 	jsr advance
 	move.l result,%d0
 	rts
-.L235:
+.L244:
 	moveq #-3,%d0
 	rts
 	.size	dl_selection_poll, .-dl_selection_poll
@@ -953,124 +997,189 @@ dl_selection_poll:
 	.globl	dl_residency_tick
 	.type	dl_residency_tick, @function
 dl_residency_tick:
-	lea (-24,%sp),%sp
-	movem.l #1052,(%sp)
+	lea (-56,%sp),%sp
+	movem.l #19708,(%sp)
 	tst.l dl_residency_enabled
-	jne .L272
-.L238:
-	movem.l (%sp),#1052
-	lea (24,%sp),%sp
+	jne .L301
+.L247:
+	movem.l (%sp),#19708
+	lea (56,%sp),%sp
 	rts
-.L272:
+.L301:
 	jsr advance
 	jsr dl_publication_tick
-	move.l phase,%d2
-	move.l #allocator,%d3
-	move.l result,%d0
-	move.l cancelling,%d1
-	sub.l %a1,%a1
-	move.l %d0,16(%sp)
-	move.l %d1,20(%sp)
+	clr.l %d2
 	lea dl_catalog,%a2
-.L243:
-	move.l #-2147479868,%a0
+.L251:
+	move.l %d2,%d0
+	lsr.l #2,%d0
+	mov3q.l #1,%d1
+	move.l %d2,%a0
+	add.l #-2147479868,%a0
+	moveq #12,%d3
 	moveq #31,%d4
-	add.l %a1,%a0
-	mvz.b (%a0),%d0
-	cmp.l %d0,%d4
-	jcs .L240
-	moveq #12,%d1
-	muls.l %d0,%d1
-	tst.b 9(%a2,%d1.l)
-	jne .L240
-	mov3q.l #6,%d1
-	muls.l %d1,%d0
-	move.l %a1,%d1
-	lsr.l #2,%d1
-	mov3q.l #1,%d4
-	and.l %d4,%d1
-	move.l %d0,%a0
-	eor.l %d4,%d1
-	mvz.w #192,%d4
-	muls.l %d4,%d1
-	add.l %d1,%a0
-	add.l %d3,%a0
-	tst.b 28(%a0)
-	jeq .L241
-	mov3q.l #6,%d0
-	cmp.l %d2,%d0
-	jne .L240
-	tst.b 412(%a0)
-	jne .L240
-.L242:
-	move.l unsafe_valid,%d3
+	and.l %d1,%d0
+	mvz.b (%a0),%d1
+	muls.l %d1,%d3
+	cmp.l %d1,%d4
+	jcs .L249
+	tst.b 9(%a2,%d3.l)
+	jne .L249
+	move.l %d1,-(%sp)
+	mov3q.l #1,%d1
+	eor.l %d0,%d1
+	move.l %d1,-(%sp)
+	jsr slot_bound
+	addq.l #8,%sp
+	tst.l %d0
+	jne .L249
+	move.l unsafe_valid,%d2
 	move.l #-2147479868,%a2
 	lea unsafe,%a1
 	move.l %a1,%a0
 	sub.l %a1,%a2
-.L246:
+.L254:
 	move.b (%a2,%a0.l),%d0
 	mvz.b (%a0)+,%d1
 	mvz.b %d0,%d0
 	cmp.l %d1,%d0
-	jeq .L245
-	clr.l %d3
-.L245:
+	jeq .L253
+	clr.l %d2
+.L253:
 	cmp.l #unsafe+16,%a0
-	jne .L246
-	tst.l %d3
-	jne .L247
-.L248:
+	jne .L254
+	tst.l %d2
+	jne .L255
+.L256:
 	move.b (%a2,%a1.l),%d0
 	move.b %d0,(%a1)+
 	cmp.l #unsafe+16,%a1
-	jne .L248
+	jne .L256
 	mov3q.l #1,unsafe_valid
 	addq.l #1,dl_unguarded
-.L247:
-	tst.l %d2
-	jne .L238
+.L255:
+	tst.l dl_reinit_enabled
+	jeq .L257
+	clr.l %d2
+	lea last,%a3
+	lea slot_bound,%a6
+.L262:
+	mov3q.l #1,%d4
+	lsl.l %d2,%d4
+	move.l %d2,%d1
+	lsr.l #2,%d1
+	mov3q.l #1,%d0
+	move.l parked,%d5
+	move.l %d2,%a2
+	add.l #-2147479868,%a2
+	and.l %d0,%d1
+	move.b (%a2),%d7
+	mov3q.l #1,%d3
+	move.l %d4,%d0
+	and.l %d5,%d0
+	eor.l %d3,%d1
+	mvz.b %d7,%d3
+	tst.l %d0
+	jeq .L258
+	tst.l %d3
+	jeq .L259
+	move.l %d4,%d0
+	not.l %d0
+	and.l %d5,%d0
+	move.l %d0,parked
+.L258:
+	mvz.b (%a3,%d2.l),%d0
+	cmp.l %d3,%d0
+	jeq .L261
+	moveq #31,%d0
+	cmp.l %d3,%d0
+	jcs .L261
+	moveq #12,%d0
+	muls.l %d3,%d0
+	lea dl_catalog,%a0
+	tst.b 9(%a0,%d0.l)
+	jne .L261
+	move.l %d3,-(%sp)
+	move.l %d1,-(%sp)
+	move.l %d1,44(%sp)
+	jsr (%a6)
+	addq.l #8,%sp
+	move.l 36(%sp),%d1
+	tst.l %d0
+	jne .L261
+	move.l dl_stub_at_boot,%d0
+	lea stubbed,%a0
+	or.l (%a0,%d1.l*4),%d0
+	btst %d3,%d0
+	jne .L302
+.L261:
+	move.b %d7,(%a3,%d2.l)
+.L260:
+	addq.l #1,%d2
+	moveq #16,%d1
+	cmp.l %d2,%d1
+	jne .L262
+.L257:
+	move.l phase,%d0
+	tst.l %d0
+	jne .L247
+	move.l parked,%d2
+	lea (40,%sp),%a1
+	move.l %a1,%a0
+	lea owed_id,%a3
+.L265:
+	move.l %d0,%a2
+	add.l #-2147479868,%a2
+	btst %d0,%d2
+	jeq .L263
+	move.b (%a3,%d0.l),%d1
+	addq.l #1,%d0
+	moveq #16,%d3
+	move.b %d1,(%a0)+
+	cmp.l %d0,%d3
+	jne .L265
+.L304:
 	tst.l observed_valid
 	seq %d1
-	lea observed,%a2
-	move.l #-2147479868,%a1
-	move.l %a2,%a0
-	sub.l %a2,%a1
+	lea observed,%a3
+	move.l %a1,%d3
+	move.l %a3,%a2
+	add.l #16,%d3
+	move.l %a1,%a0
 	mvs.b %d1,%d1
 	neg.l %d1
-.L249:
-	move.b (%a1,%a0.l),%d0
-	move.b (%a0)+,%d2
+.L266:
+	move.b (%a0)+,%d0
+	move.b (%a2)+,%d2
 	eor.l %d2,%d0
 	tst.b %d0
 	sne %d0
 	mvs.b %d0,%d0
 	neg.l %d0
 	or.l %d0,%d1
-	cmp.l #observed+16,%a0
-	jne .L249
+	cmp.l %a0,%d3
+	jne .L266
 	tst.l %d1
-	jeq .L238
+	jeq .L247
 	lea observed,%a0
-.L250:
-	move.b (%a0,%a1.l),%d0
-	move.b %d0,(%a0)+
-	cmp.l #observed+16,%a0
-	jne .L250
+.L267:
+	move.b (%a1)+,(%a0)+
+	cmp.l %a1,%d3
+	jne .L267
 	move.l auto_serial,%d0
 	addq.l #1,%d0
 	mov3q.l #1,observed_valid
 	tst.l %d0
-	jne .L273
+	jne .L303
 	move.l #-2147483648,%d1
 	move.l %d1,%d0
 	move.l %d1,auto_serial
 	lea desired,%a0
-.L252:
-	move.b (%a2)+,(%a0)+
-	cmp.l #observed+16,%a2
-	jne .L252
-	movem.l (%sp),#1052
+.L269:
+	move.b (%a3)+,(%a0)+
+	cmp.l #observed+16,%a3
+	jne .L269
+	movem.l (%sp),#19708
 	move.l %d0,current
 	mov3q.l #1,automatic
 	clr.l result
@@ -1078,32 +1187,62 @@ dl_residency_tick:
 	clr.l cursor
 	clr.l waiting
 	clr.l cancelling
-	lea (24,%sp),%sp
+	lea (56,%sp),%sp
 	rts
-.L240:
-	addq.l #1,%a1
-	moveq #16,%d0
-	cmp.l %a1,%d0
-	jne .L243
+.L263:
+	move.b (%a2),%d1
+	addq.l #1,%d0
+	moveq #16,%d3
+	move.b %d1,(%a0)+
+	cmp.l %d0,%d3
+	jne .L265
+	jra .L304
+.L249:
+	addq.l #1,%d2
+	moveq #16,%d3
+	cmp.l %d2,%d3
+	jne .L251
 	clr.l unsafe_valid
-	jra .L247
-.L241:
-	mov3q.l #5,%d1
+	jra .L255
+.L259:
+	lea owed_id,%a0
+	move.b (%a0,%d2.l),%d3
+	mvz.b %d3,%d0
+	move.l %d0,-(%sp)
+	move.l %d1,-(%sp)
+	jsr (%a6)
+	addq.l #8,%sp
+	tst.l %d0
+	jeq .L260
+	not.l %d4
+	move.b %d3,(%a2)
+	and.l %d5,%d4
+	move.b %d3,(%a3,%d2.l)
+	addq.l #1,%d2
+	moveq #16,%d1
+	addq.l #1,dl_reinit
+	move.l %d4,parked
 	cmp.l %d2,%d1
-	jne .L242
-	mov3q.l #1,%d4
-	cmp.l 16(%sp),%d4
-	jne .L242
-	tst.l 20(%sp)
-	jne .L242
-	tst.b 412(%a0)
-	jeq .L242
-	jra .L240
-.L273:
+	jne .L262
+	jra .L257
+.L302:
+	clr.b %d0
+	clr.b (%a2)
+	lea owed_id,%a0
+	moveq #16,%d1
+	move.b %d7,(%a0,%d2.l)
+	or.l %d4,parked
+	move.b %d0,(%a3,%d2.l)
+	addq.l #1,dl_parked
+	addq.l #1,%d2
+	cmp.l %d2,%d1
+	jne .L262
+	jra .L257
+.L303:
 	move.l %d0,%d1
 	move.l %d1,auto_serial
 	lea desired,%a0
-	jra .L252
+	jra .L269
 	.size	dl_residency_tick, .-dl_residency_tick
 	.align	2
 	.globl	dl_publication_prepare
@@ -1111,24 +1250,24 @@ dl_residency_tick:
 dl_publication_prepare:
 	move.l %d2,-(%sp)
 	tst.l phase
-	jne .L277
+	jne .L308
 	move.l 12(%sp),%a0
 	move.l %a0,%d1
 	addq.l #8,%d1
-.L278:
+.L309:
 	addq.l #1,%a0
 	mvz.b -1(%a0),%d0
 	mov3q.l #4,%d2
 	cmp.l %d0,%d2
-	jcs .L277
+	jcs .L308
 	cmp.l %a0,%d1
-	jne .L278
+	jne .L309
 	move.l 8(%sp),%a1
 	lea desired,%a0
-.L279:
+.L310:
 	move.b (%a1)+,(%a0)+
 	cmp.l #desired+16,%a0
-	jne .L279
+	jne .L310
 	lea (16,%sp),%a0
 	move.l (%a0),current
 	clr.l automatic
@@ -1141,7 +1280,7 @@ dl_publication_prepare:
 	move.l (%sp)+,%d2
 	move.l result,%d0
 	rts
-.L277:
+.L308:
 	move.l (%sp)+,%d2
 	moveq #-3,%d0
 	rts
@@ -1152,11 +1291,11 @@ dl_publication_prepare:
 dl_publication_poll:
 	move.l current,%d0
 	cmp.l 4(%sp),%d0
-	jne .L286
+	jne .L317
 	jsr advance
 	move.l result,%d0
 	rts
-.L286:
+.L317:
 	moveq #-3,%d0
 	rts
 	.size	dl_publication_poll, .-dl_publication_poll
@@ -1166,16 +1305,16 @@ dl_publication_poll:
 dl_publication_arm:
 	move.l 4(%sp),%d0
 	cmp.l current.l,%d0
-	jeq .L293
-.L289:
+	jeq .L324
+.L320:
 	rts
-.L293:
+.L324:
 	mov3q.l #5,%d0
 	cmp.l phase.l,%d0
-	jne .L289
+	jne .L320
 	mov3q.l #1,%d0
 	cmp.l result.l,%d0
-	jne .L289
+	jne .L320
 	mov3q.l #2,automatic
 	rts
 	.size	dl_publication_arm, .-dl_publication_arm
@@ -1187,28 +1326,28 @@ dl_publication_ready:
 	movem.l #7228,(%sp)
 	move.l 40(%sp),%a1
 	tst.l dl_residency_enabled
-	jeq .L295
+	jeq .L326
 	clr.l %d1
 	clr.l %d3
 	lea dl_catalog,%a2
-.L302:
+.L333:
 	mvz.b (%a1,%d1.l),%d2
 	moveq #12,%d0
 	moveq #31,%d4
 	muls.l %d2,%d0
 	cmp.l %d2,%d4
-	jcs .L296
-.L332:
+	jcs .L327
+.L363:
 	lea (%a2,%d0.l),%a0
 	tst.b 10(%a0)
-	jeq .L296
+	jeq .L327
 	move.b 8(%a0),%d0
 	mov3q.l #7,%d5
 	cmp.l %d1,%d5
-	jcs .L299
+	jcs .L330
 	addq.l #1,%d1
 	btst #0,%d0
-	jeq .L296
+	jeq .L327
 	tst.b 9(%a0)
 	seq %d0
 	mvz.b (%a1,%d1.l),%d2
@@ -1219,16 +1358,16 @@ dl_publication_ready:
 	moveq #12,%d0
 	muls.l %d2,%d0
 	cmp.l %d2,%d4
-	jcc .L332
-.L296:
+	jcc .L363
+.L327:
 	movem.l (%sp),#7228
 	clr.l %d0
 	lea (36,%sp),%sp
 	rts
-.L299:
+.L330:
 	addq.l #1,%d1
 	btst #1,%d0
-	jeq .L296
+	jeq .L327
 	tst.b 9(%a0)
 	seq %d0
 	mvs.b %d0,%d0
@@ -1236,22 +1375,22 @@ dl_publication_ready:
 	or.l %d0,%d3
 	moveq #16,%d0
 	cmp.l %d1,%d0
-	jne .L302
+	jne .L333
 	tst.l %d3
-	jeq .L295
+	jeq .L326
 	tst.l initialized
-	jeq .L296
+	jeq .L327
 	move.l phase,%d2
 	move.l %d2,32(%sp)
 	subq.l #5,%d2
 	tst.l %d2
-	jeq .L333
-.L304:
+	jeq .L364
+.L335:
 	clr.l %d1
 	move.l %a1,%a3
 	move.l #desired+16,%d3
 	lea desired,%a0
-.L307:
+.L338:
 	move.b (%a3)+,%d0
 	move.b (%a0)+,%d4
 	eor.l %d4,%d0
@@ -1261,14 +1400,14 @@ dl_publication_ready:
 	neg.l %d0
 	and.l %d0,%d1
 	cmp.l %d3,%a0
-	jne .L307
+	jne .L338
 	sub.l %a3,%a3
-.L313:
+.L344:
 	mvz.b (%a1,%a3.l),%d2
 	moveq #12,%d0
 	muls.l %d2,%d0
 	tst.b 9(%a2,%d0.l)
-	jne .L308
+	jne .L339
 	move.l %a3,%d0
 	lsr.l #2,%d0
 	mov3q.l #1,%d3
@@ -1283,62 +1422,62 @@ dl_publication_ready:
 	muls.l %d0,%d3
 	add.l %d3,%a0
 	tst.b 28(%a4,%a0.l)
-	jeq .L309
+	jeq .L340
 	mov3q.l #7,%d4
 	cmp.l 32(%sp),%d4
-	jcs .L314
+	jcs .L345
 	mvz.w #161,%d4
 	move.l 32(%sp),%d5
 	btst %d5,%d4
-	jne .L308
-.L314:
+	jne .L339
+.L345:
 	mvz.b %d0,%d0
 	clr.l %d4
 	move.l %d0,%a0
-.L312:
+.L343:
 	move.l %d4,%d0
 	lsr.l #2,%d0
 	mov3q.l #1,%d5
 	and.l %d5,%d0
 	eor.l %d5,%d0
 	cmp.l %a0,%d0
-	jeq .L334
+	jeq .L365
 	addq.l #1,%d4
 	moveq #16,%d0
 	cmp.l %d4,%d0
-	jne .L312
-.L309:
+	jne .L343
+.L340:
 	tst.l %d1
-	jeq .L296
+	jeq .L327
 	move.l 28(%sp),%a0
 	add.l %d3,%a0
 	add.l #allocator+412,%a0
 	tst.b (%a0)
-	jeq .L296
-.L308:
+	jeq .L327
+.L339:
 	addq.l #1,%a3
 	moveq #16,%d2
 	cmp.l %a3,%d2
-	jne .L313
-.L295:
+	jne .L344
+.L326:
 	movem.l (%sp),#7228
 	mov3q.l #1,%d0
 	lea (36,%sp),%sp
 	rts
-.L334:
+.L365:
 	lea desired,%a4
 	mvz.b (%a4,%d4.l),%d0
 	cmp.l %d2,%d0
-	jeq .L308
+	jeq .L339
 	addq.l #1,%d4
 	moveq #16,%d0
 	cmp.l %d4,%d0
-	jne .L312
-	jra .L309
-.L333:
+	jne .L343
+	jra .L340
+.L364:
 	mov3q.l #1,%d4
 	cmp.l result.l,%d4
-	jne .L304
+	jne .L335
 	tst.l cancelling
 	seq %d1
 	move.l %a1,%a3
@@ -1346,7 +1485,7 @@ dl_publication_ready:
 	lea desired,%a0
 	mvs.b %d1,%d1
 	neg.l %d1
-	jra .L307
+	jra .L338
 	.size	dl_publication_ready, .-dl_publication_ready
 	.align	2
 	.globl	dl_publication_idle
@@ -1368,6 +1507,37 @@ unsafe_valid:
 	.size	unsafe, 16
 unsafe:
 	.zero	16
+	.globl	dl_reinit_enabled
+	.align	2
+	.type	dl_reinit_enabled, @object
+	.size	dl_reinit_enabled, 4
+dl_reinit_enabled:
+	.long	1
+	.globl	dl_parked
+	.align	2
+	.type	dl_parked, @object
+	.size	dl_parked, 4
+dl_parked:
+	.zero	4
+	.globl	dl_reinit
+	.align	2
+	.type	dl_reinit, @object
+	.size	dl_reinit, 4
+dl_reinit:
+	.zero	4
+	.align	2
+	.type	parked, @object
+	.size	parked, 4
+parked:
+	.zero	4
+	.type	owed_id, @object
+	.size	owed_id, 16
+owed_id:
+	.zero	16
+	.type	last, @object
+	.size	last, 16
+last:
+	.base64	"/////////////////////w=="
 	.globl	dl_unguarded
 	.align	2
 	.type	dl_unguarded, @object

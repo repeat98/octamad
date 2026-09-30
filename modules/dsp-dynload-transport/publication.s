@@ -441,7 +441,7 @@ dl_pattern_request_guard:
 	move.l 8(%fp),%a0
 	move.l 4(%a0),%d0
 	cmp.l %d0,%d1
-	jne .L107
+	jne .L111
 .L85:
 	tst.l immediate_pending
 	jne .L83
@@ -455,11 +455,13 @@ dl_pattern_request_guard:
 	jsr immediate_request
 	lea (12,%sp),%sp
 .L90:
-	mov3q.l #1,%d0
+	mov3q.l #1,%d1
+.L81:
+	move.l %d1,%d0
 	move.l -32(%fp),%d2
 	unlk %fp
 	rts
-.L107:
+.L111:
 	move.l (%a0),%d1
 	move.l %d0,%d2
 	or.l %d1,%d2
@@ -479,34 +481,36 @@ dl_pattern_request_guard:
 	tst.l %d0
 	jeq .L88
 	move.l %a0,-(%sp)
+	move.l %d0,-28(%fp)
 	jsr dl_publication_ready
 	addq.l #4,%sp
+	move.l -28(%fp),%d1
 	tst.l %d0
 	jne .L85
 	tst.l project_pending
 	jeq .L91
 	mov3q.l #4,%d0
 	cmp.l project_pending.l,%d0
-	jeq .L108
-.L88:
-	addq.l #1,dl_publication_refused
-	mov3q.l #1,dl_modal_pending
-	clr.l %d0
-.L109:
-	move.l -32(%fp),%d2
-	unlk %fp
-	rts
-.L108:
+	jne .L81
 	tst.l project_done
-	jeq .L88
+	jeq .L81
 .L91:
 	clr.l -(%sp)
 	clr.l -(%sp)
 	move.l 8(%fp),-(%sp)
 	jsr immediate_request
 	lea (12,%sp),%sp
-	clr.l %d0
-	jra .L109
+	clr.l %d1
+.L112:
+	move.l -32(%fp),%d2
+	move.l %d1,%d0
+	unlk %fp
+	rts
+.L88:
+	addq.l #1,dl_publication_refused
+	mov3q.l #1,dl_modal_pending
+	clr.l %d1
+	jra .L112
 	.size	dl_pattern_request_guard, .-dl_pattern_request_guard
 	.align	2
 	.globl	dl_chain_stop_guard
@@ -522,20 +526,20 @@ dl_chain_stop_guard:
 	clr.l -4(%fp)
 	move.l %d1,-16(%fp)
 	tst.l dl_residency_enabled
-	jne .L124
+	jne .L127
 	mov3q.l #1,-52(%fp)
-.L110:
+.L113:
 	move.l -52(%fp),%d0
 	move.l -56(%fp),%d2
 	unlk %fp
 	rts
-.L124:
+.L127:
 	moveq #15,%d2
 	cmp.l %d0,%d2
-	jcs .L114
+	jcs .L117
 	moveq #15,%d2
 	cmp.l %d1,%d2
-	jcs .L114
+	jcs .L117
 	pea -44(%fp)
 	lea (-36,%fp),%a0
 	move.l %a0,-(%sp)
@@ -547,44 +551,44 @@ dl_chain_stop_guard:
 	move.l -48(%fp),%a0
 	move.l %d0,-52(%fp)
 	tst.l %d0
-	jeq .L114
+	jeq .L117
 	move.l %a0,-(%sp)
 	jsr dl_publication_ready
 	addq.l #4,%sp
 	tst.l %d0
-	jne .L110
+	jne .L113
 	addq.l #1,dl_chain_deferred
 	tst.l project_pending
-	jeq .L116
+	jeq .L119
 	mov3q.l #4,%d0
 	cmp.l project_pending.l,%d0
-	jeq .L125
-.L113:
+	jeq .L128
+.L116:
 	addq.l #1,dl_publication_refused
 	mov3q.l #1,dl_modal_pending
-.L117:
+.L120:
 	clr.l -52(%fp)
-.L126:
+.L129:
 	move.l -52(%fp),%d0
 	move.l -56(%fp),%d2
 	unlk %fp
 	rts
-.L114:
+.L117:
 	addq.l #1,dl_chain_deferred
 	addq.l #1,dl_publication_refused
 	mov3q.l #1,dl_modal_pending
-	jra .L117
-.L125:
+	jra .L120
+.L128:
 	tst.l project_done
-	jeq .L113
-.L116:
+	jeq .L116
+.L119:
 	mov3q.l #1,-(%sp)
 	clr.l -(%sp)
 	pea -20(%fp)
 	jsr immediate_request
 	lea (12,%sp),%sp
 	clr.l -52(%fp)
-	jra .L126
+	jra .L129
 	.size	dl_chain_stop_guard, .-dl_chain_stop_guard
 	.align	2
 	.globl	dl_publication_tick
@@ -593,46 +597,46 @@ dl_publication_tick:
 	lea (-60,%sp),%sp
 	movem.l #17436,(%sp)
 	tst.l project_pending
-	jeq .L128
+	jeq .L131
 	movem.l (%sp),#17436
 	lea (60,%sp),%sp
 	jra (project_tick.part.0)
-.L128:
+.L131:
 	move.l immediate_version,%a0
 	mov3q.l #1,%d0
 	move.l %a0,%d2
 	move.l %a0,%d1
 	and.l %d0,%d2
 	btst #0,%d1
-	jne .L127
+	jne .L130
 	cmp.l immediate_seen.l,%a0
-	jeq .L130
+	jeq .L133
 	tst.l immediate_pending
-	jne .L237
+	jne .L240
 	clr.l immediate_token
 	tst.l pending
-	jne .L238
-.L132:
+	jne .L241
+.L135:
 	lea immediate_saved,%a1
 	lea immediate_args,%a2
-.L133:
+.L136:
 	move.l (%a2,%d2.l*4),(%a1)+
 	mov3q.l #5,%d3
 	addq.l #1,%d2
 	cmp.l %d2,%d3
-	jne .L133
+	jne .L136
 	lea immediate_kind,%a1
 	move.l (%a1),immediate_saved_kind
 	lea immediate_next,%a1
 	move.l (%a1),immediate_saved_next
 	move.l immediate_passthrough,%d0
 	cmp.l immediate_version.l,%a0
-	jeq .L239
-.L127:
+	jeq .L242
+.L130:
 	movem.l (%sp),#17436
 	lea (60,%sp),%sp
 	rts
-.L239:
+.L242:
 	tst.l %d0
 	seq %d1
 	move.l %a0,immediate_seen
@@ -640,30 +644,30 @@ dl_publication_tick:
 	neg.l %d1
 	move.l %d1,immediate_pending
 	tst.l %d0
-	jne .L127
-.L130:
+	jne .L130
+.L133:
 	move.l immediate_pending,%d2
 	tst.l %d2
-	jeq .L134
+	jeq .L137
 	tst.l immediate_saved_kind
-	jne .L240
+	jne .L243
 	move.b -2147457601,%d0
 	mvz.b -2147457600,%d1
 	mvz.b %d0,%d0
 	lsl.l #8,%d0
 	or.l %d1,%d0
 	cmp.l immediate_saved_next.l,%d0
-	jne .L139
+	jne .L142
 	lea immediate_saved,%a1
 	move.l (%a1),%d0
 	move.l immediate_saved+4,%d1
 	move.l %a1,24(%sp)
-.L137:
+.L140:
 	move.l %d0,%d2
 	moveq #15,%d3
 	or.l %d1,%d2
 	cmp.l %d2,%d3
-	jcs .L140
+	jcs .L143
 	lea (36,%sp),%a1
 	move.l %a1,32(%sp)
 	move.l %a1,-(%sp)
@@ -677,14 +681,14 @@ dl_publication_tick:
 	move.l %d0,%d2
 	move.l 20(%sp),%a0
 	tst.l %d0
-	jeq .L140
+	jeq .L143
 	move.l immediate_pending,%d3
 	mov3q.l #1,%d0
 	cmp.l %d3,%d0
-	jeq .L241
+	jeq .L244
 	lea ids,%a2
 	lea ids+16,%a1
-.L148:
+.L151:
 	move.b (%a2)+,%d1
 	move.b (%a6)+,%d3
 	eor.l %d3,%d1
@@ -694,11 +698,11 @@ dl_publication_tick:
 	neg.l %d1
 	and.l %d1,%d2
 	cmp.l %a1,%a2
-	jne .L148
+	jne .L151
 	move.l 32(%sp),%a1
 	move.l #sources+8,%d3
 	lea sources,%a2
-.L149:
+.L152:
 	move.b (%a2)+,%d1
 	move.b (%a1)+,%d0
 	eor.l %d0,%d1
@@ -708,29 +712,29 @@ dl_publication_tick:
 	neg.l %d1
 	and.l %d1,%d2
 	cmp.l %d3,%a2
-	jne .L149
+	jne .L152
 	move.l immediate_token,%d0
 	tst.l %d2
-	jeq .L242
+	jeq .L245
 	move.l %d0,-(%sp)
 	move.l %a0,24(%sp)
 	jsr dl_publication_poll
 	addq.l #4,%sp
 	move.l 20(%sp),%a0
 	tst.l %d0
-	jeq .L127
+	jeq .L130
 	mov3q.l #1,%d3
 	cmp.l %d0,%d3
-	jne .L243
+	jne .L246
 	cmp.l immediate_version.l,%a0
-	jne .L127
+	jne .L130
 	move.l immediate_token,-(%sp)
 	jsr dl_publication_arm
 	addq.l #1,dl_publication_prepared
 	clr.l immediate_pending
 	addq.l #4,%sp
 	tst.l immediate_saved_kind
-	jne .L244
+	jne .L247
 	move.l immediate_saved+16,-(%sp)
 	move.l immediate_saved+12,-(%sp)
 	move.l immediate_saved+8,-(%sp)
@@ -742,7 +746,7 @@ dl_publication_tick:
 	movem.l (%sp),#17436
 	lea (60,%sp),%sp
 	rts
-.L134:
+.L137:
 	move.b -2147457601,%d0
 	move.b -2147457600,%d1
 	mvz.b -2147457603,%d3
@@ -756,17 +760,17 @@ dl_publication_tick:
 	mvz.b %d4,%d4
 	move.l %d4,%a2
 	tst.l %d3
-	jeq .L157
+	jeq .L160
 	cmp.l bank.l,%d1
-	jeq .L245
-.L158:
+	jeq .L248
+.L161:
 	tst.l deferred
-	jeq .L231
+	jeq .L234
 	cmp.l 24(%sp),%d1
-	jne .L231
+	jne .L234
 	cmp.l 28(%sp),%a2
-	jeq .L159
-.L231:
+	jeq .L162
+.L234:
 	move.l token,-(%sp)
 	jsr dl_selection_cancel
 	addq.l #4,%sp
@@ -774,21 +778,21 @@ dl_publication_tick:
 	clr.l pending
 	lea (60,%sp),%sp
 	rts
-.L157:
+.L160:
 	tst.l missed
-	jeq .L169
+	jeq .L172
 	cmp.l 24(%sp),%d1
-	jeq .L246
+	jeq .L249
 	move.l %a1,%d2
 	or.l %d2,%d0
 	tst.l missed
-	jeq .L172
+	jeq .L175
 	mvz.b %d0,%d0
 	clr.l missed
 	moveq #15,%d4
 	cmp.l %d0,%d4
-	jcs .L127
-.L173:
+	jcs .L130
+.L176:
 	pea sources
 	pea ids
 	move.l %a2,-(%sp)
@@ -799,17 +803,17 @@ dl_publication_tick:
 	move.l %d0,%d2
 	move.l 20(%sp),%d1
 	tst.l %d0
-	jeq .L247
+	jeq .L250
 	move.l %d1,bank
 	move.l %a2,pattern
 	move.l serial,%d0
 	addq.l #1,%d0
 	move.l %d3,deferred
 	tst.l %d0
-	jne .L248
+	jne .L251
 	move.l #1073741825,%d1
 	move.l %d1,%d0
-.L176:
+.L179:
 	move.l %d0,-(%sp)
 	pea sources
 	move.l %d1,serial
@@ -819,34 +823,34 @@ dl_publication_tick:
 	lea (12,%sp),%sp
 	moveq #-3,%d1
 	cmp.l %d0,%d1
-	jeq .L249
+	jeq .L252
 	tst.l %d0
-	jlt .L250
+	jlt .L253
 	movem.l (%sp),#17436
 	clr.l missed
 	mov3q.l #1,pending
 	lea (60,%sp),%sp
 	rts
-.L169:
+.L172:
 	move.l missed,%d3
 	tst.l %d3
-	jeq .L171
+	jeq .L174
 	clr.l missed
 	clr.l %d3
-.L171:
+.L174:
 	move.l %a2,%d0
 	moveq #15,%d2
 	or.l %d1,%d0
 	cmp.l %d0,%d2
-	jcs .L127
+	jcs .L130
 	cmp.l 24(%sp),%d1
-	jne .L173
+	jne .L176
 	cmp.l 28(%sp),%a2
-	jne .L173
+	jne .L176
 	movem.l (%sp),#17436
 	lea (60,%sp),%sp
 	rts
-.L238:
+.L241:
 	move.l token,-(%sp)
 	move.l %a0,24(%sp)
 	jsr dl_selection_cancel
@@ -856,8 +860,8 @@ dl_publication_tick:
 	lea immediate_saved,%a1
 	lea immediate_args,%a2
 	move.l 20(%sp),%a0
-	jra .L133
-.L237:
+	jra .L136
+.L240:
 	move.l immediate_token,-(%sp)
 	move.l %a0,24(%sp)
 	jsr dl_selection_cancel
@@ -865,12 +869,12 @@ dl_publication_tick:
 	clr.l immediate_token
 	move.l 20(%sp),%a0
 	tst.l pending
-	jeq .L132
-	jra .L238
-.L245:
+	jeq .L135
+	jra .L241
+.L248:
 	cmp.l pattern.l,%d4
-	jne .L158
-.L159:
+	jne .L161
+.L162:
 	move.l pattern,%d1
 	move.l %d1,%d3
 	move.l bank,%d0
@@ -884,7 +888,7 @@ dl_publication_tick:
 	clr.l 36(%sp)
 	clr.l 40(%sp)
 	cmp.l %d3,%d4
-	jcs .L251
+	jcs .L254
 	lea (36,%sp),%a1
 	move.l %a1,32(%sp)
 	move.l %a1,-(%sp)
@@ -897,7 +901,7 @@ dl_publication_tick:
 	move.l %a6,%a0
 	move.l %d0,%d2
 	lea (60,%sp),%a1
-.L163:
+.L166:
 	move.b (%a0)+,%d1
 	move.b (%a2)+,%d3
 	eor.l %d3,%d1
@@ -907,10 +911,10 @@ dl_publication_tick:
 	neg.l %d1
 	and.l %d1,%d2
 	cmp.l %a1,%a0
-	jne .L163
+	jne .L166
 	move.l 32(%sp),%a1
 	lea sources,%a2
-.L164:
+.L167:
 	move.b (%a1)+,%d1
 	move.b (%a2)+,%d0
 	eor.l %d0,%d1
@@ -920,21 +924,21 @@ dl_publication_tick:
 	neg.l %d1
 	and.l %d1,%d2
 	cmp.l %a6,%a1
-	jne .L164
+	jne .L167
 	tst.l %d2
-	jeq .L231
+	jeq .L234
 	mov3q.l #2,%d0
 	cmp.l pending.l,%d0
-	jeq .L252
+	jeq .L255
 	move.l token,-(%sp)
 	jsr dl_publication_poll
 	addq.l #4,%sp
 	tst.l %d0
-	jeq .L127
+	jeq .L130
 	move.l token,%d1
 	mov3q.l #1,%d3
 	cmp.l %d0,%d3
-	jeq .L167
+	jeq .L170
 	move.l %d1,-(%sp)
 	move.l %d0,24(%sp)
 	jsr dl_selection_cancel
@@ -943,10 +947,10 @@ dl_publication_tick:
 	addq.l #1,dl_publication_refused
 	move.l 20(%sp),%d0
 	cmp.l %d0,%d4
-	jeq .L183
+	jeq .L186
 	addq.l #2,%d0
 	tst.l %d0
-	jeq .L253
+	jeq .L256
 	move.l %d2,dl_modal_pending
 #APP
 | 35 "publication.c" 1
@@ -964,27 +968,27 @@ dl_publication_tick:
 | 0 "" 2
 #NO_APP
 	clr.l missed
-.L232:
+.L235:
 	movem.l (%sp),#17436
 	clr.l pending
 	lea (60,%sp),%sp
 	rts
-.L240:
+.L243:
 	tst.l -2147457608
-	jne .L136
+	jne .L139
 	tst.l -2147457722
-	jeq .L136
+	jeq .L139
 	lea immediate_saved,%a1
 	move.l %a1,24(%sp)
 	mvs.b -2147457603,%d1
 	move.l (%a1),%d0
 	cmp.l %d1,%d0
-	jne .L136
+	jne .L139
 	mvs.b -2147457707,%d2
 	move.l immediate_saved+4,%d1
 	cmp.l %d2,%d1
-	jeq .L137
-.L136:
+	jeq .L140
+.L139:
 	move.l immediate_token,-(%sp)
 	jsr dl_selection_cancel
 	addq.l #4,%sp
@@ -993,35 +997,35 @@ dl_publication_tick:
 	addq.l #1,dl_chain_dropped
 	lea (60,%sp),%sp
 	rts
-.L172:
+.L175:
 	mvz.b %d0,%d0
 	moveq #15,%d4
 	cmp.l %d0,%d4
-	jcc .L173
+	jcc .L176
 	movem.l (%sp),#17436
 	lea (60,%sp),%sp
 	rts
-.L248:
-	move.l %d0,%d1
-	jra .L176
 .L251:
+	move.l %d0,%d1
+	jra .L179
+.L254:
 	lea (36,%sp),%a0
 	move.l %a0,32(%sp)
 	move.l %a6,%a0
 	lea (60,%sp),%a1
 	lea ids,%a2
-	jra .L163
-.L241:
+	jra .L166
+.L244:
 	move.l %a0,20(%sp)
 	jsr dl_publication_idle
 	move.l 20(%sp),%a0
 	tst.l %d0
-	jeq .L127
+	jeq .L130
 	move.l serial,%d1
 	addq.l #1,%d1
 	move.l %d1,28(%sp)
 	tst.l %d1
-	jeq .L180
+	jeq .L183
 	move.l 28(%sp),%d4
 	move.l %d1,%d0
 	move.l %d0,serial
@@ -1030,16 +1034,16 @@ dl_publication_tick:
 	move.l %d4,immediate_token
 	add.l #60,%d1
 	lea ids,%a1
-.L144:
+.L147:
 	move.b (%a2)+,(%a1)+
 	cmp.l %a2,%d1
-	jne .L144
+	jne .L147
 	move.l 32(%sp),%a2
 	lea sources,%a1
-.L145:
+.L148:
 	move.b (%a2)+,(%a1)+
 	cmp.l %a6,%a2
-	jne .L145
+	jne .L148
 	move.l 28(%sp),-(%sp)
 	pea sources
 	pea ids
@@ -1048,12 +1052,12 @@ dl_publication_tick:
 	lea (12,%sp),%sp
 	move.l 20(%sp),%a0
 	tst.l %d0
-	jlt .L254
+	jlt .L257
 	mov3q.l #2,immediate_pending
 	lea ids,%a2
 	lea ids+16,%a1
-	jra .L148
-.L253:
+	jra .L151
+.L256:
 	mov3q.l #3,%d2
 	move.l %d2,dl_modal_pending
 #APP
@@ -1072,10 +1076,10 @@ dl_publication_tick:
 | 0 "" 2
 #NO_APP
 	clr.l missed
-	jra .L232
-.L246:
+	jra .L235
+.L249:
 	cmp.l 28(%sp),%d4
-	jne .L169
+	jne .L172
 	move.l missed,%d1
 	lsr.l #8,%d1
 	move.l missed,%d0
@@ -1083,8 +1087,8 @@ dl_publication_tick:
 	mvz.b %d0,%d0
 	mvz.b %d1,%d1
 	move.l %d0,%a2
-	jra .L171
-.L139:
+	jra .L174
+.L142:
 	move.l immediate_token,-(%sp)
 	jsr dl_selection_cancel
 	addq.l #4,%sp
@@ -1093,7 +1097,7 @@ dl_publication_tick:
 	addq.l #1,dl_publication_superseded
 	lea (60,%sp),%sp
 	rts
-.L247:
+.L250:
 	addq.l #1,dl_publication_refused
 	mov3q.l #1,dl_modal_pending
 #APP
@@ -1112,11 +1116,11 @@ dl_publication_tick:
 | 0 "" 2
 #NO_APP
 	clr.l missed
-.L258:
+.L261:
 	movem.l (%sp),#17436
 	lea (60,%sp),%sp
 	rts
-.L242:
+.L245:
 	move.l %d0,-(%sp)
 	jsr dl_selection_cancel
 	addq.l #4,%sp
@@ -1124,7 +1128,7 @@ dl_publication_tick:
 	mov3q.l #1,immediate_pending
 	lea (60,%sp),%sp
 	rts
-.L140:
+.L143:
 	move.l immediate_token,-(%sp)
 	jsr dl_selection_cancel
 	addq.l #4,%sp
@@ -1134,17 +1138,17 @@ dl_publication_tick:
 	mov3q.l #1,dl_modal_pending
 	lea (60,%sp),%sp
 	rts
-.L252:
+.L255:
 	move.l 24(%sp),%d1
 	cmp.l bank.l,%d1
-	jne .L127
+	jne .L130
 	move.l 28(%sp),%d2
 	cmp.l pattern.l,%d2
-	jeq .L232
+	jeq .L235
 	movem.l (%sp),#17436
 	lea (60,%sp),%sp
 	rts
-.L243:
+.L246:
 	move.l immediate_token,-(%sp)
 	move.l %d0,24(%sp)
 	jsr dl_selection_cancel
@@ -1154,29 +1158,29 @@ dl_publication_tick:
 	addq.l #1,dl_publication_refused
 	move.l 20(%sp),%d0
 	cmp.l %d0,%d4
-	jeq .L182
-	addq.l #2,%d0
-	tst.l %d0
-	jeq .L255
-	move.l %d2,dl_modal_pending
-.L256:
-	movem.l (%sp),#17436
-	lea (60,%sp),%sp
-	rts
-.L255:
-	mov3q.l #3,%d2
-	move.l %d2,dl_modal_pending
-	jra .L256
-.L250:
-	addq.l #1,dl_publication_refused
-	mov3q.l #-1,%d3
-	cmp.l %d0,%d3
 	jeq .L185
 	addq.l #2,%d0
 	tst.l %d0
-	jeq .L257
+	jeq .L258
 	move.l %d2,dl_modal_pending
 .L259:
+	movem.l (%sp),#17436
+	lea (60,%sp),%sp
+	rts
+.L258:
+	mov3q.l #3,%d2
+	move.l %d2,dl_modal_pending
+	jra .L259
+.L253:
+	addq.l #1,dl_publication_refused
+	mov3q.l #-1,%d3
+	cmp.l %d0,%d3
+	jeq .L188
+	addq.l #2,%d0
+	tst.l %d0
+	jeq .L260
+	move.l %d2,dl_modal_pending
+.L262:
 #APP
 | 35 "publication.c" 1
 	move.w %sr,%d0
@@ -1193,26 +1197,26 @@ dl_publication_tick:
 | 0 "" 2
 #NO_APP
 	clr.l missed
-	jra .L258
-.L257:
+	jra .L261
+.L260:
 	mov3q.l #3,%d2
 	move.l %d2,dl_modal_pending
-	jra .L259
-.L249:
+	jra .L262
+.L252:
 	jsr dl_publication_idle
 	tst.l %d0
-	jeq .L127
+	jeq .L130
 	addq.l #1,dl_publication_refused
 	move.l %d2,dl_modal_pending
-	jra .L259
-.L167:
+	jra .L262
+.L170:
 	move.l %d1,-(%sp)
 	jsr dl_publication_arm
 	addq.l #1,dl_publication_prepared
 	mov3q.l #2,pending
 	addq.l #4,%sp
 	tst.l deferred
-	jeq .L127
+	jeq .L130
 	clr.l missed
 	clr.l -(%sp)
 	move.l pattern,%d0
@@ -1225,7 +1229,7 @@ dl_publication_tick:
 	movem.l (%sp),#17436
 	lea (60,%sp),%sp
 	rts
-.L180:
+.L183:
 	move.l #1073741825,%d0
 	move.l %d0,28(%sp)
 	move.l 28(%sp),%d4
@@ -1235,8 +1239,8 @@ dl_publication_tick:
 	add.l #60,%d1
 	move.l %d4,immediate_token
 	lea ids,%a1
-	jra .L144
-.L183:
+	jra .L147
+.L186:
 	mov3q.l #2,%d2
 	move.l %d2,dl_modal_pending
 #APP
@@ -1255,34 +1259,34 @@ dl_publication_tick:
 | 0 "" 2
 #NO_APP
 	clr.l missed
-	jra .L232
-.L182:
-	mov3q.l #2,%d2
-	move.l %d2,dl_modal_pending
-	jra .L256
+	jra .L235
 .L185:
 	mov3q.l #2,%d2
 	move.l %d2,dl_modal_pending
 	jra .L259
-.L254:
+.L188:
+	mov3q.l #2,%d2
+	move.l %d2,dl_modal_pending
+	jra .L262
+.L257:
 	clr.l immediate_pending
 	addq.l #1,dl_publication_refused
 	mov3q.l #-1,%d1
 	cmp.l %d0,%d1
-	jeq .L181
+	jeq .L184
 	addq.l #2,%d0
 	tst.l %d0
-	jeq .L260
+	jeq .L263
 	move.l %d3,dl_modal_pending
-.L261:
+.L264:
 	movem.l (%sp),#17436
 	lea (60,%sp),%sp
 	rts
-.L260:
+.L263:
 	mov3q.l #3,%d3
 	move.l %d3,dl_modal_pending
-	jra .L261
-.L244:
+	jra .L264
+.L247:
 	addq.l #1,dl_chain_restarted
 	clr.l -2147457718
 	move.l #635712,%d3
@@ -1314,16 +1318,16 @@ dl_publication_tick:
 	move.l %d0,%a0
 	add.l #1074704437,%a0
 	tst.b (%a0)
-	jeq .L154
+	jeq .L157
 	add.l #1074704432,%d0
 	move.l %d0,%a0
 	mvs.w (%a0),%d0
-.L155:
+.L158:
 	move.l %d0,-2147457484
 	cmp.l -2147457714.l,%d1
-	jlt .L156
+	jlt .L159
 	clr.l -2147457718
-.L156:
+.L159:
 	move.l #-2147457602,%a0
 	move.b (%a0),1074626917
 	move.l #1074626916,-(%sp)
@@ -1333,15 +1337,15 @@ dl_publication_tick:
 	movem.l (%sp),#17436
 	lea (60,%sp),%sp
 	rts
-.L154:
+.L157:
 	add.l #1074704435,%d0
 	move.l %d0,%a1
 	mvs.b (%a1),%d0
-	jra .L155
-.L181:
+	jra .L158
+.L184:
 	mov3q.l #2,%d3
 	move.l %d3,dl_modal_pending
-	jra .L261
+	jra .L264
 	.size	dl_publication_tick, .-dl_publication_tick
 	.align	2
 	.globl	dl_project_guard
@@ -1352,49 +1356,49 @@ dl_project_guard:
 	move.l 12(%sp),%a0
 	mov3q.l #4,%d0
 	cmp.l project_pending.l,%d0
-	jeq .L297
-.L263:
+	jeq .L300
+.L266:
 	tst.l %a0
-	jeq .L264
-.L299:
+	jeq .L267
+.L302:
 	move.l project_pending,%d2
 	tst.l %d2
-	jne .L264
+	jne .L267
 	clr.l %d0
 	lea project_name,%a1
-.L265:
+.L268:
 	move.b (%a0,%d0.l),%d1
 	move.b %d1,(%a1,%d0.l)
-	jeq .L298
+	jeq .L301
 	addq.l #1,%d0
 	cmp.l #256,%d0
-	jne .L265
-.L271:
+	jne .L268
+.L274:
 	move.l %d2,%d0
 	move.l (%sp)+,%d2
 	addq.l #1,dl_publication_refused
 	mov3q.l #1,dl_modal_pending
 	addq.l #4,%sp
 	rts
-.L297:
+.L300:
 	tst.l project_done
-	jeq .L263
+	jeq .L266
 	tst.l project_pending
-	jeq .L263
+	jeq .L266
 	move.l %a0,4(%sp)
 	jsr (project_tick.part.0)
 	move.l 4(%sp),%a0
 	tst.l %a0
-	jne .L299
-.L264:
+	jne .L302
+.L267:
 	clr.l %d2
 	move.l %d2,%d0
 	move.l (%sp)+,%d2
 	addq.l #4,%sp
 	rts
-.L298:
+.L301:
 	tst.l %d0
-	jeq .L271
+	jeq .L274
 	move.l %a0,-(%sp)
 	clr.l -(%sp)
 	jsr 1073893936
@@ -1404,17 +1408,17 @@ dl_project_guard:
 	move.b (%a1,%d1.l),%d0
 	lea project_path,%a0
 	move.b %d0,(%a0,%d1.l)
-	jeq .L300
-.L270:
+	jeq .L303
+.L273:
 	addq.l #1,%d1
 	cmp.l #260,%d1
-	jeq .L271
+	jeq .L274
 	move.b (%a1,%d1.l),%d0
 	move.b %d0,(%a0,%d1.l)
-	jne .L270
-.L300:
+	jne .L273
+.L303:
 	tst.l %d1
-	jeq .L271
+	jeq .L274
 	clr.l project_done
 	clr.l project_authorized
 	mov3q.l #1,%d2
@@ -1431,39 +1435,39 @@ dl_project_engine_guard:
 	move.l project_authorized,%d0
 	move.l %d2,-(%sp)
 	tst.l %d0
-	jeq .L311
+	jeq .L314
 	move.l 8(%sp),%a1
 	addq.l #1,%a1
 	lea project_name,%a0
-.L305:
+.L308:
 	move.b (%a0),%d0
 	mvz.b (%a1),%d2
 	addq.l #1,%a1
 	addq.l #1,%a0
 	mvz.b %d0,%d1
 	cmp.l %d2,%d1
-	jne .L312
+	jne .L315
 	tst.b %d0
-	jeq .L307
+	jeq .L310
 	cmp.l #project_name+256,%a0
-	jne .L305
+	jne .L308
 	clr.l %d0
-.L301:
+.L304:
 	move.l (%sp)+,%d2
 	rts
-.L311:
+.L314:
 	addq.l #1,dl_project_refused
 	move.l (%sp)+,%d2
 	addq.l #1,dl_publication_refused
 	mov3q.l #1,dl_modal_pending
 	rts
-.L312:
+.L315:
 	addq.l #1,dl_project_refused
 	addq.l #1,dl_publication_refused
 	mov3q.l #1,dl_modal_pending
 	clr.l %d0
-	jra .L301
-.L307:
+	jra .L304
+.L310:
 	move.l (%sp)+,%d2
 	mov3q.l #1,%d0
 	rts
@@ -1483,14 +1487,14 @@ dl_project_finished:
 dl_publication_finish:
 	mov3q.l #4,%d0
 	cmp.l project_pending.l,%d0
-	jeq .L325
-.L315:
+	jeq .L328
+.L318:
 	rts
-.L325:
+.L328:
 	tst.l project_done
-	jeq .L315
+	jeq .L318
 	tst.l project_pending
-	jeq .L315
+	jeq .L318
 	jra (project_tick.part.0)
 	.size	dl_publication_finish, .-dl_publication_finish
 	.globl	dl_project_completed

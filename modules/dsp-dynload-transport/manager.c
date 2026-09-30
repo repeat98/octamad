@@ -192,15 +192,54 @@ void dl_selection_commit(uint32_t token) {
 /* Every managed id in the live set runs bound relocated code: a committed
  * placement that is not being retired, or an acknowledged target of a ready
  * transaction (a guarded route publishes before its commit). */
+static unsigned slot_bound(unsigned c,unsigned p) {
+    if(allocator.live[c][p].present && (phase!=6 || allocator.target[c][p].present)) return 1;
+    return phase==5 && result==DL_SELECT_READY && !cancelling && allocator.target[c][p].present;
+}
 static unsigned bound(const volatile uint8_t *ids) {
     for(unsigned i=0;i<16;++i) {
         unsigned p=ids[i],c=(i&7)<4 ? 1:0;
-        if(p>=32 || dl_catalog[p].resident) continue;
-        if(allocator.live[c][p].present && (phase!=6 || allocator.target[c][p].present)) continue;
-        if(phase==5 && result==DL_SELECT_READY && !cancelling && allocator.target[c][p].present) continue;
+        if(p>=32 || dl_catalog[p].resident || slot_bound(c,p)) continue;
         return 0;
     }
     return 1;
+}
+/* Init owed. The dispatcher calls an effect's init only on the block where a
+ * slot's id changes (P:0x4c9). A managed id published before its code is
+ * bound takes the dry stub's init there, and once bound its proc would run on
+ * whatever the slot's state held -- measured under the port with dirty DSP
+ * memory: a quarter second of garbage per publish when the id was restored
+ * after binding, garbage for good with no restore. So the slot is PARKED at
+ * NONE the tick such a publish is seen (it is dry on the stub either way) and
+ * given its id back only once that id's code is bound: the dispatcher then
+ * calls the real init before the first proc. Only ids whose dispatch is the
+ * stub count: dl_stub_at_boot (a build that stubs every managed id) or
+ * stubbed[] (armed or retired to it); an unarmed original runs its own init.
+ * `last` starts as "no id": whatever the first tick sees was published before
+ * it -- at boot, onto stubs -- and is parked as well. */
+extern const uint32_t dl_stub_at_boot;
+static uint8_t last[16]={255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255};
+static uint8_t owed_id[16]={0};
+static uint32_t parked=0;
+volatile uint32_t dl_reinit=0,dl_parked=0,dl_reinit_enabled=1; /* 0: negative control only */
+static void reinit(void) {
+    volatile uint8_t *ids=(volatile uint8_t *)0x80000ec4u;
+    if(!dl_reinit_enabled) return;
+    for(unsigned i=0;i<16;++i) {
+        unsigned bit=1u<<i,c=(i&7)<4 ? 1:0,p=ids[i];
+        if(parked&bit) {
+            if(p!=0) parked&=~bit;               /* stock published over it: judge that id */
+            else {
+                if(slot_bound(c,owed_id[i])) { ids[i]=owed_id[i]; parked&=~bit; last[i]=owed_id[i]; ++dl_reinit; }
+                continue;
+            }
+        }
+        if(p!=last[i] && p<32 && !dl_catalog[p].resident && !slot_bound(c,p) &&
+           (((stubbed[c]|dl_stub_at_boot)>>p)&1u)) {
+            owed_id[i]=(uint8_t)p; ids[i]=0; parked|=bit; last[i]=0; ++dl_parked; continue;
+        }
+        last[i]=(uint8_t)p;
+    }
 }
 static uint8_t unsafe[16]={0};
 static unsigned unsafe_valid=0;
@@ -224,11 +263,14 @@ void dl_residency_tick(void) {
 #ifndef DL_NATIVE_TEST
     dl_publication_tick();
     tripwire();
+    reinit();
     if(phase) return;
     /* Observe the actual live set, including automatic pattern/project paths.
      * Static originals remain valid while preparation runs or if it refuses.
      * This observer is NOT authorization to reclaim those fallback spans. */
-    const volatile uint8_t *ids=(const volatile uint8_t *)0x80000ec4u;
+    const volatile uint8_t *live=(const volatile uint8_t *)0x80000ec4u;
+    uint8_t ids[16];                        /* a parked slot keeps its id */
+    for(unsigned i=0;i<16;++i) ids[i]=(parked>>i)&1u ? owed_id[i] : live[i];
     unsigned changed=!observed_valid;
     for(unsigned i=0;i<16;++i) if(ids[i]!=observed[i]) changed=1;
     if(!changed) return;

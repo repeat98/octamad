@@ -159,11 +159,12 @@ def packages(character=True):
             relocations=[r.offset for r in p.relocations],init=p.init,proc=p.proc)
     return result
 
-def _catalog(data,qualified,slots):
+def _catalog(data,qualified,slots,stub_at_boot=0):
     """The runtime's dl_catalog/dl_codes: `data` {(core, id): package},
     `qualified` the ids the runtime may publish, `slots(id, has_package)` the
     slot mask (1 FX1, 2 FX2)."""
-    lines=['.section .rodata','.balign 4','.global dl_catalog','dl_catalog:']
+    lines=['.section .rodata','.balign 4','.global dl_stub_at_boot',
+           f'dl_stub_at_boot: .long {stub_at_boot:#x}','.global dl_catalog','dl_catalog:']
     for p in range(32):
         pkg=data.get((0,p))
         lines += [f'.word {len(pkg["words"]) if pkg else 0},1', '.long 0',
@@ -207,4 +208,7 @@ def include_dynamic(modules):
     from remix import stock
     data=dynamic_packages(); fx1=set(stock.fx1_ids())
     qualified={0,8}|{p for _c,p in data}
-    return _catalog(data,qualified,lambda p,pkg: 3 if p in fx1 else 2)
+    # The build stubs every stock DSP id (build_bus DYNAMIC), so each one's
+    # dispatch is the dry stub until the loader binds it.
+    return _catalog(data,qualified,lambda p,pkg: 3 if p in fx1 else 2,
+                    sum(1<<p for p in {p for _c,p in data}))   # each id once, not per core

@@ -32,4 +32,6 @@ MODULE=replace(base,name='dsp-dynload-stock',key='DSP DYNLOAD STOCK',
     requires=('DSP DYNLOAD STOCK B',),
     dynamic_stock=True,
     gates=(Gate('tools/experimental/dsp_dynload/verify_controller.py',remix_arg=False),
-           Gate('tools/experimental/dsp_dynload/verify_stock_relocation.py',remix_arg=False)))
+           Gate('tools/experimental/dsp_dynload/verify_stock_relocation.py',remix_arg=False),
+           Gate('tools/experimental/dsp_dynload/verify_stock_select.py',remix_arg=False,stage='image'),
+           Gate('tools/experimental/dsp_dynload/verify_stock_load.py',remix_arg=False,stage='image')))

@@ -92,7 +92,10 @@ unsigned dl_pattern_request_guard(const uint32_t *args) {
         if(immediate_pending || immediate_version!=immediate_seen) immediate_request(args,1,0);
         return 1;
     }
-    if(project_active()) { fail(DL_SELECT_UNAVAILABLE);return 0; }
+    /* A project load publishes stock's defaults and then the project's own
+     * Parts as it goes. Let it: those ids load behind the publication (the
+     * dry stub until bound, then their init, manager.c reinit). */
+    if(project_active()) return 1;
     immediate_request(args,0,0);return 0;
 }
 /* STOP on a playing chain stores chain[0] as the running pattern (0x400a11c6)

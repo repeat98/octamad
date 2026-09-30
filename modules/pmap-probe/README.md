@@ -38,6 +38,11 @@ three the source names; both cores report pass (0 errors, the routine ran from `
 the three sites' stock words back, the phones differ only where MAIN does; MAIN L and R carry the
 882 Hz square at exactly ±0x080000 (30 Sep 2026, the user's project).
 
+**Under octemu** (30 Sep 2026, image OCTABAM91, Jannik): 882 Hz on both MAIN L and MAIN R, so
+the image boots and both cores report pass there. Not an answer about the chip either: octemu's
+DSP side is not known to model the memory switch (if it is built on the same vendored emulator,
+it passes by construction). The unit is still the measurement.
+
 **The port cannot answer the question**: its DSP emulator does not model the memory switch (the OMR
 MS handling is commented out in the vendored `dsp.cpp`), so both cores pass by construction. The fail
 tone is untested (reachable only when the test fails). Every instruction form has a precedent on a

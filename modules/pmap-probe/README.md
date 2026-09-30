@@ -38,8 +38,9 @@ three the source names; both cores report pass (0 errors, the routine ran from `
 the three sites' stock words back, the phones differ only where MAIN does; MAIN L and R carry the
 882 Hz square at exactly ±0x080000 (30 Sep 2026, the user's project).
 
-**Under octemu** (30 Sep 2026, image OCTABAM91, Jannik): 882 Hz on both MAIN L and MAIN R, so
-the image boots and both cores report pass there. Not an answer about the chip either: octemu's
+**Under octemu** (30 Sep 2026, image OCTABAM91, Jannik): 882 Hz on both MAIN L and MAIN R, and
+tracks with FX1/FX2 effects sound normal beside it: the image boots, both cores report pass and
+the stock program runs with the shortened boot zeroing there. Not an answer about the chip either: octemu's
 DSP side is not known to model the memory switch (if it is built on the same vendored emulator,
 it passes by construction). The unit is still the measurement.
 

@@ -27,7 +27,11 @@ or freezes?**
 - [ ] Make two patterns that use different Parts, and let them change into each other.
 
 **Analog BD**
-- [ ] Put Analog BD on track 3, double-tap it and try **808** and **909**, with an effect on it.
+- [ ] On track 3, open the **machine list** (where you pick Flex, Static,
+      Thru, Neighbor or Pickup) and choose **ANALOG BD**. Add some trigs.
+- [ ] Double-tap the track key to open the engine list and try **808** and **909**
+      (UP/DOWN to browse, YES to pick, NO to cancel).
+- [ ] Put an effect on it (for example Filter on FX1 and Dark Rev on FX2).
 
 **Extras**
 - [ ] Point an LFO at a knob of Tape Echo, Miniverb or Euclid.

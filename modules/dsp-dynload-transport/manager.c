@@ -222,6 +222,16 @@ static uint8_t last[16]={255,255,255,255,255,255,255,255,255,255,255,255,255,255
 static uint8_t owed_id[16]={0};
 static uint32_t parked=0;
 volatile uint32_t dl_reinit=0,dl_parked=0,dl_reinit_enabled=1; /* 0: negative control only */
+/* What stock means a parked slot to hold: the active Part's byte, which
+ * stock's apply copies into the live array. NONE written over a parked NONE
+ * is invisible in the live array itself (measured: a project whose Parts are
+ * NONE got the boot default's FILTER back on every FX1 slot). */
+static unsigned intended(unsigned i) {
+    uint32_t bank=*(volatile uint32_t *)0x46c82456u;
+    unsigned part=*(volatile uint8_t *)0x80000003u;
+    if(!bank || part>3) return owed_id[i];
+    return *(volatile uint8_t *)(uintptr_t)(bank+0x8ed80u+part*6322u+i);
+}
 static void reinit(void) {
     volatile uint8_t *ids=(volatile uint8_t *)0x80000ec4u;
     if(!dl_reinit_enabled) return;
@@ -229,6 +239,7 @@ static void reinit(void) {
         unsigned bit=1u<<i,c=(i&7)<4 ? 1:0,p=ids[i];
         if(parked&bit) {
             if(p!=0) parked&=~bit;               /* stock published over it: judge that id */
+            else if(intended(i)!=owed_id[i]) { parked&=~bit; last[i]=0; continue; }
             else {
                 if(slot_bound(c,owed_id[i])) { ids[i]=owed_id[i]; parked&=~bit; last[i]=owed_id[i]; ++dl_reinit; }
                 continue;

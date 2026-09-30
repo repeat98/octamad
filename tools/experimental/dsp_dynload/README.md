@@ -322,3 +322,37 @@ state 7 (0x40004bc0) and Octakit's recipe writes at 0x400a0570 / 0x400526e4.
 The build prints the collision. Composing those two is open work.
 
 refhash changes by design for every configuration that takes the loader.
+
+## Modules load on demand too (30 Sep 2026)
+
+Under the stock loader an ordinary insert is not placed in the effect block:
+the build carries it as a package in the loader's catalog, beside the stock
+effects, and stubs its id until a Part selects it (`build_bus.LOADABLE`).
+The rule is the build's own -- a module whose source the build rewrites with
+nothing but its defines: no bus role, housekeeping gate, rotation latch, Y
+base, host guard, DSP hook or LFO table; on both cores; not the fallback,
+not hidden, not locked. `DspSection.resident=True` keeps one built in.
+
+Packaging is a proof, not a claim: assembled at two origins, every word that
+moves must move by exactly the distance and point inside the module, and the
+relocated package must equal a fresh assembly at two more bases, or the
+build refuses. `verify_module_packages.py <remix>` (a gate of DSP DYNLOAD
+STOCK) renders each package from the arena's lowest, a middle and its
+highest address with the effect block reclaimed (`illegal` everywhere but
+the shared stock copies) against the same words in intact stock memory, so a
+module reaching stock code by a fixed address is caught.
+
+Measured: Spectrum 1,391 words, Modulation 1,575, Miniverb 457, Euclid 395,
+CF Meter 30, Tape Echo 5 (its engine is on the ColdFire); `remixes/test/packages`
+carries all six and keeps the full 5,395-word arena; 216 renders identical.
+Resident: SEND and the two bus engines (bus participants) and Character (a
+bus client). A module that `replaces` a stock effect takes that id in the
+catalog; the stock package for it is dropped (before this, the catalog
+would have bound the stock effect over the module).
+
+Every catalog id is `qualified` now: an unqualified id made
+`dl_publication_ready` refuse any Part naming it, so a Part with SEND, a bus
+engine, a resident module or an old project's id would never have published
+(the case for `bus` since the loader was injected into every remix).
+Not run: the port (`verify_stock_select`, `verify_stock_switch`) on a module
+package, and hardware.

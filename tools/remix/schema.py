@@ -345,6 +345,10 @@ class DspSection:
     # `arena_min` is the least length the build accepts.
     arena: str = ""
     arena_min: int = 0
+    # KEEP RESIDENT: under the stock loader an insert on both cores is
+    # carried as a package and uploaded when a Part selects it
+    # (build_bus.LOADABLE); True keeps its code built into the image.
+    resident: bool = False
     # Entries into this section from STOCK code (schema.DspHook). A section
     # with hooks and no MenuEntry is placed on `payloads` only and takes no
     # dispatch entry; one with a menu may carry hooks as well.

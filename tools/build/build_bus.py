@@ -589,6 +589,105 @@ def assemble(src_text, org, label=""):
     return words, syms["init"], syms["proc"]
 
 
+# ---- MODULES LOADED ON DEMAND (30 Sep 2026) --------------------------------
+# Under the stock loader (DYNAMIC) an ordinary insert is not placed in the
+# effect block: it is a package in the loader's catalog, relocation-proven
+# here, uploaded into the arena when a Part selects its id and stubbed until
+# then, exactly as the stock effects are. The rule is the build's own: the
+# module's source is rewritten by nothing but its defines (no bus role, no
+# housekeeping gate, no rotation latch, no Y base, no host guard, no hook,
+# no LFO table), it runs on both cores, and it is not the fallback every
+# unimplemented id aliases to. DspSection.resident keeps one built in.
+PTABLE_LITERAL = "$fab1e0"               # schema.DspSection.ptable's literal
+
+
+def _loadable_text(m):
+    """The module's source as the payload loop will have it, or None when
+    it is not a plain insert (see above)."""
+    d = m.dsp
+    if not (DYNAMIC and not DEV and m.menu is not None and d is not None
+            and not m.is_stock and not d.resident and not d.arena
+            and m.key != REMIX.fallback and m.key not in REMIX.hidden
+            and m.key not in REMIX.locked and d.payloads == frozenset({"A", "B"})
+            and not d.hooks and d.bus_role is BusRole.NONE and d.ybase is YBase.NEVER
+            and d.r7_latch_slot is None and not d.override_markers
+            and d.gate_label is None and m.key in ASM_SRC
+            and not (m.harness is not None and m.harness.bus_client)):
+        return None
+    src = pathlib.Path(ASM_SRC[m.key]).read_text()
+    # (ROTINIT / ROTLATCH are rewritten only for a module with a latch slot,
+    # excluded above; the gate and the LFO table apply to any source.)
+    if any(t in src for t in ("$facade", "; XBUS_GATE")):
+        return None
+    for _dn, _dv in d.defines:
+        src = src.replace(f"@{_dn}@", str(int(_dv)))
+    return src
+
+
+def _package(key, text, ptab):
+    """(words, relocation offsets, init, proc) at origin 0: the table, then
+    the code. Assembled at two origins; every word that moves must move by
+    exactly the distance and point inside the package, and the relocated
+    package must equal a fresh assembly at two more bases (build_candidates'
+    proof, for any insert)."""
+    def at(org):
+        s = text.replace(PTABLE_LITERAL, f"${org:x}") if ptab else text
+        w, syms = assemble_syms(s, org + len(ptab), label=key)
+        if "init" not in syms or "proc" not in syms:
+            sys.exit(f"{key}: no init/proc labels")
+        return list(ptab) + w, syms["init"] - org, syms["proc"] - org
+    o1, o2 = 0x1000, 0x1400
+    w1, i1, p1 = at(o1)
+    w2, i2, p2 = at(o2)
+    if len(w1) != len(w2) or (i1, p1) != (i2, p2):
+        sys.exit(f"{key}: its length or entry points change with placement -- "
+                 f"not loadable; DspSection.resident keeps it built in")
+    words, rel = [], []
+    for k, (a, b) in enumerate(zip(w1, w2)):
+        if a == b:
+            words.append(a)
+            continue
+        if b - a != o2 - o1 or not o1 <= a < o1 + len(w1):
+            sys.exit(f"{key}: word {k} ({a:06x} -> {b:06x}) moves with placement "
+                     f"but is not an address inside the module -- not loadable; "
+                     f"DspSection.resident keeps it built in")
+        words.append(a - o1)
+        rel.append(k)
+    for base in (0x1801, 0x2407):
+        wb, ib, pb = at(base)
+        got = [(w + base) & 0xFFFFFF if k in set(rel) else w for k, w in enumerate(words)]
+        if got != wb or (ib, pb) != (i1, p1):
+            sys.exit(f"{key}: the relocated package disagrees with its assembly "
+                     f"at 0x{base:x} -- not loadable")
+    return words, rel, i1, p1
+
+
+def _loadables():
+    """{key: source} for the modules carried as packages, packaged into the
+    loader's catalog (runtime_catalog.MODULE_PACKAGES) before the platform
+    runtime is linked. Also hands the catalog the ids a module replaces."""
+    from experimental.dsp_dynload import runtime_catalog as _rc
+    _rc.MODULE_PACKAGES.clear(); _rc.MODULE_SLOTS.clear(); _rc.REPLACED_IDS.clear()
+    if not DYNAMIC:
+        return {}
+    _rc.REPLACED_IDS.update(m.menu.fx2_id for m in _CLONED if m.menu.replaces)
+    out = {}
+    for k in CARRIED:
+        m = _MODS[k]
+        text = _loadable_text(m)
+        if text is None:
+            continue
+        words, rel, init, proc = _package(k, text, tuple(m.dsp.ptable))
+        for core in (0, 1):
+            _rc.MODULE_PACKAGES[core, m.menu.fx2_id] = dict(
+                words=words, relocations=rel, init=init, proc=proc)
+        # Both slots: the dispatch table is shared by both menus, so a
+        # resident build runs it from FX1 too (a stored Part may name it there).
+        _rc.MODULE_SLOTS[m.menu.fx2_id] = 3
+        out[k] = text
+    return out
+
+
 def main():
     _p = os.environ.get("DELAYPROBE", "")
     probe = {"1": "silence", "silence": "silence", "send": "send",
@@ -1228,6 +1327,15 @@ def main():
     if _payloads and not _toolchain:
         sys.exit("linked units need m68k-elf-as/ld/objcopy/nm -- run `make setup` "
                  "(Homebrew: brew install m68k-elf-gcc)")
+
+    LOADABLE = _loadables()
+    if LOADABLE:
+        from experimental.dsp_dynload import runtime_catalog as _rc
+        for _k in LOADABLE:
+            _pk = _rc.MODULE_PACKAGES[0, _MODS[_k].menu.fx2_id]
+            print(f"  {_k}: loaded on demand -- a {len(_pk['words'])}-word package "
+                  f"({len(_pk['relocations'])} relocations, proven at four bases) "
+                  f"in {DYNAMIC[0]}'s catalog")
 
     # ==== 1e. the platform runtime: DRAM units + other payloads, one loader ==
     # Every `dram=True` unit in the remix is linked as ONE image at the
@@ -2677,6 +2785,10 @@ hostquit:
                 # its code and the least arena; the code length does not
                 # depend on the literal (long immediates), checked below.
                 _amin = remix_modules()[name].dsp.arena_min
+                # ... and the largest module package, so each can load alone
+                from experimental.dsp_dynload import runtime_catalog as _rc
+                _amin = max([_amin] + [64 + len(_v["words"])
+                                       for _v in _rc.MODULE_PACKAGES.values()])
                 for _r in runs:
                     _c, _end = _r["cursor"], _r["base"] + _r["words"]
                     _probe = src.replace(f"@{_arena}@", "0").replace(PTABLE_MARK, f"${_c:x}")
@@ -2701,6 +2813,17 @@ hostquit:
                 print(f"  {name}: declares a {len(_ptab)}-word ptable the "
                       f"source does not read -- not placed")
                 _ptab = []
+            if name in LOADABLE:
+                # A package in the loader's catalog (_loadables): no words
+                # here, its id is the null stub until the loader binds it.
+                if src != LOADABLE[name]:
+                    sys.exit(f"payload {tag}: {name}'s source was rewritten after "
+                             f"it was packaged -- the package would not be this code")
+                wrw_p(pp["xtab"] + NEW_IDS[name] * 3, pp["nul_i"])
+                wrw_p(pp["xtab"] + (32 + NEW_IDS[name]) * 3, pp["nul_p"])
+                print(f"  {name:13} not resident: id 0x{NEW_IDS[name]:02x} -> null stub "
+                      f"until {DYNAMIC[0]} binds its package")
+                continue
             if DEV and name == "DELAY SERVER":
                 # DEV: the delay does NOT go in the donor region. It is
                 # assembled at DEV_DELAY_P (see that constant) and its module

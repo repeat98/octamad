@@ -242,6 +242,14 @@ def dynamic_packages():
                 result[core,r['fx_id']]=dynamic_package(r,reclaimed,helpers)
     return result
 
+# Filled by the build before the platform runtime is linked (build_bus
+# _loadables): {(core, id): package} for the remix's modules carried as
+# packages, {id: slot mask} for them, and the stock ids a module replaces
+# (whose stock package must never be bound over the module).
+MODULE_PACKAGES = {}
+MODULE_SLOTS = {}
+REPLACED_IDS = set()
+
 def include_dynamic(modules):
     """The catalog for DSP DYNLOAD STOCK: every stock DSP effect loads on
     demand; NONE (0) and the ColdFire DELAY (8) stay resident. Slots follow
@@ -250,9 +258,21 @@ def include_dynamic(modules):
     sys.path.insert(0,str(ROOT/'tools')); import toolpath  # noqa: F401
     from remix import stock
     data=dynamic_packages(); fx1=set(stock.fx1_ids())
-    qualified={0,8}|{p for _c,p in data}
-    # The build stubs every stock DSP id (build_bus DYNAMIC), so each one's
-    # dispatch is the dry stub until the loader binds it.
-    return _catalog(data,qualified,lambda p,pkg: 3 if p in fx1 else 2,
+    # A replaced stock id is the module's: its package (when it is carried as
+    # one) or its resident code, never the stock effect's.
+    data={k:v for k,v in data.items() if k[1] not in REPLACED_IDS}
+    data.update(MODULE_PACKAGES)
+    # EVERY id is qualified: each dispatches to something this image defines
+    # (its resident code, the fallback alias, stock, or the stub until its
+    # package is bound), and an unqualified id makes dl_publication_ready
+    # refuse any Part that names it -- a Part with SEND, a bus server, a
+    # resident module or an old project's id would never be published.
+    qualified=set(range(32))
+    # The build stubs every packaged id (build_bus DYNAMIC and LOADABLE), so
+    # each one's dispatch is the dry stub until the loader binds it. A stock
+    # package keeps stock's slots (the reverbs are FX2 only); anything else
+    # runs in either slot, as the shared dispatch table runs it.
+    return _catalog(data,qualified,
+                    lambda p,pkg: MODULE_SLOTS.get(p) or (3 if p in fx1 or not pkg else 2),
                     sum(1<<p for p in {p for _c,p in data}),   # each id once, not per core
                     pmap16='PMAP PROBE' in modules)

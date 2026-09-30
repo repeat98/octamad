@@ -6,7 +6,7 @@ AUDIO (markandrus/octemu's UAC2 proof of concept) on the DRAM platform: at USB h
 MAIN L/R on 17/18 and CUE L/R on 19/20;
 at full speed the stereo sum of the tracks. The 16-bit stream was on
 hardware as image 64 and the 24-bit one as image 69 (25 Sep 2026).
-remixes/usb/README.md has the build and use steps.
+remixes/test/usb/README.md has the build and use steps.
 """
 
 from remix.schema import Proof, Remix

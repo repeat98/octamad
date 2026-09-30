@@ -1,4 +1,4 @@
-# USB AUDIO OUT MASTER
+# `usb-audio-out-master` — USB AUDIO OUT MASTER
 
 The unit as a USB audio input (UAC2, 44.1 kHz, 24-bit), two channels:
 track 8's L/R, post-FX, pre-fader, on channels 1/2 at both USB speeds.
@@ -26,9 +26,9 @@ The variant is Sam Banks's (27 Sep 2026):
 - It takes the same hook sites as OUT TRACKS MAIN CUE and OUT TRACKS, so a remix carries
   one of the three.
 
-## Measured under the port
+## Measured
 
-`verify_usb` with `REMIX=usb-out-master` and `REMIX=bottleservice`
+Under the port, `verify_usb` with `REMIX=usb-out-master` and `REMIX=bottleservice`
 (27 Sep 2026):
 
 - EP `0x83` isochronous, 96 bytes, bInterval 2; AS_GENERAL 2 channels,
@@ -38,6 +38,23 @@ The variant is Sam Banks's (27 Sep 2026):
 - Taps: with the read-back arena re-poked before every poll with words that
   name their source, side and frame, channel 1 carries T8 L and channel 2
   T8 R, only those, at high speed and at full speed.
+
+## On the unit
+
+Image 88 (Sam's MKII, 27 Sep 2026) carried the 1 ms high-speed form (above); nothing about the stream was
+measured there. The 250 µs form: not flashed.
+
+## Open
+
+- Which channels an iOS app records by default. The descriptor declares a
+  plain two-channel front L/R input; an app that takes the first two
+  channels gets T8.
+- Full speed on a phone: whether an iPhone or its adapter connects at high
+  or full speed. Both carry T8.
+
+## Gates
+
+- `verify_usb` (`make check REMIX=usb-out-master`, `REMIX=bottleservice`).
 
 ## Per block and per millisecond
 
@@ -54,12 +71,3 @@ Counted from the source, instructions executed (not cycles):
 `modules/cfmeter` (CF METER) measures the frame interrupt's duration and
 main's idle time on a unit; the port's `--profile` samples every 64
 instructions and gives no exact count.
-
-## Not measured
-
-- Anything on hardware.
-- Which channels an iOS app records by default. The descriptor declares a
-  plain two-channel front L/R input; an app that takes the first two
-  channels gets T8.
-- Full speed on a phone: whether an iPhone or its adapter connects at high
-  or full speed. Both carry T8.

@@ -16,8 +16,8 @@ output and lists every layout directive as it is applied.
 
 | program | language | what is in it |
 |---|---|---|
-| `MAIN_OS` | `68000:BE:32:Coldfire_EMAC_frac`, else `68000:BE:32:Coldfire` | the image at `0x40000400`; the board map (`ARCHITECTURE.md` §7) as blocks, including `0x48000000`, the uncached view of SDRAM, as an empty block of its own (a byte-mapped copy doubled the analysis); the peripheral registers the docs read; the interrupt handlers (`KERNEL.md`); the DSP boot routines; the four DSP blobs marked as data; every stock address a module names with `.set`/`.equ` (the source file is in a repeatable comment) |
-| `DSP_A`, `DSP_B` | `DSP56300:LE:24:default` | P/X/Y as the ColdFire uploads them (`dsp_modmap.py`), each load record's source address commented; internal memory to the default map's extents (P 8K, X 36K, Y 48K words, `CHIP.md` §3); the shared window `0x30000`–`0x3FFFF` with both bootstraps and payload A's shared records, X and Y mapped onto P there (they alias on the chip); the X/Y I/O registers; the vectors; both dispatch tables with every effect's init and process named (`DSP.md` §5); payload A's named routines |
+| `MAIN_OS` | `68000:BE:32:Coldfire_EMAC_frac`, else `68000:BE:32:Coldfire` | the image at `0x40000400`; the board map (`ARCHITECTURE.md` section 7) as blocks, including `0x48000000`, the uncached view of SDRAM, as an empty block of its own (a byte-mapped copy doubled the analysis); the peripheral registers the docs read; the interrupt handlers (`KERNEL.md`); the DSP boot routines; the four DSP blobs marked as data; every stock address a module names with `.set`/`.equ` (the source file is in a repeatable comment) |
+| `DSP_A`, `DSP_B` | `DSP56300:LE:24:default` | P/X/Y as the ColdFire uploads them (`dsp_modmap.py`), each load record's source address commented; internal memory to the default map's extents (P 8K, X 36K, Y 48K words, `CHIP.md` section 3); the shared window `0x30000`–`0x3FFFF` with both bootstraps and payload A's shared records, X and Y mapped onto P there (they alias on the chip); the X/Y I/O registers; the vectors; both dispatch tables with every effect's init and process named (`DSP.md` section 5); payload A's named routines |
 | `REMIX` (with `--image`/`IMAGE=`) | as `MAIN_OS` | a built image (default `out/mainos_bus.bin`) under `MAIN_OS`'s layout; the bytes the build appends after the OS are one data block (`build_appended`), and each runtime in the loader's table is unpacked (`depack.py`) into its own block `DRAM_RUNTIME_n` at the address the loader copies it to, so a module's calls into stock (and the stock callers it detours) are in one listing |
 
 Nothing from the image is committed. The tool reads your image, writes
@@ -105,10 +105,10 @@ cave the build fills (`0x400d6b00`..`0x400d7c3c`, `tools/remix/state.py`).
   P's listing at the same address, which is what the chip does.
 - The DSP56300 names in the listing come from the DSP56362 register map,
   the same names `dsp56kDisassemble` prints. The DSP56720's ESAI and host
-  port read correctly under them (`DSP.md` §6c); a register the docs have
+  port read correctly under them (`DSP.md` section 6c); a register the docs have
   not read is unverified on this chip.
 - The vectors are labelled `vec_XX` and not named. The DSP56720's vector
   map differs from the DSP56362's: the live vectors are `0x10`–`0x1c`, the
-  host-port handlers (`DSP.md` §6c).
+  host-port handlers (`DSP.md` section 6c).
 - `fx_null_init`/`fx_null_process` is the passthrough every unused id
   points at, DELAY (`0x08`) included: the stock DELAY runs on the ColdFire.

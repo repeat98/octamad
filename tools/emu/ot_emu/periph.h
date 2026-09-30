@@ -247,7 +247,7 @@ namespace ot
 	//     "1.<byte 1>.<byte 4 == 22>"). The model reports a tested panel,
 	//     byte 1 = the loader version, every other byte 0 (inferred values:
 	//     no MKII panel's report has been captured).
-	// The TX stream is framed by the opcode lengths of PANEL_LINK.md so that
+	// The TX stream is framed by the opcode lengths of docs/firmware/PANEL.md §9 so that
 	// LCD and LED bytes are never read as a command.
 	class MkiiPanel
 	{

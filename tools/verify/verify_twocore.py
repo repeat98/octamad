@@ -109,7 +109,7 @@ def run(mems, layout, out, skew=None):
     for k, (L, c, _) in enumerate(layout):
         p = pos.get(c, 0); pos[c] = p + 1
         # r7 = 0x6200 + 0x300 * pos for an FX2 slot: three bumps per track
-        # (COLDFIRE_PORT.md O11; rig_render.py). 2 + 2 * p until 21 Sep 2026
+        # (git show 3ceba41:docs/history/COLDFIRE_PORT.md O11; rig_render.py). 2 + 2 * p until 21 Sep 2026
         # put position 1 at 0x6400, an FX1 slot, which SEND now refuses.
         cores.append(str(c)); allocs.append(str(1 + 2 * p)); r7s.append(str(2 + 3 * p))
         inits.append(f"{ep[c][L][0]:x}"); procs.append(f"{ep[c][L][1]:x}")

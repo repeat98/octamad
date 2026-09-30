@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The CPU -> front-panel protocol (UART@fc064000), decoded to what the LCD
-and LEDs show. Pure stdlib. See PANEL_LINK.md for the evidence.
+and LEDs show. Pure stdlib. See docs/firmware/PANEL.md §9 for the evidence.
 
     from panel_link import PanelLink
     link = PanelLink()

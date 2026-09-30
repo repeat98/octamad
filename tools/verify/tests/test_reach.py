@@ -230,7 +230,7 @@ class MakefileTests(unittest.TestCase):
 
 class PlanTests(unittest.TestCase):
     def test_docs_and_ci(self):
-        self.assertEqual(commands(["docs/remixer/MODULES.md", "README.md"]), ["python3 tools/verify/verify_docs.py"])
+        self.assertEqual(commands(["docs/contributing/MODULES.md", "README.md"]), ["python3 tools/verify/verify_docs.py"])
         self.assertEqual(commands([".github/workflows/ci.yml"]), ["make ci"])
 
     def test_unclassified_reaches_the_cover_and_says_so(self):
@@ -407,3 +407,32 @@ class QuickTests(unittest.TestCase):
         self.assertNotIn("identity", kinds)
         c.quick = False
         self.assertIn("identity", [k for _, g, _ in reach.classify(["Makefile"], c) for k, _ in g])
+
+
+class TestRemixTests(unittest.TestCase):
+    """remixes/test/ is left out unless TESTS=1."""
+
+    def ctx_without_tests(self):
+        c = ctx()
+        c.include_tests = False
+        c.test_remixes = {"miniverb"}
+        c.test_carriers = {"MINIVERB": ["miniverb"]}
+        c.remixes_of = {k: [r for r in v if r != "miniverb"] for k, v in c.remixes_of.items()}
+        c.remixes = [r for r in c.remixes if r != "miniverb"]
+        return c
+
+    def test_a_module_only_in_test_remixes_is_not_checked(self):
+        rows = reach.classify(["modules/miniverb/engine.asm"], self.ctx_without_tests())
+        self.assertEqual([cmd for _, g, _ in rows for _, cmd in g], ["python3 tools/remix/selftest.py"])
+        self.assertIn("carried only by test remixes", rows[0][2])
+
+    def test_a_test_remix_edit_is_not_checked(self):
+        rows = reach.classify(["remixes/test/miniverb/remix.py"], self.ctx_without_tests())
+        kinds = [k for _, g, _ in rows for k, _ in g]
+        self.assertNotIn("check", kinds)
+        self.assertNotIn("accept", kinds)
+
+    def test_identity_names_only_the_remixes_in_play(self):
+        c = self.ctx_without_tests()
+        self.assertIn("--remixes bamsep26 usb", c.identity()[1])
+        self.assertNotIn("--remixes", ctx().identity()[1])

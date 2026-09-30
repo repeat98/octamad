@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Compare two audio captures within an LSB tolerance, and check they are
-sample-ALIGNED (Phase B contract, docs/firmware/COLDFIRE_PORT.md O16a).
+sample-ALIGNED (Phase B contract, oracle/README.md; git show 666b6154:docs/firmware/COLDFIRE_PORT.md O16a).
 
     cmp_audio.py A B [--fmt s16|wav24|auto] [--channels N] [--tol LSB]
                      [--frac PERCENT] [--len-tol FRAMES]

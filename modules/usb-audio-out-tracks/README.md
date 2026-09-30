@@ -1,4 +1,4 @@
-# USB AUDIO OUT TRACKS
+# `usb-audio-out-tracks` — USB AUDIO OUT TRACKS
 
 The unit as a USB audio input (UAC2, 44.1 kHz, 24-bit), sixteen channels:
 track N's L/R on channels 2N−1/2N, post-FX, pre-fader. MAIN and CUE are
@@ -12,18 +12,9 @@ packets are 11/12 frames, at most 768 bytes, every 250 µs. Everything else
 module's. It takes the same hook sites, so a remix carries one of the three
 audio modules.
 
-## Hardware precedent
+## Measured
 
-Image 69 (Sam's MKII, 25 Sep 2026) ran sixteen channels at 24 bits, every
-channel its track's tone, 0 underruns / overruns
-([USB AUDIO OUT TRACKS MAIN CUE](../usb-audio-out-tracks-main-cue/README.md) "Measured on
-hardware"). This build is not that one: it is the current source, which
-has since gained MAIN/CUE (#435) and lost dead diagnostic code (#446), with
-the MAIN/CUE reads assembled out. It has not run on a unit.
-
-## Measured under the port
-
-`verify_usb` with `REMIX=usb-out-tracks` (27 Sep 2026):
+Under the port, `verify_usb` with `REMIX=usb-out-tracks` (27 Sep 2026):
 
 - EP `0x83` isochronous, 768 bytes, bInterval 2; AS_GENERAL 16 channels.
 - 704/768-byte packets, none empty after the first ten; every subslot's
@@ -32,6 +23,18 @@ the MAIN/CUE reads assembled out. It has not run on a unit.
   name their source, side and frame, channels 1–16 carry tracks 1–8 L/R,
   each only its own.
 - Full speed: 1 ms packets of 44/45 8-byte frames.
+
+## On the unit
+
+Image 69 (Sam's MKII, 25 Sep 2026) ran sixteen channels at 24 bits, every
+channel its track's tone, 0 underruns / overruns
+([USB AUDIO OUT TRACKS MAIN CUE](../usb-audio-out-tracks-main-cue/README.md) "On the unit"). This build is not that one: it is the current source, which
+has since gained MAIN/CUE (#435) and lost dead diagnostic code (#446), with
+the MAIN/CUE reads assembled out. It has not run on a unit.
+
+## Gates
+
+- `verify_usb` (`make check REMIX=usb-out-tracks`).
 
 ## Per block
 

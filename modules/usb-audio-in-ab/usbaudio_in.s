@@ -44,12 +44,12 @@
 |
 | Latency: the ring runs at IN_TARGET frames of cushion. With implicit
 | feedback the host's OUT rate follows EP3 IN's packet sizes, and those
-| follow usbaudio's rate servo, which leaves the IN ring free to wander by
-| its deadband (AUD_BAND, +-128 frames) before it steers; this ring mirrors
-| that wander, so from wherever EP3 IN's fill sat when this stream started it
-| can swing by the band's full width. IN_TARGET = 384 (8.7 ms) covers that
-| plus a block, a packet and margin (unit: fill 343-444 seen). The two
-| rings' fills sum to a constant set at stream start (README, Latency).
+| follow usbaudio's rate servo. That servo is proportional and holds EP3 IN's
+| fill at AUD_TARGET, so this ring, which mirrors EP3 IN's, holds too.
+| (Before it, a +-128-frame deadband let both rings wander by its width.)
+| IN_TARGET then only has to cover a block, a packet and the jitter the unit
+| shows (376-395 around 384 on Bryan T's MKII, 28 Sep 2026). The two rings'
+| fills sum to a constant set at stream start (README, Latency).
 | SPDX-License-Identifier: MIT
 
     .include "remix.inc"            | IN_CHANNELS: 2 (AB, CD) or 4 (ABCD)
@@ -113,7 +113,7 @@
 .set FRAME_B,    4*IN_CHANNELS      | bytes per frame: 8 for a pair, 16 for four
 .set OPKT,       12*FRAME_B         | 12 frames: the largest packet, 96 or 192 B
 .set IN_FRAMES,  1024               | ring, frames (power of two)
-.set IN_TARGET,  384                | cushion before consuming, 8.7 ms (see Latency)
+.set IN_TARGET,  96                 | cushion before consuming, 2.2 ms (see Latency)
 .set BLOCK,      16                 | DSP frame
 .if IN_CHANNELS == 4
 .set TX_BYTES,   320                | word 0 + 128 halfwords + pad: 5 eDMA minor loops of 64

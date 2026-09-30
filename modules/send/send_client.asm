@@ -109,7 +109,7 @@ init:
 ; of one either way and snapping beyond that (build_bus.py ROTLATCH). The
 ; seed is the rotation as read, before or after a flip, so the label runs
 ; exact or one behind for the life of the instance; both are inside the
-; eight buffers' margin (docs/effects/XBUS.md).
+; eight buffers' margin (modules/send/README.md).
         move    #>$ffffff,a             ; -1: both level ramps start AT the knob
         move    a,x:(r7+$15)            ; on their first block (a level is never
         move    a,x:(r7+$16)            ; negative; the steps are rewritten
@@ -131,7 +131,7 @@ proc:
 ; 0x6700, 0x6a00 on each core (measured under the port, `--dsp-pcwatch`;
 ; the FX2 slots are 0x6200, 0x6500, 0x6800, 0x6b00). Such a call must
 ; neither register, send, nor run the rotation tracker (images 46-48,
-; docs/effects/XBUS.md). X:$213 cannot gate this: it is the last init's
+; modules/send/README.md). X:$213 cannot gate this: it is the last init's
 ; pointer at proc time. The refusal returns before any state is touched.
         move    r7,a
         move    #>$6100,x0
@@ -150,7 +150,7 @@ proc:
 ; The dispatcher passes r0 = 0 on a block's first call and r0 = 2 x split on
 ; the a=1 call of a split block (measured under the port: r0 = $e for a trig
 ; at frame 7). Nothing is stashed between the two calls: a stash did not
-; survive them on the unit (images 40-47, docs/effects/XBUS.md).
+; survive them on the unit (images 40-47, modules/send/README.md).
         move    r0,a
         asr     #$1,a,a                 ; words -> frames
         and     #>$f,a                  ; 0..15 by construction; garbage masked
@@ -252,7 +252,7 @@ notfirst:
 ; ---- everyone: resolve THIS BLOCK'S WRITE OFFSET, ONCE, into r7+$69 ------
 ; Core 1 reads the shared rotation asynchronously to core 0's flip, so a
 ; client that read y:>$900 at its own dispatch time landed in an already
-; consumed buffer on some blocks (hardware, 17 Aug 2026, docs/effects/XBUS.md
+; consumed buffer on some blocks (hardware, 17 Aug 2026, modules/send/README.md
 ; step 3). build_bus.py substitutes a per-payload body at the marker: payload
 ; A reads the shared word, payload B tracks its own count. Both leave this
 ; block's offset in `a` and in r7+$69, which every site below reads.

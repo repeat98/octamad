@@ -67,7 +67,7 @@ import verify_onebus as vo  # noqa: E402
 from remix import registry  # noqa: E402
 
 SCRATCH = ROOT / "out/dsp/_knobs"
-FRAMES = 16                 # the unit's block (docs/remixer/HARNESS.md "Blocks")
+FRAMES = 16                 # the unit's block (tools/harness/README.md "Blocks")
 PAD = send_probe.WARMUP_BLOCKS * FRAMES
 J1, J2, S0, END = 1500, 2000, 2500, 3000       # blocks after PAD
 LO, HI = 20, 110

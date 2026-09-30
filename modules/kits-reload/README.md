@@ -1,9 +1,45 @@
-# Kits + Reload: the bridge
+# `kits-reload` — KITS RELOAD
 
-The module that lets MIDI SCENES (bkkbrls-del) and Octakit (Em) share a
+Lets MIDI SCENES (bkkbrls-del) and Octakit (Em) share a
 Part Reload. `Kind.CF_PATCH`: one DRAM unit (`reload.s`), three detours,
 three `Override`s. Nothing of its own to use; it exists so the pair does
 not trap.
+
+## Measured
+
+Port (`ot_emu --call`, added for this: a firmware routine called as main
+on the loaded project -- the port has no panel), `dram_card.img`, set
+`OCTABAM`, project `RIG`:
+
+- ✅ **Reproduced**: the OKMS1-equivalent image (no bridge), `--call
+  0x4002dd50` (the menu Part Reload handler): `unimplemented opcode 4afc
+  at 45d167e0`, D0 = 0x40a96f54 -- the unit's screen. Watch trail: his
+  stub 0x40a9703a → her entry with (sp) = rel_after → the trap, 14
+  instructions.
+- ✅ **Fixed, menu path**: same call on the bridged image: her entry with
+  (sp) = 0x4002dd5c, her kit transaction ran and returned 0, back to
+  `menu_after`, `rel_after` (58,727 instructions), `menu_cont`,
+  0x4002dd64 with d0 = 1 and a0 = 0x40013a08; the handler returned to
+  main with d0 = 1.
+- ✅ **Fixed, FUNC+CUE path**: `--call 0x4005e038`: `shortcut_call`, her
+  entry with (sp) = 0x4005e060, transaction, `shortcut_after`,
+  `rel_after`, `shortcut_cont`, her formatter, 0x4005e09c, the handler's
+  `unlk/rts`; no trap.
+
+## On the unit
+
+✅ `OKMS2` (this bridge in `ok-ms`) flashed 14 Sep 2026 and works; Part
+Reload no longer traps.
+
+## Open
+
+- Whether rel_after's restore is the right thing after a KIT reload (his
+  semantics under her kits -- the same code his own build runs after a
+  stock reload). Not measured on its own.
+
+## Gates
+
+`verify_dram_boot`: ✅ both windows read back equal to the linked runtimes.
 
 ## The collision is not a byte
 
@@ -85,31 +121,3 @@ midi-scenes's stub (Part Reload, menu path) returns it through its own -- bridge
 
 His `apply_bridge` sites are not pinned (her part-load entry checks its
 caller only while her lifecycle state is not active), so they pass.
-
-## Measured vs inferred
-
-Port (`ot_emu --call`, added for this: a firmware routine called as main
-on the loaded project -- the port has no panel), `dram_card.img`, set
-`OCTABAM`, project `RIG`:
-
-- ✅ **Reproduced**: the OKMS1-equivalent image (no bridge), `--call
-  0x4002dd50` (the menu Part Reload handler): `unimplemented opcode 4afc
-  at 45d167e0`, D0 = 0x40a96f54 -- the unit's screen. Watch trail: his
-  stub 0x40a9703a → her entry with (sp) = rel_after → the trap, 14
-  instructions.
-- ✅ **Fixed, menu path**: same call on the bridged image: her entry with
-  (sp) = 0x4002dd5c, her kit transaction ran and returned 0, back to
-  `menu_after`, `rel_after` (58,727 instructions), `menu_cont`,
-  0x4002dd64 with d0 = 1 and a0 = 0x40013a08; the handler returned to
-  main with d0 = 1.
-- ✅ **Fixed, FUNC+CUE path**: `--call 0x4005e038`: `shortcut_call`, her
-  entry with (sp) = 0x4005e060, transaction, `shortcut_after`,
-  `rel_after`, `shortcut_cont`, her formatter, 0x4005e09c, the handler's
-  `unlk/rts`; no trap.
-- ✅ `verify_dram_boot`: both windows read back equal to the linked
-  runtimes.
-- ✅ Hardware: `OKMS2` (this bridge in `ok-ms`) flashed 14 Sep 2026 and
-  works; Part Reload no longer traps. Not measured on its own: whether
-  rel_after's restore is the right thing after a KIT reload (his
-  semantics under her kits -- the same code his own build runs after a
-  stock reload).

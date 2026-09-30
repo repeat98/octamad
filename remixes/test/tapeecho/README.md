@@ -16,4 +16,4 @@ On the author's unit (OCTACLID4): six instances run; a seventh freezes the unit,
 make image REMIX=tapeecho BUILD=1   # -> out/OCTATRACK_OCTABAM1.bin
 ```
 
-[BUILDING.md](../../../docs/remixes/BUILDING.md) is the walk-through from a fresh machine to a flashed unit. `make check REMIX=tapeecho` runs every gate first.
+[BUILDING.md](../../../docs/guide/BUILDING.md) is the walk-through from a fresh machine to a flashed unit. `make check REMIX=tapeecho` runs every gate first.

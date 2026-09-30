@@ -4,7 +4,7 @@ The rig's selection (bottleservice without USB AUDIO and Octakit) with USB MIDI 
 firmware's dormant USB-MIDI half) on the DRAM platform: the unit appears
 to a host as a composite mass-storage + MIDI class device, and the MIDI
 function mirrors the DIN ports. Nothing else changes.
-remixes/usb/README.md has the build and use steps.
+remixes/test/usb/README.md has the build and use steps.
 """
 
 from remix.schema import Proof, Remix

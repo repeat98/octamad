@@ -10,7 +10,7 @@ the current one.
 ## 0. The machine model
 
 FX1 and FX2 are two effect slots on every track, run back to back in the
-same per-track chain: `FX1 → FX2 → gain → bookkeeping` (`DSP.md` §5-6).
+same per-track chain: `FX1 → FX2 → gain → bookkeeping` (`DSP.md` sections 5-6).
 Both slots of a track run on the core that track lives on.
 
 ```
@@ -21,7 +21,7 @@ Both slots of a track run on the core that track lives on.
    │  track n: FX1→FX2│   │  track n: FX1→FX2│
    │  own P memory    │   │  own P memory    │
    └────────┬─────────┘   └─────────┬────────┘
-            └──── shared 64 K ──────┘   (Y:0x30000–0x3FFFF, §3)
+            └──── shared 64 K ──────┘   (Y:0x30000–0x3FFFF, section 3)
 ```
 
 FX1 and FX2 differ in exactly three ways ✅: order (FX1 runs first, so an
@@ -46,7 +46,7 @@ FX2 (15): the same 11, plus DELAY, PLATE REV, SPRING REV, DARK REV
 ```
 
 The three reverbs and the delay are FX2-only on stock, so taking the
-reverbs as the donor region costs FX1 nothing (❌ `BUS.md`'s "FX1 can still
+reverbs as the donor region costs FX1 nothing (❌ `git show 3ceba41:docs/history/BUS.md`'s "FX1 can still
 select PLATE REV by name"). Removing an effect from a menu frees nothing;
 the space is the effect's code, and taking it costs that effect in both
 slots, which is why a harvested id is null-stubbed on both. FX1's ten
@@ -61,10 +61,10 @@ part defaults FX1 = FILTER.
 | CPU | Freescale ColdFire MCF54454VR266, 32-bit big-endian, 266 MHz | ✅ board photo (an MKI board reads `MCF54454`; an earlier note said `MCF5445A`) |
 | CPU clock tree | crystal 24 MHz → VCO 528 → CPU 264 MHz, internal bus 132, FlexBus 66 | ✅ from the image + MCF54455RM (below) |
 | Audio DSP | Freescale Symphony DSP56721 (`DSPB56721AG`) | ✅ board photo |
-| DSP cores | two DSP5636x cores, 200 MHz / 200 MIPS each (the part's maximum) | ✅ datasheet; ✅ 199.9 MHz = 4,532 cycles/sample on this board, measured 22 Sep 2026 (§2). ❌ 183.456 MHz / 4,160 (inferred from the payload's register writes, until 22 Sep 2026) |
+| DSP cores | two DSP5636x cores, 200 MHz / 200 MIPS each (the part's maximum) | ✅ datasheet; ✅ 199.9 MHz = 4,532 cycles/sample on this board, measured 22 Sep 2026 (section 2). ❌ 183.456 MHz / 4,160 (inferred from the payload's register writes, until 22 Sep 2026) |
 | External memory controller | none; all DSP memory is on-chip | ✅ datasheet |
 | Shared DSP memory | 8 blocks × 8 K words = 64 K words at `$030000`, reachable by both cores; P/X/Y alias there | ✅ reference manual + hardware |
-| ColdFire RAM | 128 MB SDRAM | ✅ `docs/remixer/PLACEMENT.md` |
+| ColdFire RAM | 128 MB SDRAM | ✅ `docs/contributing/PLACEMENT.md` |
 | Storage | CompactFlash (FAT16/32) | ✅ |
 
 ❌ "Two separate DSP chips": two cores of one part. ❌ "Y:0x30000-0x3FFFF is
@@ -78,7 +78,7 @@ touch it (`0x400e165c`, `0x16d0`, `0x173c`, `0x17a8`): PFDR = 22, OUTDIV1 =
 multiplies its top byte by 12,000,000, checks the answer is 264,000,000 and
 keeps it at `0x400b9654`. That stored number is the CPU clock: the UART
 baud setup at `0x40010f76` loads it, shifts it right one, and divides by 32
-× baud (the internal bus clock clocks the UARTs, RM §32); 132 MHz / (32 ×
+× baud (the internal bus clock clocks the UARTs, RM section 32); 132 MHz / (32 ×
 31250) = 132, an integer.
 
 | | | |
@@ -123,32 +123,9 @@ contention costs; only the burn probe measures what is left after stock.
 
 ### The burn knob is a cycle meter
 
-`make burn` / `make burn-image BUILD=N` (`BURN=1` with `SPEC=1`: the
-shipping remix plus a `BURN` knob on SEND's second slot). SEND is on every
-track of every core, so either core's ceiling can be measured on demand:
-set up the configuration, sweep that SEND's `BURN` until the audio breaks,
-and `24 × BURN` = cycles/sample spare on that core in that configuration
-(a three-word body, `dsp/burn_send.inc`; the reverb's old two-block probe
-was 32/step, the original 16). `verify_burn.py` proves the knob inert at 0
-and 127 and the step exact on both cores. The difference between two
-configurations is the cost of the change, the only way to price a stock
-effect (instruction count is not cycles: one rewrite moved instructions
-508 → 512 while cycles fell 735 → 731). A configuration that freezes at
-`BURN = 0` is already over budget.
-
-Measured with the original probe:
-
-| configuration | result | spare |
-|---|---|---|
-| FILTER on all four tracks | froze at `BURN = 87` (16× scale) | 1,392 ✅ |
-| FILTER disabled everywhere | froze at `BURN = 76` (32× scale) | 2,432 ✅ |
-
-Four FILTERs cost 1,040 cycles/sample. The two configurations reconcile:
-FX2 bank (static) 957 + 4 × FILTER 1,040 + burn at the freeze 1,392 =
-3,389 accounted; stock's own per-track work by difference ~1,150 of 4,535.
-The 16× probe topped out at 2,032 and the filters-off configuration passed
-it, so the absolute ceiling is unmeasured. ❌ "There is not real headroom":
-retracted.
+The instrument behind the hardware rows above (`make burn`, `BURN` on
+SEND's second slot, `24 × BURN` = spare cycles/sample) and its first
+measurements: `tools/harness/README.md` "The burn knob".
 
 ### Static counts
 
@@ -158,7 +135,7 @@ contention stall: a floor. `dsp_host`'s per-core meter (`-meter`;
 for a whole layout: a second floor, per block, inits included, no stall;
 it reads BusVerb at ~1,130 instructions/sample where the static count is
 1,652 words (multi-word instructions count once). The ColdFire port's
-stopwatch (`--dsp-stopwatch`, `COLDFIRE_PORT.md`) reads the firmware's own
+stopwatch (`--dsp-stopwatch`, `git show 3ceba41:docs/history/COLDFIRE_PORT.md` O13) reads the firmware's own
 dispatch in the meter's unit and agrees within 2 % (BusVerb 1,109 under the
 firmware, 1,130 on the meter). Only the burn sweep measures the ceiling.
 `make cycles` prints the live per-module figures and the worst load a core
@@ -184,36 +161,9 @@ per-station numbers (LP 464, VOWL 685, LADR 797, ISO 1,010, TAPE 887, JUNO
 ❓; the burn sweep and the pricer with the per-form costs above are the
 instruments.
 
-### The rig's load, measured (15 Sep 2026)
-
-`rig_render.py --project OCTABAM89 --bank 3 --part 2` (C02's layout: T1
-Character + BusDelay, T2-T4 Spectrum + SEND, T5 Modulation + BusVerb,
-T6-T7 Spectrum, T8 Character as the return; the part's own knobs, audio on
-every track), the meter's unit (instructions/sample, max block):
-
-| | core 0 (T5-T8) | core 1 (T1-T4) |
-|---|---|---|
-| as stored (every station at its passthrough, delay CLEAN) | 1,301 | 561 |
-| delay GRAIN | 1,301 | 1,276 |
-| pricer, static, everything live (Spectrum 346 ×3 / ×2, Character 639, Modulation 476, BusDelay 1,243, BusVerb 1,157, SEND 10 ×3) | 2,994 | 2,950 |
-| the same after TAME (290) and the wow (1,057) went, 15 Sep 2026 | 2,882 | 2,596 |
-| usable | 3,120 | 3,120 |
-
-The delay alone: CLEAN 476, GRAIN 1,191, REVERSE 497 (T1=D with three
-sends). The stations cost their static price only when a knob leaves
-neutral; at the part's stored values every one takes its bypass loop. So
-the rig plays at ~40 % of the wall as stored and prices at ~95 % of it
-with every station live and GRAIN selected, inside the counter's ~270
-error on the reverb — the burn sweep on C02 is the one measurement that
-places it. The levers, in order of cycles: GRAIN's four grains per line
-(`Remix.grains=2` halves the reader, −350 on core 1, an ear decision);
-Spectrum's TAME saturator (28 words ×6 calls, runs at TAME 0 too); a
-station's per-track cost is paid once per track, so which tracks carry
-Spectrum sets the floor.
-
 ## 3. DSP Y memory
 
-Swept end to end on hardware (`dsp/ymemprobe.asm`, in git history), per
+Swept end to end on hardware (`git show e8edc940:dsp/ymemprobe.asm`), per
 core:
 
 | Y range | what | |
@@ -233,19 +183,19 @@ FX1:  0x1000  0x1C00  0x2800  0x3400      stride 0xC00  =  3,072 words
 FX2:  0x4000  0x8000  0x30000 0x34000     stride 0x4000 = 16,384 words
 ```
 
-✅ `0x30000-0x3FFFF` is the shared memory (DSP56720RM §1.4.13: "eight 8K ×
+✅ `0x30000-0x3FFFF` is the shared memory (DSP56720RM section 1.4.13: "eight 8K ×
 24 words memory blocks for a total of 64K shared words … starting from
 $030000"; Ch. 3: "accessible by both DSP cores"). Words, not bytes. The
 split into `0x30000` (payload A) / `0x38000` (payload B) is a convention,
-not a hardware wall (❌ `BUS.md`'s "the two DSPs are a hard boundary").
+not a hardware wall (❌ `git show 3ceba41:docs/history/BUS.md`'s "the two DSPs are a hard boundary").
 
-✅ P, X and Y alias in this region, confirmed on hardware: `dsp/alias_probe.asm`
+✅ P, X and Y alias in this region, confirmed on hardware: `git show 93a787fc:dsp/alias_probe.asm`
 wrote a tagged word through Y and read it back through X and P at four
 addresses across the window. ❌ "X:0x30000 and Y:0x30000 do not alias" (an
 inference); ❌ "BusDelay may use its full 32,768 words" (the window is not
 free ground). Zero wait states as X or Y (1 as P). Contention is per 8 K
 block: no bus contention when the two cores access different blocks. A
-second cross-core channel exists, the ICC (§1.4.14): each core can raise
+second cross-core channel exists, the ICC (section 1.4.14): each core can raise
 an interrupt in the other, with write-data and poll-data registers.
 
 Per-core P/X/Y extents are configurable via OMR, and stock runs the
@@ -265,17 +215,14 @@ instructions are `andi #$fc,mr`); the Y sweep is Fig 3-2's 48K to the
 word; payload A's P code ends at `0x01fdf`, 33 words short of `0x2000`, so
 program space is the wall by a setting, not silicon. Fig 3-6 is ruled out
 (stock's X modules reach `0x08d98`). Shared RAM is program-addressable in
-every map. Switching the map is an untested lever (`XBUS.md`); `modules/pmap-probe` is the
-one-flash probe for the 16K map (30 Sep 2026, not flashed; the port cannot answer it: its
-emulator ignores OMR MS). Under that map Y ends at `0x9FFF`, which BusVerb's and BusDelay's
-private `0x4000..0xBFFF` do not fit (`tools/experimental/dsp_dynload/README.md`).
+every map. Switching the map is an untested lever (`modules/send/README.md`).
 
 ### What is in the shared window (static analysis)
 
 | range | what | evidence |
 |---|---|---|
 | `0x30000-0x30047` (72 words) | stock's per-frame parameter staging, copied X→`Y:0x1b8` and written back every frame | `do #<$48` loops at `P:0x0a4` (read) and `P:0x366` (write) |
-| `0x30000-0x300AA` (171 words) | the DSP host-port loader + ESAI setup, payload A, boot-time (the ESAIs carry audio, 8-slot network mode; `DSP.md` §6c) | module dump |
+| `0x30000-0x300AA` (171 words) | the DSP host-port loader + ESAI setup, payload A, boot-time (the ESAIs carry audio, 8-slot network mode; `DSP.md` section 6c) | module dump |
 | `0x31000-0x31031` (50 words) | bootstrap A | `DSP.md` |
 | `0x32000-0x32039` (58 words) | bootstrap B | `DSP.md` |
 | `0x38000-0x38012` (19 words) | payload B's entry stub, `jsr`s into `0x30082`/`0x3008a` (stock cross-core code sharing) | module dump |
@@ -287,18 +234,6 @@ The boot loader occupies `0x30000` as P; init zeroes `0x30000-0x37FFF`;
 the same words are then staging and FX2 buffer. A raw word scan finds
 values, not addresses (`0x3a667` disassembles as `teq x1,a r6,r7`);
 disassemble before believing.
-
-### Who uses what
-
-| | |
-|---|---|
-| BusVerb | `Y:0x4000–0xBFFF`, 32,768 words, hardcoded, both payloads (different cores) |
-| BusDelay | LineL `Y:0x38000–0x3FFFF` (B) + LineR `Y:0x4000–0xBFFF` (B's private FX2 region, unwritten by anything else on core 1: port, 15 Sep 2026), 32,768 words each; the DEV hatch keeps two 16K lines at `Y:0x38000` in payload A |
-| bus scratch | `Y:0x900–0xad9`, 474 words: `modules/send/send_client.asm` is the authoritative map (❌ this row read `0x900–0x980`, "parity word", 4 wet buffers until 30 Aug 2026) |
-| per-instance base stash | `Y:0x795 + (r7>>8)`, one word per instance |
-| SEND | nothing; never touches its own slot |
-
-32,768 words of shared window is the ceiling per server; BusVerb is at it, and BusDelay adds the private region on its core.
 
 ## 4. DSP program memory
 
@@ -312,7 +247,7 @@ disassemble before believing.
 `make bus REMIX=<name>` prints the live ledger (used / FREE per payload). Relocating the
 project's code is cheap (assembled with `-org`); relocating stock code is
 not (binary, absolute branch targets), so more space means taking a
-neighbour's whole module (`stock.harvested`, `docs/remixer/MODULES.md`).
+neighbour's whole module (`stock.harvested`, `docs/contributing/MODULES.md`).
 
 ## 5. Slots, tracks and parameters
 
@@ -322,7 +257,7 @@ neighbour's whole module (`stock.harvested`, `docs/remixer/MODULES.md`).
 | FX slots per track | FX1 (3,072 words) + FX2 (16,384 words) | ✅ |
 | reverb/delay FX2-only | FX1's 3,072 words are too small | ✅ |
 | FX1 is not idle | the dispatcher calls it every frame; a fresh part defaults FX1 = FILTER | ✅ |
-| parameters per effect | 12: 6 page-1 knobs, 6 page-2 slots. Any slot may carry any count (`DSP.md` §9) | ✅ |
+| parameters per effect | 12: 6 page-1 knobs, 6 page-2 slots. Any slot may carry any count (`DSP.md` section 6, "Page 2") | ✅ |
 | unassigned tracks | id 0 is aliased to SEND in a bus remix, to the firmware's NONE otherwise | ✅ |
 | `r7` state block | `$00–$83` usable; `$84–$8a` is host-owned and cannot hold state across calls (per-call scratch there is fine; BusDelay uses `$84`–`$88`) | ✅ bisected |
 
@@ -331,7 +266,7 @@ damping state in the instance's own Y region.
 
 ## 6. Closed
 
-- Do the two cores share `Y:0x30000–0x3FFFF`? Yes (§3).
+- Do the two cores share `Y:0x30000–0x3FFFF`? Yes (section 3).
 - The 32-step fault: bisected on hardware, two instances of the same
   effect on one bank corrupt audio after ~5.45 s at any address (one
   `SharePrb` + three `Send`s clean at every ADDR and INC; `SharePrb` +
@@ -339,6 +274,4 @@ damping state in the instance's own Y region.
   nor housekeeping; one server per bank is a design rule. ❌ "A single word
   written to `Y:0x34000` from payload A corrupts that track's audio":
   falsified by that bisect (its ADDR = 0 is `0x34000`).
-- Assembler traps: `dsp_asm` emits the nearest encoding; `cmp b,a` →
-  `maxm a,b`, `tfr a,b` → `rnd b`, an unknown `MPY` operand pair →
-  `mpysu`. Disassemble every hand-written block (`AGENTS.md`).
+- Assembler traps: `AGENTS.md` "Traps that have already cost real work".

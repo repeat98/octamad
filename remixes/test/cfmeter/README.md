@@ -1,7 +1,7 @@
 # `cfmeter` — the ColdFire's spare time with SYNTH MACHINE running
 
-`octatrick-usb` (SYNTH MACHINE, SCALE QUANTIZER, DIRECT JUMP, USB MIDI, USB
-AUDIO, the stock effects) plus [CF METER](../../../modules/cfmeter/README.md)
+`octatrick` without TUNER and USB AUDIO IN (SYNTH MACHINE, SCALE QUANTIZER,
+DIRECT JUMP, USB MIDI, USB AUDIO OUT TRACKS MAIN CUE, the stock effects) plus [CF METER](../../../modules/cfmeter/README.md)
 and [CF METER IDLE](../../../modules/cfmeter-idle/README.md). DARK REV is off
 the chooser: its DSP words hold the readout insert. The readout comes over
 USB AUDIO, T8 on channels 15/16 (post-FX, pre-fader, so LEVEL and MAIN do

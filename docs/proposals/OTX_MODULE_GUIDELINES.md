@@ -113,7 +113,7 @@ PROJECT loads `otx.strd`. A valid `otx.strd` can recover an invalid `otx.work`,
 and the UI must report that recovery. Neither file is an archive of every edit.
 
 What the core does depends only on which files are on the card (full
-table and reasons in the proposal, §3.3):
+table and reasons in the proposal, section 3.3):
 
 - **neither file**: a fresh project (also a stock SAVE TO NEW or a hand
   copy); declared defaults, normal first write;
@@ -202,7 +202,7 @@ MKI tests.
 - Should it use a flat list with separator lines, module submenus, or offer
   a common setting to choose? In the current stock menu widget, a row within
   a pane cannot open another submenu and no free page id is known
-  ([MAINMENU.md](../firmware/MAINMENU.md) §5); a different UI mechanism would
+  ([MAINMENU.md](../firmware/MAINMENU.md) section 5); a different UI mechanism would
   need proof.
   The flat 26-row OCTALAB category was used on the MKI with arrow navigation
   (OLT02). Test row count, scrolling and navigation before deciding.

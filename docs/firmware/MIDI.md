@@ -89,31 +89,15 @@ per-track table word, the flag/split word (`r2+$1e`) and **tempo24
 track. Retracted 15 Sep 2026: "`+0x24..+0x2c` are dead" (they were read
 by no FX2 effect; the FX1 effect on the same track reads them).
 
-The tempo cave (`modules/tempo-sync/tempo_cave.s`, hooked at `0x40004d40`
-in the per-frame voice-record writer, for FX2 id 6) publishes one byte:
-
-```
-+0x1b  r6+$1 bits 8-15   held note (0x400d64c2[track]) or 0 on release
-                         (the low byte of BusDelay's TIME halfword)
-```
-
-BusDelay reads tempo24 at `r6+$13` (`+0x3e`) and derives the MIDI-clock
-period (42,336,000 / tempo24, Q12.4) per block. Until 15 Sep 2026 the cave
-stored tempo24, the period, fader+1 and the note at `+0x24..+0x2a` (FX2
-ids 6 and 7), which clobbered the FX1 page 2 and the AMP page 2's first
-halfword on every host track (`docs/remixer/FAILURE_MODES.md`).
+What the tempo cave stores in the record, and what BusDelay derives from
+tempo24: `modules/tempo-sync/README.md`.
 
 The track index is `a0 − 0x80000110` (`moveal %d4,%a0 ; addal
 #0x80000110,%a0` at `0x40004d38`).
 
 ## Note → pitch on the DSP ✅
 
-BusDelay latches the note in `y:>$090a` (HOLD: the last note sticks after
-note-off; a never-received note leaves the PTCH knob in force). In GRAIN
-the note drives the continuous pitch, `2^((note−84)/12)`, ±24 semitones.
-`tools/verify/verify_midi.py` checks the note against the PTCH knob path
-(bit-identical at unison, spectral elsewhere); `DNOTE=n` is the local
-override. Hardware-confirmed: +12/+6/0/−5/−12 within 1/4 semitone.
+BusDelay's note latch and GRAIN pitch: `modules/busdelay/README.md`.
 
 ## Hardware findings
 
@@ -125,11 +109,7 @@ override. Hardware-confirmed: +12/+6/0/−5/−12 within 1/4 semitone.
   path for that slot is the suspect. 🟡 untraced, single-slot; not a
   general rule and not page 2's.
 - The OT echoes TIME as CC 40 with CC OUT on.
-- Transport: the Rytm is clock master over its own USB port
-  (`ot_midi.py -p "Elektron Analog Rytm MKII" start|stop`); never send
-  start/stop to the OT's own port.
-- A Midihub reverts to its stored preset on power/USB blips: save the
-  session pipes (FROM A → drop-realtime-only → OCTATRACK).
+- The lab's MIDI setup (Rytm clock master, Midihub): `docs/contributing/TESTING.md` section 1.
 
 ## Remote CC reference
 
@@ -300,7 +280,7 @@ array `0x80000a50` as `value << 8` — which is exactly why knob values sit at
 bits 16–23 of the DSP word (`PARAM_PAGES.md`). The same loop also fills a
 second byte lane at `+0x20` (`0x80000830..`) and six more at `+0x3e`. Page 2
 is that `+0x20` lane ✅ (`0x80000810 + track*72 + 0x20 + slot2` for the
-PLAYBACK page; FX2 page 2 at `+0x38`, FX1 page 2 at `+0x32`; §6). The `0xa0`
+PLAYBACK page; FX2 page 2 at `+0x38`, FX1 page 2 at `+0x32`; section 6). The `0xa0`
 marker array `0x80000db4` is walked by the packer at `0x4000d648`. A CC
 write lands in the next frame's record; there is no explicit "publish" call.
 
@@ -321,7 +301,7 @@ echo and the shared body 🟡.
 Readers of `0x460d16c8` (scene interpolation): `0x4003ee4c`, `0x4003f0d0`,
 `0x4006ff34`, `0x400935a8`, `0x4009dd30`, `0x400a3126`, `0x400357cc`.
 
-Channel → track: see §1 table; the map is rebuilt from `MIDI_TRIG_CHn`
+Channel → track: see section 1 table; the map is rebuilt from `MIDI_TRIG_CHn`
 (`0x8000003f+t`) on every CC, so it is always live. `MIDI_MODE`
 (`0x80000012` ≠ 0) makes the auto channel address MIDI track
 `current+8` (`0x40062502`) and, in the CC handler, short-circuits
@@ -374,7 +354,7 @@ page-2 editor"), so CCs corrupted the track's PLAYBACK page-2 byte and never
 touched FX2's; confirmed fixed on image 96 (CC 63 on channel 5 moved SHMR
 on the panel and the tail's 2-8 kHz bands). Not measured: whether an FX1
 page-2 edit at the panel reaches the DSP on a THRU track
-(`docs/remixer/FAILURE_MODES.md`).
+(`docs/contributing/FAILURE_MODES.md`).
 
 Tooling: `tools/hw/hw_bus_test.py` (synchronous paired A/B over MIDI with
 capture, a page-1 control proving the harness each run), an emulator
@@ -468,7 +448,7 @@ Message layout: `a4`=status, `a3`=note, `a5`=velocity. `d4` = channel.
      is the voice-command writer: `0x8000186e[t*4]` ← lookup, `0x8000188e[t*4]`
      ← flags|0x100, and a halfword into `0x80000110 + 2*(0xbcf+t)` =
      `0x800018ae + 2t` (machine<<10 | sample) — the mailbox family from
-     ARCHITECTURE §6 (M for the stores, I for the naming).
+     ARCHITECTURE section 6 (M for the stores, I for the naming).
    - **notes 48-55** (`0x4000e5e2`): part/mute functions.
    - **notes 60-71** (`0x4000e668`): events `0x45`/`0x4b` (index note-60/-66).
    - **notes 72-96 = chromatic play** (`0x4000e6e2`, M). For every track t
@@ -595,13 +575,13 @@ ColdFire `mvs/mvz/byterev/mac`, which is most of this code). Markers as in
 Scene byte *k* of a track is the lock for **DSP-frame halfword *k*** of that
 track: the frame builder reads them 1:1 (`movew a2@+` → compute → `movew d3,a1@+`
 at `0x4000ce60..0x4000ced4`). Frame halfwords are `knob<<8 | companion`
-(ColdFire halfword → DSP 24-bit word `<<8`, `DSP.md` §6c).
+(ColdFire halfword → DSP 24-bit word `<<8`, `DSP.md` section 6c).
 
 | scene bytes | frame halfwords | page |
 |---|---|---|
 | 0..5 | page-block `0x80000510+ping·0x180+track·0x30`, hw 0..5 | PLAYBACK p1 (byte 1 = STRT, 2 = LEN, 3 = RATE ✅ from the STRT/LEN encoder hooks `0x4003eef0`/`0x4003ec7c` and `FUN_4003f1b4`) |
-| 6..11 | same block, hw 6..11 | LFO p1: the LFO engine reads SPD *i* at word 6+i and DEP *i* at 9+i (✅ objdump, `LFO.md` §2) |
-| 12..17 | voice record `0x80000110+ping·0x200+track·0x40`, hw 0..5 | AMP p1: PMTR 12–17 write there (✅ objdump, `LFO.md` §5) |
+| 6..11 | same block, hw 6..11 | LFO p1: the LFO engine reads SPD *i* at word 6+i and DEP *i* at 9+i (✅ objdump, `LFO.md` section 2) |
+| 12..17 | voice record `0x80000110+ping·0x200+track·0x40`, hw 0..5 | AMP p1: PMTR 12–17 write there (✅ objdump, `LFO.md` section 5) |
 | 18..23 | voice record hw 6..11 | FX1 page 1 (`r6+0..5`) ✅ |
 | 24..29 | voice record hw 12..17 | **FX2 page 1 (`r6+0..5`)** ✅ |
 | 30..31 | — | **skipped**: `addql #4,%a2` at `0x4000cef6` |
@@ -687,54 +667,24 @@ Event loop `FUN_40061a94`, queue `0x460d17ae`, jump table `0x40061cfa`
   word / `0x80000049` → `FUN_400053d8(0x44, 0, 0, value, 0, 0)` (generic
   poster, ring of 12-byte messages at `0x46c7ff7e`). **So MIDI CC 48 writes the
   same variable, inverted.** 🟡 If CC48 = 0 is "scene A" per the manual, then
-  xf = 127 is the A end and `NOTES.md`'s A = `+0x8ed90` labelling holds.
+  xf = 127 is the A end and `git show 3ceba41:docs/history/NOTES.md`'s A = `+0x8ed90` labelling holds.
 
-### 4. Assessment for our slots
+### 4. Page 2 and scene locks
 
-**None of BusVerb SHMR (6) / MODE (7) / GATE (10), BusDelay FRZE (11) /
-MODE (7) can be scene-locked**, and nothing on page 1 can carry a companion
-lock either. Page-1 slots 0..5 of both effects morph today with no work.
+Stock's scene block cannot lock page 2 (slots 6..11) and nothing on page 1
+carries a companion lock; page-1 slots 0..5 of every effect morph. Where
+the exclusion lives, and how `modules/scenes-p2` locks page 2 instead:
+`modules/scenes-p2/README.md`.
 
-Where the exclusion lives — all would have to change together:
-1. Block size: 0x20 bytes/track/scene in the project (`0x8f3e2` stride, 24 code
-   sites incl. copy/paste/undo at `0x40025b40`, `0x400274cc`, `0x400275a0`).
-2. Working copy `0x80000ed4`: 0x40/track, 32 pairs, all fillers assume 32.
-3. Frame-builder extents: `moveq #6` (page block) and `moveq #9` (voice
-   record) at `0x4000ccb6/0x4000cd0e`, `0x4000cd96/0x4000cdea`,
-   `0x4000ce5e/0x4000cee8`; skip at `0x4000cef6`. Halfwords 24..26 are 7 longs
-   past where the record pass stops.
-4. The scene editor's slot→byte map (`0x40053a2c` region) and the two
-   encoder-hook descriptors at `P+0x12a` that call the STRT/LEN morph.
-5. The arithmetic itself, to leave the low byte alone.
-
-Two spare bytes per track could host **one** extra halfword, not three, and
-the DSP-side companion packing would still be lost at every intermediate
-position. Not worth it.
-
-**Done another way (26 Sep 2026, `modules/scenes-p2`):** the page-2 locks
-live in a 144-byte pool inside the Part window (`+0x90522`, 3 bytes a lock),
-and one detour at the frame builder's join after the morph (`0x4000cf40`)
-lerps them byte-wise into the voice record's page-2 halfwords with the same
-weight table, a select snapping at the midpoint. None of the five stock
-extents above changes.
-
-The tempo cave (`modules/tempo-sync/tempo_cave.s`, hooked at `0x40004d40`,
-`a2` = this track's record) publishes `0x460d16c8` + 1 at `+0x28` → `r6+$8`
-every frame for the two servers; both the hardware fader and CC 48 feed
-`0x460d16c8`. Nothing of ours reads it. Per-track fader values would have a
-home in the weight table at `0x80003c60`, indexed per track.
-
-Falsifiers: a hardware flash where the fader at the A end changes a page-1
-lock the wrong way (would invert §2's endpoint claim); a `TPROBE`-style capture
-showing `r6+$8` not tracking the fader (would mean the cave hook is not
-per-frame for that track).
+Falsifier: a hardware flash where the fader at the A end changes a page-1
+lock the wrong way (would invert section 2's endpoint claim).
 
 ## Appendix D: CC out — the emitter (record)
 
 `0x40033e3c(track, cc, value)`, stack arguments, disassembled 28 Sep 2026
 (`modules/cc-feedback`). Gated on `0x8000004a` (AUDIO CC OUT) **bit 1**;
 bit 0 is what the panel crossfader path tests before applying its move
-(§4 above), so bit 0 = INT, bit 1 = EXT ✅. `track` 8 = the current track
+(section 4 above), so bit 0 = INT, bit 1 = EXT ✅. `track` 8 = the current track
 (resolved to the first audio-track channel no MIDI track uses); a track
 0..7 uses `0x8000003f + track` (−1 = off → return) and returns if a MIDI
 track's channel byte (`0x46c76de0 + 68·i`, ch+1) equals it. It does not
@@ -760,12 +710,6 @@ batches. 28 `jsr` sites in the image; the page-1 knob path (`0x400552f0`: curren
 + slot`, the clamped value) and the crossfader (CC 48) are the two
 traced. Nothing calls it on a pattern, part or project change.
 
-Measured under the port (`verify_set`, bottleservice, 28 Sep 2026): 277
-CCs queued by CC FEEDBACK's sweep left UART0 as 573 bytes with running
-status; UART0's transmit interrupt (vector 0x5a) was acknowledged once per
-message, the dispatcher (0x62) 35 times over the load. On the acceptance
-stress fixture 469 CCs, and at the end of the 900-frame run channel 7's
-bitmap still held 15 CCs with the busy flag set: a part change late in
-the run, queued (cache = lane) and waiting for the batch timer. `ot_emu
---midi-out FILE` writes the bytes.
+What CC FEEDBACK's sweep puts through it, measured under the port:
+`modules/cc-feedback/README.md`.
 

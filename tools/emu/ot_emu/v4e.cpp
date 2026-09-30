@@ -854,7 +854,7 @@ namespace ot::v4e
 		// ---- the EMAC ------------------------------------------------------
 		// The gate this port must pass before anything it computes is
 		// trusted: `tools/emu/ot_emu/test_emac.cpp`, and the hardware semantics it
-		// encodes are docs/firmware/RTOS_FORK.md section 10.16 -- a week lost to three
+		// encodes are docs/history/RTOS_FORK.md section 10.16 -- a week lost to three
 		// defects in Unicorn's version of exactly this.
 		//
 		// ✅ Encodings from `m68k-elf-as -mcpu=5475`:

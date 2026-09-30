@@ -3,7 +3,7 @@
 cores (the hardwired rig).
 
 Every case below renders through tools/harness/dsp_host with BOTH payloads booted
-(docs/remixer/HARNESS.md "Two cores"): the senders and the delay on payload B where
+(tools/harness/README.md "Two cores"): the senders and the delay on payload B where
 the unit runs them, the reverb on payload A, so the chain buffer and its
 liveness stamp cross the real core boundary. The image is the rig remix
 (registry.fixture: the smallest carrying both servers, SEND, the stations and RIG HOSTS) as SPEC -- the stations must be in it. Since 20 Sep 2026 each
@@ -117,7 +117,7 @@ def run(mems, insts, skew=None, tag="r", tone="tone.raw"):
            "-inst", str(len(insts)),
            "-core", ",".join(str(i.core) for i in insts),
            "-alloc", ",".join(str(2 * i.pos + (i.fx - 1)) for i in insts),
-           "-r7", ",".join(str(1 + 3 * i.pos + (i.fx - 1)) for i in insts),   # three r7 bumps per track (COLDFIRE_PORT.md O11)
+           "-r7", ",".join(str(1 + 3 * i.pos + (i.fx - 1)) for i in insts),   # three r7 bumps per track (git show 3ceba41:docs/history/COLDFIRE_PORT.md O11)
            "-audioidx", ",".join(str(k) for k, _ in enumerate(insts)),
            "-audio", "9000",
            "-inmask", str(sum(1 << k for k, i in enumerate(insts) if i.fed)),

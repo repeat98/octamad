@@ -515,10 +515,10 @@ def playback_test(image, project):
               for i in range(4096, len(best) - 1024, 1024)]
     if energy and max(energy) == 0:
         # No audio at all: the DSP's main mixdown gain reads 0 under the port
-        # on this machine (docs/remixer/EMU.md, the voice-silence entry, 28
+        # on this machine (tools/emu/README.md, the voice-silence entry, 28
         # Sep 2026); the records' modulation above is still measured.
         print('  [SKIP] Full DSP audio contains the filter pulses on the steady test tone: no audio on '
-              'any slot -- the port\'s main mixdown gain (docs/remixer/EMU.md)', flush=True)
+              'any slot -- the port\'s main mixdown gain (tools/emu/README.md)', flush=True)
     else:
         check('Full DSP audio contains the filter pulses on the steady test tone',
               bool(energy) and min(energy) > 0 and max(energy) > 2 * min(energy),

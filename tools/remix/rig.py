@@ -32,7 +32,7 @@ TRACKS = range(1, 9)
 PAYLOAD_TRACKS = {"A": range(5, 9), "B": range(1, 5)}
 
 # BUS, not "server". It is the natural opposite of INSERT and the word this
-# project already uses for the thing itself (docs/effects/XBUS.md, `make bus`, the
+# project already uses for the thing itself (modules/send/README.md, `make bus`, the
 # bus accumulators): an effect either sits IN a track or is fed BY tracks
 # over the bus. The module KEYS stay "REVERB SERVER"/"DELAY SERVER" -- they
 # are written into saved remixes and the build report -- and `is_server` is
@@ -105,7 +105,7 @@ def menus(mod, fx1_rows=()) -> tuple[str, ...]:
 
     Our own modules are FX2-only UNLESS THEY REPLACE A STOCK EFFECT, in
     which case they take that effect's FX1 row as well -- the build repoints
-    both FX1 tables (build_bus.py, docs/remixer/MODULES.md), confirmed by asking the
+    both FX1 tables (build_bus.py, docs/contributing/MODULES.md), confirmed by asking the
     emulated firmware to draw the page. Everything below is about a module
     wanting a NEW row rather than an existing one.
 

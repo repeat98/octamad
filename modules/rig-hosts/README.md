@@ -1,4 +1,4 @@
-# RIG HOSTS
+# `rig-hosts` — RIG HOSTS
 
 A ColdFire patch: a new part is born hosted. The part-defaults
 initialiser (`0x40005638`, the routine that gives a new part FX1 = FILTER
@@ -21,7 +21,10 @@ with `python3 tools/hw/ot_project.py host <project>`.
   carry makes the firmware create one, and its live FX2 ids read
   6 9 9 9 7 9 9 8, FX1 0 x8; T1's page bytes are BusDelay's defaults,
   T5's BusVerb's, T8's the stock delay's.
-- On the unit: image 52 (22 Sep 2026) ran the FX2 hosting with FX1 left
+
+## On the unit
+
+- Image 52 (22 Sep 2026) ran the FX2 hosting with FX1 left
   at stock's FILTER default, which on that image was Spectrum's id with
   FILTER's page bytes ("muted and quiet and modulated" until re-selected);
   image 53 added the FX1 = NONE and page-defaults detours, measured under

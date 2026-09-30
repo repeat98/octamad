@@ -841,7 +841,7 @@ def main():
         if _hz:
             sys.exit(f"{name}: replacing {rep} puts it on FX1 too, and "
                      f"{_hz}. Either take an id FX1 does not list, or make "
-                     f"it buffer-free (docs/remixer/MODULES.md, 'only a buffer-free "
+                     f"it buffer-free (docs/contributing/MODULES.md, 'only a buffer-free "
                      f"insert may take an FX1 row')")
         wr32(slot, clone_addr[name])
         # ...and the row the encoder scrolls, which holds the descriptor
@@ -3202,12 +3202,28 @@ hostquit:
         if ("SPRING REV" in REMIX.modules and not DYNAMIC) or "MACHINEDRUM" in REMIX.modules:
             sys.exit("ANALOG BD owns SPRING REV's code and both DSP uploads; "
                      "remove SPRING REV / MACHINEDRUM from this remix")
-        # Private X and source-stage placement are qualified with stock FX,
-        # which is also what the dynamic stock loader serves: it is the one
-        # other DSP section admitted (its X mailbox is checked in ab_image).
-        if any(_m.dsp is not None for _m in remix_modules().values()
-               if _m.key in REMIX.modules and not _m.dynamic_stock):
+        # Its private X (ab_image.TABLES..X_TOP: tables and voice blocks) was
+        # qualified against the stock effects, which is also what the
+        # dynamic stock loader serves (its X mailbox is checked in
+        # ab_image). Under the loader a module's code is in the same effect
+        # block as theirs (a package, or placed below Analog BD's reserve);
+        # what must hold is that no other DSP section addresses that X.
+        if not DYNAMIC and any(_m.dsp is not None for _m in remix_modules().values()
+                               if _m.key in REMIX.modules):
             sys.exit("ANALOG BD's DSP source currently composes with stock effects only")
+        for _m in (remix_modules()[_k] for _k in REMIX.modules):
+            if _m.dsp is None or _m.dynamic_stock or _m.key not in ASM_SRC:
+                continue
+            _src = pathlib.Path(ASM_SRC[_m.key]).read_text()
+            _xs = [int(_a, 16) for _l in _src.split("\n")
+                   for _a in re.findall(r"\bx:[<>]?\$([0-9a-f]+)", _l.split(";")[0], re.I)]
+            _in = sorted(_a for _a in _xs if ab_image.TABLES <= _a < ab_image.X_TOP)
+            if _in:
+                sys.exit(f"ANALOG BD: {_m.key} addresses X:{_in[0]:05x} inside Analog BD's "
+                         f"private X {ab_image.TABLES:05x}..{ab_image.X_TOP:05x}")
+            print(f"  ANALOG BD beside {_m.key}: no X address in its private "
+                  f"{ab_image.TABLES:05x}..{ab_image.X_TOP:05x} "
+                  f"({len(_xs)} absolute X operand(s) in the source)")
         _pres, _apokes, _alog = ab_image.integrate(img, IMG.read_bytes(),
                                                    org=AB_TOP if DYNAMIC else None)
         print("\n=== Analog BD: DSP 808/909, both payloads, pre-boot loader ===")

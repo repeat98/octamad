@@ -15,6 +15,14 @@ same-named module in another group -- there are none.
 import pathlib
 import sys
 
+# The tools need Python 3.10+ (zip(strict=), `X | None` annotations). macOS's
+# own /usr/bin/python3 is 3.9, and under it the first manifest fails with
+# "zip() takes no keyword arguments" (measured 30 Sep 2026 on 3.9.6).
+if sys.version_info < (3, 10):
+    sys.exit(f"octabam needs Python 3.10 or newer; {sys.executable} is "
+             f"{sys.version.split()[0]}. On macOS: brew install python, then "
+             f"open a new shell so python3 is Homebrew's.")
+
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 GROUPS = ("build", "harness", "emu", "hw", "verify")

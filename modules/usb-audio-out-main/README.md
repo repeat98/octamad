@@ -1,4 +1,4 @@
-# USB AUDIO OUT MAIN
+# `usb-audio-out-main` — USB AUDIO OUT MAIN
 
 MAIN L/R from the unit to the host (UAC2, 44.1 kHz, 24-bit), two channels,
 a front left / front right cluster. Needs USB MIDI.
@@ -23,11 +23,19 @@ source, `usbaudio.s` (markandrus/octemu, MIT), assembled with
 - It takes the same hook sites as the other out layouts, so a remix carries
   one of the five.
 
-## Measured under the port
+## Measured
 
-`verify_usb` (`make check REMIX=usb-out-main`): EP 0x83 isochronous, 96
+Under the port: `verify_usb` (`make check REMIX=usb-out-main`): EP 0x83 isochronous, 96
 bytes, bInterval 2; AS_GENERAL two channels, front L/R; packets at the
-250 µs cadence; the counters after the stream. Not on a unit.
+250 µs cadence; the counters after the stream.
+
+## On the unit
+
+Not on a unit.
+
+## Gates
+
+- `verify_usb` (`make check REMIX=usb-out-main`).
 
 ## Ground
 

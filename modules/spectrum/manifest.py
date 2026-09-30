@@ -127,7 +127,7 @@ MODULE = Module(
     # slot 7's name from the clone (CLONE_SPECTRUM, a build export), so its
     # bytes depend on where the clone lands: the source is the only truth
     # (emit returns no bytes; a build without the m68k toolchain refuses).
-    # Pinned in the 338 B zero run at 0x400c45b0 (docs/remixer/PLACEMENT.md):
+    # Pinned in the 338 B zero run at 0x400c45b0 (docs/contributing/PLACEMENT.md):
     # the clone window had 18 B left and the overflow run none, and a
     # floating cave there moved MODULATION's 454 B label formatter out of
     # both (the build refused). midisc's own build used this run on

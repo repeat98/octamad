@@ -1,85 +1,39 @@
-# MODULATION
+# `modulation` — MODULATION
 
-A modulation pedal on its own id 0x0b (stock CHORUS's 0x12 until 30 Sep 2026), FX1 only. Every mode is a
-transcription of a published, permissively licensed source; the survey,
-licences and laws are in `docs/effects/PORTS.md`.
+A modulation pedal: Juno chorus, Dimension, through-zero flanger, a tuned
+comb and a phaser, with a LOFI stage.
 
-| page 1 | RATE ⌐DPTH · DLY · FDBK · LOFI · MIX |
-|---|---|
-| page 2 | MODE (JUNO DIM FLNG COMB PHSR) · TONE · WDTH · — · — · — |
+On stock CHORUS's id 0x12, FX1 only. Every mode is a transcription of a
+published, permissively licensed source (Modes and Sources, below;
+licences in `THIRD_PARTY.md`). Every mode outputs the wet only and MIX
+blends, so MIX 0 is an exact passthrough and MIX 127 the wet outright.
 
-| mode | source | licence | what it is |
-|---|---|---|---|
-| JUNO | jpcima `HeraChorus.dsp` + pendragon-andyh's Juno-60 measurements | ISC | two BBD lines on one triangle LFO, R inverted; I 0.513 Hz / II 0.863 Hz over 1.5..5.4 ms; I+II 9.75 Hz mono; dry 0.83 + wet 1.0 |
-| DIM | Roland SDD-320 service notes + measurements | laws | antiphase lines, the other side's wet through a highpass, a bass lift on the dry; 0.25 / 0.5 Hz, 5..12 ms. The amounts (0.25 same-side, −1 cross, 0.5 lift, 200 Hz one-poles) are unpublished: **ours** |
-| FLNG | Dattorro, *Effect Design Part 2* (JAES 1997), Table 6 | paper | blend 0.7071 of the dry read from a FIXED tap at the sweep's centre, feedforward −0.7071 of the swept tap (through-zero: the sweep crosses the dry and nulls), feedback −0.7071 |
-| PHSR | ChowPhaser (Schulte Compact Phasing A) | BSD-3 | two RC allpasses (15 nF) with feedback, then 2/4/6/8 allpasses (25 nF) on one coefficient from the LDR's law (`R = 100k (light/0.1)^-0.75`, light = 20.1 − 20·lfo); the coefficient decoded per block from two 33-word tables and ramped per sample; the feedback closes through one sample; no tanh |
-| COMB | Mutable Instruments Rings `string.h/.cc` | MIT | a Hermite-read loop tuned by DLY, a 3-tap FIR damping filter (brightness = TONE), the per-pass gain from a DECAY TIME (rt60 = 0.07 s · 2^(8·lf), lf = d(2−d)) so every pitch rings for the same time; no IIR damping (the MIC_W build's omission), no dispersion. FDBK's sign is the polarity: **ours** |
+## Knobs
 
-Every mode outputs the wet only and MIX blends, so MIX 0 is an exact
-passthrough and MIX 127 the wet outright. Each mode carries an output trim
-that levels it with JUNO at the views (16 Sep 2026, measured on the pad and
-the loop stems): DIM −8 dB (its five weights scaled), FLNG −7 (blend and
-feedforward scaled; the feedback is FDBK's), PHSR −2 (the selected stage
-weight), COMB −12 (on the parked wet, after the line write, so the ring is
-untouched). After the trims, active RMS against JUNO: DIM −1.9 / +2.6
-(pad / loop), FLNG −1.9 / +2.8, COMB +11.8 / +2.4, PHSR −1.4 / +4.5.
-
-ENS (the Solina, jpcima `string-machine`) was mode 2 until 16 Sep 2026:
-Sam heard the 6 Hz component as "super unnatural and dominating" and the
-slow-only form as bad, and jpcima's own chorus on the same pad the same
-way ("no good, lose it"). It is in history (`git log -- modules/modulation`).
-
-## The knobs
-
-| knob | law | in the modes |
-|---|---|---|
-| RATE | (k/128)² · 0x780 + 0x10 per sample in 2^23rds of a cycle: 0.08..10 Hz; 26 = 0.5 Hz | the LFO in JUNO/DIM/FLNG/PHSR; `---` in COMB (no LFO there) |
-| DPTH | 480 · k/128 samples either side of DLY, clamped inside the line (≤ DLY − 8, ≤ 1015 − DLY) | the sweep; in PHSR the LFO's reach into the LDR's law (0..1); `---` in COMB |
-| FDBK | bipolar, (k − 64)/64 | feedback from the swept tap into the line; the phaser's regen (clamped ±0.95); COMB's decay time (size) and polarity (sign) |
-| MIX | k/128, 127 = 1.0 | |
-| TONE | one-pole 0.25 + 0.75 · k/128, 127 = 1.0 (exact bypass); 0 = 2 kHz | the BBD proxy in AND out of every line (the Juno's ~10 kHz filters at 80); COMB's FIR brightness, drawn BRIT; `---` in PHSR |
-| WDTH | the right channel's LFO lag, (k/128)/2 of a cycle: 0 mono, 64 quadrature, 127 antiphase | the Juno's and the Dimension's are antiphase; `---` in COMB |
-| DLY | 8 + 992 · k/128 samples (0.2..23 ms), capped 1000 | the centre; MANL in FLNG; the pitch in COMB (a 33-word table, 1000..8 samples exponential = 44 Hz..5.5 kHz); STGS in PHSR (2/4/6/8 by quarters) |
-| LOFI | hold 1 + 64·(k/128)² samples (1 at 0, 17 at 64, 64 at 127 = 690 Hz); bits 24 below 64, then 16 12 10 9 8 7 6 5 by eighths of the travel | at the LINE WRITE in JUNO/DIM/FLNG (the taps read through the stairs) and COMB (the ring recirculates it); on the wet in PHSR. One hold counter for both channels. 0 is bit-exact |
+| page | slot | name | range | law | in the modes |
+|---|---|---|---|---|---|
+| 1 | 0 | RATE | 0–127, default 26 | (k/128)² · 0x780 + 0x10 per sample in 2^23rds of a cycle: 0.08..10 Hz; 26 = 0.5 Hz | the LFO in JUNO/DIM/FLNG/PHSR; `---` in COMB (no LFO there) |
+| 1 | 1 | DPTH ⌐ | 0–127, default 21 | 480 · k/128 samples either side of DLY, clamped inside the line (≤ DLY − 8, ≤ 1015 − DLY) | the sweep; in PHSR the LFO's reach into the LDR's law (0..1); `---` in COMB |
+| 1 | 2 | DLY | 0–127, default 18 | 8 + 992 · k/128 samples (0.2..23 ms), capped 1000 | the centre; MANL in FLNG; the pitch in COMB (a 33-word table, 1000..8 samples exponential = 44 Hz..5.5 kHz); STGS in PHSR (2/4/6/8 by quarters) |
+| 1 | 3 | FDBK | bipolar, default 64 | (k − 64)/64 | feedback from the swept tap into the line; the phaser's regen (clamped ±0.95); COMB's decay time (size) and polarity (sign) |
+| 1 | 4 | LOFI | 0–127, default 0 | hold 1 + 64·(k/128)² samples (1 at 0, 17 at 64, 64 at 127 = 690 Hz); bits 24 below 64, then 16 12 10 9 8 7 6 5 by eighths of the travel | at the LINE WRITE in JUNO/DIM/FLNG (the taps read through the stairs) and COMB (the ring recirculates it); on the wet in PHSR. One hold counter for both channels. 0 is bit-exact |
+| 1 | 5 | MIX | 0–127, default 0 | k/128, 127 = 1.0 | |
+| 2 | 6 | MODE | JUNO / DIM / FLNG / COMB / PHSR | | |
+| 2 | 7 | TONE | 0–127, default 80 | one-pole 0.25 + 0.75 · k/128, 127 = 1.0 (exact bypass); 0 = 2 kHz | the BBD proxy in AND out of every line (the Juno's ~10 kHz filters at 80); COMB's FIR brightness, drawn BRIT; `---` in PHSR |
+| 2 | 8 | WDTH | 0–127, default 127 | the right channel's LFO lag, (k/128)/2 of a cycle: 0 mono, 64 quadrature, 127 antiphase | the Juno's and the Dimension's are antiphase; `---` in COMB |
 
 Each mode's ModeView re-defaults the knobs to its source's numbers (the
 Juno's I, the Dimension's mode 1, Dattorro's flanger, ChowPhaser's, Rings
-at a mid pitch).
+at a mid pitch). MIX 127 and TONE 127 are pinned to 1.0 so the
+through-zero null and the flanger's blend are exact (the knob word alone
+is 127/128).
 
-## Structure
-
-Three sample loops, one chosen per block (the pricer takes the worst): LINE
-(JUNO, DIM and FLNG share it — the three differ only in five per-block
-mix weights `bl bd ff kc kb`), PHSR, COMB. LOFI's hold + mask is inline at
-its three sites per channel (L advances the shared counter and latches on
-its compare, R latches on the counter reading 0; the mask keeps bit 23 so
-the extension byte stays consistent and the store does not saturate), as
-are the LFO and the MIX. Straight-line callees: `mo_tap` (the linear read,
-blending toward the older sample; the fixed taps use it too since 26 Sep
-2026, split per sample from the centre's run value; `mo_itap` is its
-second entry), `mo_herm` (the 4-point Hermite read, scaled
-1/16 inside), `mo_apst` (one allpass stage, x in and y out in x0 so a chain
-passes it straight through; PHSR's eight mod stages carry it inline, two
-per trip of a counted loop, since 27 Sep 2026), `mo_para` (the parabola
-sine), `mo_tab` (the table read, per block). The one-poles are
-`s' = c x + c' s` with `c' = 1 − c` streamed beside `c`. The PHSR chain runs at half scale for headroom (an
-allpass cascade peaks above its input).
-
-PHSR is the last MODE position so that dropping it would move no other
-mode's stored byte; Sam kept it 16 Sep 2026 ("pretty good").
-
-Two lines of 1,024 words from the FX1 slot's allocator buffer; an FX2
-instance reads its base at init and runs as a dry pass (`Claims(fx1_only)`,
-proven by the gates). A change of MODE clears the per-sample walk
-(r7+$23..$3f); the write phase, the LFO phase, the LOFI counter and the
-lines persist.
+Stored parts: MODE bytes 3..5 (FLNG/COMB/PHSR) mean one lower since ENS
+went; the page-1 order is RATE DPTH DLY FDBK LOFI MIX, page 2 MODE TONE
+WDTH. `stamp-defaults` before play.
 
 ## Measured
 
-- **On the unit, image 88 (Sam's MKII, 27 Sep 2026):** a fourth MODULATION
-  beside the reverb overran the DSP; three fit. The cycle pass below
-  prices four inside the budget, not measured on the unit since.
 - **27 Sep 2026, the cycle pass** (PR: mod-cycles): pricer per loop LINE
   404 → 354, PHSR 394 → 298, COMB 339 → 329 words/sample; the rig's priced
   worst core 2,781 → 2,585 (four Characters beside the reverb now bound it;
@@ -118,7 +72,14 @@ lines persist.
   constants streamed at r7+$48 and the states walked from r7+$23; 15
   renders across every MODE bit-identical. A one-word displaced move runs
   3.98 cycles on the chip against 2.00 for a pointer move (probe 57,
-  `docs/firmware/CHIP.md` §2), which the word count cannot show.
+  `docs/firmware/CHIP.md` section 2), which the word count cannot show.
+- The 14 Sep 2026 build against its reading estimates: words were
+  estimated 700..900 and came in 300 higher (the phaser's unrolled tap
+  weighting is ~180 words per channel pair, the Hermite read 90); cycles
+  were estimated ≈ 200 and came in 270 higher (the LFO shaping — the
+  parabola sine is 17 instructions a call, six calls in ENS — and the
+  one-poles are the difference). PHSR was retired 13 Sep 2026 at 464
+  cycles and brought back on ChowPhaser's law.
 - `tools/verify/verify_modulation.py`, **29 gates, all PASS**: MIX 0
   bit-exact in every mode; an FX2 instance a bit-exact dry pass with the
   guard clean; every mode against `modulation_ref.py` on a stereo signal
@@ -128,28 +89,155 @@ lines persist.
   comb's period at three pitches; LOFI against the reference at hold 7 / 24 bits
   (JUNO), hold 32 / 9 bits (PHSR), hold 64 / 5 bits (DIM), hold 40 / 8 bits
   through the ring (COMB) — the hold to the sample, the mask within one quantum.
-
 - The LFO's increment is an integer count of 2^-23 cycles (the mpy keeps
   the integer part); the reference models that (a float increment drifts
   2.5 % at RATE 14).
-- MIX 127 and TONE 127 are pinned to 1.0 so the through-zero null and the
-  flanger's blend are exact (the knob word alone is 127/128).
+- Output trims (16 Sep 2026, measured on the pad and the loop stems): each
+  mode carries a trim that levels it with JUNO at the views: DIM −8 dB (its
+  five weights scaled), FLNG −7 (blend and feedforward scaled; the feedback
+  is FDBK's), PHSR −2 (the selected stage weight), COMB −12 (on the parked
+  wet, after the line write, so the ring is untouched). After the trims,
+  active RMS against JUNO: DIM −1.9 / +2.6 (pad / loop), FLNG −1.9 / +2.8,
+  COMB +11.8 / +2.4, PHSR −1.4 / +4.5.
+- Heard, 16 Sep 2026, on the emulator (`abkit`, the pad and loop stems,
+  level-matched, Sam listening): JUNO "good", DIM "good", FLNG "good" at
+  RATE 8 (the view was 14: "slower please"), COMB "sounds like what you
+  describe" — kept, PHSR "pretty good". LOFI (same day): two placements
+  rendered on JUNO over the loop at 90 — on the wet before MIX, and at the
+  line write — Sam: "c please" (the line write).
 
-## Heard
+## On the unit
 
-16 Sep 2026, on the emulator (`abkit`, the pad and loop stems, level-matched,
-Sam listening): JUNO "good", DIM "good", FLNG "good" at RATE 8 (the view was
-14: "slower please"), COMB "sounds like what you describe" — kept, PHSR
-"pretty good". LOFI (same day): two placements rendered on JUNO over the
-loop at 90 — on the wet before MIX, and at the line write — Sam: "c please"
-(the line write). Not listened to on the unit.
+- Image 88 (Sam's MKII, 27 Sep 2026): a fourth MODULATION beside the reverb
+  overran the DSP; three fit. The cycle pass above prices four inside the
+  budget, not measured on the unit since.
+- Not listened to on the unit.
 
 ## Open
 
 - DIM's amounts are ours; the Juno's own asymmetry (R 1.51..5.40 ms vs L
   1.54..5.15) and the I+II shape ("sine-like") are not modelled.
-- The tap read is linear (Dattorro's allpass or Airwindows' 3-point + air
-  are the alternatives, `docs/effects/PORTS.md`).
-- Stored parts: MODE bytes 3..5 (FLNG/COMB/PHSR) mean one lower since ENS
-  went; the page-1 order is RATE DPTH DLY FDBK LOFI MIX, page 2 MODE TONE
-  WDTH. `stamp-defaults` before play.
+- The tap read is linear, blended toward the OLDER sample since 12 Sep 2026
+  (the crackle fix). A chorus that reads darker at the sweep's extremes is
+  the linear interpolation; the BBD proxy filter hides it. The
+  alternatives: Dattorro's first-order allpass read ("all-pass
+  interpolation for delay modulation becomes critical to the transparency
+  of any chorus"; linear = a time-varying lowpass; THD+N: linear −78..−88
+  dB, warped allpass −77..−85, unwarped −53..−59; TAL uses it) and
+  Airwindows' 3-point read (weights 1−f, 1, f, × 0.5, minus 1/50 of the
+  second difference) preceded by an "air" pre-emphasis (3 mul, 8 add a
+  channel) that puts back the highs the averaging takes.
+
+## Gates
+
+`tools/verify/verify_modulation.py` (the manifest's), `make verify-ident
+MOD=modulation`, `make verify-knobs`.
+
+## Modes
+
+| mode | source | licence | what it is |
+|---|---|---|---|
+| JUNO | jpcima `HeraChorus.dsp` + pendragon-andyh's Juno-60 measurements | ISC | two BBD lines on one triangle LFO, R inverted; I 0.513 Hz / II 0.863 Hz over 1.5..5.4 ms; I+II 9.75 Hz mono; dry 0.83 + wet 1.0 |
+| DIM | Roland SDD-320 service notes + measurements | laws | antiphase lines, the other side's wet through a highpass, a bass lift on the dry; 0.25 / 0.5 Hz, 5..12 ms. The amounts (0.25 same-side, −1 cross, 0.5 lift, 200 Hz one-poles) are unpublished: **ours** |
+| FLNG | Dattorro, *Effect Design Part 2* (JAES 1997), Table 6 | paper | blend 0.7071 of the dry read from a FIXED tap at the sweep's centre, feedforward −0.7071 of the swept tap (through-zero: the sweep crosses the dry and nulls), feedback −0.7071 |
+| PHSR | ChowPhaser (Schulte Compact Phasing A) | BSD-3 | two RC allpasses (15 nF) with feedback, then 2/4/6/8 allpasses (25 nF) on one coefficient from the LDR's law (`R = 100k (light/0.1)^-0.75`, light = 20.1 − 20·lfo); the coefficient decoded per block from two 33-word tables and ramped per sample; the feedback closes through one sample; no tanh |
+| COMB | Mutable Instruments Rings `string.h/.cc` | MIT | a Hermite-read loop tuned by DLY, a 3-tap FIR damping filter (brightness = TONE), the per-pass gain from a DECAY TIME (rt60 = 0.07 s · 2^(8·lf), lf = d(2−d)) so every pitch rings for the same time; no IIR damping (the MIC_W build's omission), no dispersion. FDBK's sign is the polarity: **ours**. Sam: "works, sounds good", 12 Sep 2026 (the earlier COMB) |
+
+ENS (the Solina, jpcima `string-machine`) was mode 2 until 16 Sep 2026:
+Sam heard the 6 Hz component as "super unnatural and dominating" and the
+slow-only form as bad, and jpcima's own chorus on the same pad the same
+way ("no good, lose it"). It is in history (`git log -- modules/modulation`).
+PHSR, TREM, VIB and PAN were retired 13 Sep 2026 (the OT's LFOs do trem and
+pan); PHSR came back 14 Sep. PHSR is the last MODE position so that
+dropping it would move no other mode's stored byte; Sam kept it 16 Sep 2026
+("pretty good").
+
+## Structure
+
+Three sample loops, one chosen per block (the pricer takes the worst): LINE
+(JUNO, DIM and FLNG share it — the three differ only in five per-block
+mix weights `bl bd ff kc kb`), PHSR, COMB. LOFI's hold + mask is inline at
+its three sites per channel (L advances the shared counter and latches on
+its compare, R latches on the counter reading 0; the mask keeps bit 23 so
+the extension byte stays consistent and the store does not saturate), as
+are the LFO and the MIX. Straight-line callees: `mo_tap` (the linear read,
+blending toward the older sample; the fixed taps use it too since 26 Sep
+2026, split per sample from the centre's run value; `mo_itap` is its
+second entry), `mo_herm` (the 4-point Hermite read, scaled
+1/16 inside), `mo_apst` (one allpass stage, x in and y out in x0 so a chain
+passes it straight through; PHSR's eight mod stages carry it inline, two
+per trip of a counted loop, since 27 Sep 2026), `mo_para` (the parabola
+sine), `mo_tab` (the table read, per block). The one-poles are
+`s' = c x + c' s` with `c' = 1 − c` streamed beside `c`. The PHSR chain runs at half scale for headroom (an
+allpass cascade peaks above its input).
+
+Two lines of 1,024 words from the FX1 slot's allocator buffer (23 ms per
+channel); an FX2 instance reads its base at init and runs as a dry pass
+(`Claims(fx1_only)`, proven by the gates). A change of MODE clears the
+per-sample walk (r7+$23..$3f); the write phase, the LFO phase, the LOFI
+counter and the lines persist.
+
+## Sources
+
+The source laws each mode was transcribed from (14 Sep 2026 survey; the
+departures are in Modes and Open):
+
+- **JUNO** (Juno-60 measured by pendragon-andyh + jpcima ISC): two BBD
+  lines, ONE triangle LFO, R's inverted; I = 0.513 Hz, II = 0.863 Hz,
+  sweep 1.54→5.15 ms (L) / 1.51→5.40 (R); I+II = 9.75 Hz, 3.22→3.56 ms,
+  mono; dry 0.83 + wet 1.0; BBD +2.3 dB; in/out filters ≈ 9.9 / 9.5 kHz
+  5th-order (one-pole proxies in the practical ports: 7.2 k in, 10.6 k
+  out).
+- **DIM** (SDD-320 service notes + measurements, Synthbuilder, Fractal):
+  two lines on one triangle LFO in ANTIPHASE (motionless: the mean delay is
+  constant); 0.25 Hz (modes 1/2) / 0.5 Hz (3/4); sweep 5→12, 5→10, 6→9 ms;
+  each output = bass-boosted dry + a little same-side wet + the OTHER
+  side's wet through a HPF, inverted; mode 4 raises same-side. The mix and
+  HPF constants are unpublished.
+- **FLNG** (Dattorro Table 6/7 + Faust `flanger_mono`): blend =
+  feedforward = 0.7071, feedback −0.7071 (max trough); delay 0→10 ms, the
+  strong zone the first 1 ms; L/R the SAME phase; through-zero = the dry
+  read from a FIXED tap at the sweep's centre, the wet inverted, so the
+  sweep crosses it (McCurdy).
+- **PHSR** (ChowPhaser BSD-3): Schulte: one feedback biquad (two RC
+  allpasses collapsed, C 15 nF, fb ≤ 0.95, three tanh) then N first-order
+  allpasses on one shared coefficient (C 25 nF), 3 MAC a stage; LDR: light
+  = 20.1 − 20·lfo, R = 100 k·(light/0.1)^−0.75 → the whole coefficient set
+  is a P-table on the LFO word; sine LFO 0..16 Hz, skew `2^s`. Departures
+  here: the feedback through one sample, no tanh, the coefficient per block
+  + ramp.
+- **COMB**: departures here: without the IIR damping and dispersion, with
+  a polarity sign.
+
+Surveyed and not built:
+
+- **WHITE** (a chorus variant, Dattorro Fig. 36): feedforward 1.0, blend =
+  feedback = 0.7071, the feedback tapped at the FIXED centre (never the
+  moving tap: modulated feedback pitch-shifts), so the chorus is an
+  allpass at the centre; centre 400, width 350, 0.15 Hz, quadrature L/R.
+- **PHSR alt.** (Faust `phaser2`, STK-4.3): 4 second-order allpasses, notch
+  k at `fratio^(k+1)·θ`, R = e^(−π·width/fs), fb ±0.999, quadrature L/R.
+- **VIBE** (Uni-Vibe, laws only: Rakarrack/guitarix, BYOD, Keen): four
+  stages, C = 0.015 µ / 0.22 µ / 470 p / 0.0047 µ; LDR 500 kΩ dark → 600 Ω
+  lit through a lamp one-pole (10 ms) and a cell with asymmetric TC (85 ms
+  dark, 5 ms lit); BJT shaper per stage. No permissive code, every
+  constant unproven.
+- **VIB** (Airwindows StereoChorus / GalacticVibe, MIT): quadrature dual
+  vibrato; GalacticVibe: fixed 0..254 samples, a NEW random rate each LFO
+  cycle (0.43..0.70 × drift), Leslie-like; StereoChorus: depth ∝ 1/speed,
+  L/R 1.98 rad apart.
+- **FLUT** (Airwindows Flutter2, MIT): independent L/R LFOs, a random rate
+  0.24..0.98 × per cycle; depth ≤ 90 ± 90 samples.
+- **ENS** (jpcima string-machine BSL / Rings ensemble MIT / Haible):
+  Solina: three taps on ONE mono line, two 3-phase sine LFOs summed, 0.6
+  Hz × 0.5 + 6 Hz × 0.05..0.1; 5 ± 1 ms (TCA350, 185 stages); L = t1 + t2
+  − t3, R = t1 − t2 − t3; 12 kHz 2nd-order input LP. Built, then dropped
+  (Modes).
+- Not portable: Airwindows Ensemble (2..48 taps each with its own sine),
+  TakeCare (18 lines ≥ 4,626 words), StereoEnsemble (7,523-sample lines);
+  the full Holters-Parker BBD (five complex poles a side); the proxy every
+  practical port uses is a one-pole or a biquad each side of the line plus
+  a soft clip.
+- Not found anywhere permissive: a Uni-Vibe, a Dimension D clone, a
+  through-zero flanger plugin, an Airwindows Flanger or Phaser (the 2007
+  pages are Kagi-era AU with no source).

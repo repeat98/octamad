@@ -1,24 +1,37 @@
-# <Module name>
+# `<name>` — <KEY>
 
-One paragraph: what it is. (`modules/character/README.md` is this template
-filled in.)
+One line: what the module does.
 
-## Status
+One paragraph: what you get on the unit, in plain words. For a port, the
+author and a link to the upstream repository.
 
-Measured vs inferred, with what would falsify each claim.
+## Knobs
 
-## Parameters
+| page | slot | name | range | what it does |
+|---|---|---|---|---|
+| 1 | 0 | P0 | 0–127 | |
 
-| slot | name | what it does |
-|---|---|---|
-| 0 | P0 | |
+Omit this section for a module without knobs.
+
+## Measured
+
+✅ facts, each with how and when it was measured (the gate, the harness,
+the port), and what would falsify it. 🟡 for inferred.
+
+## On the unit
+
+Hardware results: image, unit, date. "Not flashed" is a valid entry.
 
 ## Open
 
-What is unresolved.
+Things to find out.
 
 ## Gates
 
-How a reader reproduces the measurements, in order. `tools/verify/verify_character.py`
+The `tools/verify/verify_*.py` gates and `make` targets that cover the
+module (the manifest's `Gate(...)` entries). `tools/verify/verify_character.py`
 is the pattern: predict the arithmetic exactly, drive both signs, refuse to
 run if the id it resolves is the fallback rather than the effect.
+
+Module-specific sections (design, memory, collisions, updating) follow as
+further `##` sections after Gates.

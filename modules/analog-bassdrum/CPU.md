@@ -1,5 +1,41 @@
 # Analog BD load measurements
 
+## Louder source output, 30 September 2026
+
+Both models now have +12.04 dB gain relative to the 29 September level
+revision. The 808 changes only its output coefficient (0.215 → 0.86), so
+its peak cost remains 220.9375 instructions/sample (3535/block). The 909
+adds four instructions/sample to read the original limited 24-bit desk
+sample and multiply it by four: 326.125 instructions/sample (5218/block).
+Its regression ceiling increases by exactly 64 instructions/block to 5232.
+These are executed instruction counts under the host, not hardware cycles.
+The engine/glue occupies 1000 P words plus the 35-word stock helper, within
+the 1063-word donor.
+
+The original audio/state hashes remain unchanged. Both models render the
+original executables to those hashes, then their current executables must
+produce exactly the integer-scaled output with identical block states.
+909 overloads are limited at full scale. The assignment-default peaks are
+−7.31/−1.59 dBFS (808/909), with 500 ms RMS −20.19/−20.21 dBFS.
+
+After rebasing onto `3c9c8d0d66`, two complete eight-track layouts ran for
+900 sequencer frames each. Every track delivered trigger/control records
+and nonzero audio on both channels. Core 1's complete four-track processing
+window, measured after the first 50 frames:
+
+| Current layout | Mean instructions/sample | Peak instructions/sample |
+|---|---:|---:|
+| Eight 909s, FILTER + DARK REV | 3590.412 | 3669.750 |
+| Alternating 808/909, DJ EQ in both slots | 4039.771 | 4115.563 |
+
+Command: `python3 tools/harness/benchmark_analog_bd.py --project <fixture>
+--image <frozen image> --out out/analog-bassdrum/levels-load --frames 900
+--jobs 2 --case eq-mixedeight-core1 --case dark-909eight-core1`.
+Image SHA256: `fc12e460b67e0706468490e8debf9217a19c6e70722dfd5ceb10eaeefd3a3859`.
+These local measurements do not qualify hardware timing or all FX layouts.
+
+The measurements below describe earlier output revisions.
+
 ## Default-level follow-up, 29 September 2026
 
 The 808 now applies a 0.215 trim after its final desk limiter: three extra

@@ -29,7 +29,7 @@ of about 31 ms. This build of it has not been flashed.
 make image REMIX=usb-io-main-cue-abcd BUILD=1   # -> out/OCTATRACK_OCTABAM1.bin
 ```
 
-[BUILDING.md](../../../docs/remixes/BUILDING.md) is the walk-through from a
+[BUILDING.md](../../../docs/guide/BUILDING.md) is the walk-through from a
 fresh machine to a flashed unit. On the unit: `tools/hw/usb_probe.py`
 (sustained, then churn) with the counters before and after, then a host →
 inputs → recorder take.

@@ -23,32 +23,22 @@ licence is MIT; a fork that takes requests and tracks issues is allowed.
 
 | you want to | read |
 |---|---|
-| put a remix on your Octatrack | [docs/remixes/BUILDING.md](docs/remixes/BUILDING.md): a fresh machine to a flashed unit, step by step, with the recovery path |
-| see what remixes exist and what is in each | [docs/remixes/README.md](docs/remixes/README.md), then the remix's own page in `remixes/<name>/README.md` |
+| put a remix on your Octatrack | [docs/guide/BUILDING.md](docs/guide/BUILDING.md): a fresh machine to a flashed unit, step by step, with the recovery path |
+| see what remixes exist and what is in each | [remixes/README.md](remixes/README.md), then the remix's own page in `remixes/<name>/README.md` |
 | see every module and how far it is proven | the table below; each module's `modules/<name>/README.md` has the measurements |
-| compose your own selection | `make remix`, the interactive remixer ([docs/remixer/REMIXER.md](docs/remixer/REMIXER.md)), or [BUILDING.md §8](docs/remixes/BUILDING.md#8-your-own-remix) |
-| write a module or port an existing mod | [CONTRIBUTING.md](CONTRIBUTING.md) (the contract), [docs/remixer/MODULES.md](docs/remixer/MODULES.md) (the guide), [docs/remixer/TESTING.md](docs/remixer/TESTING.md) (what the gates prove) |
-| understand the firmware | [docs/firmware/ARCHITECTURE.md](docs/firmware/ARCHITECTURE.md) and its neighbours; [docs/remixer/TOOLING.md](docs/remixer/TOOLING.md) for the tools |
+| compose your own selection | [docs/guide/REMIXER.md](docs/guide/REMIXER.md): `make remix`, the interactive remixer, or a `remix.py` by hand |
+| write a module or port an existing mod | [CONTRIBUTING.md](CONTRIBUTING.md) (the contract), [docs/contributing/MODULES.md](docs/contributing/MODULES.md) (the guide), [docs/contributing/TESTING.md](docs/contributing/TESTING.md) (what the gates prove) |
+| understand the firmware | [docs/firmware/ARCHITECTURE.md](docs/firmware/ARCHITECTURE.md) and its neighbours; [docs/contributing/TOOLING.md](docs/contributing/TOOLING.md) for the tools |
+| find any other doc | [docs/README.md](docs/README.md) |
 
 ## Quick start
 
-macOS with Homebrew, or Linux / WSL2 ([BUILDING.md §0](docs/remixes/BUILDING.md#0-what-you-need)
-says what each needs). `git`, `python3` 3.10+, `cmake`.
-
-```bash
-git clone --recurse-submodules https://github.com/sambanks/octabam
-cd octabam
-make setup                              # the toolchain: vendored tools at their pins, patched, built
-make os && make recon                   # your own 1.40C -> out/raw/section_3_MAIN_OS.bin
-make modules                            # every module, the compatibility matrix, every remix
-make image REMIX=bottleservice BUILD=1  # -> out/OCTATRACK_OCTABAM1.bin, the card image
-```
-
-Then [BUILDING.md §4–5](docs/remixes/BUILDING.md#4-back-up): back up the
-card, copy the image to its root, PROJECT → SYSTEM → OS UPGRADE. The unit's
-OS version reads `OCTABAM1`. Before flashing, `make emu-cf` then
-`make check REMIX=bottleservice` runs every gate and boots the image under
-the local emulator.
+[docs/guide/BUILDING.md](docs/guide/BUILDING.md) has every step. Section 0 is what
+to install first: on macOS the Xcode Command Line Tools
+(`xcode-select --install`), Homebrew, Python 3.10+ and
+`brew install cmake uv`. Then `make setup`, `make emu-setup`,
+`make os && make recon`, `make image REMIX=<name> BUILD=1`, and the flash
+from the card (section 5).
 
 <!-- modules:begin -->
 
@@ -80,11 +70,12 @@ the local emulator.
 | module | author | what it does | proof |
 |---|---|---|---|
 | [**ANALOG BD**](modules/analog-bassdrum/README.md) | [repeat98](https://github.com/repeat98) | Analog BD track machine: switchable 808/909 circuit-informed synthesis. | port-gated: source/AMP/main on both cores and engine-browser/hidden-control gates; hardware matching pending |
-| [**DIRECT JUMP**](modules/direct-jump/README.md) | [timhastie/octatrick-modules](https://github.com/timhastie/octatrick-modules) | CHAIN AFTER: DIRECT (its unused value 1) -- a pattern change lands at the next step, the step count continuing (A4/Rytm direct jump). | on hardware: `octatrick-usb` on his MKI, 26 Sep 2026 (OCTATRICK9) |
-| [**SCALE QUANTIZER**](modules/quantizer/README.md) | [timhastie/octatrick-modules](https://github.com/timhastie/octatrick-modules) | PROJECT > CONTROL > SEQUENCER > SCALE: the PTCH knob and CHROMATIC trig keys quantize to a scale (24 scales, OFF = stock); > GLIDE: the synth's glide time (OFF, 1..127) and 303-style legato on the chromatic keys; polyphonic chromatic keys on a synth track whose VOIC is 2..4. | on hardware: `octatrick-usb` on his MKI, 26 Sep 2026 (OCTATRICK9) |
+| [**DIRECT JUMP**](modules/direct-jump/README.md) | [timhastie/octatrick-modules](https://github.com/timhastie/octatrick-modules) | CHAIN AFTER: DIRECT (its unused value 1) -- a pattern change lands at the next step, the step count continuing (A4/Rytm direct jump). | on hardware: `octatrick-usb` on his MKI, 26 Sep 2026 (OCTATRICK9) through 2.9; the last two 2.9 fixes under the port |
+| [**SCALE QUANTIZER**](modules/quantizer/README.md) | [timhastie/octatrick-modules](https://github.com/timhastie/octatrick-modules) | PROJECT > CONTROL > SEQUENCER > SCALE: the PTCH knob and CHROMATIC trig keys quantize to a scale (24 scales, OFF = stock); > ROOT: the note the scale is built on (C..B; key 1 of the CHROMATIC keyboard sounds it); > GLIDE: the synth's glide time (OFF, 1..127; the legato switch is the synth track's LEG setting); polyphonic chromatic keys on a synth track whose VOIC is 2..4; on a synth track PTCH is semitones (-64..+63) and the CHROMATIC octave runs -4..+4. | on hardware: `octatrick-usb` on his MKI, 26 Sep 2026 (OCTATRICK9) through 2.9; the last two 2.9 fixes under the port |
 | [**REPITCH**](modules/repitch/README.md) | [repeat98](https://github.com/repeat98) | Adds TSTR REPITCH (STATIC/FLEX and the sample's own TIMESTRETCH): project-tempo following by playback speed, without grains; PTCH off. | on hardware: an MKII, 16 Sep 2026 (OCTABAM81); `verify_repitch` |
 | [**RLEN PLEN**](modules/rlen-plen/README.md) | [sambanks](https://github.com/sambanks) | ColdFire cave: RLEN value PLEN (past MAX) = one loop of the track's pattern on its own scale, so TRIG ONE + QREC PLEN records the next pass and stops. | port-gated: 26 Sep 2026 |
-| [**SYNTH MACHINE**](modules/synth/README.md) | [timhastie/octatrick-modules](https://github.com/timhastie/octatrick-modules) | A FLEX track whose sample is named SYNTH* plays a two-operator FM voice (STRT/LEN/RTRG/RTIM = ratio/index/feedback/decay); the DSP shapes and effects it as a sample. Its PLAYBACK page reads RATO/INDX/FDBK/DEC with icons and the title FM SYNTH. | on hardware: `octatrick-usb` on his MKI, 26 Sep 2026 (OCTATRICK9) |
+| [**SYNTH MACHINE**](modules/synth/README.md) | [timhastie/octatrick-modules](https://github.com/timhastie/octatrick-modules) | A FLEX track whose sample is named SYNTH* plays a two-operator FM voice (STRT/LEN/RTRG/RTIM = ratio/index/feedback/decay); the DSP shapes and effects it as a sample. Its PLAYBACK page reads RATO/INDX/FDBK/DEC with icons and the title FM SYNTH; PTCH is semitones (-64..+63) and RATE is FINE (cents) on a synth track, 0c the moment a track becomes one. A FLEX or STATIC sample track with LEG MONO and GLIDE slides its pitch (2.8). | on hardware: `octatrick-usb` on his MKI, 26 Sep 2026 (OCTATRICK9) through 2.9; the last two 2.9 fixes under the port |
+| [**TUNER**](modules/tuner/README.md) | [timhastie/octatrick-modules](https://github.com/timhastie/octatrick-modules) | UP + TEMPO: a tuner window for the current audio track -- note, octave, cents, needle, Hz (McLeod NSDF + YIN refine on the ColdFire, in the UI task). | `make check`: `octatrick` under the port, 29 Sep 2026 (sources unchanged since 26 Sep); not confirmed on hardware |
 
 ### Parts, Kits and scenes
 
@@ -130,14 +121,6 @@ the local emulator.
 |---|---|---|---|
 | [**CF METER**](modules/cfmeter/README.md) | [sambanks](https://github.com/sambanks) | Probe: frame-interrupt duration and (with CF METER IDLE) idle time, printed as audio on T8's FX2. | port-gated: the readout chain and the interrupt timing under the port; the numbers need the unit |
 | [**CF METER IDLE**](modules/cfmeter-idle/README.md) | [sambanks](https://github.com/sambanks) | Probe: main's idle loop timed, for CF METER's idle-time slot. | `make check`: boots and loads a project under the port (28 Sep 2026); the idle number needs the unit |
-| [**DSP DYNLOAD**](modules/dsp-dynload/README.md) | [repeat98](https://github.com/repeat98) | Experimental firmware P residency manager, verified uploads and stock dispatch binding. | port-gated: Emulator qualification only; static fallback code remains resident. |
-| [**DSP DYNLOAD B**](modules/dsp-dynload-b/README.md) | [repeat98](https://github.com/repeat98) | Core 1 of the experimental residency manager. | port-gated: Emulator qualification only; not a flash candidate. |
-| [**DSP DYNLOAD STOCK**](modules/dsp-dynload-stock/) | [repeat98](https://github.com/repeat98) | DSP dynamic loading of every stock DSP effect: no stock effect code is built in. | port-gated: Port qualification in progress; a first hardware test pending. |
-| [**DSP DYNLOAD STOCK B**](modules/dsp-dynload-stock-b/) | [repeat98](https://github.com/repeat98) | Core 1 of DSP DYNLOAD STOCK. | port-gated: Port qualification in progress; a first hardware test pending. |
-| [**DSP DYNLOAD TRANSPORT**](modules/dsp-dynload-transport/README.md) | [repeat98](https://github.com/repeat98) | Experimental two-core DMA mailbox and deferred UI error message; bounded staging without execution. | port-gated: Both-core DMA and bounded P staging; no effect activation or hardware qualification. |
-| [**DSP DYNLOAD TRANSPORT B**](modules/dsp-dynload-transport-b/README.md) | [repeat98](https://github.com/repeat98) | Core 1 mailbox receiver for DSP DYNLOAD TRANSPORT; bounded staging without execution. | port-gated: Both-core DMA and bounded P staging; no effect activation or hardware qualification. |
-| [**PMAP PROBE**](modules/pmap-probe/README.md) | [repeat98](https://github.com/repeat98) | Hardware probe, core 0: switch to the 16K program map at boot, test the new program memory, play both cores' verdicts on MAIN (L core 0, R core 1; 882 Hz pass, 110 Hz fail). | `make check`: a hardware probe: under the port it passes by construction (the emulator ignores OMR MS); the unit is the measurement |
-| [**PMAP PROBE B**](modules/pmap-probe-b/README.md) | [repeat98](https://github.com/repeat98) | Hardware probe, core 1: the 16K program map switch and test, the verdict reported to core 0. | `make check`: see PMAP PROBE |
 
 <!-- modules:end -->
 
@@ -163,7 +146,7 @@ go where, and a module declares what it is, not an address:
 
 The OS-image edits every class needs (a detour at a stock instruction, a
 poke, a grown table) are `Detour`, `Poke`, `TableGrow`, wired by symbol and
-asserted against stock before a byte is written. `docs/remixer/PLACEMENT.md`
+asserted against stock before a byte is written. `docs/contributing/PLACEMENT.md`
 is the map of what is free and what was measured.
 
 **A port is a proof.** The build re-links every unit at the author's own
@@ -182,11 +165,11 @@ settings store for all modules, OTX, is specified in
 ## Checking without a flash
 
 Everything is checked on your machine against your own 1.40C
-([docs/remixer/TESTING.md](docs/remixer/TESTING.md)). The DSP side renders
+([docs/contributing/TESTING.md](docs/contributing/TESTING.md)). The DSP side renders
 locally on the assembled instruction stream (`make render`, `make render-rig`;
-[docs/remixer/HARNESS.md](docs/remixer/HARNESS.md)). The whole machine, the
+[tools/harness/README.md](tools/harness/README.md)). The whole machine, the
 ColdFire, both DSP cores, the card, the panel, MIDI and USB, runs under a
-port of it (`tools/emu/ot_emu`, `make emu-cf`; [docs/remixer/EMU.md](docs/remixer/EMU.md)):
+port of it (`tools/emu/ot_emu`, `make emu-cf`; [tools/emu/README.md](tools/emu/README.md)):
 
 ```bash
 make check REMIX=<name>             # build + every gate + boot under the port; OT_PROJECT=<dir> adds a real project
@@ -203,16 +186,8 @@ cross-core timing) is listed beside every gate that is blind to it.
 
 **Writing a non-official OS to an Octatrack can leave it unusable and puts
 your warranty in question.** Nothing here is endorsed by, supported by, or
-affiliated with Elektron. `docs/remixer/FLASHING.md` has the recovery path;
-`docs/remixer/FAILURE_MODES.md` is the register of what has gone wrong on a
-unit and why. Back up projects before flashing anything that changes them
-(Octakit migrates Parts to Kits on load; downgrading may lose Kit data).
-
-MKI and MKII run the same 1.40C image (hash-verified). sambanks's effects
-have only been tested on an MKII; the DRAM platform has run on an MKI
-([octalab](https://github.com/nordseele/octalab-notes), 11 Sep 2026;
-`octatrick-usb` on Tim Hastie's, 26 Sep 2026) and on midisc's author's
-unit (`ok-ms`, 14 Sep 2026).
+affiliated with Elektron. [BUILDING.md](docs/guide/BUILDING.md) has the
+recovery path (section 7).
 
 **No Elektron binary is redistributed here, and none may be.** A built
 `.bin` or `.syx` contains Elektron's OS: do not share built images. Share
@@ -223,32 +198,9 @@ AB, used here only to identify the hardware this project targets.
 
 ## Documentation
 
-For users:
-
-| page | what it is |
-|---|---|
-| [docs/remixes/BUILDING.md](docs/remixes/BUILDING.md) | build and flash a remix, macOS and Linux/WSL2, recovery, your own remix |
-| [docs/remixes/README.md](docs/remixes/README.md) | the remix index (rendered from the selections); `remixes/<name>/README.md` per remix |
-| [docs/remixer/FLASHING.md](docs/remixer/FLASHING.md) | the card and MIDI flash paths in full, what to check after, reverting |
-| [docs/remixer/FAILURE_MODES.md](docs/remixer/FAILURE_MODES.md) | symptom → cause → fix, for everything that has gone wrong on a unit |
-| [docs/remixer/REMIXER.md](docs/remixer/REMIXER.md) | `make remix`, the interactive remixer |
-
-For contributors:
-
-| page | what it is |
-|---|---|
-| [CONTRIBUTING.md](CONTRIBUTING.md) | the contract: the one rule, your first PR, the oracle rule, the gates before a PR, what CI checks |
-| [docs/remixer/MODULES.md](docs/remixer/MODULES.md) | writing a module: manifests, descriptors, DSP and ColdFire declarations, the ledger |
-| [docs/remixer/TESTING.md](docs/remixer/TESTING.md) | how the testing works: the two halves of `make check`, module gates, `make reach`, shards, `make accept`, bit-identity, CI, blind spots |
-| [docs/remixer/PLACEMENT.md](docs/remixer/PLACEMENT.md) | where a module's code goes and what is free, measured |
-| [docs/remixer/HARNESS.md](docs/remixer/HARNESS.md), [EMU.md](docs/remixer/EMU.md) | hearing and measuring the DSP side locally; the ColdFire emulators |
-| [docs/remixer/TOOLING.md](docs/remixer/TOOLING.md) | every tool, end to end |
-| [docs/remixer/ACCEPTANCE.md](docs/remixer/ACCEPTANCE.md) | `make accept`'s report and coverage |
-| [docs/effects/](docs/effects/) | the bus (XBUS), the reverb, the master, the borrowed voicings |
-| [docs/firmware/](docs/firmware/) | the firmware reverse-engineered: architecture, kernel, DSP, chip, tables, parameter pages, menus, panel, MIDI, LFO, level law, recorder, storage; CONTRIBUTIONS is the dated index of what each contributor sent |
-| [docs/proposals/](docs/proposals/) | OTX (the settings store), multitrack to card |
-| [AGENTS.md](AGENTS.md) | working rules and the traps that have cost real work (for people and coding agents alike) |
-| [CHANGELOG.md](CHANGELOG.md) | one entry per image that reached a unit |
+[docs/README.md](docs/README.md) lists every doc by who it is for. Each
+module's page is `modules/<name>/README.md`, each remix's
+`remixes/<name>/README.md`, and each tool's `tools/<dir>/README.md`.
 
 ## Repository layout
 
@@ -256,20 +208,19 @@ For contributors:
 CONTRIBUTING.md    your first PR, the module contract, the oracle rule, the gates, what CI checks
 AGENTS.md          instructions and traps for coding agents (CLAUDE.md imports it)
 .github/           CI (Ubuntu + macOS, SHA-pinned actions), the PR template
-modules/           the contributions, one directory each
-remixes/           one directory per remix: remix.py (the selection, in chooser order) and README.md
+modules/           the contributions, one directory each, each with its README
+remixes/           one directory per remix: remix.py (the selection, in chooser order) and README.md; README.md here is the index
 remixes/test/      the one-module remixes, for their modules' gates (make check REMIX=<name>)
-docs/remixes/      the build guide and the rendered remix index
-docs/remixer/      using and extending the remixer
+docs/guide/        building, flashing and composing a remix
+docs/contributing/ writing a module, testing, placement, tooling, the failure register
 docs/firmware/     the firmware, reverse-engineered
-docs/effects/      the effects: XBUS (the bus), REVERB, MASTER, PORTS
 docs/proposals/    technical propositions
 tools/remix/       the toolkit: schema, registry, ledger, the loader, the DRAM platform, the TUI
 tools/build/       the image build (build_bus.py) and the tools that understand the OS layout
 tools/verify/      the gates
 tools/harness/     hear and measure the DSP side locally (dsp_host, send_probe, rig_render)
 tools/emu/         the ColdFire emulators: the headless port (ot_emu) and the Unicorn bring-up
-tools/panel/       the virtual front panel over the port, with sound (tools/panel/README.md)
+tools/panel/       the virtual front panel over the port, with sound
 tools/hw/          the unit and its card: MIDI control, capture, project files, MIDI flashing
 tools/ghidra/      one Ghidra project over the OS and both DSP payloads
 tools/patches/     local patches to the vendored toolchains

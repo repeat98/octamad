@@ -356,8 +356,8 @@ VirtualPanelWindow"` forgets it).
 
 `File > Open Firmware Image...` (cmd-I) boots a main-OS image instead of the
 stock one and remembers it; `File > Use Stock Firmware` goes back. Build a
-remix first, e.g. `REMIX=direct-jump make bus` or `REMIX=quantizer make bus`
-(both modules together: see modules/README.md on composing remixes) -> the
+remix first, e.g. `REMIX=octatrick make bus` (DIRECT JUMP and SCALE
+QUANTIZER together; docs/guide/REMIXER.md on composing remixes) -> the
 image lands at `out/mainos_bus.bin` (Elektron bytes: keep it under out/,
 never in git). The unit reboots on the chosen image on the same card, so
 your projects and samples stay. Scripts: `VIRTUAL_PANEL_IMAGE=<path>`.

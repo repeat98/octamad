@@ -26,9 +26,18 @@ time (`.incbin`, `make os`).
 Retired transcriptions (in history only): jpcima `string-machine` (BSL-1.0,
 the Solina ensemble, removed 16 Sep 2026).
 
-`docs/effects/PORTS.md` is the survey behind the modulation and station
-ports, with the sources that were read for laws only (GPL code was never
-transcribed).
+Surveyed for the modulation and station ports and not transcribed (GPL
+code was read for laws only, never transcribed); each module's README has
+the laws (`modules/modulation/README.md` "Sources"):
+
+| source | licence | use |
+|---|---|---|
+| Airwindows Chorus, ChorusEnsemble, StereoChorus, Vibrato, GalacticVibe, Flutter2, Ensemble | MIT | surveyed |
+| jpcima `bbd-delay-experimental`, `ensemble-chorus` | BSL-1.0 | surveyed |
+| Mutable Instruments Rings `chorus.h`, `ensemble.h` | MIT | surveyed |
+| Faust `phaflangers.lib` `phaser2`, `flanger_mono` (J.O. Smith) | STK-4.3 (MIT-style) | laws (`flanger_mono` beside Dattorro for FLNG) |
+| TAL-NoiseMaker chorus, Surge XT chorus/Ensemble, JunoX, chowdsp BBD | GPL | laws only |
+| Rakarrack/guitarix Vibe, BYOD Solo-Vibe, Zyn APhaser | GPL | laws only |
 
 ## Firmware modifications built from their authors' repositories (git submodules)
 
@@ -37,6 +46,7 @@ transcribed).
 | `modules/midi-scenes` (MIDI SCENES) | https://github.com/bkkbrls-del/midisc | MIT (the repository's LICENSE file, added by its author 9 Sep 2026, carries octabam's copyright line verbatim) |
 | `modules/octakit` (Octakit) | https://github.com/emuyia/ems-octakit | MIT, Copyright (c) 2026 June Kiff |
 | `tools/remix/loader.S` (the DRAM loader) | derived from Octakit's `runtime/loader.S` | MIT, Copyright (c) 2026 June Kiff |
+| `modules/synth`, `modules/quantizer`, `modules/direct-jump`, `modules/tuner` (SYNTH MACHINE, SCALE QUANTIZER, DIRECT JUMP, TUNER) | https://github.com/timhastie/octatrick-modules (one submodule, four wrappers; pinned to `v2.9` = `525f4b1`) | MIT, Tim Hastie 2026 |
 
 `modules/kits-reload`, `modules/scenes-kits`, `modules/cc-map`,
 `modules/tempo-sync`, `modules/mode-defaults`, `modules/flex-seekbind*`,
@@ -47,8 +57,43 @@ transcribed).
 
 | source | licence | copyright | used in |
 |---|---|---|---|
-| Tim Hastie, [timhastie/octa-panel](https://github.com/timhastie/octa-panel) at `be68244` (a fork of octabam, 10-25 Sep 2026) | MIT (the fork's `LICENSE` is octabam's, copyright line unchanged) | Tim Hastie (his changes) | `tools/panel/` (the virtual front panel, the macOS app, the key/LED map and its evidence); `tools/emu/ot_emu` (`--interactive`, pacing, the DSPI RTC, DMA timers DTIM0-3, event-horizon bursts, the page-table memory path, lazy DSP batching, `--dsp-rt`, bounded records, card write-back, memory-to-memory eDMA copies, per-track taps; `oracle/`, `pgo.sh`); the `--dsp-rt` hunks of `tools/patches/dsp56300.patch`; `docs/firmware/COLDFIRE_PORT.md` (his milestones O14i-O24) |
+| Tim Hastie, [timhastie/octa-panel](https://github.com/timhastie/octa-panel) at `be68244` (a fork of octabam, 10-25 Sep 2026) | MIT (the fork's `LICENSE` is octabam's, copyright line unchanged) | Tim Hastie (his changes) | `tools/panel/` (the virtual front panel, the macOS app, the key/LED map and its evidence); `tools/emu/ot_emu` (`--interactive`, pacing, the DSPI RTC, DMA timers DTIM0-3, event-horizon bursts, the page-table memory path, lazy DSP batching, `--dsp-rt`, bounded records, card write-back, memory-to-memory eDMA copies, per-track taps; `oracle/`, `pgo.sh`); the `--dsp-rt` hunks of `tools/patches/dsp56300.patch`; `git show 666b6154:docs/firmware/COLDFIRE_PORT.md` (his milestones O14i-O24) |
 | Mark Roberts, [markandrus/octemu](https://github.com/markandrus/octemu) `assets/panel/gen_svg.py` | MIT (Copyright (c) 2026 Mark Roberts) | Mark Roberts | `tools/panel/skin/gen_svg.py`: the MKII front panel drawn as SVG (geometry measured from photographs of a unit, keys, knobs, fader, LEDs, the lighting classes); octabam added the `dark` palette and an output directory |
+
+## Contributions received
+
+Reverse-engineering results and notes contributed by others, by date, with
+where each now lives. The facts are in the topical docs with their status
+markers (✅ re-verified here · 🟡 adopted on the author's evidence · ❌
+retracts something written here) and the author's name beside them. The
+ingest record with the notes exchanged verbatim is
+`git show 3ceba41:docs/history/EXTERNAL_INGEST.md`. All were derived from
+the officially distributed OS 1.40C (`section_3_MAIN_OS.bin` SHA-256
+`164f3122…`, base `0x40000400`). Modules that arrived as code (midisc,
+Octakit, octalab, REPITCH) are in the sections above and the README's
+module table.
+
+| received | from | what | where it lives |
+|---|---|---|---|
+| 30 Aug 2026 | Bryan T | the Echo Freeze DELAY is a ColdFire routine over SDRAM rings | `docs/firmware/COLDFIRE_DELAY.md` section 1 🟡 |
+| 30 Aug 2026 | Bryan T | the ESAI carries audio ("does not" retracted) | `docs/firmware/DSP.md` section 6c ✅ |
+| 30 Aug 2026 | Bryan T | timestretch is a ColdFire feature; `P:0x3a1` / `P:0x2bf` / `func_00055a` relabelled | `docs/firmware/DSP.md` section 3 🟡 |
+| 30 Aug 2026 | Bryan T | the data-table atlas (Q23 decode of every X/Y module) | `docs/firmware/TABLES.md` 🟡, evaluated 31 Aug |
+| 30 Aug 2026 | Bryan T | `objdump -m m68k:cfv4e` for EMAC regions; radare2 cannot decode this CPU | `docs/contributing/TOOLING.md` section 3 ✅ |
+| 2–6 Sep 2026 | Bryan T | the track recorders, five sessions: descriptor, storage tiers, length arithmetic, pool, write path, loop point | `docs/firmware/RECORDER.md` sections 1–2 ✅ bytes, 🟡 reading |
+| 4 Sep 2026 | Bryan T | `bryantysinger/octa-bt-pt` (stock-effect defaults patcher; its parameter registry) | `docs/firmware/PARAM_PAGES.md` section 5g |
+| 4 Sep 2026 | June Kiff | `emuyia/ems-octakit` (256 kits) | `modules/octakit`, a submodule (above) |
+| 6 Sep 2026 | Bryan T | *Sound-on-Sound Looping with the Octatrack* (PDF) and `octatrack_clickless_loops.xlsx`; not in this repo | `docs/firmware/RECORDER.md` section 3 |
+| 13 Sep 2026 | nordseele | [`octalab-notes`](https://github.com/nordseele/octalab-notes) at `40ffa53` (MIT, findings only), from an Octatrack MKI running our loader: FS layer, slot loading, Parts, the card's files, step records and lock stores, the input layer, menus, the platform reserve on hardware | `docs/firmware/STORAGE.md`; `docs/firmware/PARAM_PAGES.md` section 5g; `docs/firmware/PANEL.md` section 4b; `docs/firmware/MAINMENU.md` section 2, section 5; `docs/contributing/PLACEMENT.md`; `docs/firmware/MIDI.md` (PLAYBACK `machine*6`); `tools/hw/ot_project.py` (trig masks `0x40`/`0x48`) |
+| 14 Sep 2026 | Bryan T | absolute X addresses are payload-relative (his LOFI2 mistuned on tracks 1–4) | `docs/firmware/TABLES.md` "Payload-relative addresses" ✅; `docs/contributing/FAILURE_MODES.md` |
+| 16 Sep 2026 | Bryan T | the parameter enable bitmaps | `docs/firmware/PARAM_PAGES.md` section 3b ✅, with retractions |
+| 21 Sep 2026 | Bryan T | the track LFO engine | `docs/firmware/LFO.md` (section 8 what was checked) ✅, with retractions both ways |
+| 21 Sep 2026 | Bryan T (hardware) | MAIN/CUE are `(L/128)²` | `docs/firmware/LEVEL_LAW.md` (section 7 what was checked) ✅ |
+| 22 Sep 2026 | Jannik Aßfalg (repeat98) | beside Tape Echo (PR #357): the delay routine's frame, seam and per-frame protocol; benchmarking practice for a ColdFire module | `docs/firmware/COLDFIRE_DELAY.md` sections 2–4 ✅, with a retraction; `docs/contributing/MODULES.md` "Pricing a ColdFire module"; `docs/contributing/FAILURE_MODES.md` |
+| 23 Sep 2026 | nordseele | [`octalab-notes`](https://github.com/nordseele/octalab-notes) `40ffa53` → `e0dc56d` (nine commits, 13–22 Sep): a FAT directory record's first cluster is the long at `+0x11e`; the storage-job entry `0x40024168` takes its kind/object from `0x460be9e8`/`ec` and a stock save path ran on a MKI; a recorder-reserve figure from the emulator; a held trig under a page of one's own; the SETUP windows' draw calls and the eight font records; their own `+0x10` trig-mask label and current-pattern/part mapping lowered to 🟡 | `docs/firmware/STORAGE.md` section 1 ✅; `docs/firmware/SAMPLE_SAVE.md` section 7 ✅; `docs/firmware/RECORDER.md` section 2 🟡; `docs/firmware/MAINMENU.md` section 6b; `docs/firmware/PANEL.md` sections 2–3; `docs/firmware/PARAM_PAGES.md` section 5g |
+| 22 Sep 2026 | markandrus (public repo, not sent to us) | [`octemu`](https://github.com/markandrus/octemu) at `8ccdd84`'s dsp56300 pin (QEMU 11.1 + dsp56300 + SDL2 Octatrack emulator, credits this project as inspiration): three MAC-with-load decode defects in Unicorn's vendored QEMU, confirmed against Unicorn's own source; that `vendor/dsp56300` was 144 commits behind upstream, absorbing several of our own fixes independently; the DMA "de-renewal" semantics for a same-value DCR rewrite mid-window. His three ColdFire firmware customisations (RECEIVE machine, USB-MIDI, USB-Audio) and `re/*.syms` (768 ColdFire + 150 DSP symbols) were reviewed 22 Sep and not adopted then; on 25 Sep 2026 USB-MIDI and USB-Audio were ported onto the DRAM platform (`modules/usb-midi`, `modules/usb-audio-out-tracks-main-cue`) with the port's own USB device-controller model (`tools/emu/ot_emu/usb.h`, his bench protocol) as the off-device gate; his QEMU and dsp56300 patches beyond the three above did not apply to our Unicorn/dsp56300 or were JIT-only, N/A to `execInterpreter()` | `tools/patches/unicorn_emac_fractional.patch` ✅ (PR #360); `AGENTS.md` History (the re-pin, PR #365; the DE-renewal, PR #367); `tools/emu/README.md` (the "no MAC-with-parallel-load form" retraction) |
+| 23 Sep 2026 | Jannik Aßfalg (repeat98) | `STOCK_PROFILE.md`: a stock-firmware ColdFire instruction profile under his port build (frame ISR, delay, sample analysis, voice renderer extents); the port's ACCext write knew only the fractional layout, which the frame ISR's integer-mode save/restore reaches every frame; `FUN_4000c8a4` is not a function boundary. His `stock-analysis-fast` module and `--work-profile` counter were not sent | `tools/emu/ot_emu/v4e.cpp` + `test_emac.cpp` ✅ (eight assertions); `tools/emu/README.md` (the fix; the profile 🟡, the extents ✅); `docs/firmware/MIDI.md` ❌ the label; `docs/firmware/COLDFIRE_DELAY.md` the routine's end ✅ |
+| 25 Sep 2026 | Tim Hastie | [`octa-panel`](https://github.com/timhastie/octa-panel) at `be68244` (a fork of this repository, 10-25 Sep 2026, MIT): the virtual front panel over the firmware's own panel-UART stream (LCD blocks 0x10-0x17, LED rows, the key matrix, encoders, crossfader); the port's real-time mode with sound (the DSP cores as JIT worker threads, O17-O17c) and two vendored-JIT defects (MPYI's immediate unsigned -- upstream fixed it independently; a bit op on an M register left its modulo words stale); the DMA timers on the 132 MHz bus (DTRR2 = 132,000,000 for one second); the Echo Freeze Delay's memory-to-memory eDMA copies and the TCD's ATTR/SOFF order; the EMAC -1 x -1 product; the firmware mounting the last set at boot once the sys tick runs. His modules (direct-jump, quantizer, synth) were not ported | `tools/panel/` ✅ (PR); `tools/emu/ot_emu` ✅ (the lockstep block dump equals main's with his three model changes reverted); `git show 666b6154:docs/firmware/COLDFIRE_PORT.md` O14i-O24 🟡 (his records); `docs/firmware/DSP.md` "Core 0's frame", `docs/firmware/STORAGE.md` section 4 |
 
 ## Analysis tooling
 

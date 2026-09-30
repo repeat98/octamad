@@ -1,6 +1,7 @@
 // Reproducible voicing gate for the actual fixed-point CPU engine. Targets
 // are measurements, not a second implementation of its equations. Reference:
-// modules/tapeecho/VOICING.md (local FX-pedal 44.1k; historical Galaxy 48k).
+// `git show 666b6154:modules/tapeecho/VOICING.md` (local FX-pedal 44.1k;
+// historical Galaxy 48k); the current figures are modules/tapeecho/README.md.
 #include <algorithm>
 #include <cmath>
 #include <cstdio>

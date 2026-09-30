@@ -13,7 +13,7 @@
 //   +0x1c  TXL / RXL   bits 7:0 -- the write that SENDS, the read that TAKES
 //
 // ✅ Every one of those comes from the firmware's own code, not the manual
-// (docs/firmware/COLDFIRE_PORT.md, O8): the loader at `0x40001d4c` writes 0 to +0x04,
+// (git show 3ceba41:docs/history/COLDFIRE_PORT.md, O8): the loader at `0x40001d4c` writes 0 to +0x04,
 // spins on `+0x08 & 6` (TXDE|TRDY) before every word, writes the three lanes
 // high-mid-low, and the payload uploader at `0x40001b18` spins on `+0x08 & 1`
 // (RXDF) and reads +0x14/+0x18/+0x1c back for the DSP's echo. The frame
@@ -36,7 +36,7 @@
 // core runs at the DSP56720's reset PLL (0x2B60C2: NF/(NR*NO) = 195/24) from
 // an EXTAL the payload itself makes the audio clock (P:0x30024 routes EXTAL
 // into both ESAI chains, TPSR=1/TPM=0/TFP=0, 8 slots x 32 bits), so
-// Fsys/fs = 512 x 8.125 whatever the crystal is (COLDFIRE_PORT.md, O8:
+// Fsys/fs = 512 x 8.125 whatever the crystal is (git show 3ceba41:docs/history/COLDFIRE_PORT.md, O8:
 // "the ESAI rate"). The ESAI fires ONE SLOT per `ips / 8` instructions -- the
 // vendored clock's "cycles per sample" is per slot (its "2 samples = 1
 // frame" comment). ⚠️ A core whose bootstrap ROM has not finished is HELD
@@ -112,7 +112,7 @@ namespace ot
 		// instruction, and a core polling the host port is fast-forwarded
 		// to its next peripheral event (the interpreter's idle step, JIT
 		// edition). The audio contract for this mode is FUNCTIONAL, not
-		// byte-identical (docs/firmware/COLDFIRE_PORT.md O17); every other
+		// byte-identical (git show 666b6154:docs/firmware/COLDFIRE_PORT.md O17); every other
 		// mode is untouched (each rt branch is behind m_rt).
 		DspPair(double _ratio = g_dspIps / g_cfIps, double _ips = g_dspIps, bool _rt = false);
 		~DspPair() override;
@@ -200,7 +200,7 @@ namespace ot
 		// X:0x8000 ring and DMA3 into X:0x8100; payload B configures none, and
 		// core 1 reports 0 ESAI frames). ESAI_1 is configured alongside but
 		// no DMA feeds it. Which physical input or output each slot is has
-		// NOT been measured -- see docs/firmware/COLDFIRE_PORT.md O9.
+		// NOT been measured -- see git show 3ceba41:docs/history/COLDFIRE_PORT.md O9.
 		static constexpr uint32_t g_audioSlots = 8;
 		// Keep every transmitted frame (8 words, slot order) for a WAV.
 		void setAudioCapture(const bool _on) { m_capture = _on; }
@@ -607,7 +607,7 @@ namespace ot
 		// THE INTER-CORE MAILBOX, one register each way. 🟡 Inferred from the
 		// firmware's use, not from a datasheet: core A writes Y:$FFFFD7 and
 		// waits while bit 1 of Y:$FFFFD6 is set; core B waits for bit 1 of
-		// Y:$FFFFD3 and reads Y:$FFFFD4 (docs/firmware/COLDFIRE_PORT.md, O8). Modelled
+		// Y:$FFFFD3 and reads Y:$FFFFD4 (git show 3ceba41:docs/history/COLDFIRE_PORT.md, O8). Modelled
 		// symmetrically: $D7 = my transmit data, $D6 bit 1 = it is still
 		// unread; $D4 = my receive data, $D3 bit 1 = one is waiting.
 		struct Mailbox { uint32_t data = 0; std::atomic<bool> full{false}; uint64_t words = 0; std::atomic<uint64_t> sentAt{0}, takenAt{0}; };	// O17: `full` crosses the two worker threads (data before full, release/acquire); O17c: the sending / taking core's clock (executed units) at the event, for the other core's wait (dsp.cpp rtWorker, THE WAITS)

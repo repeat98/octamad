@@ -554,7 +554,7 @@ def main():
     # DONE. "On neither chooser" gives every shipped remix exactly the three
     # reverbs -- FX1 lists ten of the thirteen and the reverbs are FX2-only
     # -- which is the whole reason removing the explicit field was safe.
-    # restock lists all fourteen and places nothing, so it gives up nothing.
+    # mods lists all fourteen and places nothing, so it gives up nothing.
     _sp = stock.p_spans("A")
     _fx1_all = {k for k in _sp
                 if registry.modules()[k].menu.fx2_id in stock.fx1_ids()}
@@ -574,6 +574,8 @@ def main():
              "analog-bd-dynload": (),
              # the twelve io remixes: the IN module's RX inject is placed in SPATIALIZER's words
              **{f"usb-io-{o}-{i}": ("SPATIALIZER",) for o in ("tracks", "tracks-main-cue", "main-cue", "main") for i in ("ab", "cd", "abcd")},
+             "octatrick": ("SPATIALIZER",),   # USB AUDIO IN ABCD's inject, as in the io remixes
+             "sos-capture": ("SPATIALIZER",),   # usb-io-tracks-ab + the recorder fixes
              "cfmeter": ("DARK REV",), "cfmeter-port": ("DARK REV",),   # the readout insert's words
              "euclid": ("SPATIALIZER", "FLANGER", "CHORUS", "COMB FILTER"),
              "usb": _rig, "usb-audio": _rig, "bottleservice": _rig}

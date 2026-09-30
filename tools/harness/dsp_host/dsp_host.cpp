@@ -36,7 +36,7 @@
 // stock dispatcher bumps its r7 counter after FX1 (P:0x4ae), after FX2
 // (P:0x4e4) and a third time, unconditionally, after FX2 (P:0x51e). Measured
 // 8 Sep 2026 on BOTH payloads with the firmware driving the DSP through the
-// ColdFire port (COLDFIRE_PORT.md O11). The two-per-track table this comment
+// ColdFire port (git show 3ceba41:docs/history/COLDFIRE_PORT.md O11). The two-per-track table this comment
 // carried (r7probe's "track 2 FX2 = 0x6400" reads as position 1's FX1 under
 // the real stride) put every position >= 1 low, and the one-aux return's pin
 // on position 3 matched only in this harness -- never on the unit. Callers
@@ -63,7 +63,7 @@
 // Default scheduling is lock-step: core 0 runs its whole block, then core 1.
 // That is exactly what one core used to see, so every existing render is
 // bit-identical, and it is structurally blind to the cross-core race
-// (docs/effects/XBUS.md) just as before. -skew N interleaves instead: core 0 runs N
+// (modules/send/README.md) just as before. -skew N interleaves instead: core 0 runs N
 // instructions ahead, then the two alternate instruction by instruction. That
 // is not the hardware's timing -- it is a FUZZ of it. A green run proves
 // nothing; a red one is a real defect.
@@ -733,7 +733,7 @@ int main(int argc, char** argv) {
                     c, C.ctx.setupLo, C.ctx.setupHi, C.ctx.loop, C.ctx.exit);
         // It reads the frame count out of x:(x:0x415 + 0x1e) as (w >> 8) & 0xf, so
         // seed that first. The count is capped at 15 frames by the & 0xf.
-        // 9 Sep 2026 (COLDFIRE_PORT.md O12): under the firmware that nibble is
+        // 9 Sep 2026 (git show 3ceba41:docs/history/COLDFIRE_PORT.md O12): under the firmware that nibble is
         // the track's SPLIT, and 0 means a whole 16-sample block (x:$20c = 0,
         // x:$20d = 16 at every unsplit dispatch, measured with the ColdFire
         // port); the cap at 15 had every harness render processing 15 samples
@@ -754,7 +754,7 @@ int main(int argc, char** argv) {
         // The per-block sample count is the a=0 sub-block's (x:$20c) when the
         // frame is split, else the a=1 call's (x:$20d): the stock dispatcher
         // skips the a=0 call at x:$20c == 0 and makes the a=1 call with n7 =
-        // x:$20d = 16 (COLDFIRE_PORT.md O12, measured under the firmware).
+        // x:$20d = 16 (git show 3ceba41:docs/history/COLDFIRE_PORT.md O12, measured under the firmware).
         // At the legacy -frames 15 this still reads 15, so every existing
         // bit-identity gate is untouched; at -frames 16 it reads 16.
         C.cnt  = C.mem->get(MemArea_X, 0x20c) ? C.mem->get(MemArea_X, 0x20c) : C.mem->get(MemArea_X, 0x20d);

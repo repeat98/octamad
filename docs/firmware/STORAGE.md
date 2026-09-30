@@ -1,6 +1,6 @@
 # The card, the project files and the slots
 
-OS 1.40C, ColdFire side, above the ATA stack (`ARCHITECTURE.md` §5): the
+OS 1.40C, ColdFire side, above the ATA stack (`ARCHITECTURE.md` section 5): the
 filesystem vtable, the sample-slot loader and its status records, where a
 Part lives, and what the unit writes to the card. Read by nordseele for
 octalab ([`nordseele/octalab-notes`](https://github.com/nordseele/octalab-notes),
@@ -10,7 +10,7 @@ Sep 2026 at `e0dc56d`) on an Octatrack MKI, and re-read here where marked.
 Status key as `CHIP.md`: ✅ measured on their MKI or read from our image ·
 🟡 adopted on their evidence.
 
-## 1. The filesystem layer (`FS_LAYER.md`) ✅
+## 1. The filesystem layer (nordseele's `FS_LAYER.md`) ✅
 
 A 23-slot FS vtable `0x46c823fa..0x46c82452`, three implementations
 installed by `0x40014524` / `0x40014636` / `0x40014750`, variant B runs
@@ -33,7 +33,7 @@ word at `+0x120` is that long's low half: enough on FAT16, wrong on a
 FAT32 card for any folder past cluster 65535 — a folder copied late to a
 32 GB card was not listed (nordseele, MKI ✅).
 
-## 2. Slot loading (`SLOT_LOADING.md`, MKI) ✅
+## 2. Slot loading (nordseele's `SLOT_LOADING.md`, MKI) ✅
 
 `0x40093980(slot, keep_trim)` has one caller (case 1 of `0x4008445c`),
 followed by post-load (`0x40099148(0, slot)` / `0x40099680`),
@@ -46,7 +46,7 @@ state 0/2/3, `+0x0c` code, `+0x24` handle; `-0x10` INVALID FILENAME,
 the handle: MAX OPEN FILES). STATIC settings `0x100d5b30`, FLEX
 `0x100b14f0`, stride `0x448`.
 
-## 3. A Part lives three times (`FINDINGS.md`, MKI) ✅
+## 3. A Part lives three times (nordseele's `FINDINGS.md`, MKI) ✅
 
 Working `bank + 0x8ed80 + part*0x18b2`, saved `bank + 0x9504a + …`, SRAM
 `0x100a4ece + part*0x18b2` (the copy that survives a power cycle;
@@ -54,9 +54,9 @@ patterns' at `0x1001614e`). A bank write alone is lost at boot.
 `0x40029a4c(src, part)` writes both, sets `bank + 0x95048` / `0x100b145e`,
 and re-applies with `0x40009094(bank, part)` (also copies scenes A/B at
 `part + 0x10/0x11` into `0x80000ed4`). The page arrays inside a Part are
-`PARAM_PAGES.md` §5.
+`PARAM_PAGES.md` section 5.
 
-## 4. The card from the host (`PROJECT_FILE.md`, MKI) ✅
+## 4. The card from the host (nordseele's `PROJECT_FILE.md`, MKI) ✅
 
 `PATH=` bare, no quotes; the unit writes nested STATIC paths itself (❌
 retracted 13 Sep 2026: "a STATIC PATH must be bare, `../AUDIO/…` loads
@@ -72,4 +72,26 @@ trigs nor previews. The unit auto-saves the loaded project continuously
 and its RTC runs behind wall clock (compare content, not mtimes).
 `project.work` has no checksum; bank files do. octalab's `[META]` signs
 `OS_VERSION=R0178     OLAB<n>`. `tools/hw/ot_project.py` never writes
-`markers.work`.
+`markers.work` and has no trim command in this tree.
+
+How the firmware reads it (Tim Hastie, 22 Sep 2026, PC and write watches
+under the port on stock 1.40C;
+`git show 666b6154:docs/firmware/COLDFIRE_PORT.md` O24) ✅:
+- The project load's markers parser (`0x40086396`, in `0x40086xxx`) reads
+  `PROJECT/markers.work` field by field: his reading is a 22-byte `FORM …
+  DPS1SAMP` sub-header, 264 records of 784 bytes (FLEX 1..136, 129..136
+  the recorder buffers, then STATIC 1..128: trim start, trim end, loop
+  point, 64 slices × 3, a count), and a trailing u16 = the byte sum of the
+  sub-header and every record (−54 on a mismatch). The unit keeps a second
+  copy, `markers.strd`.
+- The sanitiser at `0x400994b4` (`0x40099448..94b8`) writes `end =
+  min(length, max(trim_end, start + 64))` into the slot's settings record
+  (`0x100b14f0 + 0x448·slot` FLEX, `0x100d5b30 + …` STATIC; trim at `a4 +
+  300 + 20·(slice+1)`). The voice start (`0x4000f6e2..f78a`, stores at
+  `0x4000f790/f794`) copies that region into the voice struct
+  (`0x800049d8 + 0xa8·track`, +40) and pads a trim under 64 frames to 64
+  (`0x4000f758..f76c`). The slot STATE records (`0x46c922c4 + 44·slot`)
+  hold the file lengths regardless.
+- A zero or 64-frame trim therefore plays a 64-frame stub at every trig.
+  🟡 The browser's load writes `end` = the file's length (`0x40095d90..5dd8`,
+  read from the code, not driven through the browser).

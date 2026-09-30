@@ -164,14 +164,14 @@ def setup_window_open(uc):
 ARM_ALL_GEOMETRY = (0x25, 0x17, 0xb8, 0x12)
 DISARM_ALL_GEOMETRY = (0x1e, 0x17, 0xc6, 0x12)
 XFADER = 0x460d16c8         # the crossfader position the morph reads, long 0..127: 127 = scene A
-                            # (leftmost), 0 = scene B (docs/firmware/midi_re_scene.md; measured
+                            # (leftmost), 0 = scene B (docs/firmware/MIDI.md appendix C; measured
                             # 13 Sep 2026: the weight table 0x80003c60 reads 0x8000_0000 at 127)
 XFADER_ROW = 0x40           # the panel's fader report: `0x40 <adc 0..255>` on the panel UART; the RX
                             # parser (0x4009228c, class 0x40 with row nibble 0) scales the byte by the
                             # calibration record at 0x1ffffe (magic 0x1234; none under emulation ->
                             # value >> 1) and posts sys message kind 4 (0x40092fac -> 0x40092f2c ->
                             # handler 0x40061e0a, which stores it, rebuilds the weights and redraws
-                            # the fader icon at LCD x 104-108 / y 59-61). PANEL_LINK.md.
+                            # the fader icon at LCD x 104-108 / y 59-61). docs/firmware/PANEL.md §9.
 SCENE_A_OFF, SCENE_B_OFF = 0x8ed90, 0x8ed91   # the Part's assigned scenes (0-based), base-relative
 PARAM_MAP_FILE = pathlib.Path(__file__).parent / "param_map.json"
 
@@ -635,7 +635,7 @@ class TakeWriter:
 # L/R, 4/5 = cue L/R, 0/1 and 6/7 whatever the DSP puts there, zero on the
 # fixture) followed by the EIGHT PER-TRACK STEMS (T1 L, T1 R, ... T8 L,
 # T8 R: each track's own term of the DSP's main mix, tapped inside the
-# emulator's mixdown -- COLDFIRE_PORT.md O23), 24 words a frame; an older
+# emulator's mixdown -- git show 666b6154:docs/firmware/COLDFIRE_PORT.md O23), 24 words a frame; an older
 # child without `tracks` gets `all` (8 words). The drain de-interleaves main
 # L/R for the ring, the takes and /audio/pcm -- byte for byte what `audio
 # start main` gives -- and hands the whole frame to the output, which lays

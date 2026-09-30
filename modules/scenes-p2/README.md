@@ -1,7 +1,46 @@
-# SCENES P2
+# `scenes-p2` — SCENES P2
 
 Scene locks and the crossfader for page 2 of FX1 and FX2. `Kind.CF_PATCH`:
 one DRAM unit, nine detours, nothing on the DSP.
+
+## Measured
+
+Under the port, 26 Sep 2026 (`tools/verify/verify_scenesp2.py`):
+
+- bamsep26 and rig-kits (Octakit): pool `{scene 0: MODE 1, TIME 100;
+  scene 1: TIME 20}` on T1 (BusDelay), fader 64: T1's record carries MODE 1
+  and TIME 60 in both pings, the predicted lerp exactly; fader 0: MODE 0
+  (the knob), TIME 20. Scene A disabled: the A side is ignored (the fixture
+  project has it off).
+- The FX2 editor called with scene A held: the pool and its SRAM twin gain
+  one entry, the Part byte and the live lane do not move; with a seeded
+  entry the same entry is updated, count 1; with FUNC held the entry is
+  removed. Under rig-kits the held call returns cleanly and the pool lands
+  in the Part DB's current bank.
+- Scene copy fills the clip; paste into another scene adds the clip's
+  entry under it; clear drops the scene's entries; the undo snapshot fills
+  the undo clip and a write from the undo buffer restores it.
+
+## On the unit
+
+- Anything on hardware beyond being carried by image 88 (pre-fix), not
+  exercised there.
+
+## Open
+
+- The dial hook (a draw; the port's LCD was not driven to the page).
+- Whether SAVE KIT saves after page-2 lock edits alone.
+- The undo row's writer is inferred to be `0x40025b40(0x460bf218, ...)`
+  from the paste row's shape; the write hook was exercised with that call.
+
+- A knob PRESS with a scene held toggles the page-1 lock of that knob
+  (stock, `0x40053a68`, a function Octakit wraps); page 2 has FUNC+turn to
+  remove a lock instead.
+- The pool holds 47 locks a part.
+
+## Gates
+
+- `tools/verify/verify_scenesp2.py`.
 
 ## What stock does
 
@@ -13,12 +52,32 @@ Page 2 (slots 6..11) has no byte and the loop stops at halfword 17
 (0..127) rebuilds a weight table `0x80003c60` (a long per track, hi word
 `-xf*258`, Q15): `xf = 127` is scene A, `xf = 0` scene B.
 
+## Why not stock's scene block
+
+Widening stock's scene block to page 2 means changing all of these
+together (`docs/firmware/MIDI.md` Appendix C):
+
+1. Block size: 0x20 bytes/track/scene in the project (`0x8f3e2` stride, 24 code
+   sites incl. copy/paste/undo at `0x40025b40`, `0x400274cc`, `0x400275a0`).
+2. Working copy `0x80000ed4`: 0x40/track, 32 pairs, all fillers assume 32.
+3. Frame-builder extents: `moveq #6` (page block) and `moveq #9` (voice
+   record) at `0x4000ccb6/0x4000cd0e`, `0x4000cd96/0x4000cdea`,
+   `0x4000ce5e/0x4000cee8`; skip at `0x4000cef6`. Halfwords 24..26 are 7 longs
+   past where the record pass stops.
+4. The scene editor's slot→byte map (`0x40053a2c` region) and the two
+   encoder-hook descriptors at `P+0x12a` that call the STRT/LEN morph.
+5. The arithmetic itself, to leave the low byte alone.
+
+Two spare bytes per track could host **one** extra halfword, not three, and
+the DSP-side companion packing would still be lost at every intermediate
+position.
+
 ## What this adds
 
 - **The pool.** Each Part window carries 144 bytes at `+0x90522`: `u16`
   magic `P2`, `u8` count, then 3-byte entries `scene<<3 | track`,
   `fx1<<3 | slot2`, `value`; 47 at most. The window is copied whole by
-  Part Save, Part Reload and Project Save (`docs/firmware/STORAGE.md` §3)
+  Part Save, Part Reload and Project Save (`docs/firmware/STORAGE.md` section 3)
   and by Octakit's Kit operations (`gk_copy_payload_interruptible`,
   `GK_PART_PAYLOAD_SIZE / 4` longs; no digest over it), so the pool travels
   with the part. midisc's MIDI-track lock blob lives at the same offset:
@@ -80,35 +139,3 @@ from the panel; the twelve-byte build was carried by image 88 on Sam's
 MKII and the halt was not reported from the unit). The same halt was what the direct `--call`
 of the editors met, which had been read as her wrapper refusing a call
 without UI context.
-
-## Measured (the port, 26 Sep 2026; `tools/verify/verify_scenesp2.py`)
-
-- bamsep26 and rig-kits (Octakit): pool `{scene 0: MODE 1, TIME 100;
-  scene 1: TIME 20}` on T1 (BusDelay), fader 64: T1's record carries MODE 1
-  and TIME 60 in both pings, the predicted lerp exactly; fader 0: MODE 0
-  (the knob), TIME 20. Scene A disabled: the A side is ignored (the fixture
-  project has it off).
-- The FX2 editor called with scene A held: the pool and its SRAM twin gain
-  one entry, the Part byte and the live lane do not move; with a seeded
-  entry the same entry is updated, count 1; with FUNC held the entry is
-  removed. Under rig-kits the held call returns cleanly and the pool lands
-  in the Part DB's current bank.
-- Scene copy fills the clip; paste into another scene adds the clip's
-  entry under it; clear drops the scene's entries; the undo snapshot fills
-  the undo clip and a write from the undo buffer restores it.
-
-## Not measured
-
-- Anything on hardware beyond being carried by image 88 (pre-fix), not
-  exercised there.
-- The dial hook (a draw; the port's LCD was not driven to the page).
-- Whether SAVE KIT saves after page-2 lock edits alone.
-- The undo row's writer is inferred to be `0x40025b40(0x460bf218, ...)`
-  from the paste row's shape; the write hook was exercised with that call.
-
-## Open
-
-- A knob PRESS with a scene held toggles the page-1 lock of that knob
-  (stock, `0x40053a68`, a function Octakit wraps); page 2 has FUNC+turn to
-  remove a lock instead.
-- The pool holds 47 locks a part.

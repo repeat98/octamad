@@ -79,5 +79,5 @@ class Split(unittest.TestCase):
         self.assertEqual(check_shards.choose_split(list(small), "auto", small, 3), set())
 
     def test_without_a_record_the_octakit_remixes(self):
-        got = check_shards.choose_split(["bottleservice", "usb", "restock"], "auto", {}, 3)
+        got = check_shards.choose_split(["bottleservice", "usb", "octatrick"], "auto", {}, 3)
         self.assertEqual(got, {"bottleservice"})

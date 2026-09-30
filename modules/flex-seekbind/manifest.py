@@ -10,7 +10,7 @@ DSP restarts the voice (a chirp, then hash at 140 % of the signal over 300
 samples). This cave, hooked on the verdict test, takes the same-sample
 continuation with result 1 whenever the verdict holds and the stock
 "different" path otherwise. The position reset and everything else stay
-stock. On hardware as OCTABAM81/82/83 (docs/firmware/RECORDER_CLICK.md).
+stock. On hardware as OCTABAM81/82/83 (modules/recorder-hold/README.md, "The loop click").
 """
 
 from remix.schema import Category, Proof, CavePatch, Kind, Module

@@ -130,7 +130,7 @@ def rig_preset(channels):
         enc[33 + i] = param_knob(cd, "FX2", sd, dly[sd], "T1 BDLY")
         if sv is not None:
             enc[41 + i] = param_knob(cv, "FX2", sv, vrb[sv], "T5 BVRB")
-    # row 3: the master track's station (T8 FX1 = CHARACTER, docs/effects/MASTER.md), then the scene fader
+    # row 3: the master track's station (T8 FX1 = CHARACTER, the RIG layout in tools/hw/ot_project.py), then the scene fader
     ch8, chr_ = channels[7], mods["CHARACTER"].params
     for i, slot in enumerate(MASTER_ROW):
         enc[49 + i] = param_knob(ch8, "FX1", slot, chr_[slot], "T8 MASTER")

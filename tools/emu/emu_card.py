@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CompactFlash card emulation for the ColdFire emulator (docs/remixer/EMU.md, M4).
+"""CompactFlash card emulation for the ColdFire emulator (tools/emu/README.md, "The card").
 
 Three pieces:
 
@@ -853,13 +853,13 @@ def _cli():
                     help="after card init, load SET/PROJECT through the engine command")
     a = ap.parse_args()
 
-    tree = pathlib.Path("out/_emu_card_tree")
     if a.project:
         import shutil
+        import tempfile
         src = pathlib.Path(a.project)
         name = a.name or src.name
-        if tree.exists():
-            shutil.rmtree(tree)
+        # Per process: two card builds sharing one staging tree take each other's files.
+        tree = pathlib.Path(tempfile.mkdtemp(prefix="emu_card_tree_"))
         dst = tree / a.set / name
         dst.mkdir(parents=True)
         (tree / a.set / "AUDIO").mkdir()
@@ -872,6 +872,7 @@ def _cli():
                 shutil.copy2(p, dst / p.name)
         files = []
         img = build_image(str(tree), a.size, log=files)
+        shutil.rmtree(tree)
         pathlib.Path(a.image).parent.mkdir(parents=True, exist_ok=True)
         pathlib.Path(a.image).write_bytes(img)
         print(f"card image : {a.image}  ({len(img) // 1048576} MB, {len(files)} entries, "

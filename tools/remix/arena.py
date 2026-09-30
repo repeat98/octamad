@@ -21,7 +21,7 @@ N pages = N x 6 KB of sample/recorder memory, off the recorder share by
 default (Flex keeps its 64 MB cap). The region a reservation yields is
 never touched by the OS again: the arena clear starts at the new base, the
 boot-time copies follow the literal, and the page allocator hands out only
-indexes below the new count (docs/remixer/PLACEMENT.md).
+indexes below the new count (docs/contributing/PLACEMENT.md).
 """
 
 from __future__ import annotations

@@ -23,7 +23,7 @@ and each has a one-module remix under `remixes/test/`.
 ## Status
 
 - `usb-audio` at 16 bits on Sam's MKII as image 64 (25 Sep 2026): enumerates on macOS as "Elektron Octatrack DPS-1" (16-channel input + MIDI port). Every channel carried its track. 9.6 minutes recorded with no discontinuities after the first 1.6 s of each stream. Device counters 0 underruns, 0 overruns. USB MIDI in took 7,950 messages/s for 185 s without a stall.
-- Open: a burst of reordered samples 0.75–1.5 s after the host opens a stream, on four of five takes (`docs/remixer/FAILURE_MODES.md`).
+- Open: a burst of reordered samples 0.75–1.5 s after the host opens a stream, on four of five takes (`docs/contributing/FAILURE_MODES.md`).
 - `usb-audio` at 24 bits on Sam's MKII as image 69 (25 Sep 2026): 16 channels at 24 bits, every channel its track's tone, 3 minutes recorded (USBSIG 60 s, USBLOAD 120 s) with no discontinuities after 0.76 s; counters 0 underruns, 0 overruns. The start burst is on the right channels only. `modules/usb-audio-out-tracks-main-cue/README.md` has the numbers.
 - 20 channels (MAIN on 17–18, CUE on 19–20) on Bryan's MKII as `usb-out-tracks-main-cue` image 90 (25 Sep 2026): MAIN and CUE on their channels, level changes follow. `usb-out-tracks-main-cue` is stock effects + USB MIDI + USB AUDIO, for testing the stream without the rig.
 - `usb` alone has not been flashed. Its module is the one that ran inside image 64.
@@ -31,7 +31,7 @@ and each has a one-module remix under `remixes/test/`.
 
 ## Build and flash
 
-1. Set up the repository and the stock OS: [BUILDING.md](../../../docs/remixes/BUILDING.md) §1–2 (`make setup`, `make os`, `make recon`).
+1. Set up the repository and the stock OS: [BUILDING.md](../../../docs/guide/BUILDING.md) sections 0–2 (what to install first, then `make setup`, `make emu-setup`, `make os`, `make recon`).
 2. Build:
 
    ```bash
@@ -39,7 +39,7 @@ and each has a one-module remix under `remixes/test/`.
    ```
 
    Optional first: `make emu-cf` then `make check REMIX=usb-audio`. `verify_usb` enumerates the image under the emulator and streams from it.
-3. Back up the card and flash from it: [BUILDING.md](../../../docs/remixes/BUILDING.md) §4–5. Recovery: §6.
+3. Back up the card and flash from it: [BUILDING.md](../../../docs/guide/BUILDING.md) sections 4–5. Recovery: section 7.
 4. Old projects: [`bottleservice` — How to flash](../../bottleservice/README.md#how-to-flash) (`ot_project.py host` and `stamp-defaults`).
 
 OS upgrades still need DIN MIDI or the card. They do not work over USB MIDI.

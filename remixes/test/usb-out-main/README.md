@@ -21,6 +21,6 @@ this plus USB CROSSBAR and USB AUDIO IN AB: a two-in, two-out interface.
 make image REMIX=usb-out-main BUILD=1   # -> out/OCTATRACK_OCTABAM1.bin
 ```
 
-[BUILDING.md](../../../docs/remixes/BUILDING.md) is the walk-through from a
+[BUILDING.md](../../../docs/guide/BUILDING.md) is the walk-through from a
 fresh machine to a flashed unit. `make check REMIX=usb-out-main` runs every
 gate first.

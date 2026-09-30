@@ -377,7 +377,7 @@ namespace ot
 			// payload's 8 slots that was an audio clock 8x slow: the 256-word
 			// ring at X:0x8000 advanced 16 words per 16-sample frame instead of
 			// 128, the dispatcher's DSR2 == 0x80f0 bank never came, and every
-			// block landed in bank A (COLDFIRE_PORT.md O8, "the bank is the
+			// block landed in bank A (git show 3ceba41:docs/history/COLDFIRE_PORT.md O8, "the bank is the
 			// audio ring's phase"). One slot per `_ips / 8`: 520 at 4160.
 			// O9: RX0 carries the input (a file or the tones) from the
 			// transport start on, silence before it and on every other slot
@@ -576,7 +576,7 @@ namespace ot
 
 	// =====================================================================
 	// O17 (12 Sep 2026): THE REAL-TIME MODE -- the two cores as JIT WORKERS ON
-	// THE LOCKSTEP SCHEDULE (--dsp-rt; docs/firmware/COLDFIRE_PORT.md O17).
+	// THE LOCKSTEP SCHEDULE (--dsp-rt; git show 666b6154:docs/firmware/COLDFIRE_PORT.md O17).
 	//
 	// THE PREMISE. The ColdFire stays the master of emulated time: every tick
 	// books `m_due` exactly as O16c has it. What changes is WHO runs the

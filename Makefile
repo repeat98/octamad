@@ -34,7 +34,7 @@ OT_PROJECT ?= $(shell cat $(HOME)/.octabam_project 2>/dev/null)
 export OT_PROJECT
 
 # The tools run on bare python3 (stdlib only). The ONE exception is the local
-# ColdFire emulator (docs/remixer/EMU.md), which needs `unicorn` from the uv-managed
+# ColdFire emulator (tools/emu/README.md), which needs `unicorn` from the uv-managed
 # `.venv` (the `emu` extra). Prefer that venv when present, else bare python3 —
 # where the emulator view degrades to "unavailable" and everything else works.
 PY := $(shell [ -x .venv/bin/python3 ] && echo .venv/bin/python3 || echo python3)
@@ -69,7 +69,7 @@ bus-plain: ## Build without specialization (both servers on both cores)
 	REMIX=$(REMIX) python3 tools/build/build_bus.py
 
 .PHONY: image
-image: bus ## Repack the build into a card-flashable .bin (see docs/remixer/FLASHING.md); BUILD=N is required
+image: bus ## Repack the build into a card-flashable .bin (see docs/guide/BUILDING.md); BUILD=N is required
 	$(need-remix)
 	@test "$(origin BUILD)" != "file" || { echo "make image needs BUILD=N (the version the panel shows; bump it every flash)"; exit 1; }
 	@test -f $(SYX) || { echo "missing $(SYX) — run 'make os'"; exit 1; }
@@ -86,7 +86,7 @@ image: bus ## Repack the build into a card-flashable .bin (see docs/remixer/FLAS
 	@echo
 	@echo "  card image: out/OCTATRACK_$(VERSION).bin"
 	@echo "  MIDI image: out/OCTATRACK_OS1.40C_$(VERSION).syx"
-	@echo "  -> docs/remixer/FLASHING.md before you write either to hardware."
+	@echo "  -> docs/guide/BUILDING.md before you write either to hardware."
 
 # ------------------------------------------------- audition without flashing --
 
@@ -221,12 +221,13 @@ verify: verify-shared verify-remix ## The remix-independent gates, then the sele
 # and 25 checks used to repeat them 25 times (27 Sep 2026, ~3 h serially).
 REMIXES ?= $(REMIX)
 .PHONY: verify-shared
-verify-shared: ## The gates that do not depend on the remix: ledger selftest, slots, replaces, docs, label_fmt, knob census, remix-independent module gates (REMIXES="a b")
+verify-shared: ## The gates that do not depend on the remix: ledger selftest, slots, replaces, docs, the remixer draws, label_fmt, knob census, remix-independent module gates (REMIXES="a b")
 	@test -n "$(REMIXES)" || { echo "REMIXES is unset: make $@ REMIXES=\"<name> ...\"   (make modules lists them)"; exit 2; }
 	python3 tools/remix/selftest.py
 	python3 tools/verify/verify_slots.py
 	python3 tools/verify/verify_replaces.py --static
 	python3 tools/verify/verify_docs.py
+	$(PY) tools/verify/verify_remixer.py
 	python3 tools/build/label_fmt.py
 	@# The knob click census: every continuous knob of the rig fixture's DSP
 	@# modules moved mid-render, plus the garbage-start gate. Builds its own
@@ -366,6 +367,10 @@ accept: ## Strict local acceptance + JSON report: REMIX=<one>, or REMIXES="a b c
 	@test -n "$(REMIXES)" || { echo "REMIX is unset: make $@ REMIX=<name>, or REMIXES=\"<name> ...\"   (make modules lists them)"; exit 2; }
 	BUILD="$(BUILD)" python3 tools/verify/acceptance.py --remix $(REMIXES) $(if $(STRESS_SOURCE),--stress-source "$(STRESS_SOURCE)",) $(if $(JOBS),--jobs $(JOBS),) $(ACCEPTARGS)
 
+.PHONY: verify-docs
+verify-docs: ## The rendered tables are current and every link between tracked files resolves (no firmware; CI runs it)
+	python3 tools/verify/verify_docs.py
+
 .PHONY: test-acceptance
 test-acceptance: ## Firmware-free tests of the acceptance runner and the reach classifier
 	python3 -m unittest discover -s tools/verify/tests -p 'test_*.py' -v
@@ -376,15 +381,15 @@ BASE ?= origin/main
 identity: ## Which remixes' images this branch moved: every remix built from BASE (a kept worktree under out/identity/base) and from this tree, compared byte for byte
 	python3 tools/verify/image_identity.py --base $(BASE)
 .PHONY: reach
-reach: ## The gates this branch's changes reach (the diff against BASE=origin/main), QUICK by default (the carrying remixes, no identity or accept, 2 shards, nice 10); FULL=1 every gate at full speed; RUN=1 runs them, KEEP=1 every one then a table, JOBS=n the per-remix work over n worktrees
-	python3 tools/verify/reach.py --base $(BASE) $(if $(FULL),--full,) $(if $(RUN),--run,) $(if $(KEEP),--keep-going,) $(if $(JOBS),--jobs $(JOBS),) $(REACHARGS)
+reach: ## The gates this branch's changes reach (the diff against BASE=origin/main), QUICK by default (the carrying remixes, no identity or accept, 2 shards, nice 10); FULL=1 every gate at full speed; TESTS=1 includes remixes/test/; RUN=1 runs them, KEEP=1 every one then a table, JOBS=n the per-remix work over n worktrees
+	python3 tools/verify/reach.py --base $(BASE) $(if $(FULL),--full,) $(if $(TESTS),--tests,) $(if $(RUN),--run,) $(if $(KEEP),--keep-going,) $(if $(JOBS),--jobs $(JOBS),) $(REACHARGS)
 
 .PHONY: modules
 modules: ## List the module index and the available remixes
 	python3 tools/remix/index.py
 
 .PHONY: docs
-docs: ## Render README.md's module table and docs/remixes/README.md from the manifests and the selections
+docs: ## Render README.md's module table and remixes/README.md from the manifests and the selections
 	python3 tools/remix/index.py --write
 
 .PHONY: remix
@@ -430,12 +435,16 @@ ci-emu: ## CI: build the ColdFire port (tools/emu/ot_emu) and run its unit tests
 	ctest --test-dir out/emu-ci --output-on-failure -E '^(rtos|dsp|repitch-stock|repitch-patch)$$'
 
 .PHONY: ci
-ci: reach test-acceptance ci-dsp ci-emu ## Everything CI runs, locally
+ci: test-acceptance verify-docs ci-dsp ci-emu ## Everything CI runs, locally
+	@# The gate list only, as the CI job prints it: `make reach RUN=1` runs
+	@# `make ci` when the Makefile or the workflow changes, and an inherited
+	@# RUN=1 made this reach run the whole list again, recursively.
+	$(MAKE) reach RUN= KEEP= JOBS= FULL=
 
 .PHONY: emu-setup
 emu-setup: ## Provision the remixer deps (unicorn + textual) into .venv via uv
 	uv sync --extra emu
-	@echo "remixer ready — 'make remix' (docs/remixer/EMU.md for the emulator view)"
+	@echo "remixer ready — 'make remix' (tools/emu/README.md for the emulator view)"
 	@echo "Tier-0 (emu_bringup) uses the EMAC-fixed Unicorn when it is built: make emu-unicorn"
 
 # A Unicorn whose ColdFire EMAC multiplies like the MCF5445x (stock 2.1.4
@@ -451,7 +460,7 @@ emu-unicorn: ## Build the EMAC-fixed Unicorn library for Tier-0 (needs cmake)
 	scripts/build_unicorn.sh
 
 # The card: build a FAT16 image from a project directory, boot, mount it with
-# the firmware's own storage stack and load the project (docs/remixer/EMU.md M4).
+# the firmware's own storage stack and load the project (tools/emu/README.md, "The card").
 #   make emu-card PROJECT=~/octa/backups/<snapshot>/<project> [SET=OCTABAM NAME=RIG]
 PROJECT ?=
 SET ?= OCTABAM

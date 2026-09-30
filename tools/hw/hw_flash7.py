@@ -31,7 +31,7 @@ main outs on the interface (`--rec-device`, the MOTU MicroBook's line pair;
 the loudest channel is analysed and named in the log). Drums into inputs
 A/B: T1 (THRU, hosts the delay) is the sender under test.
 
-THE HUMAN STEPS, in order: flash OCTABAM21 from the card (docs/remixer/FLASHING.md),
+THE HUMAN STEPS, in order: flash OCTABAM21 from the card (docs/guide/BUILDING.md),
 power-cycle, PROJECT -> LOAD `OCTABAM_F7TEST`, check PROJECT -> MIDI ->
 CONTROL has AUDIO CC IN on and SYNC has PROG CH RECEIVE on, Rytm patched into
 A/B, main outs into the interface, then `check` and `run`.

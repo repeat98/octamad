@@ -1,4 +1,4 @@
-# CF METER
+# `cfmeter` — CF METER
 
 A probe. It measures, on the unit, how long the ColdFire's frame interrupt
 takes and how much time main's idle loop gets (with
@@ -6,6 +6,45 @@ takes and how much time main's idle loop gets (with
 audio on track 8. It is the instrument for pricing ColdFire voice engines
 such as [SYNTH MACHINE](../synth/README.md): the synth renders inside the
 frame interrupt.
+
+## Knobs
+
+| page | slot | name | range | what it does |
+|---|---|---|---|---|
+| 1 | 0 | BURN | 0–127, default 0 | read on track 8 only: 2 µs of busy-wait per step at the start of every frame interrupt |
+
+## Measured
+
+Under the port (remix `cfmeter-port`, 27 Sep 2026):
+
+`OCTABAM89_setgate` with T8 FX2 = CF METER, 12,000 frames,
+`verify_set.py cfmeter-port`, decoded with `cfmeter.py --dump`:
+
+| BURN | interrupt mean | longest | period |
+|---|---|---|---|
+| 20 | 193.6 µs | 193.8 µs | 362.8 µs |
+| 0 | 153.6 µs | 153.8 µs | 362.8 µs |
+
+The difference is 40.0 µs, BURN 20 × 2 µs. The port prices every
+instruction at one step of its own clock, so its durations are not the
+unit's; the run proves the chain (lane → DSP record → insert → read-back
+→ decoder) and the BURN arithmetic.
+
+## On the unit
+
+Not measured on the unit: every number.
+
+## Open
+
+- Whether DTIM3 runs at 132 MHz on the unit (slot 5 answers it).
+- Interrupts shorter than the idle loop's threshold (2 × its shortest
+  step + 8 counts) count as idle time.
+
+## Gates
+
+- `make check REMIX=cfmeter` (with CF METER IDLE) passes since 28 Sep 2026:
+  the port follows the detoured idle park and loads the project.
+- `verify_set.py cfmeter-port` and `tools/harness/cfmeter.py --dump` (the run above).
 
 ## How it works
 
@@ -30,7 +69,7 @@ frame interrupt.
   T8's live FX2 is CF METER: N_k
   into T8's FX2 page-2 lane bytes `+0x38/+0x39` (word `$c`) and 8192 into
   `+0x3a/+0x3b` (word `$d`). The copier `0x4000cae8` delivers them to the
-  DSP record (`docs/firmware/PARAM_PAGES.md` §5c, §6).
+  DSP record (`docs/firmware/PARAM_PAGES.md` section 5c, section 6).
 - **Readout.** The DSP insert (`meter_out.asm`, FX2 id `0x0e`, 29 words)
   writes L = word `$c` / 2 and R = word `$d` / 2 as a square wave that
   flips sign every block, replacing the track's audio. N = 8192 ×
@@ -49,28 +88,3 @@ frame interrupt.
 
 `tools/harness/cfmeter.py` decodes a capture (a WAV, T8 on USB channels
 15/16 by default) or the port's `--block-dump`.
-
-## Measured under the port (remix `cfmeter-port`, 27 Sep 2026)
-
-Since 28 Sep 2026 `make check REMIX=cfmeter` (with CF METER IDLE) passes
-too: the port follows the detoured idle park and loads the project.
-
-`OCTABAM89_setgate` with T8 FX2 = CF METER, 12,000 frames,
-`verify_set.py cfmeter-port`, decoded with `cfmeter.py --dump`:
-
-| BURN | interrupt mean | longest | period |
-|---|---|---|---|
-| 20 | 193.6 µs | 193.8 µs | 362.8 µs |
-| 0 | 153.6 µs | 153.8 µs | 362.8 µs |
-
-The difference is 40.0 µs, BURN 20 × 2 µs. The port prices every
-instruction at one step of its own clock, so its durations are not the
-unit's; the run proves the chain (lane → DSP record → insert → read-back
-→ decoder) and the BURN arithmetic.
-
-## Not measured
-
-- Every number on the unit.
-- Whether DTIM3 runs at 132 MHz on the unit (slot 5 answers it).
-- Interrupts shorter than the idle loop's threshold (2 × its shortest
-  step + 8 counts) count as idle time.

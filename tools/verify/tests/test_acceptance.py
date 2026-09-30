@@ -14,6 +14,47 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import acceptance as a
 
 
+
+TYPES = {"object": dict, "array": list, "string": str, "boolean": bool,
+         "integer": int, "number": (int, float), "null": type(None)}
+
+
+def schema_errors(v, s, root, at="$"):
+    """Every violation of the JSON Schema subset acceptance.schema.json uses
+    (type, const, enum, required, properties, items, minItems, minimum,
+    $ref, allOf, if/then), stdlib only."""
+    if "$ref" in s:
+        s = root["$defs"][s["$ref"].rsplit("/", 1)[1]]
+    errs = []
+    if "type" in s:
+        want = s["type"] if isinstance(s["type"], list) else [s["type"]]
+        if not any(isinstance(v, TYPES[w]) and not (w in ("integer", "number") and isinstance(v, bool))
+                   for w in want):
+            return [f"{at}: {type(v).__name__}, want {s['type']}"]
+    if "const" in s and v != s["const"]:
+        errs.append(f"{at}: {v!r}, want {s['const']!r}")
+    if "enum" in s and v not in s["enum"]:
+        errs.append(f"{at}: {v!r} not in {s['enum']}")
+    if "minimum" in s and v < s["minimum"]:
+        errs.append(f"{at}: {v} < {s['minimum']}")
+    if isinstance(v, dict):
+        errs += [f"{at}: no {k!r}" for k in s.get("required", ()) if k not in v]
+        for k, sub in s.get("properties", {}).items():
+            if k in v:
+                errs += schema_errors(v[k], sub, root, f"{at}.{k}")
+    if isinstance(v, list):
+        if len(v) < s.get("minItems", 0):
+            errs.append(f"{at}: {len(v)} items < {s['minItems']}")
+        if "items" in s:
+            for i, x in enumerate(v):
+                errs += schema_errors(x, s["items"], root, f"{at}[{i}]")
+    for sub in s.get("allOf", ()):
+        errs += schema_errors(v, sub, root, at)
+    if "if" in s and not schema_errors(v, s["if"], root, at):
+        errs += schema_errors(v, s.get("then", {}), root, at)
+    return errs
+
+
 class SourcePressureTests(unittest.TestCase):
     def test_cf_registered_dsp_cannot_report_not_applicable(self):
         source = SimpleNamespace(key="SOURCE", dsp=None,
@@ -247,6 +288,12 @@ class WorkflowTests(unittest.TestCase):
             reports["summary"] = json.loads((out / "summary.json").read_text())
             reports["shared_log"] = (out / "check_shared.log").exists() or None
             return rc, reports, calls
+
+    def test_complete_and_blocked_reports_match_the_schema(self):
+        schema = json.loads((pathlib.Path(a.__file__).parent / "acceptance.schema.json").read_text())
+        for stop in (None, "check_remix"):
+            _, report, _ = self.run_workflow(stop_at=stop)
+            self.assertEqual(schema_errors(report, schema, schema), [], stop)
 
     def test_complete_report_contains_measurements_and_fingerprints(self):
         rc, report, calls = self.run_workflow()

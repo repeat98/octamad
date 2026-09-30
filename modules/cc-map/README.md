@@ -1,9 +1,9 @@
-# CC MAP
+# `cc-map` — CC MAP
 
 Maps MIDI CC numbers that stock ignores onto parameters stock CC cannot
 reach. Each **block** is a range of CC numbers written to one page's slots.
 Stock incoming CC reaches page 1 only (CC 16–45): the handler admits
-`cc−16 < 30` and derives `slot = flat % 6` (`docs/firmware/MIDI.md` §2).
+`cc−16 < 30` and derives `slot = flat % 6` (`docs/firmware/MIDI.md` section 2).
 
 | block | target |
 |---|---|
@@ -13,6 +13,41 @@ Stock incoming CC reaches page 1 only (CC 16–45): the handler admits
 `Kind.CF_PATCH`: one cave (`cc_map.s`, linked where the ColdFire free region
 places it) and one poke. Named CC PAGE 2 (`modules/ccpage2`) until
 25 Sep 2026. Flash notes and commits before that date use the old name.
+
+## Measured
+
+- `tools/verify/verify_ccmap.py` (in `make check`): for each track 0–7
+  on its own channel, CC 62 lands count-clamped at the traced Part, live
+  and shadow bytes; an over-count value clamps; CC 40 reaches the next
+  handler and writes no page-2 byte. This runs single-core under Unicorn, so
+  it proves the write and the decision.
+- Under the ColdFire port (`verify_set`, `OT_PROJECT=<dir> make check`):
+  CC 68 over UART0 reaches the FX1 page-2 lane and the DSP record
+  (15 Sep 2026).
+- MODE DEFAULTS over CC, under the port: CC 62 = 1 on T1's channel lands
+  GRAIN's view in the lane; a CC 63 in the same frame then sets SCTR.
+
+## On the unit
+
+- Image 96: CC 63 on channel 5 moved SHMR on the panel and raised the
+  reverb tail's 2–8 kHz bands 5–8 dB. Images before 96 wrote the PLAYBACK
+  page-2 byte (`docs/contributing/FAILURE_MODES.md`).
+- Image 97: the station voicing sweep set FX1 MODE over CC 69 (`docs/contributing/FAILURE_MODES.md`).
+
+## Open
+
+- FX2 page 2 of any FX2 effect other than BusDelay/BusVerb: the cave skips
+  those tracks.
+- MIDI CC through the SCENES KITS chain on hardware (under the port CC 68
+  reaches page 2 through the chain, above).
+- An FX1 page-2 edit reaching the DSP on a THRU track, on hardware
+  (measured under the port: `docs/contributing/FAILURE_MODES.md`, image 24).
+
+## Gates
+
+- `tools/verify/verify_ccmap.py` (in `make check`, Unicorn), the manifest's
+  gate.
+- `verify_set` (`OT_PROJECT=<dir> make check`) under the ColdFire port.
 
 ## Hook
 
@@ -55,22 +90,10 @@ DEFAULTS is in the image these resolve to its entries, so a MODE sent over
 CC re-defaults the knobs around it. Otherwise they resolve to a stock `rts`
 (`0x40027e1a`).
 
-## Adding a block
-
-1. Take CC numbers from the free list below.
-2. Trace the target page's editor: its Part, shadow and lane stores, its
-   clamp, and its dirty flags. `docs/firmware/MIDI.md` §6 has the table for
-   the three page-2 editors traced so far (PLAYBACK `0x4003a474`, FX2, FX1).
-3. Widen the range test at `CAVE` (today `cc−62 ≤ 11`) and add a write path
-   for the block.
-4. Regenerate the oracle (`manifest.CODE`), and extend
-   `tools/verify/verify_ccmap.py` to prove the new stores on all eight
-   tracks against the editor.
-
 ## CC numbers
 
 Stock audio-track CC map (handler `0x4000e79c`, `docs/firmware/MIDI.md`
-§1): 7, 8, 16–61 and 112–127 are used. 0–6, 9–15 and 62–111 fall through
+section 1): 7, 8, 16–61 and 112–127 are used. 0–6, 9–15 and 62–111 fall through
 to the handler's `rts`.
 
 | range | count | holder |
@@ -90,6 +113,18 @@ their standard MIDI meanings:
 - 96–101 are data increment/decrement and NRPN/RPN select.
 - 0 is bank select, 1 mod wheel, 6 data entry, 10 pan, 11 expression.
 
+## Adding a block
+
+1. Take CC numbers from the free list below.
+2. Trace the target page's editor: its Part, shadow and lane stores, its
+   clamp, and its dirty flags. `docs/firmware/MIDI.md` section 6 has the table for
+   the three page-2 editors traced so far (PLAYBACK `0x4003a474`, FX2, FX1).
+3. Widen the range test at `CAVE` (today `cc−62 ≤ 11`) and add a write path
+   for the block.
+4. Regenerate the oracle (`manifest.CODE`), and extend
+   `tools/verify/verify_ccmap.py` to prove the new stores on all eight
+   tracks against the editor.
+
 ## Oracle
 
 `manifest.CODE` is the hand-assembled form of the cave. `legacy_bytes`
@@ -100,32 +135,3 @@ resolve to MODE DEFAULTS, since those change the bytes.
 
 `VERB_COUNTS` / `DLY_COUNTS` in the manifest and `VCOUNT` / `DCOUNT` in the
 cave must match the busverb and busdelay page-2 counts.
-
-## Measured
-
-- `tools/verify/verify_ccmap.py` (in `make check`): for each track 0–7
-  on its own channel, CC 62 lands count-clamped at the traced Part, live
-  and shadow bytes; an over-count value clamps; CC 40 reaches the next
-  handler and writes no page-2 byte. This runs single-core under Unicorn, so
-  it proves the write and the decision.
-- Under the ColdFire port (`verify_set`, `OT_PROJECT=<dir> make check`):
-  CC 68 over UART0 reaches the FX1 page-2 lane and the DSP record
-  (15 Sep 2026).
-- MODE DEFAULTS over CC, under the port: CC 62 = 1 on T1's channel lands
-  GRAIN's view in the lane; a CC 63 in the same frame then sets SCTR.
-
-## On the unit
-
-- Image 96: CC 63 on channel 5 moved SHMR on the panel and raised the
-  reverb tail's 2–8 kHz bands 5–8 dB. Images before 96 wrote the PLAYBACK
-  page-2 byte (`docs/remixer/FAILURE_MODES.md`).
-- Image 97: the station voicing sweep set FX1 MODE over CC 69 (`docs/remixer/FAILURE_MODES.md`).
-
-## Open
-
-- FX2 page 2 of any FX2 effect other than BusDelay/BusVerb: the cave skips
-  those tracks.
-- MIDI CC through the SCENES KITS chain on hardware (under the port CC 68
-  reaches page 2 through the chain, above).
-- An FX1 page-2 edit reaching the DSP on a THRU track, on hardware
-  (measured under the port: `docs/remixer/FAILURE_MODES.md`, image 24).

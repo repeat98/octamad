@@ -37,7 +37,7 @@ always has (a slot can draw a knob and publish nothing -- docs/firmware/PARAM_PA
 the main level and the cue mix are not modelled, samples do not play
 (stems stand in for what the track would play), and the cores are lock-step
 unless --skew interleaves them (a fuzz of the hardware's timing, never a
-proof). docs/remixer/HARNESS.md.
+proof). tools/harness/README.md.
 
 IMAGE. --image is a BUILT image (default out/mainos_bus.bin, i.e. `make bus`
 for the remix you want); both payloads are dumped from it into out/dsp/. An

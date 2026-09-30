@@ -136,7 +136,7 @@ def render(mem, src, out, params=(), wet=False):
     return out.read_bytes()
 
 
-# The cases docs/effects/XBUS.md asks for: every MODE character, plus one extreme.
+# The cases the bus record asks for (git show 666b6154:docs/effects/XBUS.md): every MODE character, plus one extreme.
 # The MODE cases are BUILT with the override (build_bus.py MODE=N), so each
 # is its own image; the extreme case runs the unforced build at the render
 # harness's mode.

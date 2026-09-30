@@ -20,6 +20,7 @@ and anything a real host does beyond these requests.
 """
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import time
@@ -45,6 +46,8 @@ LAYOUTS = {
     "USB AUDIO OUT MAIN CUE": (4, 192, 2, [(8, 0), (8, 1), (9, 0), (9, 1)]),
     "USB AUDIO OUT MAIN": (2, 96, 2, [(8, 0), (8, 1)]),
 }
+# The servo's target, from the source, so the checks follow it.
+AUD_TARGET = int(re.search(r"^\.set AUD_TARGET,\s+(\d+)", (ROOT / "modules/usb-audio-out-tracks-main-cue/usbaudio.s").read_text(), re.M).group(1))
 RB_BASE, MAIN_CUE_BASE = 0x80003190, 0x80005e60   # the tracks' read-back arena (2 banks) and MAIN/CUE (usbaudio.s)
 
 
@@ -214,8 +217,8 @@ def main():
             after = [len(b.ep_in(3, 1024)) for _ in range(8)]
             check("USB AUDIO: alt 0 stops the stream (empty polls)", all(a == 0 for a in after[2:]), str(after))
             # THE FIRST POLL SETS THE CUSHION (usbaudio_kick). A host that
-            # starts polling late finds the ring AUD_TARGET (512) behind the
-            # producer, not 512 plus what it produced while the host was
+            # starts polling late finds the ring AUD_TARGET behind the
+            # producer, not AUD_TARGET plus what it produced while the host was
             # getting ready: the consumer is re-anchored at the first retired
             # packet and the frames between are skipped, counted in `anchor`.
             # Here the bench is that late host: alt 1 again, then no EP3 poll
@@ -228,8 +231,8 @@ def main():
             first = [len(b.ep_in(3, 1024)) for _ in range(4)]
             c1 = usb_host.counters(b)
             gap = c1["produced"] - c0["produced"]
-            check(f"{audio}: a first poll {gap} frames after alt 1 re-anchors the cushion at 512: {c1['anchor']} frames skipped",
-                  480 <= c1["anchor"] <= gap + 32 and abs(c1["lastfill"] - 512) <= 64 and any(first),
+            check(f"{audio}: a first poll {gap} frames after alt 1 re-anchors the cushion at {AUD_TARGET}: {c1['anchor']} frames skipped",
+                  480 <= c1["anchor"] <= gap + 32 and abs(c1["lastfill"] - AUD_TARGET) <= 64 and any(first),
                   f"anchor {c1['anchor']} gap {gap} lastfill {c1['lastfill']} first polls {first}")
             for _ in range(400):
                 b.ep_in(3, 1024)
@@ -237,8 +240,10 @@ def main():
             # The floor only: a poll the bench host misses drains nothing, so
             # bench lag can only RAISE the fill (maxfill 678 and 698 with 106
             # and 351 missed polls, four shards, 28 Sep 2026). maxfill is printed.
-            check(f"{audio}: 400 polls on, the fill held the servo band's floor: min {c2['minfill']} (floor 384), max {c2['maxfill']}, no underrun",
-                  c2["underruns"] == 0 and c2["minfill"] >= 384,
+            # The proportional servo holds the target within a packet or two;
+            # 64 below it is a failure.
+            check(f"{audio}: 400 polls on, the fill held near the target: min {c2['minfill']} (floor {AUD_TARGET - 64}), max {c2['maxfill']}, no underrun",
+                  c2["underruns"] == 0 and c2["minfill"] >= AUD_TARGET - 64,
                   f"minfill {c2['minfill']} maxfill {c2['maxfill']} underruns {c2['underruns']}")
             b.ctrl_nodata(0x01, 0x0b, 0, 4)
             # Full speed: the same device re-enumerated. The stereo sum of the

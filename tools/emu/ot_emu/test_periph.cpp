@@ -3,7 +3,7 @@
 //
 // The rules here are not obvious and several are counter-intuitive; each one
 // below exists because getting it wrong produced a specific, silent failure in
-// route A first (`docs/firmware/RTOS_FORK.md` §8.2, §4). Testing them is how a
+// route A first (`docs/history/RTOS_FORK.md` §8.2, §4). Testing them is how a
 // translation stays a translation rather than a rewrite.
 #include <cstdio>
 #include <cmath>

@@ -8,7 +8,7 @@ signal passes through costs another one. This is what "127" means, not a
 calibration constant or a table.
 
 Read out of the binary and off hardware by Bryan T (21 Sep 2026;
-hardware captures his, §7). Nothing
+hardware captures his, section 7). Nothing
 below has been run under the port.
 
 Status key as `CHIP.md`: ✅ measured (hardware or read off the firmware) ·
@@ -32,7 +32,7 @@ captures to 1-2 LSB with no filtering or drift, and every `k` is an exact
 multiple of 256 in 24-bit terms.
 
 Sweeping CUE confirms the square law against `(L/128)²`, exact at 96 and
-127 (2 LSB of a 15-bit scale high at 32 and 64 — open, §3).
+127 (2 LSB of a 15-bit scale high at 32 and 64 — open, section 3).
 
 ## 2. The code path
 
@@ -67,7 +67,7 @@ than an established one.
   DSP squaring below are as read; which bytes the encoder handlers
   `0x40066b64`/`0x40066ba8` serve (the LEVEL knobs or the METRONOME menu)
   decides it. Under the port neither pair poked after a load changes the
-  main output (`docs/remixer/EMU.md`, the voice-silence entry).
+  main output (`tools/emu/README.md`, the voice-silence entry).
 - The +1/32 excess at CUE 32 and 64 (absent at 96, 127): candidates are the
   loop's other term (`seed + x1·y0`, `y0` from `Y:0x280`, neither read) or
   sweep-direction state (a first capture at 127 landed low, later ones
@@ -86,7 +86,7 @@ linear reading suggests: 64 is a quarter amplitude, not a half. For
 feedback/sound-on-sound work, a loop closed through one level stage at 127
 decays by 0.1362 dB per pass — if a loop is growing, the gain above unity
 is elsewhere in the chain. `tools/harness/mixer.py`'s per-track LEVEL
-(`docs/remixer/HARNESS.md`) is the same `(L/128)²` law measured under the
+(`tools/harness/README.md`) is the same `(L/128)²` law measured under the
 port; this note is the first measurement of MAIN/CUE, which that harness
 does not model.
 
@@ -121,6 +121,6 @@ per-track DSP record at `X:0x080`+`0x32`/`0x33`), the encoder handlers
 (`P:0x2f4`-`0x2fb`), and the coefficient loop (`P:0x2ff`-`0x30a`). Not
 re-derived here: the hardware captures themselves (his rig, not re-run).
 This is the same `(L/128)²` law `tools/harness/mixer.py` measured under
-the port for per-track LEVEL (`docs/remixer/HARNESS.md`); his note is the
+the port for per-track LEVEL (`tools/harness/README.md`); his note is the
 first measurement of MAIN/CUE, which that harness explicitly does not
 model.

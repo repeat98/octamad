@@ -1,4 +1,4 @@
-# USB AUDIO IN ABCD
+# `usb-audio-in-abcd` — USB AUDIO IN ABCD
 
 Four channels from the host into inputs A-D in place of the jacks
 (host channels 1-4 = A, B, C, D). High speed only, 24-bit,
@@ -13,3 +13,7 @@ slots (coded on its own, zero on the others) under the port.
 
 Requires USB MIDI, USB CROSSBAR and a 250 µs USB AUDIO OUT layout. One IN
 module per remix (shared detour sites).
+
+## Gates
+
+- `tools/verify/verify_usb_in.py` (the manifest's gate, image stage).

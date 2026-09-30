@@ -1922,7 +1922,7 @@ namespace ot
 		f << " \"pit0_fired\": " << pit0Fired() << ",\n";
 		f << " \"dtim1_fired\": " << dtimFired(1) << ", \"dtim2_fired\": " << dtimFired(2) << ",\n";
 		// THE SERIAL STREAM, not its length -- see route A's golden writer and
-		// the O5 section of COLDFIRE_PORT.md. ⚠️ The COUNT tracks the `ips`
+		// the O5 section of git show 3ceba41:docs/history/COLDFIRE_PORT.md. ⚠️ The COUNT tracks the `ips`
 		// knob (5731 at 3900/3990, 4831 at 4100/4200/4300) because the
 		// transmit ring drains in bursts; the BYTES do not.
 		f << " \"serial_sent\": [" << serialA() << ", " << serialB() << "],\n";

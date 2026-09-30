@@ -1,4 +1,4 @@
-# CC FEEDBACK
+# `cc-feedback` — CC FEEDBACK
 
 The OT transmits a CC for every live knob byte that changes, whatever
 changed it, so a controller's encoders (a BCR2000's LED rings) follow the
@@ -7,8 +7,59 @@ pattern or part change, a project load, MODE DEFAULTS, an incoming CC or a
 page-2 knob turn the controller shows stale values.
 
 `Kind.CF_PATCH`: one DRAM unit (`cc_feedback.s`, 254 bytes) and one jmp
-detour. Gate: `tools/verify/verify_ccfeedback.py` (Unicorn); `verify_set`
-reads the port's MIDI OUT bytes when the module is in the remix.
+detour.
+
+## Measured
+
+- Unicorn (`verify_ccfeedback`, the fixture image, the unit linked at a
+  test address): eight sweeps enter the emitter 336 times with the lane's
+  values; cache, dirty bitmap (exactly the 42 CCs per channel), channel
+  mask and the INTFRCH force as the table above; eight more sweeps emit
+  nothing; one changed byte is one message; unmapped lane bytes, AUDIO CC
+  OUT without EXT and a track with its channel off emit nothing; a MIDI
+  track on the channel is refused by the emitter.
+- The port (`verify_set`, bottleservice and usb-audio on OCTABAM89_setgate
+  bank 3, before the engine gate): the load's part dumped as 281 CC
+  messages, 582 bytes with running status, on all eight channels; UART0's
+  transmit interrupt (vector 0x5a) acknowledged once per message; after
+  the transport start 9 messages in 900 frames (the eight CCs the gate
+  sends in, echoed, and a MODE DEFAULTS neighbour): no step-rate
+  transmission on that project.
+- The port (`verify_set`, bottleservice, 28 Sep 2026): 277 CCs queued by
+  the sweep left UART0 as 573 bytes with running status; the transmit
+  interrupt (0x5a) was acknowledged once per message, the soft-timer
+  dispatcher (0x62) 35 times over the load. `ot_emu --midi-out FILE`
+  writes the bytes.
+- The port, the acceptance stress fixture (bottleservice, 900 frames):
+  469 CCs; at the end channel 7's bitmap held 15 CCs with the busy flag
+  set -- T7's part changed late in the run, the sweep queued the new
+  values (the cache equalled the lane where the lane had stopped) and the
+  batch timer had not fired yet. `verify_set` therefore checks the
+  emitter's cache against the lane (the module's contract) when the engine
+  is idle at the end, and the wire for shape: every CC sent is a mapped
+  slot on a track's channel.
+
+## On the unit
+
+Not flashed. DIN bandwidth for a full dump of eight tracks is 344
+messages, about one second at 31.25 kbaud without running status.
+
+## Open
+
+- Whether scene locks or parameter locks rewrite the live lane during
+  play (which would make the sweep transmit at step rate). The lane is
+  the knob store the frame builder copies; the lock arrays are
+  `0x80001538`/`0x80001658` (`docs/firmware/MIDI.md` section 3). Not measured
+  with a project that plays locks under the port.
+- LEVEL (CC 46), AMP VOL as CC 25 outside the AMP page, MUTE/SOLO (49/50)
+  and the crossfader (48) are not in the map: their state is not in the
+  lane.
+
+## Gates
+
+- `tools/verify/verify_ccfeedback.py` (Unicorn), the manifest's gate.
+- `verify_set` reads the port's MIDI OUT bytes when the module is in the
+  remix.
 
 ## The stock emitter (`0x40033e3c`, disassembled)
 
@@ -67,47 +118,9 @@ part change transmits nothing until it has settled, as stock does. This
 gate was added after the first port run: 272 UART interrupts inside LOAD
 PROJECT re-ordered `sys` against the engine and tripped Octakit's
 part-byte lifecycle check (`gk_lifecycle_activation_publication_report_fatal`,
-the ATA-latency ordering `docs/remixer/EMU.md` records); the same image
+the ATA-latency ordering `tools/emu/README.md` records); the same image
 loaded at `--ata-latency 32`, and the rig without Octakit loaded at the
 default.
-
-## Measured
-
-- Unicorn (`verify_ccfeedback`, the fixture image, the unit linked at a
-  test address): eight sweeps enter the emitter 336 times with the lane's
-  values; cache, dirty bitmap (exactly the 42 CCs per channel), channel
-  mask and the INTFRCH force as the table above; eight more sweeps emit
-  nothing; one changed byte is one message; unmapped lane bytes, AUDIO CC
-  OUT without EXT and a track with its channel off emit nothing; a MIDI
-  track on the channel is refused by the emitter.
-- The port (`verify_set`, bottleservice and usb-audio on OCTABAM89_setgate
-  bank 3, before the engine gate): the load's part dumped as 281 CC
-  messages, 582 bytes with running status, on all eight channels; UART0's
-  transmit interrupt (vector 0x5a) acknowledged once per message; after
-  the transport start 9 messages in 900 frames (the eight CCs the gate
-  sends in, echoed, and a MODE DEFAULTS neighbour): no step-rate
-  transmission on that project.
-- The port, the acceptance stress fixture (bottleservice, 900 frames):
-  469 CCs; at the end channel 7's bitmap held 15 CCs with the busy flag
-  set -- T7's part changed late in the run, the sweep queued the new
-  values (the cache equalled the lane where the lane had stopped) and the
-  batch timer had not fired yet. `verify_set` therefore checks the
-  emitter's cache against the lane (the module's contract) when the engine
-  is idle at the end, and the wire for shape: every CC sent is a mapped
-  slot on a track's channel.
-
-## Open
-
-- Whether scene locks or parameter locks rewrite the live lane during
-  play (which would make the sweep transmit at step rate). The lane is
-  the knob store the frame builder copies; the lock arrays are
-  `0x80001538`/`0x80001658` (`docs/firmware/MIDI.md` §3). Not measured
-  with a project that plays locks under the port.
-- LEVEL (CC 46), AMP VOL as CC 25 outside the AMP page, MUTE/SOLO (49/50)
-  and the crossfader (48) are not in the map: their state is not in the
-  lane.
-- Hardware: not flashed. DIN bandwidth for a full dump of eight tracks is
-  344 messages, about one second at 31.25 kbaud without running status.
 
 ## Wiring a BCR2000
 

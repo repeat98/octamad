@@ -1,7 +1,7 @@
 """MODULATION -- a modulation pedal, five modes, on its own id 0x0b (stock CHORUS's 0x12 until 30 Sep 2026).
 
 A per-track insert (FX1 only). Each mode transcribes a published,
-permissively licensed source (survey and licences: docs/effects/PORTS.md;
+permissively licensed source (sources: modules/modulation/README.md, licences THIRD_PARTY.md;
 the float reference the DSP is proven against: modulation_ref.py):
 
     JUNO  the Juno-60 chorus (jpcima HeraChorus.dsp, ISC + the Juno-60

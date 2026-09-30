@@ -243,7 +243,8 @@ def main():
     else:
         lagging = False
         check("two counter reads over EP0 during the stream (POLLS >= 4)", False, f"{len(r['snaps'])} read(s)")
-    print(f"  ring fill while consuming: min {c['minfill']} max {c['maxfill']} (target 384)")
+    tgt = re.search(r"^\.set IN_TARGET,\s+(\d+)", (ROOT / "modules/usb-audio-in-ab/usbaudio_in.s").read_text(), re.M).group(1)
+    print(f"  ring fill while consuming: min {c['minfill']} max {c['maxfill']} (target {tgt})")
     # up to NSLOTI (4) dTDs can still be queued when the bench hangs up
     check("every OUT packet retired, whole frames, no errors (up to 4 in flight at hangup)",
           c["pkts"] >= polls - 4 and c["bad"] == 0, f"pkts {c['pkts']} bad {c['bad']}")

@@ -3,16 +3,16 @@
 octabam is a remixer for the Octatrack's OS: it composes modules, each
 credited to its author, into one image built from the user's own 1.40C.
 `README.md` says what each module and remix is and where it has run;
-`CHANGELOG.md` records each flashed image. `docs/remixer/PLACEMENT.md` is
-the architecture record for where code goes and what is measured about
-the memory.
+`CHANGELOG.md` records each flashed image. `docs/README.md` lists every doc
+by reader; `docs/contributing/PLACEMENT.md` is the architecture record for
+where code goes and what is measured about the memory.
 
 The repo is organised as **modules** (`modules/<name>/manifest.py` declares one
 contribution) composed into **remixes** (`remixes/<name>/remix.py` selects a
 set, `README.md` beside it says where it has run; `remixes/test/<name>/`
 carries one module for its gates).
 `make modules` lists them, with the compatibility matrix; `make remix`
-composes one. `docs/remixer/MODULES.md` is the contributor guide and
+composes one. `docs/contributing/MODULES.md` is the contributor guide and
 `CONTRIBUTING.md` the contract. The build refuses to start when two selected
 modules claim the same FX2 id, cave, hook site, detour site, poke, runtime
 write, core-private Y word, or the per-core FX2 buffer region — by name.
@@ -54,7 +54,7 @@ make reverb IN=loop.wav ARGS='--wet --mode all'
 ```
 
 Never claim something works because it assembled or linked. `make check` is
-the floor; `docs/remixer/TESTING.md` says what each gate proves and what
+the floor; `docs/contributing/TESTING.md` says what each gate proves and what
 none of them can see.
 
 **Before opening a PR, and again before merging one:** rebase onto
@@ -306,7 +306,7 @@ reads the MAC/MSAC bit from the opcode word where ColdFire keeps it in the
 extension word, so every `msac` accumulated with the wrong sign (the
 sequencer's frame builder is one). One defect, three symptoms that were each
 investigated as firmware behaviour for a day (7 Sep 2026, RTOS_FORK
-§10.16): the recorder length converter wrote 10,336 for Bryan's 20,672
+section 10.16): the recorder length converter wrote 10,336 for Bryan's 20,672
 (explained away as "2-sample units"), the recorder's block walk stalled at
 3,072 samples ("needs a DSP position feed"), and the sequencer's per-frame
 timing byte advanced 8 per 16-sample frame, which dropped half the tempos'
@@ -381,7 +381,7 @@ EMAC-with-load shim ran every shimmed instruction from one scratch address,
 rewriting its bytes each time; in a long-running Unicorn the address kept
 its first translation, so the trampoline executed whichever instruction had
 been translated there LAST — `msacl ..,%acc1` ran as the previous `msacl
-..,%acc0` and corrupted the sequencer's timing byte (RTOS_FORK §10.16.2,
+..,%acc0` and corrupted the sequencer's timing byte (RTOS_FORK section 10.16.2,
 7 Sep 2026). Fresh-Uc micro-tests could not show it; a per-instruction
 trace of the real run did. Rule: never rewrite emulated code in place — give
 each distinct instruction its own slot (`r.emac_slots`), and when a
@@ -470,7 +470,7 @@ same table makes FX1's NONE (id 0) run the FALLBACK's code: SEND ran on
 every empty FX1 slot at r7 0x6100/0x6400/0x6700/0x6a00, sent from an
 unseen page byte and, on core 1, compared the rotation tracker before
 position 0's advance — one step ahead for good on the unit (images 40–47,
-21 Sep 2026; `docs/effects/XBUS.md`). A client keys its slot on r7, never
+21 Sep 2026; `modules/send/README.md` "An FX1 slot is not a client"). A client keys its slot on r7, never
 on X:$213 (stale at proc time), and `dsp_host` places FX2 slots at
 0x6200 + 0x300·pos (`verify_twocore` had 0x200·pos until image 48).
 
@@ -551,7 +551,7 @@ modules that pinned a track by its r7 (the one-aux return on T8, the
 track-8 send refusal) matched in the harness and never on the unit — flash
 6's "the return never reaches T8", with `make verify-onebus` green on
 exactly that property. Found 8 Sep 2026 by running the shipping image from
-the card under the ColdFire port (`docs/history/COLDFIRE_PORT.md` O11). Any module
+the card under the ColdFire port (`git show 3ceba41:docs/history/COLDFIRE_PORT.md` O11). Any module
 logic keyed on a dispatcher fact (r7, r6, X:0x213, instance blocks) is
 measured under the port (`ot_emu --dsp-pcwatch`), never modelled in
 `dsp_host`; and a hardware failure the lock-step harness cannot show goes to
@@ -578,7 +578,7 @@ See `docs/firmware/PARAM_PAGES.md`.
 **Flash cycles are expensive** — each one is a manual firmware write. Render
 locally and measure instead of guessing. This is why the emulator path exists.
 
-**When the unit misbehaves, check `docs/remixer/FAILURE_MODES.md` first** — the
+**When the unit misbehaves, check `docs/contributing/FAILURE_MODES.md` first** — the
 register of hardware failure modes (symptom -> cause -> fix). Add any new one
 the moment it is seen; do not let it live only in a commit message.
 
@@ -714,9 +714,24 @@ On 10 Sep 2026 the tree was regrouped for the remixer: `tools/` into
 `docs/` into `remixer/ firmware/ effects/ history/`. `git log --follow` crosses
 the moves; older commit messages and memory notes name the flat paths.
 
+On 30 Sep 2026 the docs were regrouped by reader: `docs/guide/` (building,
+flashing, composing a remix), `docs/contributing/` (modules, testing,
+placement, tooling, the failure register), `docs/firmware/` (reverse
+engineering only), a README beside each tool (`tools/emu/`, `tools/harness/`,
+`tools/remix/`, `tools/panel/`), and each module's design in its own
+README (`docs/effects/` dissolved). The remix index is `remixes/README.md`.
+`make verify-docs` (in CI) refuses a link or a `docs/…`/`tools/…`/
+`modules/…`/`remixes/….md` path that does not resolve; a citation of a
+removed file uses `git show <sha>:<path>`. Old paths: `docs/remixer/X.md`
+is `docs/contributing/X.md` (MODULES, PLACEMENT, TESTING, TOOLING,
+FAILURE_MODES; ACCEPTANCE is TESTING section 8) or `docs/guide/` (REMIXER;
+FLASHING is BUILDING), EMU is `tools/emu/README.md`, HARNESS
+`tools/harness/README.md`; Tim Hastie's port log (O14i–O24) is
+`git show 666b6154:docs/firmware/COLDFIRE_PORT.md`.
+
 On 16 Sep 2026 `docs/history/` (18 closed records: BUS, RTOS_FORK,
 COLDFIRE_PORT, VOICING, NOTES, REVERB_LOG, XBUS_LOG, EXTERNAL_INGEST, ...)
-was removed. A citation of the form `docs/history/RTOS_FORK.md §10.16` in a
+was removed. A citation of the form `docs/history/RTOS_FORK.md section 10.16` in a
 comment or a doc is still the provenance of what it sits beside; read it
 with `git show 3ceba41:docs/history/RTOS_FORK.md`.
 

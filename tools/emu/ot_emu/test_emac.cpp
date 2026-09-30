@@ -2,7 +2,7 @@
 //
 // WHY IT EXISTS, and why it is the first test in the port rather than a later
 // nicety: three defects in *Unicorn's* ColdFire EMAC cost a week this month
-// (`docs/firmware/RTOS_FORK.md` §10.16). Each produced a confident wrong finding that
+// (`docs/history/RTOS_FORK.md` §10.16). Each produced a confident wrong finding that
 // was investigated as firmware behaviour for a day --
 //
 //   * fractional products came back HALVED (unsigned >> 32 where the chip does
@@ -62,7 +62,7 @@ namespace
 
 int main()
 {
-	std::printf("EMAC gate (hardware semantics, docs/firmware/RTOS_FORK.md section 10.16):\n");
+	std::printf("EMAC gate (hardware semantics, docs/history/RTOS_FORK.md section 10.16):\n");
 
 	// The firmware's own block-walk idiom: position x (2^31 / blocksize), in
 	// fractional mode. `movel #0x20,%macsr` selects fractional+signed.

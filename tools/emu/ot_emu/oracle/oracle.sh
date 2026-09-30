@@ -1,7 +1,7 @@
 #!/bin/bash
 # THE REGRESSION ORACLE for tools/emu/ot_emu: run a fixed battery on two
 # binaries (a frozen reference and a candidate) and diff what the firmware
-# did. Written 12 Sep 2026 for the speed work (COLDFIRE_PORT.md O15a-O15f),
+# did. Written 12 Sep 2026 for the speed work (git show 666b6154:docs/firmware/COLDFIRE_PORT.md O15a-O15f),
 # moved into the repo with audio tolerances for Phase B (O16a).
 #
 #   tools/emu/ot_emu/oracle/oracle.sh [REF] CAND

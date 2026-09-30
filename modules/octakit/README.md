@@ -1,4 +1,4 @@
-# Octakit
+# `octakit` — OCTAKIT
 
 Em's Octakit — 256 Kits per Project in place of 64 bank-tied Parts — built
 from [emuyia/ems-octakit](https://github.com/emuyia/ems-octakit) (submodule
@@ -17,6 +17,38 @@ BANK+FUNC+TRIG for other Banks), automatic Parts→Kits migration of old
 projects. **Back up projects before
 flashing; downgrading to stock may lose Kit data** (her words).
 
+## Measured
+
+- Homebrew `m68k-elf-gcc` 16.2.0 rebuilds the runtime, the packed runtime
+  and the append byte-identical to her pinned 16.1.0 identities.
+- `tools/verify/verify_octakit.py` (in `make verify`): stock + her writes + her
+  append reproduces her combined OS image (`output.os`) exactly. An octabam
+  image is never identical to hers (its own FX2 chooser, DSP null stubs and
+  loader); the build prints that.
+- Under the ColdFire port: her wrapper calls our loader, her gate and
+  post-load entry run with her hash, the boot reaches the RTOS handoff, and
+  her window reads back byte-identical.
+- Her stage (`0x47fc7410..0x47fd910f`) is needed on boot only (Em, 12 Sep
+  2026); the bounce-buffer fills the port measured there happen at project
+  load, after her code has moved to the reserve.
+
+## On the unit
+
+- 14 Sep 2026: `OKMS1` (remix `ok-ms`, with MIDI SCENES), confirmed
+  working by midisc's author on his unit.
+- The tokened page-1 writer (below) was carried by image 88 on Sam's
+  MKII, not exercised there.
+
+## Open
+
+- Whether her unsaved-changes marking (if any) notices a tokened or
+  page-2 write.
+- Her UNDO KIT and pattern-paste paths after one.
+
+## Gates
+
+- `tools/verify/verify_octakit.py` (in `make verify`).
+
 ## How it is built
 
 `upstream/runtime/firmware.json` is her recipe. `tools/remix/runtime_build.py`
@@ -33,23 +65,6 @@ append is replaced. Her runtime, Kit store and backup are the top 528 pages
 of the audio page arena (`0x45d0dde0..0x46025de0`), declared as an
 `ArenaReserve` so the build stacks every reservation and writes the arena
 geometry once.
-
-## Measured
-
-- Homebrew `m68k-elf-gcc` 16.2.0 rebuilds the runtime, the packed runtime
-  and the append byte-identical to her pinned 16.1.0 identities.
-- `tools/verify/verify_octakit.py` (in `make verify`): stock + her writes + her
-  append reproduces her combined OS image (`output.os`) exactly. An octabam
-  image is never identical to hers (its own FX2 chooser, DSP null stubs and
-  loader); the build prints that.
-- Under the ColdFire port: her wrapper calls our loader, her gate and
-  post-load entry run with her hash, the boot reaches the RTOS handoff, and
-  her window reads back byte-identical.
-- **On hardware 14 Sep 2026** as `OKMS1` (remix `ok-ms`, with MIDI SCENES),
-  confirmed working by midisc's author on his unit.
-- Her stage (`0x47fc7410..0x47fd910f`) is needed on boot only (Em, 12 Sep
-  2026); the bounce-buffer fills the port measured there happen at project
-  load, after her code has moved to the reserve.
 
 ## Collisions
 
@@ -95,11 +110,6 @@ Measured under the port (`bottleservice`, the `make accept` stress project,
   TWO"): the PHSR bytes; 001 and 002 unchanged.
 - The same sequence over CC MAP's page-2 store (`bottleservice`, T1 FX1 slot 6)
   saved, reloaded and stayed per Kit.
-
-Not measured: hardware (the tokened writer was carried by image 88 on Sam's
-MKII, not exercised there); whether her unsaved-changes marking (if any)
-notices a tokened or page-2 write; her UNDO KIT and pattern-paste paths
-after one.
 
 ## Kit data, for anyone writing to it (from Em, 12 Sep 2026)
 

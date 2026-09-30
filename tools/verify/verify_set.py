@@ -430,7 +430,7 @@ def main():
         # MIDI bandwidth), the echo of the CCs sent in, and any change the
         # pattern made. A step-rate stream from locks would show here; this
         # fixture plays no locks under the port (no pattern trig fires,
-        # EMU.md).
+        # tools/emu/README.md).
         m = re.search(r"midi out   : (\d+) byte\(s\) on UART0 \((\d+) after the transport start\)", text)
         print(f"  [info] midi out: {m.group(1) if m else '?'} bytes on UART0, {m.group(2) if m else '?'} after the transport start, "
               f"{pending} CC(s) still queued, {a.frames} frames")

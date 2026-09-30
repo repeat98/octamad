@@ -1,10 +1,11 @@
 # The kernel: scheduler, tasks, interrupts
 
 Read byte-exact from the image 6 Sep 2026 (`scripts/disasm.sh emac`) and
-measured under the firmware's own scheduler (`tools/emu/emu_rtos.py`, route
-A; the logs `RTOS_FORK.md` and `COLDFIRE_PORT.md` are in git history under
-`docs/history/`, `git show 3ceba41:docs/history/<name>`; the tools `docs/remixer/EMU.md`). ✅
-measured or byte-exact, 🟡 inferred, ❓ open.
+measured under the firmware's own scheduler (route A, retired 26 Sep 2026,
+60509404; the logs are `git show 3ceba41:docs/history/RTOS_FORK.md` and
+`git show 3ceba41:docs/history/COLDFIRE_PORT.md`; the emulators and what
+they must reproduce: `tools/emu/README.md`). ✅ measured or byte-exact,
+🟡 inferred, ❓ open.
 
 ## Scheduler ✅
 
@@ -105,21 +106,3 @@ Time-slice: PIT0 `0xfc080000`, prescaler 2¹¹ (PCSR `0x0b36` at init,
 `0x0b3f` on every switch), PMR `264,000,000 / 409,600 − 1 = 643` → 5.0 ms
 per tick = 220.5 samples = 13.8 audio frames. PIT1 `0xfc084000` (PCSR
 `0x0b3a`, PMR 2014) is the storage layer's delay timer (`0x40020c7c`).
-
-## Emulator facts that bear on the firmware
-
-- The EMAC runs in fractional mode, `MACSR = 0x20` (`0x4000cf60`,
-  `0x4000d3ae`); the level chain at `0x4000ccae` runs at `0x60` (S/U = bit 6
-  = 16-bit rounding on read-out). Stock Unicorn computes fractional `macl`
-  as unsigned `>> 32` and reads the MAC/MSAC bit from the wrong word;
-  `tools/patches/unicorn_emac_fractional.patch` (`AGENTS.md`).
-- The mount's INTRQ is not instantaneous and the firmware depends on that;
-  a "stall" at 1,407 ATA commands was a line-A exception the UART hid
-  (`docs/history/COLDFIRE_PORT.md` O7).
-- Route A does not fault on unmapped memory; the C++ port's "serial byte
-  count" was an artefact of missing memory (O5).
-- The frame interrupt is the DSP's bank word, not a timer (O9b); the
-  sequencer is clocked by the DSP frame, so a DSP stall freezes the
-  sequencer on trig 1.
-- `0x80000003` / `0x100b14cf` = current part; `[0x80000004]` = current
-  pattern (`RECORDER.md`).

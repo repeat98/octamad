@@ -1,7 +1,21 @@
-# SCENES KITS: the CC bridge
+# `scenes-kits` — SCENES KITS
 
-Lets CC MAP and Octakit share the MIDI CC dispatch entry (`0x400d64a0`).
+The CC bridge: lets CC MAP and Octakit share the MIDI CC dispatch entry (`0x400d64a0`).
 `Kind.CF_PATCH`: one `Override`, nothing of its own to use.
+
+## Measured
+
+- `mods` and `bottleservice` build and pass every gate; the
+  `octakit`-alone identities are untouched.
+- Under the ColdFire port (`docs/contributing/PLACEMENT.md`): every `apply_part`
+  during a project load goes to her entry; her fatal never runs.
+
+## Open
+
+- MIDI CCs through the chained dispatch on hardware (the port has
+  no MIDI input).
+
+## How the bridge works
 
 Her recipe installs `gk_stock_midi_control_parameter` at the entry; CC MAP
 repoints it to its cave. With the bridge the cave keeps the entry, its
@@ -17,13 +31,3 @@ remix alone is unchanged.
 
 The apply_part entry (`0x40009094`) needed bridging until midisc 1.40MSCN6
 (13 Sep 2026) left it stock; the chain stub for it (`chains.s`) is in history.
-
-## Measured
-
-- `mods` and `bottleservice` build and pass every gate; the
-  `octakit`-alone identities are untouched.
-- Under the ColdFire port (`docs/remixer/PLACEMENT.md`): every `apply_part`
-  during a project load goes to her entry; her fatal never runs.
-
-Not measured: MIDI CCs through the chained dispatch on hardware (the port has
-no MIDI input).

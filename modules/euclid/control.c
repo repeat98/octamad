@@ -174,8 +174,8 @@ extern EuState eu_states[16];
 #define U8(a) (*(volatile uint8_t *)(a))
 #define U32(a) (*(volatile uint32_t *)(a))
 
-/* Sequencer records and settings, named after tools/emu/emu_rtos.py and
- * docs/firmware/EXTERNAL.md section 9.3. Keep the two bases explicit: the
+/* Sequencer records and settings, named after tools/emu/emu_rtos.py (retired 26 Sep 2026, 60509404) and
+ * EXTERNAL.md section 9.3 (git show 0fa4215d:docs/firmware/EXTERNAL.md). Keep the two bases explicit: the
  * scale-mode and global values belong to the pattern record; the remaining
  * values belong to TRAC. */
 enum {

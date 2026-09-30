@@ -3,7 +3,7 @@
 with the sequencer transport started, and log what a step trig actually does
 to the per-track state the frame dispatcher reads.
 
-What runs, measured in the emulator (docs/remixer/EMU.md M5 has the full account):
+What runs, measured in the emulator (tools/emu/README.md):
 
 - The frame builder `0x4000aad0` is the DSP-frame interrupt handler; `run_frame`
   pushes a ColdFire exception frame and runs it to its own `rte`.
@@ -163,7 +163,7 @@ def install_trig_log(s):
 def start_transport(s):
     """Run the transport start case, then promote every track. Returns the
     disassembled block path taken (for diagnosing a cold-start divergence
-    from the PLAY key's path -- see docs/remixer/EMU.md M5)."""
+    from the PLAY key's path -- see tools/emu/README.md)."""
     tblocks = []
     h = s.uc.hook_add(eb.UC_HOOK_BLOCK,
                        lambda u, ad, sz, d: 0x4009b964 <= ad < 0x4009c600 and len(tblocks) < 300 and tblocks.append(ad))

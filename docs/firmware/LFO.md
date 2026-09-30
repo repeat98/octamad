@@ -3,7 +3,7 @@
 ColdFire side of OS 1.40C. Three LFOs per track, eight tracks, evaluated
 once per audio frame inside the frame builder. Read out of the binary by
 Bryan T (21 Sep 2026) and re-read here in objdump
-the same day (§8); nothing below has been run under the port yet.
+the same day (section 8); nothing below has been run under the port yet.
 
 Status key as `CHIP.md`: ✅ read from our image · 🟡 inferred from
 what was read · ⬜ open.
@@ -24,7 +24,7 @@ at `sp@(4)` starts at 23 and decrements per LFO. Pointers per iteration:
 
 | reg | start (inline) | step | what it is |
 |---|---|---|---|
-| `a2` | `sp@(128) + 0x80000660` | −48 per track | `0x80000510 + ping·0x180 + 48·t`, the ColdFire page record (`PARAM_PAGES.md` §5c); start = track 7 🟡 |
+| `a2` | `sp@(128) + 0x80000660` | −48 per track | `0x80000510 + ping·0x180 + 48·t`, the ColdFire page record (`PARAM_PAGES.md` section 5c); start = track 7 🟡 |
 | `a3` | `0x8000136c` | −28 per LFO | LFO state record `i = 3·t + lfo`, array `0x800010e8 + 28·i`, 24 records, ending at `0x80001388` |
 | `a4` | `0x80004890` | −8 per track | per-track trig flags byte (⬜ record not decoded) |
 | `a5` | `sp@(94) + 0x800002b8` | −64 per track | `a5 + 24 = 0x80000110 + ping·0x200 + 64·t`, the DSP voice record |
@@ -44,7 +44,7 @@ an apply-part loop (`cmpal #0x800010e8` at `0x400094a8`).
 | offset | contents |
 |---|---|
 | `+0x00`–`+0x17` | 12 words: the scene-crossfaded page-1 values, PLAYBACK 0–5, LFO 6–11 (SPD1–3 at words 6–8, DEP1–3 at 9–11) |
-| `+0x18`–`+0x1d` | lane `+0x20..+0x25` (the copier, `PARAM_PAGES.md` §5c): PLAYBACK page 2; `+0x1c` is the TSTR byte `REPITCH.md` reads |
+| `+0x18`–`+0x1d` | lane `+0x20..+0x25` (the copier, `PARAM_PAGES.md` section 5c): PLAYBACK page 2; `+0x1c` is the TSTR byte `REPITCH.md` reads |
 | `+0x1e + i` | PMTR *i* (byte, `mvsb`); lane `+0x26..` |
 | `+0x21 + i` | WAVE *i* (`mvsb`); lane `+0x29..` |
 | `+0x24 + i` | MULT *i* (`mvzb`); lane `+0x3e..` |
@@ -57,7 +57,7 @@ Bryan's note reads the last two as decimal, giving MULT `+0x18` and TRIG
 `+0x1b`, which is where PLAYBACK page 2 and TSTR sit). SPD *i* at word 6+i
 is itself destination 6+i, so an LFO can modulate another LFO's speed. Word 12+ of the scene numbering (AMP 12–17, FX1 18–23,
 FX2 24–29) is not in this record: see the destination rule below. This
-settles `MIDI.md` Appendix C §1's two 🟡 rows: scene bytes 6–11 are LFO page 1 and
+settles `MIDI.md` Appendix C section 1's two 🟡 rows: scene bytes 6–11 are LFO page 1 and
 12–17 are AMP page 1.
 
 ### The LFO state record `a3` (28 bytes, `0x800010e8 + 28·(3·t + lfo)`)
@@ -151,7 +151,7 @@ the standalone copy (`0x40003c6c`) only.
 Destination *d* = PMTR: `d < 12` → word *d* of the page record (PLAYBACK
 0–5, LFO 6–11); `d ≥ 12` → word `d` off `a5`, i.e. `0x80000110 + 64·t +
 2·(d − 12)`: the DSP voice record's halfwords 0–17 (AMP 0–5, FX1 6–11, FX2
-12–17), the same halfwords the scene morph writes (`MIDI.md` Appendix C §1). HOLD
+12–17), the same halfwords the scene morph writes (`MIDI.md` Appendix C section 1). HOLD
 works through the store offset at `0x4000d02e`: a mode whose byte 12 is
 not 8 leaves `+8` untouched, so the held value persists.
 
@@ -177,7 +177,7 @@ slot.
    **`0x400d38ac`** (audio, `E = 0x400d37be`) and **`0x400d4218`** (MIDI,
    `E = 0x400d412a`), both 19. (Bryan's note has `0x400d386c` /
    `0x400d41d0`, which hold 0.) The knob writer clamps to the descriptor
-   count (`PARAM_PAGES.md` §5b); ⬜ whether anything else bounds it.
+   count (`PARAM_PAGES.md` section 5b); ⬜ whether anything else bounds it.
 3. Storage: WAVE is a byte at `part + 0x2f2 + 30·t + 3 + n`, masked to
    seven bits by the UI accessor; the engine's `mvsb` reads it signed with
    no bound. Values ≤ 127 store and reload unchanged.
@@ -189,7 +189,7 @@ slot.
    the immediate at `0x4003be5c`, and the `moveq #19` at `0x4003be50`.
 
 **A fourth LFO per track** changes the Part layout (every LFO field is
-packed three-wide, §7) and is not planned.
+packed three-wide, section 7) and is not planned.
 
 ## 7. Part storage ✅ (`0x40057538`–`0x40057690`)
 
@@ -204,7 +204,7 @@ in `d3`, the current LFO *n* (`0x460d1a32`), and branches on
 | 4–5 SPD / DEP | `part + 0x11a + 24·t` | `part + 0x268 + 36·t` |
 
 then `+ 3·(slot & 1) + n`. `0x2f2 + 8·30 = 0x3e2` and `0x30a + 7·30 + 6 =
-0x3e2`, the MIDI page-2 array's base (`PARAM_PAGES.md` §5a): the audio
+0x3e2`, the MIDI page-2 array's base (`PARAM_PAGES.md` section 5a): the audio
 page-2 array is `part + 0x2f2 + 30·t`, per track PMTR×3 WAVE×3 · AMP p2 ·
 FX1 p2 · FX2 p2 · MULT×3 TRIG×3. Designer data: `part + 0x1702 + 16·t`
 (audio), `+ 0x1792` (MIDI).
@@ -226,7 +226,7 @@ recorder page's slots 6 and 7).
 
 ❌ Retracted on it: `DSP.md`'s "LFO speed `0x400074a0`/`0x40007502`, MULT
 table `0x400ab83a`" (they are the fade generator; the LFO rate is `SPD ×
-tempo24 × 4` and MULT is a shift). `PARAM_PAGES.md` §5a's page-2 display
+tempo24 × 4` and MULT is a shift). `PARAM_PAGES.md` section 5a's page-2 display
 array at `+0x8f06c` with a machine column: his `part + 0x2f2` / `+ 0x30a`
 (re-read at `0x4005762c`/`0x4005765a`) put PMTR/WAVE and MULT/TRIG at
 `+0x8f072 + 30·t` and `+0x8f08a + 30·t`, which is his "open discrepancy"

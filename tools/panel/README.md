@@ -4,12 +4,14 @@ By **Tim Hastie**, from his fork of octabam,
 [timhastie/octa-panel](https://github.com/timhastie/octa-panel) at
 `be68244` (10-25 Sep 2026; MIT, as octabam). The panel (`tools/panel/`),
 the macOS app (`tools/panel/app/`), the key/LED map and its evidence
-(`KEYMAP.md`, `PANEL_LINK.md`, `key_map.json`, `param_map.json`) and the
+(`KEYMAP.md`, `docs/firmware/PANEL.md` section 9, `key_map.json`, `param_map.json`) and the
 port features the panel runs on (`tools/emu/ot_emu`: `--interactive`,
 pacing, the RTC, the DMA timers, bursts, the page table, `--dsp-rt`, card
 write-back, the memory-to-memory eDMA, per-track taps; the dsp56300 hunks
 for `--dsp-rt` in `tools/patches/dsp56300.patch`) are his. His milestone
-records O14i-O24 are `docs/firmware/COLDFIRE_PORT.md`. Everything below
+records O14i-O24 are `git show 666b6154:docs/firmware/COLDFIRE_PORT.md`;
+the features still in the port are `tools/emu/README.md` "Port features".
+Everything below
 "The panel, as he wrote it" is his README, unedited.
 
 **The face** (25 Sep 2026) is Mark Roberts' MKII panel from
@@ -23,7 +25,7 @@ REC3 have no MKI equivalent.
 
 ## In octabam
 
-`docs/remixer/EMU.md` lists the other ways to run the port (`make
+`tools/emu/README.md` lists the other ways to run the port (`make
 emu-live`, scripted runs, the gates).
 
 Route A (`emu_rtos.py`) was retired on 26 Sep 2026: the panel runs the
@@ -38,9 +40,14 @@ make panel-app                                   # out/Virtual Panel.app (File >
 ```
 
 - The port runs as an MKII (`ot_emu --mkii`, `docs/firmware/PANEL.md`
-  §4c): the page draws PROJ / PART / AED / ARR / REC3 and the PAGE legend
+  section 4c): the page draws PROJ / PART / AED / ARR / REC3 and the PAGE legend
   and `/map` returns `"model": "mkii"`. `PANELARGS=--mki` runs it as an
-  MKI (the MKI keymap; those keys do nothing there).
+  MKI (the MKI keymap; those keys do nothing there). `tools/emu/live.py`
+  also passes `--mkii` by default (`--mki` to drop it); the keys are
+  `key_map.json` `proj`/`part`/`aed`/`arr`/`rec3`/`page`. `panel_check.py`
+  opens the PROJECT menu with PROJ on an MKII (FUNC + MIXER does not open
+  it there); both models pass all five checks. The gates (`verify_set`,
+  the port's self-tests) run as an MKI.
 - `make panel` builds the remix (`XBUS=1 SPEC=1`), copies it to
   `out/panel_<remix>.bin` (a later build into `out/mainos_bus.bin` cannot
   change what a running panel respawns) and starts `panel_server.py` on
@@ -158,7 +165,7 @@ readouts and takes list are gone -- scripts have `/key`, `/knob`, `/run`,
 
 **The screen** is decoded from what the firmware sends the panel processor
 over UART@`0xfc064000` (`tools/panel/panel_link.py`, protocol in
-`PANEL_LINK.md`): `0x10`–`0x17 <column> <8 bytes>` LCD blocks (page = opcode
+`docs/firmware/PANEL.md` section 9): `0x10`–`0x17 <column> <8 bytes>` LCD blocks (page = opcode
 & 7, page 7 on top, bit 0 the top pixel of a band), `0x2r <mask>` LED bitmap
 rows, `0x3n <id>` LED levels, a few one-byte commands. Rendering the RAM
 framebuffer at `0x460d1f80` instead comes out with lines rotated (the
@@ -174,7 +181,7 @@ per-row state so held chords (FUNC+…) work. **Encoders** are rows
 **The LEDs** are the `0x2r <mask>` rows: `key_map.json` names each LED as
 `[row, bit]`; `/leds` returns the 17 row bytes.
 
-The older jump-table path (`press_key_live`, `RTOS_FORK.md` §9) is kept in
+The older jump-table path (`press_key_live`, `RTOS_FORK.md` section 9) is kept in
 the server as `press()` — it calls a key's handler directly, which changes
 state but does not redraw under route A, so the UART path is the real one.
 
@@ -188,7 +195,7 @@ handful of things the panel uses of `emu_rtos.Rtos` (`run(ms=)`,
 `uart64.rx/tx`, `uc.mem_read/mem_write`, `sample`, `frame`,
 `pattern_base()`, `poke_trig()`).
 
-**The port** (`tools/emu/ot_emu`, `docs/firmware/COLDFIRE_PORT.md`) runs as
+**The port** (`tools/emu/ot_emu`, `git show 666b6154:docs/firmware/COLDFIRE_PORT.md`) runs as
 a child process speaking a line protocol over pipes (the `PortProc`
 docstring in `panel_server.py` is the contract; the port's side was built
 against the same text): `run <ms>`, `key <row> <mask>`, `midi <hex>...`, `knob <row>
@@ -197,7 +204,7 @@ back per command. The child boots and loads the project itself
 (`--card --mount --set --project`, the card image being `stage_project`'s
 own bytes written to `out/_panel_card_<port>.img`); the server then sends
 the same YES and **the child paces itself** (`pace on`, O15f in
-`COLDFIRE_PORT.md`, 12 Sep 2026): while its stdin is empty it advances
+`git show 666b6154:docs/firmware/COLDFIRE_PORT.md`, 12 Sep 2026): while its stdin is empty it advances
 emulated time in 10 ms slices so that it tracks its own wall clock —
 sleeping inside `poll()` on stdin when ahead (a command wakes it at
 once), flat out when the core is slower than real time, re-anchoring past
@@ -332,7 +339,7 @@ T2 taps that happened to fall inside the window.
 Until 13 Sep 2026 the card was rebuilt from the fixture at every server
 start and the port child never wrote its card back to the file, so the
 unit's own SAVE landed in RAM and a quit lost the project and every sample
-added. Now (O19 in `docs/firmware/COLDFIRE_PORT.md`) **the card is a
+added. Now (O19 in `git show 666b6154:docs/firmware/COLDFIRE_PORT.md`) **the card is a
 file that persists, like the CF card in the unit**:
 
 ```sh
@@ -423,7 +430,7 @@ With the port backend the server starts the child with `--dsp-rt` by
 default (`--sound on`; `--sound off` boots without the cores, and so does
 `--backend routea`, which has no sound at all): the two DSP56303 cores
 render under the vendored JIT on two worker threads driven by the
-ColdFire's own schedule (O17 in `COLDFIRE_PORT.md`), and core 0's
+ColdFire's own schedule (O17 in `git show 666b6154:docs/firmware/COLDFIRE_PORT.md`), and core 0's
 **main L/R** — the words the ESAI puts out to the DAC, 16-bit (the 24-bit
 word's top two bytes), 44100 Hz — comes over the `--interactive` pipe
 (`audio start main` / `audio read`, O14k). Core 1 is not captured, and
@@ -450,7 +457,7 @@ frame ahead of the ColdFire's clock, core 0's bank word is fenced on the
 frame handler's own end-of-exchange mark (the unmask of its interrupt
 source), the frame interrupt is delivered at the sample the DSP's clock
 says, and the host port's rings and DMA move blocks in bursts
-(`COLDFIRE_PORT.md` O17b). The sound is the same content as the lockstep
+(`git show 666b6154:docs/firmware/COLDFIRE_PORT.md` O17b). The sound is the same content as the lockstep
 capture — onset within 2 samples, the same loops at the same time — but
 1.3 dB quieter in RMS on the clipping OTLIVE fixture (fewer full-scale
 samples; the DSP's output limiter runs on its own history under a
@@ -575,8 +582,7 @@ channels, so anything further on the device is silent. The stems are
 and CUE exist, but inside the DSP each track's audio is a block of
 samples after its FX1/FX2 chain (and the ColdFire's delay) that the
 mixdown multiplies by the track's level and sums into main; the emulator
-taps each track's own term there (`COLDFIRE_PORT.md` O23: the tap point,
-the buffer map, the numbers), so a stem is exactly what that track
+taps each track's own term there (`git show 666b6154:docs/firmware/COLDFIRE_PORT.md` O23; the buffer map is `docs/firmware/DSP.md` "Core 0's frame"), so a stem is exactly what that track
 contributes to main -- muting a track (FUNC + track) silences its stem,
 the eight stems sum to the main pair to within the mixdown's own rounding
 (−52 dB: each stem's word is truncated where the mixdown truncates the
@@ -670,7 +676,7 @@ double-click, logs / JSON / `S_*` `R_*` screens beside them; the evidence
 is in `KEYMAP.md` and `param_map.json`).
 
 **The crossfader is the panel board's pot, reported as `0x40 <adc>` on the
-panel UART** (the same wire as the keys and encoders: PANEL_LINK.md). The
+panel UART** (the same wire as the keys and encoders: docs/firmware/PANEL.md section 9). The
 firmware scales the byte by a calibration record in its boot flash
 (`0x1ffffe`, none under emulation, so `value >> 1`), posts sys message kind
 4, stores the position in `0x460d16c8` (127 = scene A, 0 = scene B),

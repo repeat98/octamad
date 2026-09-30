@@ -1,4 +1,4 @@
-# USB AUDIO IN CD
+# `usb-audio-in-cd` — USB AUDIO IN CD
 
 A stereo pair from the host into inputs C/D in place of the jacks
 (host channel 1 = C, 2 = D; A/B stay on the jacks). High speed only, 24-bit,
@@ -13,3 +13,7 @@ slots (coded on its own, zero on the others) under the port.
 
 Requires USB MIDI, USB CROSSBAR and a 250 µs USB AUDIO OUT layout. One IN
 module per remix (shared detour sites).
+
+## Gates
+
+- `tools/verify/verify_usb_in.py` (the manifest's gate, image stage).

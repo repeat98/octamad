@@ -21,9 +21,9 @@ stage_dsp_host() {
 # Musashi plus ColdFire mode, an HI08 host-port register file and the on-chip
 # peripheral scaffolding -- the CPU half of tools/emu/ot_emu. Vendored, GPLv3, the
 # same posture as vendor/dsp56300: tooling and patches are shared, built
-# binaries never are. `docs/history/COLDFIRE_PORT.md`.
+# binaries never are. `git show 3ceba41:docs/history/COLDFIRE_PORT.md`.
 # Pinned: the port was measured against this commit
-# (docs/history/COLDFIRE_PORT.md).
+# (`git show 3ceba41:docs/history/COLDFIRE_PORT.md`).
 MC68K_PIN=4a6d0d17a1f2b30077ab726c27fe9bb770fa0456
 
 # elektron-firmware-tool (mischa85): unpacks and repacks the OS container.

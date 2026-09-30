@@ -1,4 +1,6 @@
-# USB AUDIO IN AB: a stereo feed from the host into inputs A/B
+# `usb-audio-in-ab` — USB AUDIO IN AB
+
+A stereo feed from the host into inputs A/B.
 
 The Mac sends a stereo pair, 24-bit at 44.1 kHz, over UAC2 on EP3 OUT, and
 it arrives on the Octatrack's inputs A and B in place of the jacks. Inputs C
@@ -9,6 +11,84 @@ Bryan T's USB AUDIO OUT (usbin-test, 26 Sep 2026: four channels into A–D,
 draft PR #468, then PR #495 as USB AUDIO IN) cut to a stereo pair and moved
 onto the build's placed-section path, 28 Sep 2026. The USB endpoint keeps
 USB's own host-centric name, EP3 OUT.
+
+## Measured
+
+- `tools/verify/verify_usb_in.py`, this module's gate
+  (`make check` runs it for any remix that carries it): the host's coded
+  samples bit-exact on slots 2/3 of the six completed RX blocks with slots 0/1 zero, in
+  consecutive frames, and on the recorder's input ring; the counters over
+  `0x56`; word 0 clear and the jacks back after alt 0. EP3 IN's frame size
+  comes from the remix's layout, so the gate runs beside OUT MAIN CUE, OUT TRACKS or
+  OUT TRACKS MAIN CUE. `verify_usb` checks the six-interface high-speed configuration
+  and the five-interface full-speed one. The port does not model SCM or XBS,
+  so USB CROSSBAR is measured on a unit only.
+
+## On the unit
+
+This stereo form has not been flashed. The four-channel
+form ran on Bryan T's MKII as usbin-test builds 12–16 (26–27 Sep 2026):
+about 5 million packets with `bad`, underruns and overruns 0 after the
+crossbar setting, DISK MODE in and out with the stream back afterwards.
+nordseele's MKI (`OCTABAM94`, the same build) enumerated and lit input A
+from host channel 1, with CoreAudio restarting the IO context hundreds of
+times and playback at about half nominal speed (his review, 27 Sep 2026);
+not reproduced on the MKII. `tools/hw/usb_probe.py` is the instrument:
+its EP3 IN drain rate (`consumed` per second) is the number that
+discriminates.
+
+### Latency, measured on Bryan T's unit (usbin-test build 16, 27 Sep 2026)
+
+Both rings' `lastfill` over the vendor requests (`0x55`, `0x56`), read
+once a second:
+
+- **The sum of the two fills is conserved while the streams run**: 1,353 to
+  1,360 second by second through a fresh session, about 1,355 in another.
+  With implicit feedback the host sends as many frames as it reads, and the
+  DSP's frame clock produces into EP3 IN's ring and consumes from this one.
+  1,355 frames is about 31 ms, the round trip through the unit before the
+  host's own buffers.
+- **Where it comes from**: `AUD_TARGET` + `IN_TARGET` (896) plus about 460
+  frames EP3 IN gains between the stream starting and macOS polling it
+  steadily (INFERRED from two sessions).
+- **The split drifts** about 0.5 frames a second (11 ppm, that Mac against
+  the unit) from EP3 IN's ring to this one until EP3 IN reaches the bottom
+  of its band; this ring plateaued at 969 of 1,024.
+- **EP3 IN overruns happen at stream close**, not while running: the host
+  stops polling EP3 IN before it sends alt 0. Both rings restart on the
+  next open.
+
+So `IN_TARGET` alone does not set the latency. Two levers, both in
+`usbaudio.s`:
+
+1. **Anchor usbaudio's consumer at the host's first IN poll** rather than
+   at SET_INTERFACE. Done 28 Sep 2026 (`usbaudio_kick`, the `anchor`
+   counter over `0x55`; `verify_usb` holds the bench's first poll back 600
+   frames and checks the fill lands at 512). Not measured on a unit:
+   expected sum of the two `lastfill`s about 896.
+2. Lower `AUD_TARGET`, `IN_TARGET` and `AUD_BAND` together, keeping
+   `IN_TARGET − AUD_BAND` (this ring's floor) above the jitter the unit
+   shows. The OUT ring's own jitter is `minfill`/`maxfill` over `0x55`
+   (added with lever 1), unmeasured on a unit; the values follow that
+   measurement.
+
+## Open
+
+- This stereo form on a unit: `tools/hw/usb_probe.py` sustained and churn,
+  then a host → A/B → recorder take.
+- The MKI report above: half-speed playback and CoreAudio restarts, the
+  drain rate under `usb_probe.py` on that unit.
+- Beside OUT TRACKS or OUT TRACKS MAIN CUE on hardware: before the crossbar setting the
+  twenty-channel EP3 IN stream beside EP3 OUT lost packet tails under load;
+  the setting cured them with the four-channel pairing and the larger
+  pairings have not been run since. `usb-io-tracks-main-cue-ab` pairs it with OUT TRACKS MAIN CUE.
+- Packet buffers in SDRAM through the alias with USB CROSSBAR on.
+- Latency lever 2 above, after the unit measurement.
+
+## Gates
+
+- `tools/verify/verify_usb_in.py` (the manifest's gate; `make check` runs it for any remix that carries the module).
+- `verify_usb`.
 
 ## How it works
 
@@ -96,76 +176,6 @@ bad, frames, seconds, minfill, maxfill, err, partial.
 `tools/hw/usb_counters.py --in` reads them from a unit; `verify_usb_in`
 reads them under the port. `tools/hw/usb_probe.py` reads both rings'
 counters through a host session and prints a verdict.
-
-## Verification
-
-- **Under the port:** `tools/verify/verify_usb_in.py`, this module's gate
-  (`make check` runs it for any remix that carries it): the host's coded
-  samples bit-exact on slots 2/3 of the six completed RX blocks with slots 0/1 zero, in
-  consecutive frames, and on the recorder's input ring; the counters over
-  `0x56`; word 0 clear and the jacks back after alt 0. EP3 IN's frame size
-  comes from the remix's layout, so the gate runs beside OUT MAIN CUE, OUT TRACKS or
-  OUT TRACKS MAIN CUE. `verify_usb` checks the six-interface high-speed configuration
-  and the five-interface full-speed one. The port does not model SCM or XBS,
-  so USB CROSSBAR is measured on a unit only.
-- **On hardware:** this stereo form has not been flashed. The four-channel
-  form ran on Bryan T's MKII as usbin-test builds 12–16 (26–27 Sep 2026):
-  about 5 million packets with `bad`, underruns and overruns 0 after the
-  crossbar setting, DISK MODE in and out with the stream back afterwards.
-  nordseele's MKI (`OCTABAM94`, the same build) enumerated and lit input A
-  from host channel 1, with CoreAudio restarting the IO context hundreds of
-  times and playback at about half nominal speed (his review, 27 Sep 2026);
-  not reproduced on the MKII. `tools/hw/usb_probe.py` is the instrument:
-  its EP3 IN drain rate (`consumed` per second) is the number that
-  discriminates.
-
-## Latency, measured on Bryan T's unit (usbin-test build 16, 27 Sep 2026)
-
-Both rings' `lastfill` over the vendor requests (`0x55`, `0x56`), read
-once a second:
-
-- **The sum of the two fills is conserved while the streams run**: 1,353 to
-  1,360 second by second through a fresh session, about 1,355 in another.
-  With implicit feedback the host sends as many frames as it reads, and the
-  DSP's frame clock produces into EP3 IN's ring and consumes from this one.
-  1,355 frames is about 31 ms, the round trip through the unit before the
-  host's own buffers.
-- **Where it comes from**: `AUD_TARGET` + `IN_TARGET` (896) plus about 460
-  frames EP3 IN gains between the stream starting and macOS polling it
-  steadily (INFERRED from two sessions).
-- **The split drifts** about 0.5 frames a second (11 ppm, that Mac against
-  the unit) from EP3 IN's ring to this one until EP3 IN reaches the bottom
-  of its band; this ring plateaued at 969 of 1,024.
-- **EP3 IN overruns happen at stream close**, not while running: the host
-  stops polling EP3 IN before it sends alt 0. Both rings restart on the
-  next open.
-
-So `IN_TARGET` alone does not set the latency. Two levers, both in
-`usbaudio.s`:
-
-1. **Anchor usbaudio's consumer at the host's first IN poll** rather than
-   at SET_INTERFACE. Done 28 Sep 2026 (`usbaudio_kick`, the `anchor`
-   counter over `0x55`; `verify_usb` holds the bench's first poll back 600
-   frames and checks the fill lands at 512). Not measured on a unit:
-   expected sum of the two `lastfill`s about 896.
-2. Lower `AUD_TARGET`, `IN_TARGET` and `AUD_BAND` together, keeping
-   `IN_TARGET − AUD_BAND` (this ring's floor) above the jitter the unit
-   shows. The OUT ring's own jitter is `minfill`/`maxfill` over `0x55`
-   (added with lever 1), unmeasured on a unit; the values follow that
-   measurement.
-
-## Open
-
-- This stereo form on a unit: `tools/hw/usb_probe.py` sustained and churn,
-  then a host → A/B → recorder take.
-- The MKI report above: half-speed playback and CoreAudio restarts, the
-  drain rate under `usb_probe.py` on that unit.
-- Beside OUT TRACKS or OUT TRACKS MAIN CUE on hardware: before the crossbar setting the
-  twenty-channel EP3 IN stream beside EP3 OUT lost packet tails under load;
-  the setting cured them with the four-channel pairing and the larger
-  pairings have not been run since. `usb-io-tracks-main-cue-ab` pairs it with OUT TRACKS MAIN CUE.
-- Packet buffers in SDRAM through the alias with USB CROSSBAR on.
-- Latency lever 2 above, after the unit measurement.
 
 ## Ground
 

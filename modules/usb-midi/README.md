@@ -1,9 +1,53 @@
-# USB MIDI
+# `usb-midi` — USB MIDI
 
 Class-compliant USB-MIDI in and out on the Octatrack's own USB port,
 mirroring the DIN ports. markandrus's work ([octemu](https://github.com/markandrus/octemu),
 `custom/usb-midi.py` + `custom/coldfire/usb-midi.s` at `6a9ff68`, MIT),
 carried onto octabam's DRAM platform.
+
+## Measured
+
+Under the ColdFire port (25 Sep 2026), `make check REMIX=usb`, `verify_usb`:
+
+- enumerates at high speed as Elektron 1935:0002, three interfaces, 124-byte
+  configuration; INQUIRY and TEST UNIT READY still answered by the stock
+  mass-storage stack;
+- two channel messages sent to EP2 OUT → six bytes into the firmware's
+  MIDI receive FIFO (`midi_rx_fifo_head` `0x46100b80`, six writes from
+  `midi_rx_enqueue`);
+- the firmware's own `midi_send` on a note-on → one event packet `09 90 3c 64`
+  on EP2 IN.
+
+His build from the same stock bytes, tested first under the port with his
+own patch scripts, behaved the same (the ISR shim ran nine times, the
+decoder once, the same six FIFO writes).
+
+## On the unit
+
+Image 64, `usb-audio`, Sam's MKII, 25 Sep 2026:
+
+- Enumerates on macOS as a MIDI port "Elektron Octatrack DPS-1", beside
+  the USB AUDIO input.
+- Receive: 896,760 messages (7,170/s, notes + CCs on channel 16) and then
+  1,471,080 messages (7,950/s, 185 s) sent into the unit, with the audio
+  stream running, without a stall or a change in the audio stream
+  (`modules/usb-audio-out-tracks-main-cue/README.md`, the image 64 takes).
+- No USB MIDI transmit measurement from the unit is recorded.
+
+Also carried on Tim Hastie's MKI (`octatrick-usb`, OCTATRICK9, 26 Sep 2026),
+Bryan T's MKII (`usb-lean` image 90, 25 Sep 2026) and Sam's MKII as image 88
+(`bottleservice`, 27 Sep 2026); none of those runs measured MIDI itself.
+The `usb` remix (this module without USB AUDIO) has not been flashed.
+
+## Open
+
+- Not measured: timing on the unit (bulk transfers have no schedule; clock
+  jitter over USB against DIN), a CC flood against the 256-byte queue,
+  DISK MODE entered with a MIDI session open, Windows.
+
+## Gates
+
+- `verify_usb` (`make check REMIX=usb`).
 
 ## What it is
 
@@ -31,42 +75,6 @@ it at his zone address `0x400d24f0` and compares with the 1,124-byte blob
 his `usb-midi.py` produced from our stock bytes (`Linked.reference`, the
 port-is-a-proof rule). The clamps are a second unit (`clamp.s`, his
 usb-audio.s shims reading `cfg_len`).
-
-## Measured (25 Sep 2026, under the ColdFire port)
-
-`make check REMIX=usb`, `verify_usb`:
-
-- enumerates at high speed as Elektron 1935:0002, three interfaces, 124-byte
-  configuration; INQUIRY and TEST UNIT READY still answered by the stock
-  mass-storage stack;
-- two channel messages sent to EP2 OUT → six bytes into the firmware's
-  MIDI receive FIFO (`midi_rx_fifo_head` `0x46100b80`, six writes from
-  `midi_rx_enqueue`);
-- the firmware's own `midi_send` on a note-on → one event packet `09 90 3c 64`
-  on EP2 IN.
-
-His build from the same stock bytes, tested first under the port with his
-own patch scripts, behaved the same (the ISR shim ran nine times, the
-decoder once, the same six FIFO writes).
-
-## Measured on hardware (image 64, `usb-audio`, Sam's MKII, 25 Sep 2026)
-
-- Enumerates on macOS as a MIDI port "Elektron Octatrack DPS-1", beside
-  the USB AUDIO input.
-- Receive: 896,760 messages (7,170/s, notes + CCs on channel 16) and then
-  1,471,080 messages (7,950/s, 185 s) sent into the unit, with the audio
-  stream running, without a stall or a change in the audio stream
-  (`modules/usb-audio-out-tracks-main-cue/README.md`, the image 64 takes).
-- No USB MIDI transmit measurement from the unit is recorded.
-
-Also carried on Tim Hastie's MKI (`octatrick-usb`, OCTATRICK9, 26 Sep 2026),
-Bryan T's MKII (`usb-lean` image 90, 25 Sep 2026) and Sam's MKII as image 88
-(`bottleservice`, 27 Sep 2026); none of those runs measured MIDI itself.
-- The `usb` remix (this module without USB AUDIO) has not been flashed.
-
-Not measured: timing on the unit (bulk transfers have no schedule; clock
-jitter over USB against DIN), a CC flood against the 256-byte queue,
-DISK MODE entered with a MIDI session open, Windows.
 
 ## Ground
 

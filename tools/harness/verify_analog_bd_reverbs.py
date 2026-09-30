@@ -3,15 +3,19 @@
 
 DARK calls a shared routine inside SPRING's region. Exercise both effects on both cores,
 with fixed and moving controls, at the hardware audio address X:0.
+<<<<<<< HEAD
 
 In an image whose stock effects load on demand (build_bus DYNAMIC: PLATE's
 dispatch is the null stub) no reverb is resident. The gate then does what the
 DSP loader does -- uploads both reverbs into this image's arena and binds their
 dispatch -- and compares that against stock.
+=======
+>>>>>>> origin/codex/analog-bassdrum-pr
 """
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+<<<<<<< HEAD
 import struct
 import benchmark_reverbs as br
 import send_probe
@@ -54,6 +58,11 @@ def load_like_the_loader(mem, payload):
         blob = _record(blob, 1, 0x235 + fid, [at + pkg['proc']])
         at += len(words)
     mem.write_bytes(blob)
+=======
+import benchmark_reverbs as br
+import send_probe
+from remix import registry, stock
+>>>>>>> origin/codex/analog-bassdrum-pr
 
 
 def main():
@@ -63,12 +72,15 @@ def main():
     mems = {}
     for name, image in [('stock', stock.STOCK_IMAGE), ('patched', root/'out/mainos_bus.bin')]:
         mems[name] = [send_probe.dump_mem(image, br.OUT/f'{name}_{p}.mem', p) for p in 'AB']
+<<<<<<< HEAD
     plate = registry.by_key('PLATE REV').menu.fx2_id
     for p, mem in zip('AB', mems['patched']):
         if send_probe.entry_points(mem, plate)[0] == NULL_STUB[p]:
             load_like_the_loader(mem, p)
             print(f'payload {p}: no reverb resident -- PLATE and DARK loaded into the arena '
                   f'and bound, as the DSP loader does', flush=True)
+=======
+>>>>>>> origin/codex/analog-bassdrum-pr
     # Stop setup just before the source seam; this gate calls FX directly.
     blocks = 2048
     inputs = [br.source(blocks, k) for k in range(2)]

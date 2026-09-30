@@ -715,7 +715,7 @@ document.addEventListener("mouseup", () => { drag = null; });
 
 // ---------------- the crossfader ----------------
 // The pot the panel board reads and reports as `0x40 <adc>` on the panel
-// UART (PANEL_LINK.md, 13 Sep 2026); /xfader?pos=0..127 sends exactly that
+// UART (docs/firmware/PANEL.md §9, 13 Sep 2026); /xfader?pos=0..127 sends exactly that
 // (0 = leftmost = scene A, 127 = rightmost = scene B, the CC 48 scale) and
 // the firmware keeps the value (0x460d16c8), morphs the scene locks and
 // redraws its fader icon. Nothing is remembered here across reloads: the

@@ -89,7 +89,7 @@ MODULE = Module(
     proof=Proof.PORT, proof_note="`verify_set`; carried by image 88 on Sam's MKII, not exercised there",
     doc="The TEMPO window lists and edits BusDelay's and BusVerb's knobs "
         "(UP/DOWN = row, A or B = value, LEFT/RIGHT = engine, FUNC + LEVEL = 0.1 BPM).",
-    # Both pinned in measured free runs (docs/remixer/PLACEMENT.md): the
+    # Both pinned in measured free runs (docs/contributing/PLACEMENT.md): the
     # helpers (host lookup, value read/write) at the start of the overflow
     # run 0x400d24d0..0x400d2ce0 (the floating caves that overflow the
     # clone window take the run after them), the screen in the first

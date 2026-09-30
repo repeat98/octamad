@@ -7,7 +7,7 @@ cave. With the bridge, the cave keeps the entry and its fall-through
 ours, then hers, then stock's. Declared as an Override: the build skips her
 recipe write at the site and defines CC_NEXT as the target it carried.
 
-Measured under the port (docs/remixer/PLACEMENT.md). Not measured: MIDI
+Measured under the port (docs/contributing/PLACEMENT.md). Not measured: MIDI
 CCs through the chained dispatch on hardware.
 Part Reload beside her kits is a separate collision with its own bridge,
 modules/kits-reload (14 Sep 2026).

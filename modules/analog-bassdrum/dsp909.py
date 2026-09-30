@@ -27,6 +27,7 @@ ROOT = HERE.parents[1]
 FIT = json.loads((HERE / 'fit909.json').read_text())
 RATE = 44100
 OUT = 0.4                     # output scale: Drumazon's init peak 0.98 -> 0.39
+OUTPUT_GAIN = 4                # +12.04 dB after the desk, before stock AMP
 VBS = 1.62                    # T_VB = vb/VBS <= 1 at ACCNT 127
 VAS = 1.92                    # T_VA = va/VAS
 SHIFT = 16                    # the attack path's final x16 (four asl)
@@ -241,10 +242,20 @@ def horner_ok(cpoly):
     return worst
 
 
-def source(layout):
+def source(layout, *, output_gain=True):
     """bd909.asm with its placeholders filled. layout: table and list bases."""
     tab, con, lists, _ = tables()
     text = (HERE / 'bd909.asm').read_text()
+    if output_gain:
+        assert OUTPUT_GAIN > 0 and OUTPUT_GAIN & (OUTPUT_GAIN - 1) == 0
+        # Read the original limited 24-bit sample before applying gain. The
+        # final stores limit overloads; none of the voice/desk states change.
+        store = '        move    a,x:(r0)+'
+        stage = ('        move    a,x0\n'
+                 '        move    x0,a\n' +
+                 '        asl     a\n' * (OUTPUT_GAIN.bit_length() - 1))
+        assert text.count(store) == 2
+        text = text.replace(store, stage + store, 1)
     subs = {name: f'${k:x}' for name, k in OFF.items()}
     subs['SWORDS'] = f'${SWORDS:x}'
     for name in list(tab) + list(lists):
@@ -364,7 +375,8 @@ class Voice:
     phase path (control products, ep, inc) is quantised as the DSP does it:
     its drift is otherwise the largest DSP-vs-reference difference."""
 
-    def __init__(self, quantized=True):
+    def __init__(self, quantized=True, *, output_gain=True):
+        self.output_gain = OUTPUT_GAIN if output_gain else 1
         self.t, self.c, self.lists, self.meta = tables()
         if quantized:   # the words the DSP receives, back as fractions
             f = lambda v: ((q24(v) ^ 0x800000) - 0x800000) / 8388608
@@ -468,7 +480,8 @@ class Voice:
         self.m2 += c['KM'] * (rest2 - self.m2)
         high2 = rest2 - self.m2
         acc = ob * sat(4 * gb * self.lb) + oh * sat(8 * gh * high2) + c['KMS'] * self.m2
-        return clip(2 * pad * sat(16 * acc))
+        y = clip(2 * pad * sat(16 * acc))
+        return clip(self.output_gain * fl24(y)) if self.output_gain != 1 else y
 
 
 if __name__ == '__main__':

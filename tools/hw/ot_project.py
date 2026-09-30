@@ -743,7 +743,7 @@ def set_fx(pdir, which_slot, track, which, page=None, page2=None, guard=True):
     EVERY bank, optionally with its page-1 / page-2 bytes. Every part because
     the part that PLAYS is not the part the load applies: `ot_emu`'s load
     applies bank 1 part 1 and its transport start re-applies the saved bank's
-    pattern part (measured, COLDFIRE_PORT.md O9d) -- O9c's whole
+    pattern part (measured, git show 3ceba41:docs/history/COLDFIRE_PORT.md O9d) -- O9c's whole
     fixture round edited part 1 and measured a track whose FX2 was still SEND."""
     pdir = pathlib.Path(pdir)
     fx_id, mod = _resolve_module(which)

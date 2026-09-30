@@ -20,7 +20,7 @@ Menu row, 0x18 bytes:
 | +0x08 | action function pointer. Also the selectable marker: cursor-move and submenu-entry code (`0x40064f0a`, `0x40064fe8`) skip rows whose +0x08 is 0 (the glyph-`0x17` separators); every real leaf carries at least the shared `rts` |
 | +0x0c | right-column value getter, called by the draw function `FUN_40064908`; 0 = no value column |
 | +0x10 | child list-descriptor pointer (0 on a leaf) |
-| +0x14 | page id, dispatched when the action is the shared no-op (§3) |
+| +0x14 | page id, dispatched when the action is the shared no-op (section 3) |
 
 Stride confirmed from code: `d2 = d3*32 − d3*8` at `0x4006496a..0x40064970`.
 
@@ -110,7 +110,7 @@ append, repoint the rows pointer, bump the count in the descriptor. The
 menu widget reads the count at open time. Same move for a submenu
 (CONTROL: rows pointer `0x400cbd6c`, count `0x400cbd54`). Hardware
 precedent: PERSONALIZE extended by two items (`git show
-40a1f19:tools/patch_menu.s`, `docs/history/NOTES.md`); CONTROL > REVERB /
+40a1f19:tools/patch_menu.s`, `git show 3ceba41:docs/history/NOTES.md`); CONTROL > REVERB /
 DELAY rows on tags 85–90. Two modules that both grow one submenu cannot
 coexist (the build refuses the second: the count is no longer stock).
 Cave placement: the decoded free band `0x400d2000..0x400d8000`
@@ -152,12 +152,12 @@ the menu opener `FUN_40064c18` via `0x40064d78`). Page keys `0x22..0x26` →
   ([NO] in `FUN_400650a0`). `DAT_400c0aac` (last page/track keycode for
   double-press, hold counter `0x460d5de0`) keeps its pre-menu value.
 - Per-track FX2 ids for finding a host track: `0x80000ecc[8]`
-  (`PARAM_PAGES.md` §5d).
+  (`PARAM_PAGES.md` section 5d).
 
 Menu-window destroy + setup-window create in one key dispatch is not a
 stock sequence; the deferral idiom is the timer callback `FUN_40000c3c`
 (used by `FUN_40063660`). The shortcut module ran on tags 85–90 and was
-retired 13 Sep 2026 (broken on the unit; `docs/history/MAINMENU_BUSSCREEN.md`).
+retired 13 Sep 2026 (broken on the unit; `git show 3ceba41:docs/history/MAINMENU_BUSSCREEN.md`).
 
 ### 6b. A page of one's own over GRID RECORDING (nordseele, MKI, 15 Sep 2026) ✅ theirs
 
@@ -226,10 +226,10 @@ A–F turn the page behind the stock TEMPO window.
 - `0x4003171c(code)` reads a field of the per-key handler cache
   (`0x46c7d8ee + code*24`); it is nonzero for FUNC at all times, since FUNC's
   record carries a sub-map. A key's held state is the panel parser's row
-  byte `0x46100b18[code >> 3]`, bit `code & 7` (`PANEL.md` §4b).
+  byte `0x46100b18[code >> 3]`, bit `code & 7` (`PANEL.md` section 4b).
 - YES `0x31`, NO `0x32`, TEMPO `0x18`: close, `0x40056930`.
 
-Arrow codes: LEFT `0x34`, RIGHT `0x21` (`PANEL.md` §4b).
+Arrow codes: LEFT `0x34`, RIGHT `0x21` (`PANEL.md` section 4b).
 `modules/tempo-bus` pushes a layer of its own over TEMPO's.
 
 ## 7. Editing parameters from a screen ✅
@@ -268,7 +268,7 @@ Writers:
   `0x80000830 + track*72 + slot`); FX1 `0x4003abe4` (Part `+0x8f07e`, live
   +0x32); FX2 `0x4003a9dc` (Part `+0x8f084`, live +0x38). Retracted 13 Sep
   2026: "`0x4003a474` is the FX page-2 editor" (the `cc_map.s` cave built
-  on it wrote PLAYBACK's bytes until then; `PARAM_PAGES.md` §5b). Slot
+  on it wrote PLAYBACK's bytes until then; `PARAM_PAGES.md` section 5b). Slot
   argument is 0–5 (`moveq #5,d4; cmp a3,d4; bcs exit`); the `a3 == 6` arm
   is a repeat-by-delta loop gated on `0x460d1a48 == 1`. The delta comes
   from `0x4003249c(slot, delta)`, which reads the staged page and returns 0
@@ -288,7 +288,7 @@ Writers:
   `+0x9b332`, redraw). Driven end to end under the emulator the array takes
   the value, at offset 0 (track 0, page 0, slot 0): the address term the
   staging phase leaves behind is unidentified. Not needed since MODE moved
-  to the even slot 6 (`PARAM_PAGES.md` §6).
+  to the even slot 6 (`PARAM_PAGES.md` section 6).
 - FX2 effect id: `0x40027e4c(struct, 0, part, kind, 0)` (calls pc-relative
   at `0x40028f9a`, `0x40028fda`; struct = fixed global `0x460bf218`, type
   tag at `+0x8ed8`, payload at `+18/+19`). Kind-4 arm with tag 29 writes
@@ -302,7 +302,7 @@ prologue (`moveal %sp@(12),%a2` index, `movel %sp@(16),%d2` delta; `delta*7`
 fast-turn acceleration applied when `0x4003171c(index+56)` returns
 nonzero). A screen receives the raw step.
 
-Bus-screen facts that carried (tags 85–90, `docs/history/MAINMENU_BUSSCREEN.md`):
+Bus-screen facts that carried (tags 85–90, `git show 3ceba41:docs/history/MAINMENU_BUSSCREEN.md`):
 stock cursor bar via the rect-invert `0x40012254(window,x1,y1,x2,y2,-1)`;
 window ctor `FUN_4005829c`, list drawer `FUN_40037590`, `sprintf`
 `0x40013a08`; the FX2 page stages index 0, so a screen reading the Part's

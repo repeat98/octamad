@@ -13,7 +13,7 @@ Until 15 Sep 2026 the cave stored tempo24, the clock period, the crossfader
 and the note into halfwords 18-21 (+0x24..+0x2a), believed unread. Halfwords
 18-20 are the FX1 instance's page 2 and 21 the AMP page 2's first word, so
 on a delay or reverb host every FX1 effect's page 2 was the tempo bytes
-(docs/remixer/FAILURE_MODES.md, "An FX1 station's page 2 does not reach the
+(docs/contributing/FAILURE_MODES.md, "An FX1 station's page 2 does not reach the
 DSP on a bus host"; measured under the port).
 
 The cave filters on FX2 id 6, compiled into the pinned bytes (`cmpi.w

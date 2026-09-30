@@ -8,7 +8,7 @@
 | here to a TABLE of payloads so that her Kit runtime and every other
 | module's DRAM code are equal payloads of one loader.
 |
-| Fixed facts (all measured, docs/remixer/PLACEMENT.md):
+| Fixed facts (all measured, docs/contributing/PLACEMENT.md):
 |   0x4010fdf0  this stub: the byte after the stock OS image (her BOOTSTRAP_LOAD)
 |   0x40001e50  the stock boot-continue call the boot site used to make;
 |               replayed first, exactly as her loader does
@@ -49,7 +49,10 @@ octabam_bootstrap:
 | only when a remix carries one, so every other loader is byte-identical.
         lea     (-48,%sp),%sp
         movem.l %d0-%d7/%a0-%a2,(%sp)
-        lea     pretable(%pc),%a2
+| Absolute, not PC-relative: the main table's blobs sit between here and
+| pretable, and past 32 KB of them (Tape Echo's runtime beside Analog BD,
+| 30 Sep 2026) a d16(pc) displacement no longer reaches.
+        lea     pretable:l,%a2
         move.l  (%a2)+,%d7              | pre-boot payload count (> 0)
 pnext:
         move.l  (%a2)+,%a0              | src

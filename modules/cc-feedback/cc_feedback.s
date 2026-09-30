@@ -31,7 +31,7 @@
 | the post (0x40000c3c) clears it. Stock transmits nothing during a load;
 | under the port, 272 UART interrupts inside LOAD PROJECT re-ordered sys
 | against the engine and tripped Octakit's part-byte lifecycle check
-| (docs/remixer/EMU.md, the ATA-latency note) -- measured 28 Sep 2026.
+| (tools/emu/README.md, the ATA-latency note) -- measured 28 Sep 2026.
         .set    CCOUT,   0x8000004a    | AUDIO CC OUT: bit 0 INT, bit 1 EXT (0x40033e52)
         .set    TRIGCH,  0x8000003f    | +track: trig channel, -1 = off
         .set    LIVEB,   0x80000810    | +track*72: the live knob block

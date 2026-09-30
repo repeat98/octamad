@@ -17,4 +17,4 @@ Port only (`verify_usb`, 27 Sep 2026). Image 69 (Sam's MKII, 25 Sep 2026) ran si
 make image REMIX=usb-out-tracks BUILD=1   # -> out/OCTATRACK_OCTABAM1.bin
 ```
 
-[BUILDING.md](../../../docs/remixes/BUILDING.md) is the walk-through from a fresh machine to a flashed unit. `make check REMIX=usb-out-tracks` runs every gate first.
+[BUILDING.md](../../../docs/guide/BUILDING.md) is the walk-through from a fresh machine to a flashed unit. `make check REMIX=usb-out-tracks` runs every gate first.

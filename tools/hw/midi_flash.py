@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Flash an Octatrack OS over MIDI, for RECOVERY when a build wedges the unit.
 
-The card path (docs/remixer/FLASHING.md 3a) is faster, but it lives inside the
+The card path (docs/guide/BUILDING.md 3a) is faster, but it lives inside the
 PROJECT menu -- useless if the OS crashes before you get there. This is the
 bootloader path: it works even with a corrupt OS, because the Startup Menu is
 in a region an OS update never touches.

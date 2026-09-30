@@ -1,7 +1,7 @@
 # octabam is a scripts + Makefile project, not an installable package — the
 # build and analysis tools deliberately run on bare `python3` with the stdlib
 # only. This file exists for ONE reason: the interactive remixer's optional
-# dependencies. The local ColdFire emulator (docs/remixer/EMU.md) needs `unicorn`,
+# dependencies. The local ColdFire emulator (tools/emu/README.md) needs `unicorn`,
 # and the remixer frontend (`make remix`) needs `textual`; both live in
 # `.venv` as the `emu` extra (one extra on purpose — one setup command, and
 # the remixer is the only consumer of either). The tooling prefers that
@@ -14,7 +14,7 @@
 name = "octabam"
 version = "0.1.0.dev0"
 description = "A remixer for the Elektron Octatrack's OS: community modifications and custom DSP effects composed into one image"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = []
 
 [project.optional-dependencies]
@@ -23,6 +23,9 @@ emu = [
     "textual>=0.80",
     # the panel's audio output device (tools/panel, CoreAudio through PortAudio)
     "sounddevice>=0.5.6",
+    # the harness's measurement tools (abkit, station_laws, click_scan,
+    # clock_probe, cfmeter) and tools/hw's soak/ladder/usb probes
+    "numpy>=1.24",
 ]
 
 [tool.uv]

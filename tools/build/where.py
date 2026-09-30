@@ -4,13 +4,13 @@
     python3 tools/build/where.py 0x40004d40
     make where A=0x40004d40 [N=128]
 
-Prints every paragraph of AGENTS.md, README.md, docs/**/*.md and
-modules/*/README.md that cites the exact address (file:line first), the
+Prints every paragraph of AGENTS.md, README.md, docs/**/*.md,
+tools/**/*.md and modules/*/README.md that cites the exact address (file:line first), the
 nearest other cited addresses within 0x200, and an EMAC-correct
 disassembly window from scripts/disasm.sh. The docs are scanned on each
 call; nothing is cached or duplicated. A new finding about an address goes
-in the topical doc (docs/firmware/CONTRIBUTIONS.md says where), which is
-what the next call prints.
+in the topical doc under docs/firmware/, which is what the next call
+prints.
 """
 import argparse, pathlib, re, subprocess, sys
 
@@ -23,6 +23,7 @@ NEARBY_MAX = 6
 def files():
     return ([ROOT / "AGENTS.md", ROOT / "README.md"]
             + sorted((ROOT / "docs").rglob("*.md"))
+            + sorted((ROOT / "tools").rglob("*.md"))
             + sorted((ROOT / "modules").glob("*/README.md")))
 
 

@@ -16,4 +16,4 @@ Both words disassembled against stock (`mpysu x0,y0,a` → `mpyuu x0,y0,a` at P:
 make image REMIX=lofi-amf-fix BUILD=1     # -> out/OCTATRACK_OCTABAM1.bin
 ```
 
-[BUILDING.md](../../../docs/remixes/BUILDING.md) is the walk-through from a fresh machine to a flashed unit. `make check REMIX=lofi-amf-fix` runs every gate first.
+[BUILDING.md](../../../docs/guide/BUILDING.md) is the walk-through from a fresh machine to a flashed unit. `make check REMIX=lofi-amf-fix` runs every gate first.

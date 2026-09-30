@@ -2,10 +2,10 @@
 """Print the module index and the available remixes; render the copies.
 
     python3 tools/remix/index.py            # the index, the matrix, the remixes
-    python3 tools/remix/index.py --write    # README.md's module table and
-                                            # docs/remixes/README.md, from the
-                                            # manifests (make docs)
-    python3 tools/remix/index.py --check    # 1 if either copy is stale
+    python3 tools/remix/index.py --write    # README.md's module table,
+                                            # remixes/README.md and
+                                            # remixes/test/README.md (make docs)
+    python3 tools/remix/index.py --check    # 1 if any copy is stale
 
 The manifests are the authoritative list; the two Markdown tables are
 copies, rendered here and held current by tools/verify/verify_docs.py.
@@ -125,46 +125,63 @@ def module_table(mods) -> str:
     return "\n".join(lines)
 
 
+REMIXES = ROOT / "remixes"
+
+
+def _rows(rs, base):
+    out = ["| remix | contains | proof |", "|---|---|---|"]
+    for r in rs:
+        doc = r.doc.replace("|", "\\|")
+        link = registry.remix_dir(r.name).relative_to(base)
+        out.append(f"| [`{r.name}`]({link}/README.md) | {doc} | {proof_text(r)} |")
+    return out + [""]
+
+
 def remix_index() -> str:
+    """remixes/README.md: the remixes a user flashes."""
     lines = ["# Remixes", "",
-             "A remix is a named selection of modules; `make image REMIX=<name>` "
-             "builds it into a card-flashable image from your own OS 1.40C. "
-             "[BUILDING.md](BUILDING.md) is the step-by-step guide. Each remix is "
-             "a directory, `remixes/<name>/`: `remix.py` is the selection and "
-             "`README.md` says what is in it and where it has run. "
-             "`remixes/test/<name>/` holds the remixes that carry one module "
-             "for that module's gates. This index is rendered from the "
-             "selections (`make docs`). BUILDING.md §8 says how to write one.", ""]
-    remixes = [registry.remix(n) for n in registry.remix_names()]
-    tests = [r for r in remixes if registry.is_test(r.name)]
-    remixes = [r for r in remixes if not registry.is_test(r.name)]
-
-    def rows(rs):
-        out = ["| remix | contains | proof |", "|---|---|---|"]
-        for r in rs:
-            doc = r.doc.replace("|", "\\|")
-            link = registry.remix_dir(r.name).relative_to(ROOT)
-            out.append(f"| [`{r.name}`](../../{link}/README.md) | {doc} | {proof_text(r)} |")
-        return out + [""]
-
+             "A remix is a named selection of modules; `make image REMIX=<name> "
+             "BUILD=<n>` builds it into a card-flashable image from your own "
+             "OS 1.40C. Each remix is a directory here: `remix.py` is the "
+             "selection, `README.md` says what is in it, where it has run and "
+             "how to flash it. This index is rendered from the selections "
+             "(`make docs`).", "",
+             "- What to install first (the Xcode Command Line Tools, Homebrew, "
+             "Python 3.10+, `cmake`, `uv`) and every step to a flashed unit: "
+             "[BUILDING.md](../docs/guide/BUILDING.md).",
+             "- Composing your own: [REMIXER.md](../docs/guide/REMIXER.md).",
+             "- The remixes that carry one module for its gates: "
+             "[test/](test/README.md).", ""]
     for fam, title in FAMILIES:
-        rs = [r for r in remixes if (r.family or "reference") == fam]
+        rs = [r for r in _remixes(False) if (r.family or "reference") == fam]
         if rs:
-            lines += [f"## {title}", ""] + rows(rs)
-    if tests:
-        lines += ["## Test remixes", "",
-                  "One module each, for that module's gates: `make check REMIX=<name>`.", ""] + rows(tests)
+            lines += [f"## {title}", ""] + _rows(rs, REMIXES)
     lines += ["Never share a built image: it contains Elektron's OS.", ""]
     return "\n".join(lines)
 
 
+def test_index() -> str:
+    """remixes/test/README.md: the remixes that carry a module for its gates."""
+    lines = ["# Test remixes", "",
+             "Each carries one module, or one combination, for that module's "
+             "gates: `make check REMIX=<name>`. Rendered by `make docs`; the "
+             "remixes a user flashes are [one level up](../README.md).", ""]
+    return "\n".join(lines + _rows(_remixes(True), REMIXES / "test"))
+
+
+def _remixes(test):
+    return [r for r in (registry.remix(n) for n in registry.remix_names())
+            if registry.is_test(r.name) == test]
+
+
 def rendered() -> dict:
-    """{path: text} of both copies as the manifests say they should read."""
+    """{path: text} of every copy as the manifests say it should read."""
     readme = ROOT / "README.md"
     cur = readme.read_text()
     a, b = cur.index(BEGIN), cur.index(END) + len(END)
     return {readme: cur[:a] + module_table(registry.modules()) + cur[b:],
-            ROOT / "docs/remixes/README.md": remix_index()}
+            REMIXES / "README.md": remix_index(),
+            REMIXES / "test" / "README.md": test_index()}
 
 
 def stale() -> list:

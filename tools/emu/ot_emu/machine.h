@@ -169,7 +169,7 @@ namespace ot
 		// renamed `*Slow`: the peripheral dispatch, the counters, the logs
 		// and the auto-map are byte for byte what they were, and a page that
 		// IS in the table answers the same bytes `find` would have. Measured
-		// on the bursts+LTO binary, see COLDFIRE_PORT.md O15c.
+		// on the bursts+LTO binary, see git show 666b6154:docs/firmware/COLDFIRE_PORT.md O15c.
 		static constexpr uint32_t g_pageBits = 12;
 		static constexpr uint32_t g_pageMask = (1u << g_pageBits) - 1;
 		uint8_t read8(const uint32_t _a) override

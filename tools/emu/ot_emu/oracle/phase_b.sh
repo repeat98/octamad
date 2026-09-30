@@ -1,5 +1,5 @@
 #!/bin/bash
-# The Phase B gate (COLDFIRE_PORT.md O16a): the candidate against BOTH frozen
+# The Phase B gate (git show 666b6154:docs/firmware/COLDFIRE_PORT.md O16a): the candidate against BOTH frozen
 # references with the Phase B audio contract, everything else byte-strict.
 #
 #   tools/emu/ot_emu/oracle/phase_b.sh CAND [oracle.sh options, e.g. --build-dir DIR --tag NAME]

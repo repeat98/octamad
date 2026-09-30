@@ -1,4 +1,4 @@
-# Euclid
+# `euclid` — EUCLID
 
 A stereo Euclidean modulation effect for either FX slot. It follows the
 Octatrack transport, track speed and swing grid. A 1–64-step rhythm drives
@@ -8,6 +8,8 @@ resets phase.
 
 The `euclid` remix retains the stock Plate, Spring and Dark Reverb rows in
 FX2. Their descriptors, DSP code and dispatch entries stay stock.
+
+## Knobs
 
 | Page | A | B | C | D | E | F |
 |---|---|---|---|---|---|---|
@@ -56,6 +58,23 @@ Swing uses the track's swing mask and amount, including Swing All changes.
 Rotation and odd Euclidean lengths do not rotate the track swing grid. The
 1/32 subdivision interpolates the surrounding track-step offsets.
 
+## On the unit
+
+Not hardware-tested: the current revision has not been run on a unit.
+
+## Gates
+
+`make check REMIX=euclid` runs the Euclid suite as part of the normal verify
+target. It checks the native control laws, checked-in ColdFire assembly,
+executed hook traces, caller registers and PLAY condition codes, both DSP
+payloads, LP/BP/HP/NOTCH response, AMP unity/silence and instruction cost,
+rapid TYPE changes, cutoff sweeps, stock-row
+isolation and the real panel renderer. With `OT_PROJECT` it also boots a
+copied project under the ColdFire port and checks full playback. No test
+writes to the source project or hardware.
+
+Manifest gate: `tools/verify/verify_euclid.py` (stage `image`).
+
 ## Implementation
 
 `control.c` is the integer rhythm/envelope engine. `generate_control.py`
@@ -80,16 +99,3 @@ cutoff to avoid closing-sweep overshoots, but a held cutoff reuses the exact
 coefficient instead of paying for a 24-step divide on every sample. All DSP
 state is initialized and private to the instance; no audio buffer is
 allocated.
-
-## Verification
-
-`make check REMIX=euclid` runs the Euclid suite as part of the normal verify
-target. It checks the native control laws, checked-in ColdFire assembly,
-executed hook traces, caller registers and PLAY condition codes, both DSP
-payloads, LP/BP/HP/NOTCH response, AMP unity/silence and instruction cost,
-rapid TYPE changes, cutoff sweeps, stock-row
-isolation and the real panel renderer. With `OT_PROJECT` it also boots a
-copied project under the ColdFire port and checks full playback. No test
-writes to the source project or hardware.
-
-The current revision has not been hardware-tested by these tools.

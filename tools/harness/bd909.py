@@ -53,10 +53,11 @@ def build_host():
                    check=True, capture_output=True)
 
 
-def build():
+def build(*, output_gain=True):
     build_host()
     layout = dsp909.default_layout(0x1000)
-    labels, _ = dsp909.assemble(ORG, layout, OUT / 'bd909.bin')
+    labels, _ = dsp909.assemble(ORG, layout, OUT / 'bd909.bin',
+                              dsp909.source(layout, output_gain=output_gain))
     (OUT / 'bd909.data').write_text(dsp909.data_lines(layout))
     desk, _ = dsp909.assemble(ORG, layout, OUT / 'desk.bin', dsp909.desk_source(layout))
     labels['zt01'] = desk['zt01']
@@ -75,7 +76,7 @@ def render(labels, blocks, tag):
     a = array.array('i'); a.frombytes(raw.read_bytes())
     counts = [int(x) for x in meter.read_text().split()]
     # Measured code-growth guard, NOT a hardware timing budget (CPU.md).
-    assert max(counts) <= 5168, ('909 instruction cost grew; re-benchmark full chains', max(counts))
+    assert max(counts) <= 5232, ('909 instruction cost grew; re-benchmark full chains', max(counts))
     return [a[i] / 8388608 for i in range(0, len(a), 2)], counts, r.stdout.strip()
 
 

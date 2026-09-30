@@ -14,8 +14,8 @@ real peripherals, no scheduler. Two uses:
 
 Needs `unicorn` with the CFV4E model — `make emu-setup` provisions it into
 the uv-managed `.venv` (the `emu` extra). The DEFAULT m68k core is plain-68k
-and will NOT decode this CPU (mvz/mvs/EMAC) — docs/remixer/TOOLING.md §3. Boot
-details and the fork past the trap: docs/remixer/EMU.md.
+and will NOT decode this CPU (mvz/mvs/EMAC) — docs/contributing/TOOLING.md §3. Boot
+details and the fork past the trap: tools/emu/README.md.
 """
 import collections
 import ctypes
@@ -179,11 +179,11 @@ BUDGET = 50_000_000
 MENU_ROOT_DESC = 0x400cbd8c
 ROW_STRIDE = 0x18
 
-# The universal "draw string at (x,y)" primitive (docs/remixer/EMU.md). cdecl, args on
+# The universal "draw string at (x,y)" primitive (tools/emu/README.md). cdecl, args on
 # the stack at callee entry: sp@(0)=return, then font/canvas/x/y/count/str.
 DRAW_STRING = 0x40012bd8
 
-# Live-screen detour (docs/remixer/EMU.md): open the MAIN MENU window, dispatch its
+# Live-screen detour (tools/emu/README.md): open the MAIN MENU window, dispatch its
 # draw, and capture every string it emits. These run in task context normally;
 # we call them directly against the warm (post-boot) machine.
 MENU_OPEN = 0x40064c18       # allocates the menu window from the heap
@@ -209,7 +209,7 @@ TRACK_DRAW = 0x4004d948      # redraw the track screen (playback page)
 CUR_TRACK_B = 0x80000000     # current audio track (byte); UI mirror 0x100b14cc
 
 # Assigning an effect to a track's FX2 slot so its real param page resolves
-# (docs/remixer/EMU.md, the FX-page research). The project DB pointer at 0x46c82456 is
+# (tools/emu/README.md, "Drawing the firmware's screens"). The project DB pointer at 0x46c82456 is
 # null on our boot (no project loaded), so we point it at a zeroed scratch Part
 # and write the id byte the resolver reads.
 PART_PTR = 0x46c82456        # -> project database base (null until we fake it)

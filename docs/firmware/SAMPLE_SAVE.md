@@ -176,7 +176,7 @@ called UNCONDITIONALLY with length `d5 = P` — one byte when `P` is 1, a
 zero-length write when `P` is 0 — and its return is range-checked either
 way (`blt` at `0x400210ea`). That is the RIFF pad, and it is correct; a
 copy of the writer's shape onto a file API that rejects zero-length writes
-must gate the call, and the port watch in §7 will see one extra
+must gate the call, and the port watch in section 7 will see one extra
 `0x400166b8` call per save.
 
 **Why this matters for anything that streams to the card:** the loop is
@@ -192,7 +192,7 @@ stronger evidence than either alone.
 
 | routine | address | named by |
 |---|---|---|
-| open | `0x40016864` | ems-octakit `runtime/abi.inc`, octamax `NOTES.md` |
+| open | `0x40016864` | ems-octakit `runtime/abi.inc` (`modules/octakit/upstream`), octamax's `NOTES.md` (octamax's notes, not in this repo) |
 | read | `0x40016564` | both |
 | seek | `0x4001660c` | ems-octakit |
 | write | `0x400166b8` | both |
@@ -220,8 +220,8 @@ into a buffer at `0x460faab4`.
 It reads the clock through two helpers:
 
 - `0x4001c4d8(index)` reads one field. It is a **DSPI** (SPI) transaction:
-  `0xfc05c000` is the MCF5445x DSPI (`tools/emu/emu_rtos.py:151`,
-  `RTOS_FORK.md` §4). Under a mutex (`0x400009f4`/`0x40000ab4` on
+  `0xfc05c000` is the MCF5445x DSPI (route A, retired 26 Sep 2026, 60509404;
+  `git show 3ceba41:docs/history/RTOS_FORK.md` section 4). Under a mutex (`0x400009f4`/`0x40000ab4` on
   `0x46c8c5f4`) it pushes two frames to PUSHR (`+0x34`: `0x90020000 | index`,
   then `0x10020000`), polls SR (`+0x2c`) until RXCTR (bits 7:4) reads 2, pops
   POPR (`+0x38`) twice and keeps the second byte. ✅ (❌ was "an I2C
@@ -268,14 +268,14 @@ builder simply does not ask.
   HAS run on hardware by another caller: octalab's CAPTURE (nordseele, MKI,
   21 Sep 2026 ✅) drives the storage-job entry `0x40024168`, which reads the
   object to save from `0x460be9ec` (`movel` at `+0x08`, re-read here) and its
-  kind from `0x460be9e8` — the pair `MAINMENU.md` §7's select committer
+  kind from `0x460be9e8` — the pair `MAINMENU.md` section 7's select committer
   writes its pending edit to. With the pair unset on one path the job wrote
   header-only WAVs; set before each job, real audio. Whether that job reaches
   `0x40084e46` → `0x40020f04` is not traced.
 - **The converters `0x40097b54` and `0x40097f8c` are not disassembled.** Their
   argument shape is known from the call site, their internals are not.
 - **The FAT layer is still unmapped.** `0x40016864` and `0x400166b8` are used
-  as black boxes here, exactly as `COVERAGE.md` says. File creation, directory
+  as black boxes here, exactly as `git show 3ceba41:docs/history/COVERAGE.md` says. File creation, directory
   entries and cluster allocation are all behind them.
 - **`0x46105408`, the guard word, is unidentified.** It gates the whole writer.
 - **The reader is a separate routine at `0x400210fc`**, with two call sites,

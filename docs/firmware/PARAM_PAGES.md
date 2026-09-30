@@ -45,19 +45,19 @@ silent").
 | `E+0x96` | 12 × u8 | default per parameter |
 | `E+0xa2` | 12 × u32 | minimum per parameter (= `P+0x6a`) |
 | `E+0xd2` | 12 × u32 | number of selectable values (= `P+0x9a`): 128 = 0–127, 2 = on/off, 17 = MIDI channel |
-| `E+0x102` | 12 × u32 | formatter array A (= `P+0x0ca`), §7; `E+0x11a` = A[6] |
-| `E+0x132` | 12 × u32 | widget array B (= `P+0x0fa`), §7; `E+0x14a` = B[6] |
+| `E+0x102` | 12 × u32 | formatter array A (= `P+0x0ca`), section 7; `E+0x11a` = A[6] |
+| `E+0x132` | 12 × u32 | widget array B (= `P+0x0fa`), section 7; `E+0x14a` = B[6] |
 | `E+0x176` | u32 | page class handler |
 | `E+0x186` | u32 | fourth pointer (almost always 0) |
-| `P+0x18a`/`P+0x18e` | u32 | enable bitmap, §3b (past `E+0x192`: the next entry's leading bytes as `E` sees them; `E+0x35` 🟡 is the previous record's) |
+| `P+0x18a`/`P+0x18e` | u32 | enable bitmap, section 3b (past `E+0x192`: the next entry's leading bytes as `E` sees them; `E+0x35` 🟡 is the previous record's) |
 
 A slot named `---` is an empty encoder position. `E+0xd2` is a count, not
 a maximum.
 
-Cross-check: `NOTES.md` found the arp key-scale min `0x400d4066` = 0 and
+Cross-check: `git show 3ceba41:docs/history/NOTES.md` found the arp key-scale min `0x400d4066` = 0 and
 count `0x400d4096` = 25 by tracing the F-knob handler `FUN_4007a2ec`;
 `ARPEGGIATOR E+0xa2 + 11×4` and `E+0xd2 + 11×4` are those addresses.
-`build.py`'s `ARP_COUNT_AT = 0x400d4096` (25 → 145) is parameter 11's
+`git show 74a84e0f:tools/build.py`'s `ARP_COUNT_AT = 0x400d4096` (25 → 145) is parameter 11's
 count in this descriptor.
 
 ## 3. The entries
@@ -104,7 +104,7 @@ are where a module's id goes (`MODULES.md`); a stock id is also an FX1 id
 ### PLAYBACK entries = machine types
 
 Index = machine type (`FUN_40097168 → 0..4`; ✅ 7 Sep 2026: type 0 reads
-the STATIC arena, type 1 the FLEX arena, `docs/history/RTOS_FORK.md` §10.13;
+the STATIC arena, type 1 the FLEX arena, `git show 3ceba41:docs/history/RTOS_FORK.md` section 10.13;
 2–4 🟡 from the parameter sets).
 
 | # | page 1 | page 2 | type |
@@ -160,7 +160,7 @@ returned in D1, high in D0, with a second path for shifts ≥ 32 (params
 direct calls, 3 through a register, 2 sites read the words inline).
 Every nibble in the table is one of `0 1 3 5 7 8`; all 31 rows and Bryan
 T's bit reading (his note of 16 Sep 2026; the note
-verbatim is `git show 3ceba41:docs/history/EXTERNAL_INGEST.md` §11) were
+verbatim is `git show 3ceba41:docs/history/EXTERNAL_INGEST.md` section 11) were
 re-read from our image the same day: all 31 descriptors' `P+0x18e`/`P+0x18a`
 words and nibbles match his table; PICKUP TSTR count 3 against 4 on
 STATIC/FLEX. The accessor, which he hand-decoded, in objdump: `asrl` where
@@ -290,7 +290,7 @@ pattern's step lock record holds (`tools/hw/ot_bank.py`): PLAYBACK page 1
 12–17 (ATK HOLD REL VOL BAL XVOL, defaults 0 127 126 64 64 127), FX1 page 1
 18–23, FX2 page 1 24–29 (a locked value on slot *k* lands in lane byte
 *k*; a distinct lock in every slot 0–11, 30, 31 of one trig confirmed each).
-The page-2 lanes follow (§5a: AMP p2 +0x2c, FX1 p2 +0x32, FX2 p2 +0x38).
+The page-2 lanes follow (section 5a: AMP p2 +0x2c, FX1 p2 +0x32, FX2 p2 +0x38).
 `tools/hw/ot_spec.py` names locks by these slots.
 
 ### 5a. The Part's page arrays ✅ (port, 12 Sep 2026)
@@ -307,9 +307,9 @@ track:
 The bank file's page-2 block (`ot_project.P2_OFF 0x307 + t·30`, FX1 p2 at
 +0, FX2 p2 at +6) has the DB display array's order from the FX1 column on.
 ❌ Until 21 Sep 2026 the display array was written as `+0x8f06c` with a
-machine column first: the LFO resolver `0x40057538` (`LFO.md` §7) puts
+machine column first: the LFO resolver `0x40057538` (`LFO.md` section 7) puts
 PMTR/WAVE at `+0x8f072 + 30·t` and MULT/TRIG at `+0x8f08a + 30·t`, and
-`+0x8f072 + 8·30 = +0x8f162`, the MIDI tracks' array (`MIDI.md` Appendix A §3). The
+`+0x8f072 + 8·30 = +0x8f162`, the MIDI tracks' array (`MIDI.md` Appendix A section 3). The
 FX1/FX2 columns, the only ones measured, are unchanged; AMP's position is
 the six-byte gap between them. The tools index from `P2_OFF` and were
 never affected.
@@ -355,7 +355,7 @@ rows; the ColdFire-record offsets and the `+0x3e` row from the loop's
 `moveml`/`lea` sequence (`0x4000cb3a`, `0x4000cb86`; objdump, 21 Sep 2026).
 The same loop fills the record's words `+0..+0x17` and DSP hw 0–17 from a
 third, 64-byte-stride source (`a3`; ⬜ the scene morph's output) — the
-page-1 words the LFOs modulate (`LFO.md` §5).
+page-1 words the LFOs modulate (`LFO.md` section 5).
 
 ### 5d. Effect ids into shared RAM ✅
 
@@ -391,22 +391,11 @@ initialised fits every observation (one shared on-demand buffer does not).
 `FUN_40005638` references the FILTER and DELAY descriptors because it is
 the part-defaults initialiser (a new part is FX1 = FILTER, FX2 = DELAY),
 not a buffer lead. Two reverbs exceed the DSP's budget (🟡 cycles, from
-the per-type variation). `DSP.md` §5 for the delay.
+the per-type variation). `DSP.md` section 5 for the delay.
 
 ### 5f. Adding an effect: five tables
 
-| # | table | keyed by | if missing |
-|---|---|---|---|
-| 1 | id lookup `0x400d5f58` (FX1) / `0x400d5fdc` (FX2) | id | descriptor unresolvable |
-| 2 | chooser list `0x400d6060` (FX1) / `0x400d6090` (FX2) | position | not offered |
-| 3 | its own 402 B descriptor, copied from `P` | — | copied from `E`: correct name and id, no knobs (the enable bitmap falls off the end) |
-| 4 | the id byte at `P+0x03` | — | two list entries sharing a descriptor are one effect |
-| 5 | id → cursor position `0x400d6150` | id | selecting it jumps to NONE |
-
-(3)/(4): `FUN_40052474` does `*(Part+0x8ed88) = (char)*(int*)list[cursor]`,
-the low byte of the word at `P+0`. (5): `FUN_4005996c` counts the list to
-its terminator, then seeds the cursor from `0x400d6150[id]` (`FLTR`→1,
-`EQ`→2, … `DARK`→14); an id absent from it selects position 0 = NONE.
+`docs/contributing/MODULES.md` "The five tables an effect needs".
 
 ### 5g. Step records, trig words and the lock stores (octalab, MKI, 13 Sep 2026) ✅
 
@@ -435,9 +424,9 @@ page-2 `+0x64` (`FUN_400526e4`); part offsets from `part = bank + 0x8ed80
 machine*6` PLAYBACK p1, `+0x11a + track*24 + page*6` LFO/AMP/FX1/FX2 p1,
 `+0x2f2 + track*30` LFO PMTR ×3 then WAVE ×3, `+0x662 + (scene*8 +
 track)*0x20` scene locks; LFO destinations 0..29 use the scene-byte
-numbering. Where a Part lives (working, saved, SRAM) is `STORAGE.md` §3.
+numbering. Where a Part lives (working, saved, SRAM) is `STORAGE.md` section 3.
 Bryan T's `octa-bt-pt` registry (4 Sep 2026; 61 parameters across 14
-effects) agrees with §3's counts on 12 of 14 (FILTER 12, SPAT 10, DELAY
+effects) agrees with section 3's counts on 12 of 14 (FILTER 12, SPAT 10, DELAY
 12, EQ 8, DJEQ 5, PHSR 7, FLNG 6, CHOR 8, COMB 5, SPRG 6, COMP 7, LOFI 6);
 PLATE and DARK differ (we read 10 active slots, it lists 9; open, likely
 the trailing `MIXF`). Its `fx1_disallowed_effects` = DELAY, PLATE, SPRING,
@@ -465,7 +454,7 @@ effects while it read bits 0–7 (fixed `7a4f96b`). Retracted 4 Sep 2026: "a
 stepped control can only live on 7, 9 or 11" (stock puts CHORUS TAPS on 6,
 FILTER HP/ENV/Q2 on 6/8/10, 128-value knobs on 9 and 11). Both bus
 engines' MODE moved to slot 6 (4 Sep 2026) because the main-menu page-2 knob
-editor (`MAINMENU.md` §9c-ii) writes even slots only; ✅ tag 84: MODE steps
+editor (`MAINMENU.md` section 7) writes even slots only; ✅ tag 84: MODE steps
 as a select on slot 6, SHMR/MDEP sweep 0–127 from slot 7 (a count-128 knob
 in a companion field works; the 10 Aug "near-boolean companion" reading was
 the inherited formatter). The first play after the move stalled on stored
@@ -530,7 +519,7 @@ chars; the modules' ≤ 5, "1/16T"); whether A is consulted where B's count matt
 - Enable-nibble bit 2 (what the `0x40047ab0` layout changes on screen) and
   bit 3 (whether the six mask-`0x9` sites are the scene-edit path); the
   link-element drawer for bit 1; the four undecoded `0x4004exxx` call
-  sites (§3b).
+  sites (section 3b).
 - Which staged index and live-lane bytes an FX1 page-2 edit uses when
   opened from the page key (`0x4005a5b0`, the 4→3 remap; no emulator
   drives it): a hardware read (turn a station's MODE, SAVE, read the part

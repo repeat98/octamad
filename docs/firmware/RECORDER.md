@@ -4,7 +4,7 @@ OS 1.40C, ColdFire side: the recorder page's descriptor and storage, the
 length arithmetic, the buffer pool, the write path and the loop point.
 Read out of the binary by Bryan T over five Discord sessions (2–6 Sep
 2026) and re-read here against our image the same week; the loop click
-itself, fixed on hardware 12 Sep 2026, is `RECORDER_CLICK.md`. The
+itself, fixed on hardware 12 Sep 2026, is `modules/recorder-hold/README.md` "The loop click". The
 frame-phase model and its simulation are in git history
 (`git show 3ceba41:docs/history/EXTERNAL_INGEST.md`).
 
@@ -43,8 +43,8 @@ arm reads the FOUT slot is open.
 (`0x40062120..48`: `mvzb 0x80000004` × `0x8ed8` + bank blob, byte
 `+0x8e57`); `[0x80000004]` is the pattern. Pattern records are `0x8ed8`
 bytes (16 fill `blob + 0 .. 0x8ed80`), parts `0x18b2` from `blob + 0x8ed80`.
-`NOTES.md`'s `+0x8f385` "sequenced data" is the recorder TRIG byte. `DSP.md`
-§6c's `0x400060c4` is the PICKUP arm length (FOUT ÷ tempo24), not a
+`git show 3ceba41:docs/history/NOTES.md`'s `+0x8f385` "sequenced data" is the recorder TRIG byte. `DSP.md`
+section 6c's `0x400060c4` is the PICKUP arm length (FOUT ÷ tempo24), not a
 tempo→frame site; `0x80001820` is negative.
 
 🟡 Adopted: three storage tiers (bank `+0x8f382 + part×6322 + track×12`
@@ -96,7 +96,7 @@ An exact x.5 quotient rounds down (128/16 → 82,687). The truncating
 ❌ Retracted: buffers are not DMA siblings of the delay rings; the recorder
 write path is traced (still project-dependent for the emulator).
 ❌ Corrected from the sessions' reading: `0x40004860–0x40004bd0` on DMA
-channel 0 is the ColdFire→DSP frame transfer (`DSP.md` §6c), not
+channel 0 is the ColdFire→DSP frame transfer (`DSP.md` section 6c), not
 control-surface polling; the 198/16 row was a transcription slip (53,454,
 rounded down).
 
@@ -105,7 +105,7 @@ OS 1.40C project at default recorder settings, each of the eight recorder
 buffers held 460 blocks of 0x1800 bytes: 2,826,240 bytes, 16.0 s of 16-bit
 stereo at 44.1 kHz. The length and cap arrays are `0x461053a8` and
 `0x461053e8` (14 and 6 literal references in the image ✅). One
-configuration in an emulator; no `RESERVED_RECORDER_LENGTH` setting (§1's
+configuration in an emulator; no `RESERVED_RECORDER_LENGTH` setting (section 1's
 keys) has been measured on hardware.
 
 ### 2a. The MEMORY page and RLEN MAX (port, 26 Sep 2026) ✅
@@ -156,53 +156,28 @@ pool cursor, `0x461053a8/e8`):
   stop, and whether the grown buffer is released on a fixed RLEN or a
   project reload.
 
-### 2b. RLEN PLEN (`modules/rlen-plen`, port, 26 Sep 2026) ✅
+### 2b. RLEN PLEN
 
-The fixed-length path, read for the module: the per-frame converter
-`0x40006da6..0x40006e12` runs while the record's length word (`fp@(32)`)
-is zero, `raw + 1 ≤ 64` takes the tempo product, anything above takes the
-MAX branch; the end of a fixed-length recording is posted at `0x40005e8e`
-(LIMIT `0x46c7fe24[track]` := the length), which a MAX recording never
-does. The stored byte is validated on every bank load at `0x40002c6e`
-with a hard-coded 64 (the file parser `0x400165dc` had stored 65; the
-validator wrote 64 over it), and the setup editor clamps with the
-descriptor's `min + count − 1` (`0x4002efd2`). The RECORDING SETUP screen
-pushes the RLEN formatter itself (`pea 0x4002f224` at `0x4002fb12`; the
-descriptor's slot-2 formatter word is 0). The sequencer's pattern length
-and scale, from its step function `0x4009da20`: bank `0x800065bd`, pattern
-`0x800065be`, record `0x400eb034 + p × 0x8ed8 + b × 0x9b340` (scale at +0,
-length at −1, a flag at +1 selecting the track record `0x400e21e0 + t ×
-0x91a + the same offset`, length +0x50, scale +0x51), ticks per step from
-`0x400aba50` = `3 4 6 8 12 24 48`; the blob pointer `[0x46c82456]` read
-`0x400e21e0`.
+The fixed-length path, the sequencer's pattern length and scale, and the
+module's measurements: `modules/rlen-plen/README.md`.
 
-Measured with the module (recfix image, one REC1 + PLAY trig on step 1,
-RLEN raw 65, DYNAMIC on), watches as §2a:
+## 3. Recording length arithmetic (checked against Bryan T's primer, 6 Sep 2026)
 
-| fixture | length | evidence |
-|---|---|---|
-| 64 steps 1/4X, 120 | 1,411,200 = 16 bars | end post at `0x40005e8e` each pass; cave rejoin with d4 = 0x158880 twice per frame |
-| 48 steps 1/2X, 128 | 496,125 = 6 bars, 3 passes | end post each pass |
-| 64 steps 1/4X, 120, program change to a trig-less A02 after start | 1,411,200, then **stops** | END froze at 1,411,200 (88,201 writes in 100,000 frames), one end post, no re-arm |
-| flag +1 set, T1 32 steps 1/8X, pattern pair 16 / 1X, 120 | the cave read the track pair (no end post before the next arm at 88,200) | the sequencer restarted T1 every 16 master steps — PER TRACK mode's master length is not modelled by the module; open |
-
-On stock and on the module image without the validator pokes the byte
-published to `0x80000cf4` was 64 and the MAX branch ran (`d0 = 0x41` at
-`0x40006db2`).
-
-## 3. The primer and the spreadsheet (Bryan T, 6 Sep 2026)
-
-*Sound-on-Sound Looping with the Octatrack* (PDF) and
-`octatrack_clickless_loops.xlsx`; not in this repo. The workbook's
-arithmetic is the firmware's: `tempo24` as above; length = RLEN ×
-15,876,000 / tempo24 (= `0x4006e3b2`'s `(raw+1) × 63,504,000 / (tempo24
-<< 2)`); clean ⇔ `MOD(8·RLEN·15,876,000, 8·M·tempo24) = 0`; 5,279 clean
-pairs, 60 golden tempos, 86 bar-length tempos all reproduce here. Primer
-claims checked: the converter runs on the arm path (✅, `0x40006dfc` per
-frame; never at RLEN MAX); displayed BPM ≠ actual (`.6` = 65 + 15/24) ✅;
-RLEN is measured against the master clock, no per-track scale term ✅; at
-MAX the recording ends at the next trig ✅; "the filter introduces clicks
-at the loop point" open. Emulator (7 Sep 2026, `git show
-3ceba41:docs/history/RTOS_FORK.md` §10.16): 128/RLEN 4 writes 20,672 every
-pass with arm spacings 20,672 ×7 then 20,671; 128/16 writes 82,687 with
-trigs at ⌊event⌋ (offsets 15, 15, 14, 14).
+Bryan T's *Sound-on-Sound Looping with the Octatrack* (PDF) and
+`octatrack_clickless_loops.xlsx` (his files, not in this repo) use the
+firmware's arithmetic:
+- length = RLEN × 15,876,000 / tempo24 (= `0x4006e3b2`'s `(raw+1) ×
+  63,504,000 / (tempo24 << 2)`); clean ⇔ `MOD(8·RLEN·15,876,000,
+  8·M·tempo24) = 0`. His 5,279 clean pairs, 60 golden tempos and 86
+  bar-length tempos all reproduce here.
+- ✅ The converter runs on the arm path (`0x40006dfc`, per frame; never at
+  RLEN MAX).
+- ✅ Displayed BPM ≠ actual (`.6` = 65 + 15/24).
+- ✅ RLEN is measured against the master clock, with no per-track scale
+  term.
+- ✅ At MAX the recording ends at the next trig.
+- ❓ "The filter introduces clicks at the loop point": open.
+- Under the emulator (7 Sep 2026,
+  `git show 3ceba41:docs/history/RTOS_FORK.md` section 10.16): 128 BPM / RLEN 4
+  writes 20,672 every pass with arm spacings 20,672 ×7 then 20,671; 128 /
+  16 writes 82,687 with trigs at ⌊event⌋ (offsets 15, 15, 14, 14).

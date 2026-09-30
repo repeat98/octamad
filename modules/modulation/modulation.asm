@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------------
 ; MODULATION -- a modulation pedal: JUNO, DIM, FLNG, COMB, PHSR, each a
 ; transcription of the source modules/modulation/modulation_ref.py names
-; (docs/effects/PORTS.md), proven against that float reference. Three sample
+; (modules/modulation/README.md "Sources"), proven against that float reference. Three sample
 ; loops, one chosen per block: LINE (JUNO, DIM and FLNG differ only in five
 ; per-block mix weights bl bd ff kc kb), PHSR, COMB. Insert contract
 ; (frames in place, knobs from r6, state in the r7 block). FX1 only: init reads the allocator base

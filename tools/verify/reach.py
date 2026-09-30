@@ -324,7 +324,8 @@ class Context:
 
     def __init__(self, module_key, remixes_of, gate_owners, remixes, exists=None, deps=None,
                  shared_scripts=(), remix_scripts=(), gate_shared=None, make_base=None, make_head=None,
-                 all_remixes=False, read=None, read_base=None, quick=False, test_remixes=()):
+                 all_remixes=False, read=None, read_base=None, quick=False, test_remixes=(),
+                 test_carriers=None, include_tests=True):
         self.module_key = module_key        # module directory -> key
         self.remixes_of = remixes_of        # key -> sorted remix names carrying it
         self.gate_owners = gate_owners      # verifier path -> keys whose manifests name it
@@ -335,6 +336,8 @@ class Context:
         # gate run at least once (28 Sep 2026; 9 of 27 that day).
         self.quick = quick
         self.test_remixes = set(test_remixes)
+        self.include_tests = include_tests
+        self.test_carriers = test_carriers or {}   # key -> test remixes carrying it (when they are left out)
         self.floor = list(remixes) if all_remixes else self.cover()
         if quick and not all_remixes and self.floor:
             # QUICK: the one cover remix carrying the most modules stands for
@@ -398,6 +401,14 @@ class Context:
     def every_remix(self):
         return [cmd_check_remix(r) for r in self.floor]
 
+    def identity(self):
+        """`make identity` over the remixes in play (the test remixes left out
+        unless TESTS=1)."""
+        kind, cmd = CMD["identity"]
+        if self.include_tests:
+            return (kind, cmd)
+        return (kind, cmd + " --remixes " + " ".join(sorted(self.remixes)))
+
     def build_change(self):
         """A change to the build: refhash (the flag matrix), identity (the
         remixes whose image moved, checked by --run), the shared half once
@@ -406,7 +417,7 @@ class Context:
             # QUICK: refhash pins the build's flag matrix; `make identity`
             # (every remix built twice) is FULL=1's
             return [CMD["refhash"], CMD["test-acceptance"], cmd_check_shared(self.floor)]
-        return [CMD["refhash"], CMD["identity"], CMD["test-acceptance"], cmd_check_shared(self.floor)]
+        return [CMD["refhash"], self.identity(), CMD["test-acceptance"], cmd_check_shared(self.floor)]
 
     def dependents(self, path):
         """Every file that depends on `path`, transitively."""
@@ -425,14 +436,22 @@ class Context:
         return seen
 
     @classmethod
-    def from_registry(cls, base=None, all_remixes=False, quick=False):
+    def from_registry(cls, base=None, all_remixes=False, quick=False, include_tests=False):
         from remix import registry
         mods = registry.modules()
         module_key = {m.name: m.key for m in mods.values()}
+        # The remixes in play: remixes/ only, unless TESTS=1 (the one-module
+        # remixes under remixes/test/ are left out of every list, 30 Sep 2026)
+        tests = [n for n in registry.remix_names() if registry.is_test(n)]
+        names = [n for n in registry.remix_names() if include_tests or n not in tests]
         remixes_of = {k: [] for k in mods}
+        test_carriers = {}
         for name in registry.remix_names():
             for k in registry.remix(name).modules:
-                remixes_of.setdefault(k, []).append(name)
+                if name in names:
+                    remixes_of.setdefault(k, []).append(name)
+                else:
+                    test_carriers.setdefault(k, []).append(name)
         gate_owners, gate_shared = {}, {}
         for m in mods.values():
             for g in getattr(m, "gates", ()):
@@ -448,12 +467,12 @@ class Context:
             return r.stdout if r.returncode == 0 else None
         make_base = read_base("Makefile")
         return cls(module_key, {k: sorted(v) for k, v in remixes_of.items()}, gate_owners,
-                   registry.remix_names(), deps=scan_deps(),
+                   names, deps=scan_deps(),
                    shared_scripts=recipe_scripts(make_head, "verify-shared"),
                    remix_scripts=recipe_scripts(make_head, "verify-remix"),
                    gate_shared=gate_shared, make_base=make_base, make_head=make_head,
                    all_remixes=all_remixes, read_base=read_base, quick=quick,
-                   test_remixes=[n for n in registry.remix_names() if registry.is_test(n)])
+                   test_remixes=tests, test_carriers=test_carriers, include_tests=include_tests)
 
 
 def route_tool(path, ctx):
@@ -513,11 +532,11 @@ def route_makefile(ctx):
     # flag default) or how a gate runs: identity names the moved images,
     # the floor runs the gates.
     if other:
-        gates += ([] if ctx.quick else [CMD["identity"]]) + ctx.every() + [CMD["ci"]]
+        gates += ([] if ctx.quick else [ctx.identity()]) + ctx.every() + [CMD["ci"]]
         notes.append("variables or defines changed: " + ", ".join(other) + f": identity + {ctx.floor_note()}")
     check = [t for t in targets if t in MAKE_CHECK]
     if check:
-        gates += ([] if ctx.quick else [CMD["identity"]]) + ctx.every() + [CMD["ci"]]
+        gates += ([] if ctx.quick else [ctx.identity()]) + ctx.every() + [CMD["ci"]]
         notes.append("the check graph: " + ", ".join(check) + f": identity + {ctx.floor_note()}")
     runner = [t for t in targets if t in MAKE_RUNNER]
     if runner:
@@ -607,6 +626,9 @@ def classify(paths, ctx):
                 if remixes:
                     gates = [cmd_check(r) for r in remixes] + [cmd_accept(r) for r in remixes]
                     note = f"{key} -> " + ", ".join(remixes)
+                elif ctx.test_carriers.get(key):
+                    note = f"{key}: carried only by test remixes ({', '.join(sorted(ctx.test_carriers[key]))}): not checked; TESTS=1 runs them"
+                    gates = [CMD["selftest"]]
                 else:
                     note = f"{key}: no remix carries it (the selftest refuses this)"
                     gates = [CMD["selftest"]]
@@ -632,6 +654,9 @@ def classify(paths, ctx):
                 # module the deletion orphaned, and the index is re-rendered
                 # (verify_docs).
                 note = "removed remix: the selftest and the index"
+                gates = [CMD["selftest"], CMD["verify_docs"]]
+            elif name in ctx.test_remixes and not ctx.include_tests:
+                note = "a test remix: not checked (TESTS=1 runs it)"
                 gates = [CMD["selftest"], CMD["verify_docs"]]
             else:
                 gates = [cmd_check(name), cmd_accept(name)]
@@ -790,6 +815,8 @@ def main(argv=None):
     ap.add_argument("--keep-going", action="store_true", help="with --run: run every command, then one table")
     ap.add_argument("--jobs", type=int, default=1,
                     help="with --run: the check-remix lines through check_shards.py, N worktrees at a time")
+    ap.add_argument("--tests", action="store_true",
+                    help="include the remixes under remixes/test/ (left out by default)")
     ap.add_argument("--full", action="store_true",
                     help="every gate a change reaches: the cover, identity, accept, every carrying remix, full speed "
                          "(the default is quick: see the module docstring)")
@@ -803,7 +830,7 @@ def main(argv=None):
     quick = not a.full
     if quick and a.jobs == 1:
         a.jobs = 2
-    ctx = Context.from_registry(base=merge_base or a.base, all_remixes=a.all, quick=quick)
+    ctx = Context.from_registry(base=merge_base or a.base, all_remixes=a.all, quick=quick, include_tests=a.tests)
     rows = classify(paths, ctx)
     if merge_base:
         print(f"reach: {len(paths)} changed path{'s' if len(paths) != 1 else ''} against {a.base} ({merge_base[:10]})")

@@ -115,34 +115,12 @@ reads `X:0x015c7` with a ×4 index):
   cycles at the cost of an address and a modulo register in the module
   with the tightest register pressure; the GRAIN window sites cannot (they
   need `s(g) + s(1−g) = 1` exactly; best stock complementarity error 0.24).
-- BodeShift's carrier from `X:0x06c00` was built and measured: 344 → 328
-  cycles, every gate identical (sideband suppression 41.5 / 29.6 / 18.7 dB
-  at 440 Hz / 1 kHz / 5 kHz), and a full spectrum scan showed two new
-  components at −72.5 dB (3,860 Hz and 5,249 Hz), phase-quantisation
-  products of the 1,024-point table, which the sideband gate cannot see.
-  Reverted: `mutables`' worst core is 1,376 of 3,120. The parabola
-  (`sb_sin`, 21 instructions, max error 1.09e-3 ≈ −59 dB) is below the
-  Hilbert pair's residual already; a linearly interpolated read reaches
-  −107 dB at ~22 instructions and saves nothing.
-
-The twelve-instruction table read, for whoever reconsiders it (`p` is Q23
-spanning −1..1 for −π..π, so the index is `p·512`):
-
-```
-sb_sin:                         ; in: a = p    out: a = sin(pi*p)
-        asr     #$e,a,a         ; -> integer index, signed
-        move    a1,x0
-        move    x0,a            ; A2-clean (asr is fine, the `and` is not)
-        and     #>$3ff,a        ; wrap to 0..1023
-        move    a1,x0
-        move    x0,a
-        move    #>$6c00,x0      ; table base, 1024-aligned
-        add     x0,a
-        move    a,r1
-        move    #>$ffffff,m1
-        move    x:(r1),a
-        rts
-```
+- A carrier read from the 1,024-point sine at `X:0x06c00` was built and
+  measured for BodeShift (removed 27 Sep 2026;
+  `git show 8e934a57^:modules/bodeshift/`): 344 → 328 cycles, and two
+  phase-quantisation products at −72.5 dB (3,860 Hz and 5,249 Hz) that a
+  sideband gate cannot see. A linearly interpolated read reaches −107 dB
+  at ~22 instructions.
 
 ## Payload-relative addresses (Bryan T, 14 Sep 2026) ✅
 
@@ -167,7 +145,7 @@ single-payload render dumps payload A. Our modules' `#>` immediates in
 `0x438..0x1cd8` (156 sites) were read 14 Sep 2026: modulo masks, bus
 scratch (`$901`…`$9da`, placed identically on both cores), a tap length
 (1407), a decay coefficient (`$755`); none reads a stock table.
-`FAILURE_MODES.md` carries the failure mode. His fix (an `xtables` field on
+`docs/contributing/FAILURE_MODES.md` carries the failure mode. His fix (an `xtables` field on
 `DspSection`, immediates rewritten per payload with the delta read from
 the image being built) is in his fork, not landed here. Also argued for:
 a build flag on undeclared absolute X literals in the relocated range; a

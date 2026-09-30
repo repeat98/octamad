@@ -16,4 +16,4 @@ Local render only (`make verify-miniverb`: both cores, isolation, dirty memory, 
 make image REMIX=miniverb BUILD=1   # -> out/OCTATRACK_OCTABAM1.bin
 ```
 
-[BUILDING.md](../../../docs/remixes/BUILDING.md) is the walk-through from a fresh machine to a flashed unit. `make check REMIX=miniverb` runs every gate first.
+[BUILDING.md](../../../docs/guide/BUILDING.md) is the walk-through from a fresh machine to a flashed unit. `make check REMIX=miniverb` runs every gate first.

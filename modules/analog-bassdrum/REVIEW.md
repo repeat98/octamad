@@ -113,6 +113,10 @@ from these local runs.
 
 ## Browser-only selection and default levels
 
+The gain figures in this section describe the 29 September revision.
+On 30 September both source outputs were raised by 12.04 dB; see README.md
+and CPU.md for current levels and the exact output/state checks.
+
 The follow-up removes the page-2 MODEL control (label, enable bit and value
 widget). Its former encoder is intercepted before stock's parameter write;
 merely hiding the knob would still let that writer overwrite the engine id.
@@ -167,3 +171,34 @@ unrecorded GCC version. This is not a green repository-wide acceptance run.
 
 The reach plan completed five of six top-level gates successfully; its
 aggregate acceptance command returned exit 2.
+
+## Output gain and current validation, 30 September 2026
+
+Both source outputs now have +12.04 dB gain relative to the preceding
+revision. The 808 balancing coefficient is 0.86 and the 909 has an exact
+integer ×4 stage after its original limited desk sample. Neither changes
+internal state. Default peaks are −7.31/−1.59 dBFS (808/909); 500 ms RMS
+is −20.19/−20.21 dBFS. The 909's output stores limit overloads at full scale.
+Current standalone and complete eight-track costs are recorded in CPU.md.
+
+The branch was rebased onto octabam main `3c9c8d0d66` before running:
+
+| Command | Result |
+|---|---|
+| `make emu-cf` | Passed with this worktree's fresh port build |
+| `python3 tools/verify/verify_docs.py` | Passed: 45 modules / 35 remixes |
+| `make test-acceptance` | Passed: 105 tests |
+| `scripts/refhash.sh check` | Passed: all 24 configurations/reports identical to a baseline saved from pristine current main |
+| `make check-shared REMIXES="analog-bassdrum octatrick"` | Passed, including original hashes, exact scaled output/state and nominal levels |
+| `python3 tools/verify/check_shards.py --jobs 2 analog-bassdrum octatrick` | Analog BD passed every per-remix/image gate; octatrick failed its USB-input assertion with 13 underruns, 0 overruns, 0 reprimes |
+| `python3 tools/verify/image_identity.py --base upstream/main --remixes octatrick --reports` | Passed: image and build report identical |
+| `python3 tools/harness/benchmark_analog_bd.py` with the two cases and arguments recorded in CPU.md | Passed: both 900-frame eight-track runs delivered controls and stereo audio on every track |
+
+The required QUICK reach command was `OT_PROJECT=<fixture> make reach
+BASE=upstream/main RUN=1 KEEP=1 JOBS=2`. Four of its five top-level gates
+passed; the sharded check returned nonzero for octatrick. The exact image
+used by its failed USB check was additionally compared against a pristine
+main build with the same BUILD=79 flags: both SHA256 values are
+`862df46eccb178477fabb4561cc0da05613b782989346a2b2a40e639a6f27a4d`.
+The PR does not change that failing image. The aggregate reach run is not
+reported as green. The prior strict-pressure and hardware limits remain.

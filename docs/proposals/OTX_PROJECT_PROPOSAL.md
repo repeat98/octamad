@@ -48,7 +48,7 @@ The shared settings menu (name still open) shows only modules included in the
 firmware, plus the core's GENERAL module. An
 alternative firmware can exchange settings only if it adopts this format and
 the same module ids. Stock project-copy commands may not carry the OTX pair;
-that behavior is a required test (§5). Nothing here is implemented yet.
+that behavior is a required test (section 5). Nothing here is implemented yet.
 The UNIT filename and project-copy behavior still require agreement.
 
 ```text
@@ -101,7 +101,7 @@ settings. Concretely:
   or its own menu category any more. Octalab would move its meta-settings to
   this format and drop its OCTALAB root category, like everyone else.
 - A module's personal material (Octalab's grooves, Octakit's
-  Kits) stays in that module's own files, as the rule above says (§3.5).
+  Kits) stays in that module's own files, as the rule above says (section 3.5).
 - USB AUDIO's profile (OFF / LIGHT / FULL) is the first new setting. It is
   an optional module, so its row exists only in images that carry it.
 
@@ -111,7 +111,7 @@ settings. Concretely:
 
 ### 2.1 Where settings live now
 
-- **In the Part** — every FX module's twelve parameters. ✅ [`MODULES.md`](../remixer/MODULES.md) names the trap: "a stored value does the same, and the schema cannot see
+- **In the Part** — every FX module's twelve parameters. ✅ [`MODULES.md`](../contributing/MODULES.md) names the trap: "a stored value does the same, and the schema cannot see
   it". A Part saved under an older layout gives the new layout its old bytes,
   and a value outside the new count stalls the sequencer. Part parameters
   stay where they are. This proposal is for everything that is *not* a Part
@@ -140,17 +140,17 @@ settings. Concretely:
   Octalab removes the file and writes it again, as the stock does for its
   own files (job `0x16`: remove, then write). A power cut during a write can
   leave the file missing or short; draft 2 accepts that same risk and relies
-  on the saved `otx.strd` copy (§3.3).
+  on the saved `otx.strd` copy (section 3.3).
 - **The project folder** is `"%s/%s"` of the set path `0x100f8480` and the
   project name `0x100f8378` ✅. `FUN_400255ec() != 0` means a project is
   open.
 - **A fifth MAIN MENU root category** made only of data (✅ MKI 7 Sep 2026;
-  [`MAINMENU.md`](../firmware/MAINMENU.md) §5): a heading row has a null action and the cursor skips
+  [`MAINMENU.md`](../firmware/MAINMENU.md) section 5): a heading row has a null action and the cursor skips
   it; the rows carry their value in the label. A shared toggle routine finds
   the row from the descriptor's absolute selection at `+0x0c` (✅ MKI 8 Sep
   2026). There is **no free page id** for a stock-style settings page, so a
   list whose labels change is the widget.
-- **The limit this removes.** ✅ [`MAINMENU.md`](../firmware/MAINMENU.md) §5: "Two modules that both
+- **The limit this removes.** ✅ [`MAINMENU.md`](../firmware/MAINMENU.md) section 5: "Two modules that both
   grow one submenu cannot coexist (the build refuses the second)". Each
   module that wants a row currently has to own a menu.
 
@@ -281,7 +281,7 @@ exports them to the linked module. A module can declare a bounded blob for a
 small meta-setting that is not a scalar (for example, a generator setup);
 it supplies pack/unpack callbacks. A blob in `.OTX` remains **configuration**.
 Grooves, Kits, presets, samples and any other transferable creative content
-never become blobs in this container (§3.5).
+never become blobs in this container (section 3.5).
 
 ### 3.2 Shared core, absent modules and lifecycle
 
@@ -321,9 +321,9 @@ invokes each applicable callback once with the resulting value. It invokes
 callbacks again after edits. A callback must be safe to receive the same
 value on repeated loads. The `unit_loaded` event must occur before a
 setting can affect USB descriptors; that boot ordering has not yet been
-measured (§5).
+measured (section 5).
 
-Automatic OTX writes run as jobs in the stock engine job queue (§2.2), never
+Automatic OTX writes run as jobs in the stock engine job queue (section 2.2), never
 in the UI task. The UI
 must not acquire or wait on `FS_MUTEX` for OTX. Edits are coalesced into one
 bounded job after roughly two seconds idle (initial target to tune on MKI),
@@ -369,7 +369,7 @@ former fixed A/B slots, sector alignment, generation counters and
 **Fresh, normal, recovered or damaged: decided by what is on the card**
 (Sam Banks' rule of 27 Sep 2026, completed with the cases it did not list).
 "Invalid" means the whole file fails its header, length or CRC checks; one
-bad module inside a valid file is that module's `LOAD ERR` only (§3.2).
+bad module inside a valid file is that module's `LOAD ERR` only (section 3.2).
 
 | `otx.work` | `otx.strd` | Meaning | Action |
 |---|---|---|---|
@@ -396,7 +396,7 @@ Why the rows Sam's three cases did not cover matter:
   overwritten, and only by an explicit save; to confirm with the authors).
 - A fresh project and a project whose OTX pair was lost by a copy that
   omits it look identical on the card. That is why the SAVE TO NEW / COLLECT
-  / EXPORT copy test (§5) is mandatory.
+  / EXPORT copy test (section 5) is mandatory.
 
 Recovery from `otx.strd` reverts OTX edits made since the last SAVE PROJECT
 and is always reported. No automatic path writes defaults over an unreadable
@@ -498,7 +498,7 @@ scrolling and back-navigation need emulator and MKI checks.
 
 In the existing stock menu widget, a row inside a pane cannot descend into
 another submenu, and no free page id is known
-([MAINMENU.md](../firmware/MAINMENU.md) §5). A different UI mechanism would
+([MAINMENU.md](../firmware/MAINMENU.md) section 5). A different UI mechanism would
 need proof. A flat 26-row OCTALAB
 category was used on the MKI in OLT02 with arrow navigation.
 

@@ -2,7 +2,7 @@
 
 OS 1.40C. The Echo Freeze DELAY (FX2 id `0x08`) does not run on the DSP.
 Its DSP dispatch is a passthrough; the audio goes to the ColdFire in the
-post-FX2 read-back (`DSP.md` §6c), a per-frame routine at `0x400031a0`
+post-FX2 read-back (`DSP.md` section 6c), a per-frame routine at `0x400031a0`
 runs all eight tracks over per-track rings in SDRAM, and the result comes
 back to core 0 at `X:0x4400`. The DSP side of that ruling is `DSP.md`
 "The stock DELAY" (reachability, the id-8 substitution on hardware).
@@ -10,7 +10,7 @@ back to core 0 at `X:0x4400`. The DSP side of that ruling is `DSP.md`
 Status key as `CHIP.md`: ✅ read from our image or measured · 🟡 adopted on
 the author's evidence · ❌ retracted.
 
-## 1. The routine (Bryan T, `octatrack-delay-architecture.md`, 30 Aug 2026) 🟡
+## 1. The routine (Bryan T, `octatrack-delay-architecture.md`: his notes, not in this repo; 30 Aug 2026) 🟡
 
 | | |
 |---|---|
@@ -33,12 +33,12 @@ sustain 4-second delays because each has its own ring in CPU SDRAM.
 (verified only for the audio ISR `0x4000aad0`). The staged delay-time
 word `0x80005fa0` is written by the routine itself at `0x40003284..88`
 from the staged record `0x80001a00 + 96·snapshot + 12·track` (✅ 31 Aug
-2026; ❌ "96·track" until 22 Sep 2026, §2). Open: the gain-to-knob mapping
+2026; ❌ "96·track" until 22 Sep 2026, section 2). Open: the gain-to-knob mapping
 in the EMAC block; the units of the staged word.
 
 ## 2. The frame, the snapshots and the track loop ✅ objdump (22 Sep 2026)
 
-Re-read with `scripts/disasm.sh emac` against Jannik Aßfalg's note (§3):
+Re-read with `scripts/disasm.sh emac` against Jannik Aßfalg's note (section 3):
 
 - Entry `0x400031a0`: `lea -148(%sp)`, `movem.l d2-d7/a2-fp`, the EMAC
   state (MACSR, ACCEXT01/23, acc0-3, MASK) saved at `sp+116`, then
@@ -55,7 +55,7 @@ Re-read with `scripts/disasm.sh emac` against Jannik Aßfalg's note (§3):
   track `sp+72 += 12` (knobs), `sp+76 += 8` and `sp+92 += 8` (setup),
   `sp+80/84/100/104 += 68` (state records), `sp+96 += d5` (audio),
   `sp+108 += 1`. So the routine walks all eight tracks every frame, and
-  §1's open "whether tracks 5–8 share the function" is closed.
+  section 1's open "whether tracks 5–8 share the function" is closed.
 
 The frame slots a hook sees:
 
@@ -122,29 +122,11 @@ frame):
   ordering and resulting bytes; it cannot show arbitration, overlap,
   coherency or stalls.
 
-## 4. Cost, and what is not measured
+## 4. Cost
 
-Per eight-track 16-sample frame under the port's instruction meter (his
-`tools/verify/verify_tapeecho_cpu.py`, PR #357):
-
-| case | instructions |
-|---|---|
-| stock DELAY ×8, original | 7,628 |
-| stock DELAY ×8, hooked, every track stock | 7,900 (7,892 in PR #357) |
-| Tape Echo ×8, settled full wet, WOW=44 | 15,283 (~23,000 in PR #357) |
-| Tape Echo ×8, MIX=90, moving TIME | 16,459 (25,271 before 23 Sep 2026) |
-| Tape Echo ×8, all controls moving | up to 21,547 (32,355 in PR #357) |
-
-✅ Current figures after Tape Echo's stock-style EMAC rewrite (23 Sep 2026,
-`modules/tapeecho/VOICING.md`); the PR's figures are kept beside them.
-
-Executed instructions, ColdFire, complete routine, not cycles: the meter
-prices an uncached SDRAM access at one cycle and sees no cache, DMA stall
-or scheduler. The frame period is 363 µs, ~95,800 cycles at 264 MHz,
-shared with everything else the ColdFire runs. His unit freezes as Tape
-Echo instances grow (`FAILURE_MODES.md`, "Freeze without an exception
-screen as ColdFire delay-routine work grows"); those freezes are the only
-bracket on the routine's budget.
+Tape Echo's instruction counts per frame against stock DELAY's, and what
+the meter cannot see: `modules/tapeecho/README.md` "CPU integration" and
+`git show 666b6154:modules/tapeecho/VOICING.md`.
 
 ## 5. Consequences for the bus
 

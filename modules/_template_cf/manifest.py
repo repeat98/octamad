@@ -7,8 +7,8 @@ are skipped by the registry, so this file is never built.
 
 modules/repitch/ is a finished one (one linked unit, detours, pokes);
 modules/midi-scenes/ another (units built from the author's repository as
-a submodule). docs/remixer/MODULES.md "Declaring a ColdFire
-module" is the guide; docs/remixer/PLACEMENT.md says where the bytes go.
+a submodule). docs/contributing/MODULES.md "Declaring a ColdFire
+module" is the guide; docs/contributing/PLACEMENT.md says where the bytes go.
 
 Say what the module is, which stock routines it changes, what is measured
 and what is inferred. Delete every comment below once answered.

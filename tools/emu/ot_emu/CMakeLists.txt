@@ -137,7 +137,7 @@ target_link_libraries(ot_machine PUBLIC 68kEmu dsp56kEmu)
 add_executable(ot_emu main.cpp)
 target_link_libraries(ot_emu PRIVATE ot_machine)
 
-# THE GATE. `docs/firmware/RTOS_FORK.md` section 10.16: three defects in Unicorn's EMAC
+# THE GATE. `docs/history/RTOS_FORK.md` section 10.16: three defects in Unicorn's EMAC
 # cost a week, each producing a confident wrong finding. Nothing this emulator
 # computes is trustworthy until this passes.
 include(CTest)

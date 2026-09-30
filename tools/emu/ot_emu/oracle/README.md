@@ -11,9 +11,10 @@ Exit 0 = every check PASS. The report is echoed and saved under
 `out/_oracle/runs/<sha256[:12]>/<check>/` (a binary with the same bytes is
 never rerun unless `--fresh` or its inputs' size/mtime changed; reference ==
 candidate reruns the candidate side into `runs/<sha>-b/` as the determinism
-check). Written 12 Sep 2026 as `out/_agents/speed-oracle/` for the speed
-work (COLDFIRE_PORT.md O15a–O15f), moved here with audio tolerances for
-Phase B (O16a).
+check). Written 12 Sep 2026 by Tim Hastie as `out/_agents/speed-oracle/`
+for the speed work (O15a–O15f), moved here with audio tolerances for
+Phase B (O16a); the milestone records are
+`git show 666b6154:docs/firmware/COLDFIRE_PORT.md`.
 
 ## Inputs — nothing here is in git
 
@@ -77,9 +78,16 @@ WHEN the audio starts). Byte-identical files short-circuit (no decode).
 Everything else — logs, serial, goldens, UART stream, per-step
 sizes, peeks, replies, `ready` — is always byte-strict, whatever the flags.
 
-**The Phase B contract** (`phase_b.sh`, COLDFIRE_PORT.md O16a):
+**The Phase B contract** (`phase_b.sh`, O16a):
 `--audio-tol 2 --wav-tol 8 --audio-frac 0.5 --frame-tol 1`, against both
-references. Steps that change no schedule (B0, B1) are held at 0.
+references. Steps that change no schedule (B0, B1) are held at 0. Phase B
+changes the DSP pair's scheduling, and any change of the core interleave
+(quanta 1 / 64 / 2,000 / 50,000, measured in O12) moves a few samples of a
+reverb return by one LSB at a host-frame edge; the hardware runs the two
+cores in parallel. What is held byte-strict is the firmware's observable
+behaviour: screens, LEDs, sequencer timing, the goldens' dispatch order.
+The audio must stay sample-aligned, and the `run` frame counts and capture
+lengths may move by 1 only where a frame edge lands on a run boundary.
 
 Checked on real captures (12 Sep 2026, the Phase A `interdsp.pcm` and
 `run3_core0.wav`): identical → `PASS` in 0.02 s / 0.04 s; 300 samples moved by
@@ -118,8 +126,14 @@ count 124447 / 124446, 0 samples differ); 500 words of the WAV moved by
   (`reports/20260912-131027-b0-1e76ac5-vs-73c2815.txt`); the 73c2815 side
   came from the cache, the pre-speed side ran (card 42 s, render 73 s,
   interdsp boot 63 s + 43 s of `run`).
-- Negative control and `phase_b.sh` on a plain-LTO HEAD build: see
-  COLDFIRE_PORT.md O16a.
+- Negative control: `ref-73c2815` wrapped with `--rtc 1000000001`, with the
+  Phase B tolerances on: **14 PASS, 13 FAIL** (27 checks, no ctest; report
+  `20260912-131239-b0-negctrl`). It fails on the `rtc` boot-log line, the
+  goldens at char 4870, `card.serial_a` at byte 5147, the UART stream at
+  byte 5234 and the clock record; both audio captures stay identical. The
+  tolerance flags loosen nothing outside the audio.
+- `phase_b.sh` on a plain-LTO HEAD build (sha `089bd73fb869`): 28 PASS
+  against each reference, 54 s + 4 s.
 
 The compared UART stream, decoded with `tools/panel/panel_link.py`: 2545
 messages, 0 unknown — 1651 LCD blocks, 181 LED rows, 712 LED levels, 1 hello
@@ -132,7 +146,10 @@ redraw, MIXER 1,134, T1 double tap 1,202, PLAY 216, 2 s of play 574, STOP 178).
 - Knobs/encoders (rows 0x30-0x36), FUNC chords, SETUP pages, the file
   browser, the crossfader, audio IN (`--audio-in`), core 1 / `audio start
   cue|all`, `--frame-timer` with `--dsp`, `--boot-logo`, long play (RSS growth),
-  `pace on` (the wall pacer is off in every job).
+  `pace on` (the wall pacer is off in every job), threads and shutdown
+  timing (a change that adds threads is checked separately: a
+  `-fsanitize=thread` Debug build through `drive.py`, a measured
+  quit/EOF/SIGTERM).
 - The panel server's own endpoints (`/screen.txt`, `/leds`, takes) are
   decodes of the same UART stream by `tools/panel/panel_link.py`; the UART
   byte diff subsumes them, the server's wall pacing is not exercised.

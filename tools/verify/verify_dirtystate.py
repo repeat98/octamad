@@ -8,7 +8,7 @@ master: Spectrum's filter B keeps its two HP poles at cHP = 0 FROZEN, so a
 stale h2 was subtracted from every sample forever -- a DC offset of up to
 full scale on a station's output, invisible in an AC-coupled capture, that
 the master compressor's makeup clipped on one channel ("R collapses above
-COMP 40"; docs/remixer/FAILURE_MODES.md).
+COMP 40"; docs/contributing/FAILURE_MODES.md).
 
     python3 tools/verify/verify_dirtystate.py [remix] [--image out/mainos_bus.bin]
 

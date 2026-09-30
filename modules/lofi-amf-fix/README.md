@@ -1,4 +1,4 @@
-# LOFI AMF fix
+# `lofi-amf-fix` — LOFI AMF FIX
 
 Fixes stock LO-FI's AMF knob jumping the pitch backwards at some settings:
 one DSP multiply, in both payloads. Ported from [bryantysinger/octa-bt-pt](https://github.com/bryantysinger/octa-bt-pt).
@@ -25,14 +25,21 @@ the stock image:
 ```
 
 Both addresses resolved with `tools/build/dsp_modmap.py` hold those stock
-bytes. `make check REMIX=lofi-amf-fix` passes; the module composes with
-everything (it claims no free space).
+bytes.
 
 Not reproduced here: his 128×128 (AMF × Fine) sweep with zero monotonicity
 violations after the fix.
 
+## On the unit
+
+Not flashed.
+
 ## Open
 
-- Never flashed.
 - The addresses are fixed, not re-resolved per build. If a remix ever
   harvests LO-FI's code, each poke's `expect` refuses the build.
+
+## Gates
+
+`make check REMIX=lofi-amf-fix` passes; the module composes with
+everything (it claims no free space).

@@ -41,6 +41,7 @@ One module each, for that module's gates: `make check REMIX=<name>`.
 | [`midi-scenes`](../../remixes/test/midi-scenes/README.md) | Reference minimal build: the MIDI SCENES ColdFire patch, alone. | `make check`: on hardware inside `ok-ms` |
 | [`miniverb`](../../remixes/test/miniverb/README.md) | Minimal allocator-owned FDN reverb. | local render: `make verify-miniverb` |
 | [`octakit`](../../remixes/test/octakit/README.md) | Em's Octakit alone -- must reproduce her own build byte for byte. | `make check`: on hardware inside `ok-ms` |
+| [`pmap-probe`](../../remixes/test/pmap-probe/README.md) | Hardware probe for the DSP's 16K program map (MAIN L core 0, R core 1: 882 Hz pass, 110 Hz fail). | `make check`: builds; under the port it passes by construction; the unit is the measurement |
 | [`repitch`](../../remixes/test/repitch/README.md) | stock effects with variable-speed REPITCH in the TSTR selector. | on hardware: repeat98's MKII, 16 Sep 2026 (OCTABAM81) |
 | [`tapeecho`](../../remixes/test/tapeecho/README.md) | Tape Echo replacing Spring Reverb, alone. | on hardware: the author's unit (OCTACLID4): six instances; a seventh freezes it, open |
 | [`usb`](../../remixes/test/usb/README.md) | The rig + USB MIDI (class-compliant, mirrors DIN). | `make check` |

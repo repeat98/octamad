@@ -263,3 +263,43 @@ unchanged state; logs are `publication-full-check.log` and
 `publication-capacity-proof.log` under `out/dsp-dynload/`. See the runtime
 module's [route audit](../../../modules/dsp-dynload/PUBLICATION.md) for the
 remaining barriers to reclaiming original code.
+
+## Y buffers and the 16K program map (30 Sep 2026)
+
+What the loader frees is program words; what the next step needs is a bigger program map, and
+that costs Y. Measured and read off the stock payloads (per core, pristine 1.40C):
+
+- **Stock reserves 77,824 Y words for effect buffers** through one 8-word table, `X:0x255`
+  (`0x1000 0x4000 0x1c00 0x8000 0x2800 0x30000 0x3400 0x34000`, FX1/FX2 interleaved per position;
+  payload B's shared entries are `0x38000`/`0x3c000`). Only the dispatcher sets `X:0x213` (to
+  `0x255`, then one entry per call).
+- **Stock reads its base once, in init.** Seven stock effects read `X:(X:0x213)` (ids 0x05, 0x11..
+  0x16), all at the top of their init, and keep it in their r7 state; no proc reads the table. So a
+  slot's buffer can be moved by writing its table entry before its init, with no effect code touched.
+- **Init runs in the frame a slot's id changes**: the old effect's a=0 sub-block, then the new
+  effect's init and its a=1 sub-block, on the same r7 block and the same table entry. A moved
+  buffer must not overlap the outgoing effect's, which runs in that frame on its stashed base:
+  the loader's rule of keeping outgoing allocations until an acknowledged unbind covers it.
+- **Most effects use none of their buffer** (the other session's census, `-dirty` + `-dumpy` in
+  `dsp_host`, one wet render each at default knobs, which may understate): FILTER, EQUALIZER, DJ EQ,
+  PHASER, COMPRESSOR, LO-FI 0 words; FLANGER 2,048, SPATIALIZER 2,656, CHORUS 3,068, COMB 3,072 of
+  3,072; PLATE 12,265, SPRING 3,502, DARK 13,199 of 16,384.
+- **Our FX1 modules read the base as a signal**: Character, Spectrum and Modulation decide FX1 vs
+  FX2 from `base >= 0x4000`. Any allocator keeps FX1 bases below `0x4000` and FX2 bases at or above.
+- **Boot zeroes Y from `0x4000` for `0x8000` words** (to `0xBFFF`) and the core's shared half by the
+  same count (`P:0x40`, both payloads).
+
+**The 16K map** (MS = 1, MSW = 11: 16K P, 36K X, 40K Y) removes Y `0xA000..0xBFFF`: the upper half
+of the second private FX2 block. So:
+
+- It is incompatible with BusVerb and BusDelay as they are placed (32K of private Y at
+  `0x4000..0xBFFF`, hardcoded): a 16K-map remix carries neither server.
+- With stock's own block sizes and alignments (FX1 3K at `0x400` alignment below `0x4000`, FX2 16K at
+  `0x4000` alignment), each core keeps four FX1 blocks and three FX2 blocks (`0x4000` private, two in
+  the shared half). A dynamic allocator that hands a block only to a slot whose effect reads its base
+  (and, for the shared half, across cores) fits any part with at most three buffered FX2 effects per
+  core, six over both; beyond that the Part is refused, as the P loader refuses what does not fit.
+- Without the 16K map, dynamic buffers buy nothing today: stock already gives every slot its block.
+
+**Status: the map is unmeasured.** `modules/pmap-probe` is the one-flash hardware probe (882 Hz on
+MAIN = pass per core). The dynamic buffer allocator is designed, not built: it waits on the probe.

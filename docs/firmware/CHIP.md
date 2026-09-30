@@ -265,7 +265,10 @@ instructions are `andi #$fc,mr`); the Y sweep is Fig 3-2's 48K to the
 word; payload A's P code ends at `0x01fdf`, 33 words short of `0x2000`, so
 program space is the wall by a setting, not silicon. Fig 3-6 is ruled out
 (stock's X modules reach `0x08d98`). Shared RAM is program-addressable in
-every map. Switching the map is an untested lever (`XBUS.md`).
+every map. Switching the map is an untested lever (`XBUS.md`); `modules/pmap-probe` is the
+one-flash probe for the 16K map (30 Sep 2026, not flashed; the port cannot answer it: its
+emulator ignores OMR MS). Under that map Y ends at `0x9FFF`, which BusVerb's and BusDelay's
+private `0x4000..0xBFFF` do not fit (`tools/experimental/dsp_dynload/README.md`).
 
 ### What is in the shared window (static analysis)
 

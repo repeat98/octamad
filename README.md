@@ -136,6 +136,8 @@ the local emulator.
 | [**DSP DYNLOAD STOCK B**](modules/dsp-dynload-stock-b/) | [repeat98](https://github.com/repeat98) | Core 1 of DSP DYNLOAD STOCK. | port-gated: Port qualification in progress; a first hardware test pending. |
 | [**DSP DYNLOAD TRANSPORT**](modules/dsp-dynload-transport/README.md) | [repeat98](https://github.com/repeat98) | Experimental two-core DMA mailbox and deferred UI error message; bounded staging without execution. | port-gated: Both-core DMA and bounded P staging; no effect activation or hardware qualification. |
 | [**DSP DYNLOAD TRANSPORT B**](modules/dsp-dynload-transport-b/README.md) | [repeat98](https://github.com/repeat98) | Core 1 mailbox receiver for DSP DYNLOAD TRANSPORT; bounded staging without execution. | port-gated: Both-core DMA and bounded P staging; no effect activation or hardware qualification. |
+| [**PMAP PROBE**](modules/pmap-probe/README.md) | [repeat98](https://github.com/repeat98) | Hardware probe, core 0: switch to the 16K program map at boot, test the new program memory, play both cores' verdicts on MAIN (L core 0, R core 1; 882 Hz pass, 110 Hz fail). | `make check`: a hardware probe: under the port it passes by construction (the emulator ignores OMR MS); the unit is the measurement |
+| [**PMAP PROBE B**](modules/pmap-probe-b/README.md) | [repeat98](https://github.com/repeat98) | Hardware probe, core 1: the 16K program map switch and test, the verdict reported to core 0. | `make check`: see PMAP PROBE |
 
 <!-- modules:end -->
 

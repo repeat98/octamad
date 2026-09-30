@@ -149,7 +149,10 @@ static void advance(void) {
                    r==DL_ALLOC_CYCLES ? DL_SELECT_PROCESSING : DL_SELECT_UNAVAILABLE);
             phase=0; return;
         }
-        {   /* the Y buffer plan beside the code plan: both fit, or neither is taken */
+        /* The Y buffer plan beside the code plan: both fit, or neither is taken.
+         * Only under the 16K program map: with stock's map every slot keeps
+         * its stock block, exactly as without this planner. */
+        if(dl_pmap16) {
             uint8_t reads[32], now[16];
             for(unsigned p=0;p<32;++p) reads[p]=dl_catalog[p].buffer;
             running(now);

@@ -14,6 +14,7 @@ A remix is a named selection of modules; `make image REMIX=<name>` builds it int
 |---|---|---|
 | [`analog-bassdrum`](../../remixes/analog-bassdrum/README.md) | Analog BD source machine, switchable 808/909, stock AMP and FX. | port-gated: source/UI under the port; earlier ANALOGBD1 auditioned on MK1, current revision unflashed |
 | [`analog-bd-dynload`](../../remixes/analog-bd-dynload/README.md) | Analog BD on all eight tracks and all 14 stock effects, each DSP effect loaded on demand. | port-gated: port qualification in progress; not yet on hardware |
+| [`dynload-stock`](../../remixes/dynload-stock/README.md) | The stock effects, each DSP effect loaded on demand: stock behaviour, stock program space freed. | port-gated: port qualification in progress; not yet on hardware |
 | [`mods`](../../remixes/mods/README.md) | Every ColdFire mod in one image on the stock effects: MIDI SCENES, Octakit, the recorder fixes, REPITCH, USB MIDI + AUDIO (octatrick's three cannot join it). | port-gated |
 | [`octatrick`](../../remixes/octatrick/README.md) | SYNTH MACHINE + SCALE QUANTIZER + DIRECT JUMP on the stock effects. | `make check` |
 | [`octatrick-usb`](../../remixes/octatrick-usb/README.md) | SYNTH MACHINE + SCALE QUANTIZER + DIRECT JUMP + USB MIDI + USB AUDIO on the stock effects. | on hardware: Tim's MKI, 26 Sep 2026 (OCTATRICK9), USB audio on all 20 channels |

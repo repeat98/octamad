@@ -13,7 +13,7 @@ const struct code dl_codes[2][32]={
     {[12]={words,0,282,0,5,0},[16]={words,0,207,0,17,0},[28]={words,0,932,51,80,0}}};
 volatile uint32_t dl_pool_base[2]={0,0},dl_pool_words[2]={0,0},dl_modal_pending;
 const uint32_t dl_stub_at_boot=0;
-const uint32_t dl_pmap16=0;
+const uint32_t dl_pmap16=1;   /* the buffer planner runs only under the 16K map */
 extern volatile uint32_t dl_residency_words[2],dl_residency_commits,dl_residency_rollbacks;
 extern void dl_residency_tick(void);
 static int status[2]={-2,-2};
@@ -88,49 +88,47 @@ int main(void) {
     settle();
     assert(dl_residency_words[0]==0 && dl_residency_words[1]==0 && unbinds>=5);
     assert(restores==0); /* retiring never restores an original entry */
-    /* Y buffers. Ids 20 and 21 read their base (resident, like a pinned stock
-     * reverb). Every slot is known and free by now. Core 0's FX2 table entries
-     * 1, 3, 5, 7 (tracks 5..8) hold stock's 0x4000 0x8000 0x30000 0x34000. */
+    /* Y buffers (the 16K map: core 0's FX2 blocks are 0x4000, 0x30000, 0x34000;
+     * 0x8000 is half gone). Ids 20 and 21 read their base (resident, like a
+     * pinned stock reverb). Every slot is known and free by now. Core 0's FX2
+     * entries 1, 3, 5, 7 (tracks 5..8) hold stock's 0x4000 0x8000 0x30000 0x34000. */
     unsigned b0;
     memset(s.target,0,16); s.target[13]=20;            /* track 6: the first free block */
     b0=bases; assert(dl_selection_prepare(&s,7)==DL_SELECT_WAIT); ready(7);
     assert(bases==b0+1 && base_entry[b0&7]==3 && base_value[b0&7]==0x4000); /* before ready */
     dl_selection_commit(7); settle();
-    s.target[12]=20;                                   /* track 5: 0x4000 is 13's now */
+    s.target[12]=20;                                   /* track 5: 0x4000 is 13's, 0x8000 is gone */
     b0=bases; assert(dl_selection_prepare(&s,8)==DL_SELECT_WAIT); ready(8);
-    assert(bases==b0+1 && base_entry[b0&7]==1 && base_value[b0&7]==0x8000);
+    assert(bases==b0+1 && base_entry[b0&7]==1 && base_value[b0&7]==0x30000);
     dl_selection_commit(8); settle();
-    s.target[15]=20;                                   /* cancelled: written, then restored */
+    s.target[14]=20;                                   /* cancelled: written, then restored */
     b0=bases; assert(dl_selection_prepare(&s,9)==DL_SELECT_WAIT); ready(9);
-    assert(bases==b0+1 && base_entry[b0&7]==7 && base_value[b0&7]==0x30000);
+    assert(bases==b0+1 && base_entry[b0&7]==5 && base_value[b0&7]==0x34000);
     dl_selection_cancel(9); settle();
-    assert(bases==b0+2 && base_entry[(b0+1)&7]==7 && base_value[(b0+1)&7]==0x34000);
-    s.target[14]=s.target[15]=20;                      /* all four FX2 blocks of core 0 */
-    b0=bases; assert(dl_selection_prepare(&s,10)==DL_SELECT_WAIT); ready(10);
+    assert(bases==b0+2 && base_entry[(b0+1)&7]==5 && base_value[(b0+1)&7]==0x30000);
+    b0=bases; assert(dl_selection_prepare(&s,10)==DL_SELECT_WAIT); ready(10);   /* all three */
     dl_selection_commit(10); settle();
-    for(unsigned k=b0;k<bases;++k) assert(base_value[k&7]>=0x30000);
-    /* 12 from 20 to 21: its outgoing block stays held, no fifth: refused, and
-     * nothing is uploaded, bound or written for it. */
-    s.target[12]=21; b0=bases; unsigned up=uploads,bi=binds;
+    /* A fourth FX2 reader on core 0 never fits; nothing is uploaded, bound or written. */
+    s.target[15]=20; b0=bases; unsigned up=uploads,bi=binds;
     assert(dl_selection_prepare(&s,11)==DL_SELECT_MEMORY);
     assert(bases==b0 && uploads==up && binds==bi);
-    /* Released, then taken by 21 once 20 has retired from it. */
-    s.target[12]=0; assert(dl_selection_prepare(&s,12)==DL_SELECT_WAIT); ready(12);
-    dl_selection_commit(12); settle();
-    s.target[12]=21; b0=bases;
-    assert(dl_selection_prepare(&s,13)==DL_SELECT_WAIT); ready(13);
-    assert(bases==b0);                                 /* entry 1 already holds the free block */
+    /* 12 from 20 to 21: its outgoing block stays held until 20 retires: refused;
+     * released first, then taken. */
+    s.target[15]=0; s.target[12]=21; b0=bases;
+    assert(dl_selection_prepare(&s,12)==DL_SELECT_MEMORY && bases==b0);
+    s.target[12]=0; assert(dl_selection_prepare(&s,13)==DL_SELECT_WAIT); ready(13);
     dl_selection_commit(13); settle();
-    /* A table write that fails cancels the transition: not ready, and the plan is undone. */
-    s.target[12]=0; assert(dl_selection_prepare(&s,14)==DL_SELECT_WAIT); ready(14);
+    s.target[12]=21; b0=bases;
+    assert(dl_selection_prepare(&s,14)==DL_SELECT_WAIT); ready(14);
+    assert(bases==b0);                                 /* entry 1 already holds the freed block */
     dl_selection_commit(14); settle();
+    /* A table write that fails cancels the transition: not ready, and it retries cleanly. */
     s.target[9]=20; fail_base=1; b0=bases;             /* core 1 track 2: entry 3, 0x8000 -> 0x4000 */
     assert(dl_selection_prepare(&s,15)==DL_SELECT_WAIT);
     int r=DL_SELECT_WAIT;
     for(unsigned n=0;n<300 && r==DL_SELECT_WAIT;++n) r=dl_selection_poll(15);
     assert(r!=DL_SELECT_READY && r!=DL_SELECT_WAIT && bases==b0+1 && base_entry[b0&7]==8+3);
     settle();
-    /* retried cleanly afterwards: written once, ready */
     b0=bases; assert(dl_selection_prepare(&s,16)==DL_SELECT_WAIT); ready(16);
     assert(bases==b0+1 && base_entry[b0&7]==8+3 && base_value[b0&7]==0x4000);
     return 0;

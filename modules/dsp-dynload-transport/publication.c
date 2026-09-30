@@ -246,6 +246,7 @@ void dl_publication_tick(void) {
  * and allocation run on the UI task, never from a sequencer interrupt. */
 #ifndef DL_NATIVE_TEST
 static volatile unsigned project_pending=0,project_authorized=0,project_done=0;
+extern const uint32_t dl_stub_at_boot;
 static uint32_t project_token=0;
 static volatile int project_result=0;
 static char project_name[256]={0},project_path[260]={0};
@@ -296,6 +297,16 @@ static unsigned project_tick(void) {
         }
         project_pending=2;
     }
+    /* Every stock effect loads on demand (a build that stubbed them all,
+     * dl_stub_at_boot): the load does not wait for the DSP. Its effects are
+     * parked at NONE until bound and then get their init (manager.c reinit),
+     * and one over capacity stays dry with its message instead of refusing
+     * the whole project. */
+    if(project_pending==2 && dl_stub_at_boot) {
+        project_token=0; project_authorized=1; project_pending=4; ++dl_project_admitted;
+        if(!dl_project_post_body(project_name)) { project_authorized=0; project_pending=0; fail(DL_SELECT_UNAVAILABLE); }
+        return 1;
+    }
     if(project_pending==2) {
         if(!dl_publication_idle()) return 1;
         if(++serial==0) serial=0x40000001u;
@@ -315,6 +326,9 @@ static unsigned project_tick(void) {
             project_authorized=0;dl_selection_cancel(project_token);project_pending=0;fail(DL_SELECT_UNAVAILABLE);
         }
         return 1;
+    }
+    if(project_pending==4 && project_done && dl_stub_at_boot) {
+        project_authorized=0; project_pending=0; ++dl_project_completed; return 1;
     }
     if(project_pending==4 && project_done) {
         const volatile uint8_t *live=(const volatile uint8_t *)0x80000ec4u;

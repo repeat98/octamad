@@ -13,10 +13,11 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
 
 - Analog BD: engine selection now lives only in the pool-style browser; the
   former SRC SETUP MODEL control and its encoder editing path are removed.
-  The 808 receives a fixed post-desk output trim so default hit energy matches
-  the 909 within 0.03 dB over 500 ms. The 909 and both engines' internal states
-  are unchanged; the 808 trim adds three DSP instructions per sample.
-
+  Both source outputs are 12.04 dB louder than the 29 September revision,
+  with matching default hit energy (within 0.03 dB over 500 ms) and default
+  peaks of −7.31/−1.59 dBFS for 808/909. The post-desk gains preserve every
+  internal state; 909 overloads limit at full scale. The 808 uses the same
+  three output instructions; the 909 adds four instructions per sample.
 
 Remixes
 - bottleservice takes the computer's stereo output onto inputs C/D (USB AUDIO IN CD + USB CROSSBAR); USB AUDIO OUT MASTER polls every 250 µs (28 Sep).

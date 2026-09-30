@@ -20,7 +20,8 @@ def main():
         rms=lambda n: 10*math.log10(sum(v*v for v in samples[:n])/n)
         peak=20*math.log10(max(map(abs,samples)))
         levels.append((rms(4410),rms(22050)))
-        assert peak < -1, ('default clips',model,peak)
+        assert -9 < peak < -1, ('default output/headroom',model,peak)
+        assert -21 < levels[-1][1] < -19, ('nominal hit level',model,levels[-1])
         bd909.wav(out/f'{808 if model==0 else 909}-default.wav',samples)
         print(f'{808 if model==0 else 909}: peak {peak:.2f} dBFS, '
               f'100 ms RMS {levels[-1][0]:.2f}, 500 ms RMS {levels[-1][1]:.2f} dBFS')

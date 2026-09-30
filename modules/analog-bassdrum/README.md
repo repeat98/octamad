@@ -19,11 +19,14 @@ Stored patches retain their bytes, including when changing engines. Volume
 remains on stock AMP. Old patches with both desk bands at zero need them
 raised to hear the source.
 
-The 808 has a fixed post-desk output trim of 0.215 (−13.35 dB) so the actual
-new-assignment defaults have comparable hit energy: 500 ms RMS is −32.23 dBFS
-for 808 and −32.25 dBFS for 909. Their first-100-ms RMS differs by 0.24 dB.
-This trim also lowers existing 808 patches; oscillator, envelope, filter and
-saturation states are unchanged. The 909 output is unchanged.
+Both models have a fixed +12.04 dB output boost after the desk, before stock
+AMP and FX. The 808's balancing trim is now 0.86 of its original output;
+the 909 multiplies its original output by four. With the shared assignment
+defaults, peaks are −7.31/−1.59 dBFS and 500 ms RMS is −20.19/−20.21 dBFS
+for 808/909. Their first-100-ms RMS differs by 0.24 dB. Existing patches
+also become louder. Oscillator, envelope, filter and saturation states are
+unchanged; boosted 909 samples above full scale are limited at the source
+output. Stock AMP still controls track volume.
 
 The 808 is calibrated against the user's 32 clean `_Orig.wav` recordings;
 Tape/TapeSat, X/X2 and unlabeled special effects are excluded. Its body
@@ -62,8 +65,8 @@ SPRING REV code region and private X tables/state. Both track FX slots are
 available; SPRING REV is excluded from this standalone remix. Its shared
 35-word DARK reverb routine is preserved, with stock/patched audio identity
 checked on both cores. The optimized kick engines are also held to exact
-pre-optimization internal-state hashes. The 909 audio remains exact; the
-808 audio is checked against the original with an exact post-desk trim.
+pre-optimization internal-state hashes. Both models' audio is checked against
+the original with exact fixed-point output scaling and limiting.
 MACHINEDRUM, SYNTH MACHINE and POLY still conflict with the registration
 seams and require a shared registry before composition.
 

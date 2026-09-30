@@ -1,5 +1,23 @@
 # Analog BD load measurements
 
+## Louder source output, 30 September 2026
+
+Both models now have +12.04 dB gain relative to the 29 September level
+revision. The 808 changes only its output coefficient (0.215 → 0.86), so
+its peak cost remains 220.9375 instructions/sample (3535/block). The 909
+adds four instructions/sample to read the original limited 24-bit desk
+sample and multiply it by four: 326.125 instructions/sample (5218/block).
+Its regression ceiling increases by exactly 64 instructions/block to 5232.
+These are executed instruction counts under the host, not hardware cycles.
+
+The original audio/state hashes remain unchanged. Both models render the
+original executables to those hashes, then their current executables must
+produce exactly the integer-scaled output with identical block states.
+909 overloads are limited at full scale. The assignment-default peaks are
+−7.31/−1.59 dBFS (808/909), with 500 ms RMS −20.19/−20.21 dBFS.
+
+The measurements below describe earlier output revisions.
+
 ## Default-level follow-up, 29 September 2026
 
 The 808 now applies a 0.215 trim after its final desk limiter: three extra

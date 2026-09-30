@@ -113,6 +113,10 @@ from these local runs.
 
 ## Browser-only selection and default levels
 
+The gain figures in this section describe the 29 September revision.
+On 30 September both source outputs were raised by 12.04 dB; see README.md
+and CPU.md for current levels and the exact output/state checks.
+
 The follow-up removes the page-2 MODEL control (label, enable bit and value
 widget). Its former encoder is intercepted before stock's parameter write;
 merely hiding the knob would still let that writer overwrite the engine id.

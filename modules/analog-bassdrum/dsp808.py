@@ -7,8 +7,8 @@ from pathlib import Path
 import dsp909
 HERE=Path(__file__).resolve().parent
 RATE=44100
-# Post-desk attenuation: default 500 ms hit energy matches the 909 within 0.1 dB.
-OUTPUT_TRIM=0.215
+# Preserve the model balance, with the shared +12.04 dB output boost.
+OUTPUT_TRIM=0.215*dsp909.OUTPUT_GAIN
 SWORDS=48
 OFF=dict(U=0,EH=1,EL=2,EP=3,PC=4,PS=5,DC=6,TF=7,INC=8,BEND=9,DE=10,DP=11,KT=12,GAIN=13,VEL=14,ATK=15,SEG=16,YL=20,KLPF=32)
 OFF.update({k:v for k,v in dsp909.OFF.items() if v>=37})
@@ -32,7 +32,7 @@ def data_lines(lay):
     return ''.join('X %x '%lay[k]+' '.join('%06x'%dsp909.q24(v) for v in vs)+'\n' for k,vs in tables().items())
 def source(lay,shared,*,output_trim=True):
     text=(HERE/'bd808.asm').read_text()
-    full=dsp909.source(shared)
+    full=dsp909.source(shared,output_gain=False)
     for tag in ('desk-decode','desk'):
         block=full[full.index(';<' + tag + '>'):full.index(';</' + tag + '>')]
         if tag=='desk' and output_trim:
@@ -53,7 +53,7 @@ def source(lay,shared,*,output_trim=True):
 class Voice(dsp909.Voice):
     """Independent float reference, with 24-bit phase/control quantization."""
     def __init__(self):
-        super().__init__()
+        super().__init__(output_gain=False)
         q=lambda v: ((dsp909.q24(v)^0x800000)-0x800000)/8388608
         self.bt={k:[q(v) for v in vs] for k,vs in tables().items()}
         self.q=q

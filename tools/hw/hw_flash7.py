@@ -74,7 +74,7 @@ LEVEL_HOME = 108
 SIGNATURE = {0: 108, 1: 64, 2: 84, 3: 48}
 SIG_DB = {0: 0.0, 1: -8.3, 2: -3.6, 3: -13.3}
 
-ID_SEND, ID_CHARACTER, ID_NONE = 0x09, 0x1c, 0x00
+ID_SEND, ID_CHARACTER, ID_NONE = 0x09, 0x1a, 0x00   # CHARACTER was 0x1c (LO-FI's) at flash 7
 STATION_P1 = (0, 0, 127, 40, 0, 0)          # DRV FOLD RET COMP - -   (RET 127)
 STATION_P2 = (127, 3, 0, 1, 64, 0)          # MIX SAT=BUS RING CMOD WDTH SRR
 

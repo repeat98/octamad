@@ -1,6 +1,6 @@
 # MODULATION
 
-A modulation pedal on stock CHORUS's id 0x12, FX1 only. Every mode is a
+A modulation pedal on its own id 0x0b (stock CHORUS's 0x12 until 30 Sep 2026), FX1 only. Every mode is a
 transcription of a published, permissively licensed source; the survey,
 licences and laws are in `docs/effects/PORTS.md`.
 

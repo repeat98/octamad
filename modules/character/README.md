@@ -1,6 +1,6 @@
 # CHARACTER
 
-The station that dirties or tightens a track, on stock LO-FI's id 0x1c. FX1 only: an FX2 instance runs as a dry pass
+The station that dirties or tightens a track, on its own id 0x1a (stock LO-FI's 0x1c until 30 Sep 2026). FX1 only: an FX2 instance runs as a dry pass
 (`Claims(fx1_only=True)`, `verify_character.py`); the FX2 chooser hides the
 row.
 

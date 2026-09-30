@@ -1,4 +1,4 @@
-"""MODULATION -- a modulation pedal, five modes, on stock CHORUS's id 0x12.
+"""MODULATION -- a modulation pedal, five modes, on its own id 0x0b (stock CHORUS's 0x12 until 30 Sep 2026).
 
 A per-track insert (FX1 only). Each mode transcribes a published,
 permissively licensed source (survey and licences: docs/effects/PORTS.md;
@@ -90,8 +90,7 @@ MODULE = Module(
     proof=Proof.HARDWARE, proof_note="Sam's MKII",
     doc="FX1 station: a modulation pedal -- Juno, Dimension, flanger, phaser, comb; FX1 only.",
     menu=MenuEntry(
-        fx2_id=0x12,
-        replaces="CHORUS",
+        fx2_id=0x0b,                  # its own id: stock CHORUS stays (0x12 until 30 Sep 2026)
         donor_desc=0x400d58b8,        # DARK REV: 12 active slots, selects 7/9/11
         abbr=b"MODU",
         fullname=b"Modulation",

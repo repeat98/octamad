@@ -227,8 +227,10 @@ the two DSP dispatch tables are indexed by the raw id and shared between
 FX1 and FX2, so a module on a stock id replaces that effect's code wherever
 the id is selected, FX1 included, and a remix that omits the module then
 aliases the id to SEND, which takes the stock effect away from FX1 too.
-Free ids: `0x06 0x07 0x09 0x0a 0x0b 0x0e 0x0f 0x17 0x1a 0x1b 0x1d 0x1e
-0x1f`, of which `0x1d 0x1e 0x1f` are unclaimed.
+Non-stock ids: `0x06 0x07 0x09 0x0a 0x0b 0x0e 0x0f 0x17 0x1a 0x1b 0x1d 0x1e
+0x1f`, of which `0x1b 0x1e 0x1f` are unclaimed (30 Sep 2026, after
+Spectrum 0x0a, Modulation 0x0b, Tape Echo 0x0f, Miniverb 0x17 and Character
+0x1a left the stock ids they replaced).
 
 The registry is the arbiter: `registry.modules()` refuses two modules on
 one id at import, whether or not any remix selects both. `make modules`
@@ -832,6 +834,18 @@ window shared. No local test is evidence that a cross-core timing defect is
 absent: the two cores run lock-step or under a chosen `-skew`.
 
 ## Replacing a stock effect
+
+**No module in the library does this since 30 Sep 2026.** Every image
+loads the stock effects on demand (DSP DYNLOAD STOCK), so a module needs no
+stock effect's words, and an insert is itself loaded on demand
+(`build_bus.LOADABLE`): take a free id and every stock effect stays. The
+five that replaced one (Spectrum, Modulation, Tape Echo, Miniverb,
+Character) moved to their own ids; a saved project that named the old id
+now plays the stock effect there -- ON THE MODULE'S STORED BYTES, and a byte
+outside a stock select's count (SPRING REV's TYPE has three) is the
+sequencer-stall trap in AGENTS.md. Before playing such a project:
+`tools/hw/ot_project.py stamp-defaults <project> <remix> --all` (every id's
+defaults, stock included, into every Part). The mechanism below still works.
 
 For an upgraded version of a stock effect, take its own id so that FX1,
 FX2 and every saved project that selected it get yours:

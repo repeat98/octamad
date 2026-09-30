@@ -1693,7 +1693,7 @@ te_cpu_frame:
 	cmp.l %d0,%d1
 	jcs .L192
 	move.l 76(%a1),%a0
-	moveq #21,%d2
+	moveq #15,%d2
 	mvz.b 7(%a0),%d1
 	cmp.l %d1,%d2
 	jne .L193

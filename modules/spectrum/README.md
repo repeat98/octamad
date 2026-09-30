@@ -1,6 +1,6 @@
 # SPECTRUM
 
-A filter pedal on stock FILTER's id 0x04. FX1 only: an FX2 instance runs as
+A filter pedal on its own id 0x0a (stock FILTER's 0x04 until 30 Sep 2026; FILTER is back). FX1 only: an FX2 instance runs as
 a dry pass (`Claims(fx1_only=True)`, `verify_spectrum.py`); the FX2 chooser
 hides the row.
 

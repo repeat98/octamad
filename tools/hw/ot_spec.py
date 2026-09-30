@@ -67,7 +67,7 @@ SEND_ID, NONE_ID = 0x09, 0x00
 # ---- names -----------------------------------------------------------------
 def _mods():
     """fx id -> module; a module of ours outranks the stock effect whose id
-    it replaces (SPECTRUM over FILTER on 0x04)."""
+    it replaces (none since 30 Sep 2026: every module has its own id)."""
     out = {}
     for m in registry.modules().values():
         if m.menu is None:

@@ -1,6 +1,7 @@
 # Tape Echo
 
-`TAPE ECHO` replaces FX2 **SPRING REV**. It is a mono single-head tape echo
+`TAPE ECHO` is on its own id `0x0f` beside FX2 **SPRING REV** (it replaced
+SPRING REV on `0x15` until 30 Sep 2026; it keeps SPRING REV's controls). It is a mono single-head tape echo
 with stereo dry output, now running on the **ColdFire CPU**, in the stock
 delay's four-second per-track ring. The DSP side is an empty passthrough
 (one NOP per sample for the generic insert cycle gate) and allocates no tape buffer.
@@ -136,7 +137,7 @@ remix. The rings themselves are already reserved by the stock OS.
 
 * `0x40002f44`: reset our state with the stock delay's ring reset.
 * `0x4000361a`: after stock DMA read completion / next-track prefetch,
-  run Tape Echo only for id `0x15`; replay the original path for every other id.
+  run Tape Echo only for its id (`TE_ID` in `cpu.h`, `0x0f`); replay the original path for every other id.
 * Preserve the stock ping-pong scratch-buffer toggle and 68-byte state stride,
   then rejoin `0x4000377a` for the existing ring DMA writes.
 * Ring base is `0x4f502c10 + track * 1411328`, through the **uncached** alias.

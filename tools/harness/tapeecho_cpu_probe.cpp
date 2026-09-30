@@ -81,7 +81,7 @@ static void load(ot::Machine& m, const std::vector<uint8_t>& raw, uint32_t base)
     for (unsigned i = 0; i < raw.size(); ++i) m.write8(base + i, raw[i]);
 }
 static void formatter_tests(ot::Machine& m) {
-    const uint32_t descriptor=m.read32(0x400d5fdc+0x15*4);
+    const uint32_t descriptor=m.read32(0x400d5fdc+TE_ID*4);
     const uint32_t fmt=m.read32(descriptor+0xca), part=0x47d00000, buffer=0x47c00000;
     const char* names[]={"1/64","1/32T","1/32","1/16T","1/16","1/8T",
                         "1/16.","1/8","1/4T","1/8.","1/4","1/4."};
@@ -399,7 +399,7 @@ static void benchmark(const std::vector<uint8_t>& image,const std::vector<uint8_
                 bool tape=t<test.tapes && frame>=t*128;
                 auto knobs=0x80001a00+slot*96+t*12,setup=0x80001b80+slot*64+t*8;
                 for(unsigned i=0;i<8;++i)m.write8(setup+i,0);
-                m.write8(setup+7,tape?0x15:8);m.write8(0x80000eb4+audioSlot*8+t,1);
+                m.write8(setup+7,tape?TE_ID:8);m.write8(0x80000eb4+audioSlot*8+t,1);
                 const unsigned stockValues[]={60,64,127,0,127,127};
                 const unsigned time=test.mode && test.mode!=7 ? (frame/8+t*17)%128 : 60;
                 unsigned tapeValues[]={time,
@@ -562,7 +562,7 @@ int main(int argc, char **argv) {
             // words. Both frame buffers and all four queue slots are covered.
             const uint32_t frameRecord=0x80000110+(frame&1)*512+t*64;
             for(unsigned i=0;i<6;++i)m.write16(frameRecord+24+2*i,values[i]<<8);
-            m.write16(frameRecord+56,0x15);
+            m.write16(frameRecord+56,TE_ID);
             m.write32(0x800000e0,frame&1);m.write32(0x80004800,slot);
             m.write8(0x8000184b,0);
             run(m,0x4000d0ea,0x4000d15a);
@@ -643,7 +643,7 @@ int main(int argc, char **argv) {
         for (unsigned t=0;t<8;++t) {
             auto knobs=0x80001a00+slot*96+t*12, setup=0x80001b80+slot*64+t*8;
             for(unsigned i=0;i<8;++i) m.write8(setup+i,0);
-            m.write8(setup+7,t&1?8:0x15); m.write8(0x80000eb4+audioSlot*8+t,1);
+            m.write8(setup+7,t&1?8:TE_ID); m.write8(0x80000eb4+audioSlot*8+t,1);
             for(unsigned i=0;i<6;++i) m.write16(knobs+2*i, i==5?0:65<<8);
             m.write16(knobs+6,0); m.write16(knobs+8,0);
             if (!(t&1)) {

@@ -7,7 +7,7 @@ MODULE = Module(
     category=Category.TRACK, author="repeat98", author_url="https://github.com/repeat98",
     proof=Proof.RENDER, proof_note="`make verify-miniverb`; not flashed",
     doc="Modulated diffused FDN reverb; independent FX2 buffers, smoothed controls.",
-    menu=MenuEntry(fx2_id=0x16, replaces="DARK REV", donor_desc=0x400d58b8,
+    menu=MenuEntry(fx2_id=0x17, donor_desc=0x400d58b8,
                    abbr=b"MINI", fullname=b"Mini Verb", build_tag=False),
     params=(
         Param(b"DECAY", 104, active=True, formatter=Formatter.PLAIN,

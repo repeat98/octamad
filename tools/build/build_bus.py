@@ -597,7 +597,7 @@ def assemble(src_text, org, label=""):
 # module's source is rewritten by nothing but its defines (no bus role, no
 # housekeeping gate, no rotation latch, no Y base, no host guard, no hook,
 # no LFO table), it runs on both cores, and it is not the fallback every
-# unimplemented id aliases to. DspSection.resident keeps one built in.
+# unimplemented id aliases to. The payload loop refuses if the text differs. DspSection.resident keeps one built in.
 PTABLE_LITERAL = "$fab1e0"               # schema.DspSection.ptable's literal
 
 
@@ -607,8 +607,7 @@ def _loadable_text(m):
     d = m.dsp
     if not (DYNAMIC and not DEV and m.menu is not None and d is not None
             and not m.is_stock and not d.resident and not d.arena
-            and m.key != REMIX.fallback and m.key not in REMIX.hidden
-            and m.key not in REMIX.locked and d.payloads == frozenset({"A", "B"})
+            and m.key != REMIX.fallback and d.payloads == frozenset({"A", "B"})
             and not d.hooks and d.bus_role is BusRole.NONE and d.ybase is YBase.NEVER
             and d.r7_latch_slot is None and not d.override_markers
             and d.gate_label is None and m.key in ASM_SRC
@@ -617,7 +616,9 @@ def _loadable_text(m):
     src = pathlib.Path(ASM_SRC[m.key]).read_text()
     # (ROTINIT / ROTLATCH are rewritten only for a module with a latch slot,
     # excluded above; the gate and the LFO table apply to any source.)
-    if any(t in src for t in ("$facade", "; XBUS_GATE")):
+    # Hiding a module rewrites nothing; the host guard is substituted only
+    # where the source carries its marker (HOSTGUARD, for hidden or locked).
+    if any(t in src for t in ("$facade", "; XBUS_GATE", "; HOSTGUARD\n")):
         return None
     for _dn, _dv in d.defines:
         src = src.replace(f"@{_dn}@", str(int(_dv)))

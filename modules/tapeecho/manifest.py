@@ -1,6 +1,6 @@
 """CPU Tape Echo -- one mono head in the stock four-second CPU delay ring.
 
-FX2 SPRING REV's id and controls are retained. The DSP dispatch is dry;
+Its own id 0x0f (stock SPRING REV's 0x15 until 30 Sep 2026), SPRING REV's controls. The DSP dispatch is dry;
 ColdFire replaces only this id's post-FX2 filter/mix, retaining stock DMA.
 FREE uses a smoothed motor; BEAT snaps TIME to twelve note divisions.
 The economy fixed-point voice approximates the measured pedal/Galaxy response;
@@ -22,8 +22,7 @@ MODULE = Module(
     proof=Proof.HARDWARE, proof_note="the author's unit (OCTACLID4): six instances run, a seventh freezes it, open",
     doc="Economy CPU tape echo: two biquads, simple FREE slew, snapped BEAT TIME and page-1 AGE.",
     menu=MenuEntry(
-        fx2_id=0x15,
-        replaces="SPRING REV",
+        fx2_id=0x0f,                  # its own id: stock SPRING REV stays; cpu.c TE_ID
         donor_desc=0x400d5726,        # SPRING REV: all twelve descriptor slots
         abbr=b"TAPE",
         fullname=b"Tape Echo",

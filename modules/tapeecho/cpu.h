@@ -1,6 +1,8 @@
 #ifndef OCTABAM_TAPE_CPU_H
 #define OCTABAM_TAPE_CPU_H
 #include <stdint.h>
+/* The module's FX2 id (manifest.py); 0x15, SPRING REV's, until 30 Sep 2026. */
+#define TE_ID 0x0fu
 #define TE_FRAMES 16u
 #define TE_RING 176400u
 #define TE_STRIDE 1411328u

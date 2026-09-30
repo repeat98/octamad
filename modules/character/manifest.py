@@ -1,6 +1,6 @@
 """CHARACTER -- the station that dirties or tightens.
 
-A per-track insert on stock LO-FI's id 0x1c (FX1 only; an FX2 instance runs
+A per-track insert on its own id 0x1a, stock LO-FI's 0x1c until 30 Sep 2026 (FX1 only; an FX2 instance runs
 as a dry pass, decided from the allocator base at init). Chain order:
 fold -> saturate -> tilt -> compress -> width.
 
@@ -61,8 +61,7 @@ MODULE = Module(
     proof=Proof.HARDWARE, proof_note="Sam's MKII",
     doc="FX1 station: fold, saturation, tilt, compressor, width.",
     menu=MenuEntry(
-        fx2_id=0x1c,
-        replaces="LO-FI",
+        fx2_id=0x1a,                  # its own id: stock LO-FI stays (0x1c until 30 Sep 2026)
         donor_desc=0x400d58b8,        # DARK REV: 12 active slots, selects 7/9/11
         abbr=b"CHAR",
         fullname=b"Character",

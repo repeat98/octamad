@@ -1,6 +1,6 @@
-"""SPECTRUM -- a filter pedal on stock FILTER's id.
+"""SPECTRUM -- a filter pedal on its own id, 0x0a (stock FILTER's 0x04 until 30 Sep 2026).
 
-A per-track insert on id 0x04 (FX1 only; an FX2 instance runs as a dry pass,
+A per-track insert on id 0x0a (FX1 only; an FX2 instance runs as a dry pass,
 decided from the allocator base at init). MODE selects the filter:
 
   * LADR -- the linear zero-delay Moog transistor ladder (audiojs/filter
@@ -72,8 +72,7 @@ MODULE = Module(
     proof=Proof.HARDWARE, proof_note="Sam's MKII",
     doc="FX1 station: a filter pedal -- the Moog ladder, SEM (LP -> BP -> HP by SHPE), Airwindows Capacitor2, formants; ENV and LFO onto the cutoff; width.",
     menu=MenuEntry(
-        fx2_id=0x04,
-        replaces="FILTER",            # stock FILTER's id: both menus, every part
+        fx2_id=0x0a,                  # its own id: stock FILTER stays (0x04 until 30 Sep 2026)
         donor_desc=0x400d58b8,        # DARK REV: 12 active slots, selects on 7/9/11
         abbr=b"SPEC",
         fullname=b"Spectrum",

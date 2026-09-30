@@ -569,6 +569,9 @@ def main():
     _want = {"restock": (), "mods": (), "ok-ms": (), "usb-out-tracks-main-cue": (), "usb-out-tracks": (), "usb-out-master": (),
              "octatrick": (), "octatrick-usb": (), "usb-out-main-cue": (), "usb-out-main": (),     # stock effects + ColdFire modules, no DSP words
              "repitch": (), "analog-bassdrum": ("SPRING REV",),
+             # every stock effect listed and loaded on demand: none is given up
+             # (the build still takes their code space for the loader, build_bus DYNAMIC)
+             "analog-bd-dynload": (),
              # the twelve io remixes: the IN module's RX inject is placed in SPATIALIZER's words
              **{f"usb-io-{o}-{i}": ("SPATIALIZER",) for o in ("tracks", "tracks-main-cue", "main-cue", "main") for i in ("ab", "cd", "abcd")},
              "cfmeter": ("DARK REV",), "cfmeter-port": ("DARK REV",),   # the readout insert's words

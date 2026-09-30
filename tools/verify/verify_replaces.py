@@ -128,6 +128,11 @@ def check_image(name, img, pristine, fails):
                 if mods[k].menu.fx2_id in stock.fx1_ids()}
     _given_up = set(stock.region_of(stock.harvested(
         set(remix.modules) | set(remix.fx1 or _fx1_all))))
+    # schema.Module.dynamic_stock: every stock DSP effect is loaded on demand,
+    # so its dispatch must be exactly the null stub until the loader binds it
+    # (its native code is gone); DELAY runs on the ColdFire and stays stock.
+    _dynamic = any(registry.modules()[k].dynamic_stock for k in remix.modules)
+    _dsp = set(stock.p_spans("A"))
     for eff in stock.MODULES:
         eid = eff.menu.fx2_id
         want_desc = eff.menu.donor_desc + 0x38
@@ -194,6 +199,13 @@ def check_image(name, img, pristine, fails):
             for slot, nul in ((eid, nul_i), (32 + eid, nul_p)):
                 got = rdw(img, xtab + slot * 3)
                 want = rdw(pristine, xtab + slot * 3)
+                if _dynamic and eff.key in _dsp:
+                    if got != nul:
+                        fails.append(
+                            f"{name}: payload {tag} dispatch[0x{eid:02x}] ({eff.key}) is "
+                            f"0x{got:05x}, not the null stub 0x{nul:05x} -- a dynamic-stock "
+                            f"image loads every stock effect on demand")
+                    continue
                 if got == want:
                     continue
                 if got == nul and eff.key in _given_up:

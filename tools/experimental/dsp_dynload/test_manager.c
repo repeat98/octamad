@@ -12,6 +12,7 @@ const struct code dl_codes[2][32]={
     {[12]={words,0,282,0,5,0},[16]={words,0,207,0,17,0},[28]={words,0,932,51,80,0}},
     {[12]={words,0,282,0,5,0},[16]={words,0,207,0,17,0},[28]={words,0,932,51,80,0}}};
 volatile uint32_t dl_pool_base[2]={0,0},dl_pool_words[2]={0,0},dl_modal_pending;
+const uint32_t dl_stub_at_boot=0;
 extern volatile uint32_t dl_residency_words[2],dl_residency_commits,dl_residency_rollbacks;
 extern void dl_residency_tick(void);
 static int status[2]={-2,-2};

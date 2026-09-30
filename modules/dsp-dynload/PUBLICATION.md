@@ -122,7 +122,54 @@ stock stub it copies runs there for 19 ids), and a boot-time arm, which
 reclaiming needs because an id published before any managed load would still
 reach its original.
 
+## Every stock effect on demand (30 Sep 2026)
+
+`DSP DYNLOAD STOCK` (remix `analog-bd-dynload`) reclaims the originals: the
+build harvests the whole effect block while keeping every stock row
+(`schema.Module.dynamic_stock`) and stubs every stock id at build time, which
+is the boot-time arm the section above asked for. Its catalog holds all 13
+stock DSP effects (`runtime_catalog.include_dynamic`); the only stock words
+that stay resident are the routines several effects call (`SHARED`: FILTER's
+filter library, 286 words, called one-word so kept below P:0x1000, and two
+reverb helpers of 35 and 93 words), copied to the block's start. The receiver
+reports its table size (4,384 here, `DspSection.defines`) and the ColdFire
+bounds everything by it.
+
+What the routes above now cost, measured under the port with dirty DSP memory:
+
+- Stock's boot and project load publish defaults (FILTER on every FX1)
+  unguarded, before anything is loaded; with FILTER on demand the
+  pattern-request guard refused inside the load and raised DSP LOAD FAILED
+  twice per load. During a project load it now lets stock's requests through
+  (`publication.c`); what they publish loads behind them.
+- An id published before its code is bound took the dry stub's init: the
+  dispatcher inits only when a slot's id changes (`P:0x4c9`). Restoring the id
+  after binding still ran a quarter second of uninitialised proc per publish
+  (a reverb at +15 dB of garbage, then stock); never restoring it left the
+  garbage for good. `manager.c reinit` parks such a slot at NONE the tick it is
+  seen (it is dry on the stub anyway) and gives it back once the code is
+  bound, so the real init runs before the first proc. NONE written by stock
+  over a parked NONE is invisible in the live array, so a parked slot follows
+  the active Part's byte (without that, a project of NONE Parts got the boot
+  default's FILTER back on every slot).
+
+So an unguarded route costs a dry slot until its code is bound, never
+uninitialised or reclaimed code. The routes listed above as open are still
+open in the sense that they publish without preparation; they are no longer
+unsafe. Not measured: any of it on hardware.
+
 ## Reproducible gates
+
+For the stock variant (`analog-bd-dynload`): `verify_stock_relocation` (every
+stock effect sample-identical from any arena address, dsp_host),
+`verify_stock_select` (each selected through the stock setters loads and
+binds; over capacity refused whole) and `verify_stock_load` (a project and a
+raw publish against pristine 1.40C, dirty DSP memory, with a negative control
+for the init fix). The gates below qualify the original experiment; since the
+upstream Character became a bus client, its remix lists stock LO-FI instead of
+CHARACTER, and the cases that loaded CHARACTER (verify_bypass, verify_runtime,
+verify_chain_stop, verify_live_audio and others) need porting to LO-FI or to
+the stock variant before they pass again.
 
 - `python3 -m tools.experimental.dsp_dynload.verify_controller`: actual C
   code on host; late boundary, stale metadata/request, deferred replay, memory

@@ -26,6 +26,9 @@ volatile uint32_t dl_residency_enabled=1; /* Test/control bypass; static origina
  * 0 restores originals: only the unguarded-apply audio oracle needs that. */
 volatile uint32_t dl_bypass_unbound=1;
 static uint32_t stubbed[2]={0,0}; /* per core: ids whose dispatch is the stub */
+/* Ids a build stubbed before boot (runtime_catalog.include_dynamic); 0 when
+ * the static originals are resident. */
+extern const uint32_t dl_stub_at_boot;
 volatile uint32_t dl_residency_commits=0,dl_residency_rollbacks=0,dl_residency_failures=0;
 volatile uint32_t dl_residency_words[2]={0};
 /* Distinct live sets seen running a managed id without bound relocated code. */
@@ -86,6 +89,8 @@ static void advance(void) {
              * No additional overlapping instances are created by rebinding;
              * existing DSP processing is reserved outside this P-only pool. */
             dl_allocator_init(&allocator,dl_catalog,0,0,0,0);
+            /* Already on the stub: nothing to arm (26 commands, a UI tick each). */
+            stubbed[0]=stubbed[1]=dl_stub_at_boot;
             initialized=1;
         }
         /* Each core's arena is its receiver's reported table less the saved
@@ -217,7 +222,6 @@ static unsigned bound(const volatile uint8_t *ids) {
  * stubbed[] (armed or retired to it); an unarmed original runs its own init.
  * `last` starts as "no id": whatever the first tick sees was published before
  * it -- at boot, onto stubs -- and is parked as well. */
-extern const uint32_t dl_stub_at_boot;
 static uint8_t last[16]={255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255};
 static uint8_t owed_id[16]={0};
 static uint32_t parked=0;

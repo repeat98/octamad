@@ -281,6 +281,14 @@ def main():
                + (f";0x46c7bf2c,2048={dumps['cccache']};0x46c7d7d8,256={dumps['ccbits']};0x460d17ce,16={dumps['engq']}" if midi_out else ""),
                "--dsp-peek", "0:Y:36082,1;1:Y:36082,1;1:X:6229,1;1:X:6275,1;0:Y:36081,1;0:Y:9f4,1"] \
             + (["--midi-out", str(midi_out)] if midi_out else []) + a.extra.split()
+        # An image whose stock effects load on demand (schema.Module
+        # .dynamic_stock) prepares the project's effects on the DSP before the
+        # load is posted, so the DSP frame clock has to run during the load,
+        # as it does on the unit; without it the load only starts after this
+        # gate's frames have begun and is still pending when it reads the ids.
+        if any(registry.modules()[k].dynamic_stock for k in registry.remix(a.remix).modules) \
+                and "--frame" not in cmd:
+            cmd += ["--frame"]
         if a.stage_only:
             log.write_text(" ".join(cmd) + "\n")
             print(f"verify_set: staged {image.name} and {card.name} for bank {bank} part {part_no}, nothing run -- {OUT}")

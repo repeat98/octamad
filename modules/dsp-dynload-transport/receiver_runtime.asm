@@ -195,6 +195,7 @@ stubsaved:
         move    x0,x:(r1)
         move    #>dlstubproc,x0
         move    x0,x:(r1+32)
+        bra     accepted                ; not a fall-through: BASE sits between
 ; BASE (7): the Y buffer table entry X:0x255 + (r0+4), 0..7, becomes
 ; (r0+7) << 16 | (r0+5). Stock reads it only in an effect's init, through
 ; X:0x213 (buffers.h): the ColdFire writes it before the new id is published.

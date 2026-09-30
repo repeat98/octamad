@@ -159,16 +159,58 @@ def packages(character=True):
             relocations=[r.offset for r in p.relocations],init=p.init,proc=p.proc)
     return result
 
-def _catalog(data,qualified,slots,stub_at_boot=0):
+def _init_reads_base(words,base,init):
+    """1 when the routine at `init` (words placed at `base`) reads X:0x213, the
+    allocator's pointer into the Y buffer table, before its first rts."""
+    with tempfile.TemporaryDirectory() as tmp:
+        p=Path(tmp)/'code.bin'
+        p.write_bytes(b''.join(w.to_bytes(3,'little') for w in words))
+        out=subprocess.check_output([str(ROOT/'vendor/dsp56300/build/source/disassemble/dsp56kDisassemble'),
+                                     '-in',str(p),'-pc',f'{base:x}','-le'],text=True)
+    for line in out.splitlines():
+        m=re.match(r'([0-9a-f]{6}):\s*(.*?)\s*;',line)
+        if not m or int(m[1],16)<init: continue
+        if 'x:>$213' in m[2]: return 1
+        if m[2].split()[:1]==['rts']: return 0
+    return 1   # never reached its rts: assume it reads (a block is the safe side)
+
+def buffer_reads(data):
+    """Per id, 1 when its init reads its Y buffer base (buffers.h): the stock
+    effects from the stock payload's own dispatch table, each package from its
+    own words. Derived from code, never a list, so a new effect is covered."""
+    import struct, sys
+    sys.path.insert(0,str(ROOT/'tools')); import toolpath  # noqa: F401
+    from dsp_modmap import IMG, PAYLOADS, modules
+    img=IMG.read_bytes(); va,ln=next((v,l) for t,v,l in PAYLOADS if t=='A')
+    mods,_=modules(img,va,ln)
+    from dsp_modmap import BASE
+    def words_at(space,addr,n):
+        for sp,a,cnt,off in mods:
+            if sp==space and a<=addr<a+cnt:
+                o=va-BASE+off+(addr-a)*3
+                return [int.from_bytes(img[o+3*k:o+3*k+3],'little') for k in range(min(n,a+cnt-addr))]
+        return []
+    reads=[0]*32
+    for p in range(32):
+        init=(words_at(1,0x215+p,1) or [0])[0]
+        code=words_at(0,init,96)
+        if init and code: reads[p]=_init_reads_base(code,init,init)
+    for (_c,p),pkg in data.items():
+        reads[p]=reads[p] if pkg is None else _init_reads_base(pkg['words'],0,pkg['init'])
+    return reads
+
+def _catalog(data,qualified,slots,stub_at_boot=0,reads=None,pmap16=0):
     """The runtime's dl_catalog/dl_codes: `data` {(core, id): package},
     `qualified` the ids the runtime may publish, `slots(id, has_package)` the
     slot mask (1 FX1, 2 FX2)."""
+    reads=reads if reads is not None else buffer_reads(data)
     lines=['.section .rodata','.balign 4','.global dl_stub_at_boot',
-           f'dl_stub_at_boot: .long {stub_at_boot:#x}','.global dl_catalog','dl_catalog:']
+           f'dl_stub_at_boot: .long {stub_at_boot:#x}','.global dl_pmap16',
+           f'dl_pmap16: .long {int(pmap16)}','.global dl_catalog','dl_catalog:']
     for p in range(32):
         pkg=data.get((0,p))
         lines += [f'.word {len(pkg["words"]) if pkg else 0},1', '.long 0',
-                  f'.byte {slots(p,bool(pkg))},{0 if pkg else 1},{int(p in qualified)},0']
+                  f'.byte {slots(p,bool(pkg))},{0 if pkg else 1},{int(p in qualified)},{reads[p]}']
     lines+=['.balign 4','.global dl_codes','dl_codes:']
     for c in range(2):
         for p in range(32):
@@ -185,7 +227,8 @@ def _catalog(data,qualified,slots,stub_at_boot=0):
 
 def include(modules):
     data=packages('CHARACTER' in modules)
-    return _catalog(data,{0,4,5,8,12,13,16,17,18,19,24,28},lambda p,pkg: 1 if p==28 and pkg else 3)
+    return _catalog(data,{0,4,5,8,12,13,16,17,18,19,24,28},lambda p,pkg: 1 if p==28 and pkg else 3,
+                    pmap16='PMAP PROBE' in modules)
 
 def dynamic_packages():
     """Every stock DSP effect as a package, per core, against the shared copies
@@ -211,4 +254,5 @@ def include_dynamic(modules):
     # The build stubs every stock DSP id (build_bus DYNAMIC), so each one's
     # dispatch is the dry stub until the loader binds it.
     return _catalog(data,qualified,lambda p,pkg: 3 if p in fx1 else 2,
-                    sum(1<<p for p in {p for _c,p in data}))   # each id once, not per core
+                    sum(1<<p for p in {p for _c,p in data}),   # each id once, not per core
+                    pmap16='PMAP PROBE' in modules)

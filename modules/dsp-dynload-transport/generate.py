@@ -8,7 +8,7 @@ HERE=Path(__file__).resolve().parent
 FLAGS=['-mcpu=5407','-msoft-float','-O2','-ffreestanding','-fno-builtin','-fno-common',
        '-fno-jump-tables','-fno-asynchronous-unwind-tables','-fno-ident',
        '-fomit-frame-pointer','-fno-zero-initialized-in-bss','-Wall','-Wextra','-Werror']
-for name in ('transfer','selection','selection_probe','allocator','manager','preflight','publication'):
+for name in ('transfer','selection','selection_probe','allocator','buffers','manager','preflight','publication'):
     with tempfile.TemporaryDirectory() as tmp:
         dest=Path(tmp)/(name+'.s')
         # Relative source: inline-asm line markers must not name this checkout.

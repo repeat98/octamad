@@ -10,6 +10,7 @@ struct dl_package {
     uint16_t words, alignment;
     uint32_t cycles;
     uint8_t slots, resident, qualified;
+    uint8_t buffer;   /* 1: its init reads its Y buffer base (X:0x213); was padding */
 };
 struct dl_placement { uint16_t offset, words; uint8_t present; };
 struct dl_allocator {

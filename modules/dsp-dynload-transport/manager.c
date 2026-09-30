@@ -6,11 +6,17 @@
 #include "selection.h"
 #include "transfer.h"
 #include "publication.h"
+#include "buffers.h"
 struct code { const uint32_t *words; const uint16_t *relocations;
               uint16_t count,init,proc,relocation_count; };
 extern const struct dl_package dl_catalog[32];
 extern const struct code dl_codes[2][32];
 static struct dl_allocator allocator={0};
+/* Y buffer blocks per slot (buffers.h); the build says whether the 16K
+ * program map is on (its FX2 block at 0x8000 is then half gone). */
+static struct dl_buffers buffers={0};
+extern const uint32_t dl_pmap16;
+static int base_index=-1;
 static uint8_t desired[16]={0};
 #ifndef DL_NATIVE_TEST
 static uint8_t observed[16]={0};
@@ -65,6 +71,42 @@ static unsigned needed(unsigned index,unsigned mode) {
                        !allocator.live[c][p].present && !((stubbed[c]>>p)&1u);
     return allocator.target[c][p].present && !allocator.live[c][p].present;
 }
+/* What the firmware runs in each slot now: its live FX arrays (the native
+ * test has none; there the committed set stands in for them). */
+static void running(uint8_t out[16]) {
+#ifndef DL_NATIVE_TEST
+    const volatile uint8_t *live=(const volatile uint8_t *)0x80000ec4u;
+    for(unsigned i=0;i<16;++i) out[i]=live[i];
+#else
+    for(unsigned i=0;i<16;++i) out[i]=allocator.active[i]==DL_NONE ? 0 : allocator.active[i];
+#endif
+}
+/* Phases 8 (after the binds) and 9 (after a cancel): bring the Y buffer
+ * table to what the plan wants, one entry per command. */
+static void tables(void) {
+    if(waiting) {
+        unsigned c=(unsigned)base_index/8;
+        int s=dl_job_status(c);
+        if(!s) return;
+        dl_job_release(c); waiting=0;
+        if(s<0) {
+            report(DL_SELECT_UNAVAILABLE);
+            if(phase==9) return;          /* a restore is retried until it lands */
+            cancelling=1; phase=7; cursor=0; return;
+        }
+        dl_buffers_written(&buffers,(unsigned)base_index);
+    }
+    if(phase==8 && cancelling) { phase=7; cursor=0; return; }
+    uint32_t v; int i=dl_buffers_next(&buffers,&v);
+    if(i>=0) {
+        base_index=i;
+        waiting=dl_command_start((unsigned)i/8,DL_BASE,(unsigned)i%8,v&0xffffu,(v>>16)&0xffu);
+        if(!waiting) { report(DL_SELECT_UNAVAILABLE); if(phase==8) { cancelling=1; phase=7; cursor=0; } }
+        return;
+    }
+    if(phase==8) { phase=4; cursor=0; return; }
+    phase=0;
+}
 static void advance(void) {
     if(!phase) return;
     if(phase==1) {
@@ -89,6 +131,7 @@ static void advance(void) {
              * No additional overlapping instances are created by rebinding;
              * existing DSP processing is reserved outside this P-only pool. */
             dl_allocator_init(&allocator,dl_catalog,0,0,0,0);
+            dl_buffers_init(&buffers,dl_pmap16);
             /* Already on the stub: nothing to arm (26 commands, a UI tick each). */
             stubbed[0]=stubbed[1]=dl_stub_at_boot;
             initialized=1;
@@ -106,6 +149,15 @@ static void advance(void) {
                    r==DL_ALLOC_CYCLES ? DL_SELECT_PROCESSING : DL_SELECT_UNAVAILABLE);
             phase=0; return;
         }
+        {   /* the Y buffer plan beside the code plan: both fit, or neither is taken */
+            uint8_t reads[32], now[16];
+            for(unsigned p=0;p<32;++p) reads[p]=dl_catalog[p].buffer;
+            running(now);
+            if(dl_buffers_prepare(&buffers,now,desired,reads)!=DL_BUF_OK) {
+                dl_allocator_cancel(&allocator,current);
+                report(DL_SELECT_MEMORY); phase=0; return;
+            }
+        }
         phase=2; cursor=0;
     }
     if(phase==5) { /* Prepared, waiting for the original stock setter. */
@@ -122,6 +174,7 @@ static void advance(void) {
             return;
         }
     }
+    if(phase==8 || phase==9) { tables(); return; }
     if(waiting) {
         unsigned c=cursor/32;
         int s=dl_job_status(c);
@@ -161,15 +214,19 @@ static void advance(void) {
     }
     cursor=0;
     if(mode==2) { phase=3; return; }
-    if(mode==3) { phase=4; return; }
+    if(mode==3) { phase=8; tables(); return; }
     if(mode==4) {
         for(unsigned c=0;c<2;++c) if(allocator.required & (1u<<c)) dl_allocator_ack(&allocator,current,c);
         phase=5; result=DL_SELECT_READY;
         if(automatic) {
             dl_allocator_commit(&allocator,current); phase=6; ++dl_residency_commits; counts();
         }
-    } else if(mode==6) { dl_allocator_retire(&allocator,current); phase=0; counts(); }
-    else if(mode==7) { dl_allocator_cancel(&allocator,current); phase=0; ++dl_residency_rollbacks; counts(); }
+    } else if(mode==6) { dl_allocator_retire(&allocator,current); dl_buffers_retire(&buffers); phase=0; counts(); }
+    else if(mode==7) {
+        dl_allocator_cancel(&allocator,current); dl_buffers_cancel(&buffers);
+        ++dl_residency_rollbacks; counts();
+        phase=9; tables();              /* the table as it was, then idle */
+    }
 }
 int dl_selection_prepare(const struct dl_selection *s,uint32_t token) {
     if(!dl_residency_enabled) return DL_SELECT_READY;

@@ -39,6 +39,8 @@ checksumdone:
         beq     binding
         cmp     #>6,a
         beq     binding
+        cmp     #>7,a
+        beq     setbase
         bra     badsaved
 upload:
         move    x:(r0+4),a
@@ -193,6 +195,25 @@ stubsaved:
         move    x0,x:(r1)
         move    #>dlstubproc,x0
         move    x0,x:(r1+32)
+; BASE (7): the Y buffer table entry X:0x255 + (r0+4), 0..7, becomes
+; (r0+7) << 16 | (r0+5). Stock reads it only in an effect's init, through
+; X:0x213 (buffers.h): the ColdFire writes it before the new id is published.
+setbase:
+        move    x:(r0+4),a
+        and     #>$ffff,a
+        cmp     #>7,a
+        bgt     badsaved
+        add     #>$255,a
+        move    a1,r1
+        move    x:(r0+7),a
+        and     #>$ff,a
+        asl     #16,a,a
+        move    a1,x0
+        move    x:(r0+5),a
+        and     #>$ffff,a
+        or      x0,a
+        move    a1,x:(r1)
+        bra     accepted
 accepted:
         bsr     tablebase
         move    a1,x:>$2366

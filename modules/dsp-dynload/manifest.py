@@ -15,6 +15,7 @@ MODULE=replace(base,name='dsp-dynload',key='DSP DYNLOAD',
         Linked('dlpublication','modules/dsp-dynload-transport/publication.s',dram=True),
         Linked('dlpublishhooks','modules/dsp-dynload-transport/publication_hooks.s',dram=True),
         Linked('dlpreflight','modules/dsp-dynload-transport/preflight.s',dram=True),
+        Linked('dlbuffers','modules/dsp-dynload-transport/buffers.s',dram=True),
         Linked('dlmanager','modules/dsp-dynload-transport/manager.s',dram=True),
         Linked('dlcatalog','modules/dsp-dynload-transport/catalog.s',dram=True,include=include)),
     detours=base.detours+(
